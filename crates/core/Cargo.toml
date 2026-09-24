@@ -1,0 +1,18 @@
+[package]
+name = "openfront-core"
+version = "0.1.0"
+description = "Deterministic simulation core of OpenFront, ported from src/core (TypeScript). Parity with the TS implementation is golden-tested bit-for-bit."
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+
+[lib]
+crate-type = ["lib", "cdylib"]
+
+[features]
+# Compiles a tiny extern "C" probe surface so the parity checks can be executed
+# on targets with no linker/test harness (see rust/tools/run_wasm_parity.mjs).
+wasm-probe = []

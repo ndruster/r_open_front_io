@@ -1,0 +1,569 @@
+//! Minimal `extern "C"` probe surface, compiled only with `--features wasm-probe`.
+//!
+//! Purpose: on a machine where the MSVC linker is unavailable (no Windows SDK
+//! import libs), the parity vectors can still be *executed* — build this crate
+//! to `wasm32-unknown-unknown`, then call it from Node (see
+//! `rust/tools/run_wasm_parity.mjs`) and diff against `data/vectors.rs`.
+//!
+//! Only scalar f64/u32/i64/u8 values cross the boundary, so the host needs no
+//! shared-memory layout knowledge and the probe cannot disagree with the Rust
+//! API the real tests use.
+//!
+//! State is seeded explicitly via `probe_prng_seed`; the stepping functions
+//! advance a running generator. `probe_prng_shuffle_reset` + `..._at_last`
+//! replay a fresh shuffle from the post-seed snapshot, mirroring how the
+//! vectors group each shuffle under its own freshly seeded generator.
+
+use crate::detmath;
+use crate::pseudo_random::PseudoRandom;
+
+thread_local! {
+    static RNG: std::cell::Cell<Option<PseudoRandom>> = const { std::cell::Cell::new(None) };
+    /// Snapshot taken right after the last seed, used for shuffle/correlation
+    /// probes that must each start from a freshly seeded generator.
+    static SHUFFLE_BASE: std::cell::Cell<Option<PseudoRandom>> = const { std::cell::Cell::new(None) };
+    static SHUFFLE_BUF: std::cell::RefCell<Vec<u8>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
+fn with_rng<T>(f: impl FnOnce(&mut PseudoRandom) -> T) -> T {
+    RNG.with(|slot| {
+        let mut cur = slot.take().expect("probe_prng_seed must be called first");
+        let out = f(&mut cur);
+        slot.set(Some(cur));
+        out
+    })
+}
+
+/// Re-seeds the probe generator and snapshots the fresh state.
+#[no_mangle]
+pub extern "C" fn probe_prng_seed(seed: f64) {
+    let rng = PseudoRandom::new(seed);
+    SHUFFLE_BASE.with(|slot| slot.set(Some(rng.clone())));
+    RNG.with(|slot| slot.set(Some(rng)));
+}
+
+#[no_mangle]
+pub extern "C" fn probe_prng_next_u32() -> u32 {
+    with_rng(|r| r.next_u32())
+}
+
+#[no_mangle]
+pub extern "C" fn probe_prng_next() -> f64 {
+    with_rng(|r| r.next())
+}
+
+#[no_mangle]
+pub extern "C" fn probe_prng_next_int(min: f64, max: f64) -> i64 {
+    with_rng(|r| r.next_int(min, max))
+}
+
+/// The numeric form of `nextID()`; the host renders it in base 36.
+#[no_mangle]
+pub extern "C" fn probe_prng_next_id_value() -> f64 {
+    with_rng(|r| r.next_id_value())
+}
+
+#[no_mangle]
+pub extern "C" fn probe_prng_chance(odds: f64) -> u8 {
+    with_rng(|r| r.chance(odds) as u8)
+}
+
+/// `shuffle_len` values of a fresh shuffle from the snapshotted state, written
+/// one at a time by the host through successive calls.
+#[no_mangle]
+pub extern "C" fn probe_prng_shuffle_reset(len: usize) {
+    let mut base = SHUFFLE_BASE
+        .with(|slot| slot.take())
+        .expect("probe_prng_seed must be called first");
+    let input: Vec<u8> = (0..len as u8).collect();
+    let perm = base.shuffle_array(&input);
+    SHUFFLE_BUF.with(|buf| *buf.borrow_mut() = perm);
+}
+
+#[no_mangle]
+pub extern "C" fn probe_prng_shuffle_at_last(index: usize) -> u8 {
+    SHUFFLE_BUF.with(|buf| buf.borrow()[index])
+}
+
+#[no_mangle]
+pub extern "C" fn probe_exp(x: f64) -> f64 {
+    detmath::exp(x)
+}
+
+#[no_mangle]
+pub extern "C" fn probe_log(x: f64) -> f64 {
+    detmath::log(x)
+}
+
+#[no_mangle]
+pub extern "C" fn probe_pow(x: f64, y: f64) -> f64 {
+    detmath::pow(x, y)
+}
+
+#[no_mangle]
+pub extern "C" fn probe_atan2(y: f64, x: f64) -> f64 {
+    detmath::atan2(y, x)
+}
+
+#[no_mangle]
+pub extern "C" fn probe_pow2(n: i32) -> f64 {
+    detmath::pow2(n)
+}
+
+// ---------------------------------------------------------------- structures
+// Trace replay surface for the queue/heap/grid ports. One live object at a
+// time (`probe_st_new` selects the kind); `undefined` results cross the
+// boundary as NaN, which no legitimate node id can equal.
+
+use crate::pathfinding::bfs_grid::{self, BfsGrid};
+use crate::pathfinding::flat_heap::FlatBinaryHeap;
+use crate::pathfinding::priority_queue::{BucketQueue, MinHeap, PriorityQueue};
+
+enum St {
+    Mh(Box<MinHeap>),
+    Bq(Box<BucketQueue>),
+    Fbh(Box<FlatBinaryHeap>),
+}
+
+type GridSlot = (BfsGrid, Vec<(i64, i64)>);
+
+thread_local! {
+    static ST: std::cell::RefCell<Option<St>> = const { std::cell::RefCell::new(None) };
+    static GRID: std::cell::RefCell<Option<GridSlot>> =
+        const { std::cell::RefCell::new(None) };
+}
+
+/// kind: 0 = MinHeap, 1 = BucketQueue, 2 = FlatBinaryHeap.
+#[no_mangle]
+pub extern "C" fn probe_st_new(kind: u32, cap: f64) {
+    let obj = match kind {
+        0 => St::Mh(Box::new(MinHeap::new(cap))),
+        1 => St::Bq(Box::new(BucketQueue::new(cap))),
+        _ => St::Fbh(Box::new(FlatBinaryHeap::new(cap.max(0.0) as usize))),
+    };
+    ST.with(|s| *s.borrow_mut() = Some(obj));
+}
+
+#[no_mangle]
+pub extern "C" fn probe_st_push(a: f64, b: f64) {
+    ST.with(|s| match &mut *s.borrow_mut() {
+        Some(St::Mh(h)) => h.push(a, b),
+        Some(St::Bq(q)) => q.push(a, b),
+        Some(St::Fbh(h)) => h.enqueue(a, b),
+        None => panic!("probe_st_new must be called first"),
+    });
+}
+
+/// Pop/dequeue. Returns NaN where JS yields `undefined`. FBH on an empty
+/// heap would panic here, but the trace only issues kind-1 pops at non-empty
+/// states (the generator recorded that; the host checks `probe_st_can_throw`).
+#[no_mangle]
+pub extern "C" fn probe_st_pop() -> f64 {
+    ST.with(|s| match &mut *s.borrow_mut() {
+        Some(St::Mh(h)) => h.pop().unwrap_or(f64::NAN),
+        Some(St::Bq(q)) => q.pop().unwrap_or(f64::NAN),
+        Some(St::Fbh(h)) => h.dequeue().unwrap_or(f64::NAN),
+        None => panic!("probe_st_new must be called first"),
+    })
+}
+
+#[no_mangle]
+pub extern "C" fn probe_st_clear() {
+    ST.with(|s| match &mut *s.borrow_mut() {
+        Some(St::Mh(h)) => h.clear(),
+        Some(St::Bq(q)) => q.clear(),
+        Some(St::Fbh(h)) => h.clear(),
+        None => panic!("probe_st_new must be called first"),
+    });
+}
+
+#[no_mangle]
+pub extern "C" fn probe_st_is_empty() -> u8 {
+    ST.with(|s| match &*s.borrow() {
+        Some(St::Mh(h)) => h.is_empty() as u8,
+        Some(St::Bq(q)) => q.is_empty() as u8,
+        Some(St::Fbh(h)) => (h.size() == 0) as u8,
+        None => panic!("probe_st_new must be called first"),
+    })
+}
+
+/// 1 when an FBH dequeue would throw (empty), else 0. The throw itself is a
+/// wasm trap that would kill the instance, so the host observes the condition
+/// instead; the *panicking* semantics are pinned by the native test.
+#[no_mangle]
+pub extern "C" fn probe_st_can_throw() -> u8 {
+    ST.with(|s| match &*s.borrow() {
+        Some(St::Fbh(h)) => h.size() == 0,
+        _ => false,
+    }) as u8
+}
+
+/// Scalar state field. Per kind: MH (0=size,1=capacity); BQ (0=minBucket,
+/// 1=size,2=stamp); FBH (0=len).
+#[no_mangle]
+pub extern "C" fn probe_st_field(which: u32) -> f64 {
+    with_st(
+        |st| match st {
+            St::Mh(h) => match which {
+                0 => h.debug_size() as f64,
+                _ => h.debug_capacity() as f64,
+            },
+            St::Bq(q) => {
+                let (min_b, _, size, stamp) = q.debug_state();
+                match which {
+                    0 => min_b,
+                    1 => size,
+                    _ => stamp as f64,
+                }
+            }
+            St::Fbh(h) => h.size() as f64,
+        },
+        f64::NAN,
+    )
+}
+
+fn with_st<T>(f: impl FnOnce(&St) -> T, dflt: T) -> T {
+    ST.with(|s| match &*s.borrow() {
+        Some(st) => f(st),
+        None => dflt,
+    })
+}
+
+#[no_mangle]
+pub extern "C" fn probe_st_a_len() -> usize {
+    with_st(|st| match st {
+        St::Mh(h) => h.debug_heap_len(),
+        St::Bq(q) => q.debug_full().0.len(),
+        St::Fbh(h) => h.debug_state().0.len(),
+    }, 0)
+}
+
+#[no_mangle]
+pub extern "C" fn probe_st_a_get(i: usize) -> f64 {
+    with_st(|st| match st {
+        St::Mh(h) => h.debug_heap_at(i) as f64,
+        St::Bq(q) => q.debug_full().0[i] as f64,
+        St::Fbh(h) => f64::from(h.debug_state().0[i]),
+    }, f64::NAN)
+}
+
+#[no_mangle]
+pub extern "C" fn probe_st_b_len() -> usize {
+    with_st(|st| match st {
+        St::Mh(h) => h.debug_pri_len(),
+        St::Bq(q) => q.debug_full().1.len(),
+        St::Fbh(h) => h.debug_state().1.len(),
+    }, 0)
+}
+
+/// NaN encodes `undefined` (FBH tile holes); priority bits / stamps are exact.
+#[no_mangle]
+pub extern "C" fn probe_st_b_get(i: usize) -> f64 {
+    with_st(|st| match st {
+        St::Mh(h) => f64::from(h.debug_pri_bits_at(i)),
+        St::Bq(q) => q.debug_full().1[i] as f64,
+        St::Fbh(h) => h.debug_state().1[i].unwrap_or(f64::NAN),
+    }, f64::NAN)
+}
+
+/// BucketQueue's sparse keys (empty for the other kinds).
+#[no_mangle]
+pub extern "C" fn probe_st_c_len() -> usize {
+    with_st(|st| match st {
+        St::Bq(q) => q.debug_full().2.len(),
+        _ => 0,
+    }, 0)
+}
+
+#[no_mangle]
+pub extern "C" fn probe_st_c_get(i: usize) -> f64 {
+    with_st(
+        |st| match st {
+            St::Bq(q) => q.debug_full().2[i] as f64,
+            _ => f64::NAN,
+        },
+        f64::NAN,
+    )
+}
+
+// ---- grid BFS ----
+
+#[no_mangle]
+pub extern "C" fn probe_grid_new(nodes: f64) {
+    GRID.with(|g| *g.borrow_mut() = Some((BfsGrid::new(nodes), Vec::new())));
+}
+
+/// mode: 0 none, 1 blocker invalid, 2 blocker rejected, 3 blocker found(42).
+#[no_mangle]
+pub extern "C" fn probe_grid_search(
+    w: i64,
+    h: i64,
+    s0: i64,
+    s1: i64,
+    max_d: f64,
+    mode: u8,
+    blocker: i64,
+) -> f64 {
+    GRID.with(|cell| {
+        let mut slot = cell.borrow_mut();
+        let (grid, visits) = slot.as_mut().expect("probe_grid_new must be called first");
+        visits.clear();
+        let valid = |n: i64| !(mode == 1 && n == blocker);
+        let visitor = |n: i64, d: i64| -> bfs_grid::Visit<i32> {
+            visits.push((n, d));
+            if mode == 2 && n == blocker {
+                bfs_grid::Visit::Reject
+            } else if mode == 3 && n == blocker {
+                bfs_grid::Visit::Found(42)
+            } else {
+                bfs_grid::Visit::Explore
+            }
+        };
+        let starts = if s1 >= 0 { vec![s0, s1] } else { vec![s0] };
+        match grid.search(w, h, &starts, max_d, valid, visitor) {
+            Some(v) => v as f64,
+            None => -1.0,
+        }
+    })
+}
+
+#[no_mangle]
+pub extern "C" fn probe_grid_visit_count() -> usize {
+    GRID.with(|g| {
+        let b = g.borrow();
+        b.as_ref().map(|(_, v)| v.len()).unwrap_or(0)
+    })
+}
+
+#[no_mangle]
+pub extern "C" fn probe_grid_visit_node(i: usize) -> f64 {
+    GRID.with(|g| g.borrow().as_ref().unwrap().1[i].0 as f64)
+}
+
+#[no_mangle]
+pub extern "C" fn probe_grid_visit_dist(i: usize) -> f64 {
+    GRID.with(|g| g.borrow().as_ref().unwrap().1[i].1 as f64)
+}
+
+#[no_mangle]
+pub extern "C" fn probe_grid_stamp() -> u64 {
+    GRID.with(|g| {
+        let b = g.borrow();
+        b.as_ref().unwrap().0.debug_stamp()
+    })
+}
+
+// ---- A* ----
+// A single live AStar<GridAdapter>. Blocked tiles are queued first (the
+// adapter is built in probe_astar_new), then starts, then the search runs.
+// `max_iter` crosses as NaN to mean "default". Scalar-only boundary, matching
+// the rest of the probe.
+
+use crate::pathfinding::a_star::{AStar, GridAdapter};
+
+thread_local! {
+    static ASTAR: std::cell::RefCell<Option<Box<AStar<GridAdapter>>>> =
+        const { std::cell::RefCell::new(None) };
+    static ASTAR_BLOCKED: std::cell::RefCell<Vec<f64>> = const { std::cell::RefCell::new(Vec::new()) };
+    static ASTAR_STARTS: std::cell::RefCell<Vec<f64>> = const { std::cell::RefCell::new(Vec::new()) };
+    static ASTAR_PATH: std::cell::RefCell<Vec<f64>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
+/// Queue a blocked tile for the next adapter (call before probe_astar_new).
+#[no_mangle]
+pub extern "C" fn probe_astar_block(v: f64) {
+    ASTAR_BLOCKED.with(|b| b.borrow_mut().push(v));
+}
+
+/// Build the AStar. `max_iter` = NaN means the TS default (500_000).
+#[no_mangle]
+pub extern "C" fn probe_astar_new(
+    w: f64,
+    h: f64,
+    cc: f64,
+    tp: f64,
+    hk: u32,
+    hs: f64,
+    max_iter: f64,
+) {
+    let blocked = ASTAR_BLOCKED.with(|b| std::mem::take(&mut *b.borrow_mut()));
+    let adapter = GridAdapter::new(w, h, &blocked, cc, tp, hk as u8, hs);
+    let mi = if max_iter.is_nan() {
+        None
+    } else {
+        Some(max_iter)
+    };
+    ASTAR.with(|a| *a.borrow_mut() = Some(Box::new(AStar::new(adapter, mi))));
+}
+
+/// Queue a start node for the next run (call before probe_astar_run).
+#[no_mangle]
+pub extern "C" fn probe_astar_start(v: f64) {
+    ASTAR_STARTS.with(|s| s.borrow_mut().push(v));
+}
+
+/// Run `runs` findPath calls; returns 1 when the last call produced a path.
+#[no_mangle]
+pub extern "C" fn probe_astar_run(goal: f64, runs: u32) -> u8 {
+    let starts = ASTAR_STARTS.with(|s| std::mem::take(&mut *s.borrow_mut()));
+    let path = ASTAR.with(|a| {
+        let mut astar = a.borrow_mut();
+        let astar = astar.as_mut().expect("probe_astar_new must be called first");
+        let mut last = None;
+        for _ in 0..runs {
+            last = astar.find_path(&starts, goal);
+        }
+        last
+    });
+    match path {
+        Some(p) => {
+            ASTAR_PATH.with(|buf| *buf.borrow_mut() = p);
+            1
+        }
+        None => {
+            ASTAR_PATH.with(|buf| buf.borrow_mut().clear());
+            0
+        }
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn probe_astar_path_len() -> usize {
+    ASTAR_PATH.with(|p| p.borrow().len())
+}
+
+#[no_mangle]
+pub extern "C" fn probe_astar_path_at(i: usize) -> f64 {
+    ASTAR_PATH.with(|p| p.borrow()[i])
+}
+
+#[no_mangle]
+pub extern "C" fn probe_astar_stamp() -> u64 {
+    ASTAR.with(|a| a.borrow().as_ref().unwrap().debug_stamp())
+}
+
+/// field: 0 = closedStamp, 1 = gScoreStamp, 2 = gScore, 3 = cameFrom.
+#[no_mangle]
+pub extern "C" fn probe_astar_arr_len(field: u32) -> usize {
+    ASTAR.with(|a| {
+        let astar = a.borrow();
+        let astar = astar.as_ref().unwrap();
+        match field {
+            0 => astar.debug_closed_stamp().len(),
+            1 => astar.debug_g_score_stamp().len(),
+            2 => astar.debug_g_score().len(),
+            _ => astar.debug_came_from().len(),
+        }
+    })
+}
+
+#[no_mangle]
+pub extern "C" fn probe_astar_arr_get(field: u32, i: usize) -> f64 {
+    ASTAR.with(|a| {
+        let astar = a.borrow();
+        let astar = astar.as_ref().unwrap();
+        match field {
+            0 => astar.debug_closed_stamp()[i] as f64,
+            1 => astar.debug_g_score_stamp()[i] as f64,
+            2 => astar.debug_g_score()[i] as f64,
+            _ => astar.debug_came_from()[i] as f64,
+        }
+    })
+}
+
+// ---- A* Rail ----
+// Same scalar-only pattern as the AStar probe, over RailAdapter<TerrainMap>.
+// Terrain bytes are queued one at a time before probe_rail_new.
+
+use crate::pathfinding::rail::{RailAdapter, TerrainMap};
+
+thread_local! {
+    static RAIL: std::cell::RefCell<Option<Box<AStar<RailAdapter<TerrainMap>>>>> =
+        const { std::cell::RefCell::new(None) };
+    static RAIL_TERRAIN: std::cell::RefCell<Vec<u8>> = const { std::cell::RefCell::new(Vec::new()) };
+    static RAIL_STARTS: std::cell::RefCell<Vec<f64>> = const { std::cell::RefCell::new(Vec::new()) };
+    static RAIL_PATH: std::cell::RefCell<Vec<f64>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
+/// Queue one packed terrain byte (GameMapImpl layout) for the next map.
+#[no_mangle]
+pub extern "C" fn probe_rail_terrain_byte(v: u32) {
+    RAIL_TERRAIN.with(|t| t.borrow_mut().push(v as u8));
+}
+
+#[no_mangle]
+pub extern "C" fn probe_rail_new(w: f64, h: f64) {
+    let terrain = RAIL_TERRAIN.with(|t| std::mem::take(&mut *t.borrow_mut()));
+    let adapter = RailAdapter::new(TerrainMap::new(w, h, terrain));
+    RAIL.with(|a| *a.borrow_mut() = Some(Box::new(AStar::new(adapter, None))));
+}
+
+#[no_mangle]
+pub extern "C" fn probe_rail_start(v: f64) {
+    RAIL_STARTS.with(|s| s.borrow_mut().push(v));
+}
+
+/// One multi-start findPath; 1 = path found, 0 = TS null.
+#[no_mangle]
+pub extern "C" fn probe_rail_run(goal: f64) -> u8 {
+    let starts = RAIL_STARTS.with(|s| std::mem::take(&mut *s.borrow_mut()));
+    let path = RAIL.with(|a| {
+        let mut rail = a.borrow_mut();
+        let rail = rail.as_mut().expect("probe_rail_new must be called first");
+        rail.find_path(&starts, goal)
+    });
+    match path {
+        Some(p) => {
+            RAIL_PATH.with(|buf| *buf.borrow_mut() = p);
+            1
+        }
+        None => {
+            RAIL_PATH.with(|buf| buf.borrow_mut().clear());
+            0
+        }
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn probe_rail_path_len() -> usize {
+    RAIL_PATH.with(|p| p.borrow().len())
+}
+
+#[no_mangle]
+pub extern "C" fn probe_rail_path_at(i: usize) -> f64 {
+    RAIL_PATH.with(|p| p.borrow()[i])
+}
+
+#[no_mangle]
+pub extern "C" fn probe_rail_stamp() -> u64 {
+    RAIL.with(|a| a.borrow().as_ref().unwrap().debug_stamp())
+}
+
+/// field: 0 = closedStamp, 1 = gScoreStamp, 2 = gScore, 3 = cameFrom.
+#[no_mangle]
+pub extern "C" fn probe_rail_arr_len(field: u32) -> usize {
+    RAIL.with(|a| {
+        let rail = a.borrow();
+        let rail = rail.as_ref().unwrap();
+        match field {
+            0 => rail.debug_closed_stamp().len(),
+            1 => rail.debug_g_score_stamp().len(),
+            2 => rail.debug_g_score().len(),
+            _ => rail.debug_came_from().len(),
+        }
+    })
+}
+
+#[no_mangle]
+pub extern "C" fn probe_rail_arr_get(field: u32, i: usize) -> f64 {
+    RAIL.with(|a| {
+        let rail = a.borrow();
+        let rail = rail.as_ref().unwrap();
+        match field {
+            0 => rail.debug_closed_stamp()[i] as f64,
+            1 => rail.debug_g_score_stamp()[i] as f64,
+            2 => rail.debug_g_score()[i] as f64,
+            _ => rail.debug_came_from()[i] as f64,
+        }
+    })
+}

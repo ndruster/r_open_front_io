@@ -53,11 +53,16 @@ function prepare(rel) {
     );
   }
   if (rel.endsWith("game/GameMap.ts")) {
-    // `Cell`/`TerrainType` are only referenced by cell()/terrainType(), which
-    // the Rail adapter never calls; strip mode cannot know that, so the
-    // import (and the whole Game.ts graph behind it) is dropped. The ctor's
-    // parameter property is expanded, same as MinHeap's.
-    out = must(out, 'import { Cell, TerrainType } from "./Game";\n', "", "Game import");
+    // The import (and the whole Game.ts graph behind it) is dropped; the
+    // numeric enum is inlined so terrainType() still works. `Cell` is only
+    // referenced by cell(), which the GameMap scenarios never call. The
+    // ctor's parameter property is expanded, same as MinHeap's.
+    out = must(
+      out,
+      'import { Cell, TerrainType } from "./Game";\n',
+      "const TerrainType = { Plains: 0, Highland: 1, Mountain: 2, Ocean: 3, Impassable: 4 };\n",
+      "Game import",
+    );
     out = must(
       out,
       "  constructor(\n    width: number,\n    height: number,\n    terrainData: Uint8Array,\n    private numLandTiles_: number,\n  ) {",

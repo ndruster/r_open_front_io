@@ -16,6 +16,8 @@ rust/
 │   │   ├── pseudo_random.rs       port of src/core/PseudoRandom.ts
 │   │   ├── detmath.rs             port of src/core/DetMath.ts
 │   │   ├── jsnum.rs               JS coercions: ToInt32/ToUint32/ToUint16/f32
+│   │   ├── game_map.rs            port of game/GameMap.ts (GameMapImpl
+│   │   │                          + the distFN factories)
 │   │   ├── wasm_probe.rs          `extern "C"` surface, feature-gated
 │   │   └── pathfinding/
 │   │       ├── mod.rs
@@ -79,6 +81,16 @@ desync, not a rounding nit. Two things enforce that here:
    `isImpassable` gates *expansion* but not *entry*, the water/shoreline and
    direction-change cost penalties, and a lake ring where only shoreline tiles
    are walkable.
+6. **`GameMapImpl`** itself (`game_map.rs`) is pinned with five op-trace
+   scenarios (4×4 sweep, 3×3 counter bookkeeping, 2×2 invalid-ref reads, 3×1
+   `updateTile` packing, 5×5 `bfs`/`circleSearch`). The traces record every
+   observable: each op's return token (including the `undefined` a typed-array
+   read yields out of bounds), the final `terrain`/`state` buffers, and the
+   three counters. They pin the JS-isms the class inherits — `x()` keeps the
+   sign of the dividend, `y()` is `| 0` not `Math.floor`, `bfs` is LIFO via
+   `q.pop()`, `Set` order is insertion order with SameValueZero dedup, and
+   invalid writes are dropped while the surrounding bookkeeping still runs.
+   The `throw` paths (`ref`, `setOwnerID`) are replayed under `catch_unwind`.
 
 Regenerate whenever a ported source changes:
 
@@ -112,7 +124,7 @@ node rust/tools/run_wasm_parity.mjs
 
 `wasm-probe` exposes the ported functions through `extern "C"` scalar
 entrypoints (`src/wasm_probe.rs`); the runner imports `data/vectors.json` and
-compares every value. Last run: **19,977 comparisons, all bit-identical**.
+compares every value. Last run: **20,349 comparisons, all bit-identical**.
 
 ### Windows: the linker environment
 
@@ -156,7 +168,7 @@ Roughly in order of leverage, all currently reachable from the ported layer:
 | Module | TS source | Why next |
 |---|---|---|
 | `AStar.Water` | `src/core/pathfinding/algorithms/AStar.Water.ts` | The performance-critical inlined variant; `AStar.Rail` is ported, so the water adapters are the next layer. |
-| `TileSet` / `GameMap` | `src/core/game/TileSet.ts`, `GameMap.ts` | `GameMapImpl`'s terrain-byte surface is already mirrored by `rail::TerrainMap`; porting the full class lets every adapter share one map type. |
+| `TileSet` | `src/core/game/TileSet.ts` | `GameMapImpl` is now ported (`game_map.rs`); `TileSet` builds on it and lets every adapter share one map type. |
 | `Util.ts` | `src/core/Util.ts` | Shared helpers (`toInt`, geometry) that the `execution/**` ports will need. |
 
 `execution/**` and `game/**` are the bulk (~500 files, heavy on `zod` schemas,

@@ -6127,3 +6127,254 @@ pub const RAIL_SCENARIOS: &[RailScenario] = &[
     RAIL_SHORE_RING,
 ];
 
+/// GameMap op result: void mutation, TS throw, `undefined` scalar,
+/// a number/boolean value, or a tile array (neighbours / searches).
+#[derive(Clone, Copy, Debug)]
+pub enum GmRes {
+    Void,
+    Threw,
+    Undef,
+    Val(f64),
+    Arr(&'static [f64]),
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct GmOp { pub kind: u8, pub a: f64, pub b: f64, pub res: GmRes }
+
+/// GameMapImpl scenario: initial packed terrain + land count, an op
+/// stream replayed against the real TS class (see gen_vectors.mjs for
+/// the kind table), and the final terrain/state buffers + counters.
+pub struct GameMapScenario {
+    pub name: &'static str,
+    pub w: f64,
+    pub h: f64,
+    pub terrain: &'static [u8],
+    pub num_land: f64,
+    pub ops: &'static [GmOp],
+    pub terrain_after: &'static [u8],
+    pub state_after: &'static [u16],
+    pub num_land_after: f64,
+    pub water_version_after: f64,
+    pub fallout_after: f64,
+}
+
+const GM_SWEEP_OPS: &[GmOp] = &[
+    GmOp { kind: 13, a: 0f64, b: 0f64, res: GmRes::Val(1f64) },
+    GmOp { kind: 14, a: 5f64, b: 0f64, res: GmRes::Val(0f64) },
+    GmOp { kind: 15, a: 3f64, b: 0f64, res: GmRes::Val(1f64) },
+    GmOp { kind: 16, a: 6f64, b: 0f64, res: GmRes::Val(0f64) },
+    GmOp { kind: 17, a: 2f64, b: 0f64, res: GmRes::Val(1f64) },
+    GmOp { kind: 18, a: 0f64, b: 0f64, res: GmRes::Val(2f64) },
+    GmOp { kind: 19, a: 5f64, b: 0f64, res: GmRes::Val(1f64) },
+    GmOp { kind: 20, a: 5f64, b: 0f64, res: GmRes::Val(15f64) },
+    GmOp { kind: 21, a: 0f64, b: 0f64, res: GmRes::Val(133f64) },
+    GmOp { kind: 22, a: 0f64, b: 0f64, res: GmRes::Val(0f64) },
+    GmOp { kind: 23, a: 0f64, b: 0f64, res: GmRes::Val(0f64) },
+    GmOp { kind: 29, a: 5f64, b: 0f64, res: GmRes::Val(1f64) },
+    GmOp { kind: 30, a: 5f64, b: 0f64, res: GmRes::Val(1f64) },
+    GmOp { kind: 31, a: 2f64, b: 1f64, res: GmRes::Val(6f64) },
+    GmOp { kind: 9, a: 0f64, b: 0f64, res: GmRes::Arr(&[4f64, 1f64]) },
+    GmOp { kind: 10, a: 5f64, b: 0f64, res: GmRes::Arr(&[1f64, 9f64, 4f64, 6f64]) },
+    GmOp { kind: 11, a: 5f64, b: 0f64, res: GmRes::Arr(&[0f64, 4f64, 8f64, 1f64, 9f64, 2f64, 6f64, 10f64]) },
+    GmOp { kind: 12, a: 5f64, b: 0f64, res: GmRes::Arr(&[0f64, 4f64, 8f64, 1f64, 9f64, 2f64, 6f64, 10f64]) },
+    GmOp { kind: 9, a: 15f64, b: 0f64, res: GmRes::Arr(&[11f64, 14f64]) },
+    GmOp { kind: 0, a: 0f64, b: 0f64, res: GmRes::Void },
+    GmOp { kind: 13, a: 0f64, b: 0f64, res: GmRes::Val(0f64) },
+    GmOp { kind: 18, a: 0f64, b: 0f64, res: GmRes::Val(2f64) },
+    GmOp { kind: 21, a: 0f64, b: 0f64, res: GmRes::Val(0f64) },
+    GmOp { kind: 3, a: 2f64, b: 0f64, res: GmRes::Void },
+    GmOp { kind: 19, a: 2f64, b: 0f64, res: GmRes::Val(3f64) },
+    GmOp { kind: 4, a: 1f64, b: 22f64, res: GmRes::Void },
+    GmOp { kind: 19, a: 1f64, b: 0f64, res: GmRes::Val(2f64) },
+    GmOp { kind: 20, a: 1f64, b: 0f64, res: GmRes::Val(22f64) },
+    GmOp { kind: 5, a: 6f64, b: 100f64, res: GmRes::Void },
+    GmOp { kind: 22, a: 6f64, b: 0f64, res: GmRes::Val(100f64) },
+    GmOp { kind: 26, a: 6f64, b: 0f64, res: GmRes::Val(1f64) },
+    GmOp { kind: 27, a: 6f64, b: 0f64, res: GmRes::Val(1f64) },
+    GmOp { kind: 5, a: 7f64, b: 5000f64, res: GmRes::Threw },
+    GmOp { kind: 6, a: 6f64, b: 1f64, res: GmRes::Void },
+    GmOp { kind: 24, a: 6f64, b: 0f64, res: GmRes::Val(1f64) },
+    GmOp { kind: 8, a: 6f64, b: 6561792f64, res: GmRes::Val(1f64) },
+    GmOp { kind: 7, a: 6f64, b: 1f64, res: GmRes::Void },
+    GmOp { kind: 25, a: 6f64, b: 0f64, res: GmRes::Val(1f64) },
+    GmOp { kind: 2, a: 1f64, b: 0f64, res: GmRes::Void },
+    GmOp { kind: 16, a: 1f64, b: 0f64, res: GmRes::Val(0f64) },
+    GmOp { kind: 34, a: 0f64, b: 1f64, res: GmRes::Arr(&[]) },
+    GmOp { kind: 34, a: 0f64, b: 0f64, res: GmRes::Arr(&[0f64, 4f64, 1f64, 5f64, 2f64, 6f64, 3f64, 7f64, 11f64, 15f64, 10f64, 14f64, 9f64, 13f64, 8f64, 12f64]) },
+    GmOp { kind: 35, a: 5f64, b: 2f64, res: GmRes::Arr(&[0f64, 8f64, 5f64, 13f64, 2f64, 10f64, 7f64]) },
+];
+pub const GM_SWEEP: GameMapScenario = GameMapScenario {
+    name: "gm_sweep",
+    w: 4f64,
+    h: 4f64,
+    terrain: &[
+    133u8, 133u8, 32u8, 159u8, 133u8, 143u8, 32u8, 64u8, 153u8, 153u8, 32u8, 32u8, 133u8, 64u8, 32u8, 133u8,
+],
+    num_land: 8f64,
+    ops: GM_SWEEP_OPS,
+    terrain_after: &[
+    0u8, 150u8, 32u8, 159u8, 133u8, 143u8, 100u8, 64u8, 153u8, 153u8, 32u8, 32u8, 133u8, 64u8, 32u8, 133u8,
+],
+    state_after: &[
+    0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 24576u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16,
+],
+    num_land_after: 7f64,
+    water_version_after: 1f64,
+    fallout_after: 1f64,
+};
+
+const GM_COUNTERS_OPS: &[GmOp] = &[
+    GmOp { kind: 0, a: 0f64, b: 0f64, res: GmRes::Void },
+    GmOp { kind: 0, a: 4f64, b: 0f64, res: GmRes::Void },
+    GmOp { kind: 0, a: 1f64, b: 0f64, res: GmRes::Void },
+    GmOp { kind: 6, a: 0f64, b: 1f64, res: GmRes::Void },
+    GmOp { kind: 6, a: 1f64, b: 1f64, res: GmRes::Void },
+    GmOp { kind: 6, a: 0f64, b: 1f64, res: GmRes::Void },
+    GmOp { kind: 6, a: 0f64, b: 0f64, res: GmRes::Void },
+    GmOp { kind: 6, a: 0f64, b: 0f64, res: GmRes::Void },
+    GmOp { kind: 8, a: 3f64, b: 8724480f64, res: GmRes::Val(0f64) },
+    GmOp { kind: 8, a: 3f64, b: 2105344f64, res: GmRes::Val(1f64) },
+    GmOp { kind: 8, a: 8f64, b: 8716288f64, res: GmRes::Val(1f64) },
+];
+pub const GM_COUNTERS: GameMapScenario = GameMapScenario {
+    name: "gm_counters",
+    w: 3f64,
+    h: 3f64,
+    terrain: &[
+    133u8, 133u8, 133u8, 133u8, 159u8, 133u8, 32u8, 32u8, 32u8,
+],
+    num_land: 5f64,
+    ops: GM_COUNTERS_OPS,
+    terrain_after: &[
+    0u8, 0u8, 133u8, 32u8, 159u8, 133u8, 32u8, 32u8, 133u8,
+],
+    state_after: &[
+    0u16, 8192u16, 0u16, 8192u16, 0u16, 0u16, 0u16, 0u16, 0u16,
+],
+    num_land_after: 3f64,
+    water_version_after: 4f64,
+    fallout_after: 2f64,
+};
+
+const GM_INVALID_OPS: &[GmOp] = &[
+    GmOp { kind: 13, a: -1f64, b: 0f64, res: GmRes::Val(0f64) },
+    GmOp { kind: 13, a: 1.5f64, b: 0f64, res: GmRes::Val(0f64) },
+    GmOp { kind: 13, a: 99f64, b: 0f64, res: GmRes::Val(0f64) },
+    GmOp { kind: 20, a: -1f64, b: 0f64, res: GmRes::Val(0f64) },
+    GmOp { kind: 21, a: 1.5f64, b: 0f64, res: GmRes::Undef },
+    GmOp { kind: 23, a: 99f64, b: 0f64, res: GmRes::Undef },
+    GmOp { kind: 22, a: -1f64, b: 0f64, res: GmRes::Val(0f64) },
+    GmOp { kind: 0, a: 99f64, b: 0f64, res: GmRes::Void },
+    GmOp { kind: 4, a: 1.5f64, b: 7f64, res: GmRes::Void },
+    GmOp { kind: 5, a: -1f64, b: 3f64, res: GmRes::Void },
+    GmOp { kind: 6, a: 99f64, b: 1f64, res: GmRes::Void },
+    GmOp { kind: 7, a: 1.5f64, b: 1f64, res: GmRes::Void },
+    GmOp { kind: 8, a: 99f64, b: 8716288f64, res: GmRes::Val(1f64) },
+    GmOp { kind: 8, a: -1f64, b: 32f64, res: GmRes::Val(1f64) },
+    GmOp { kind: 9, a: 1.5f64, b: 0f64, res: GmRes::Arr(&[3.5f64, 0.5f64, 2.5f64]) },
+    GmOp { kind: 9, a: -1f64, b: 0f64, res: GmRes::Arr(&[1f64, -2f64, 0f64]) },
+    GmOp { kind: 29, a: -1f64, b: 0f64, res: GmRes::Val(-1f64) },
+    GmOp { kind: 30, a: -1f64, b: 0f64, res: GmRes::Val(0f64) },
+    GmOp { kind: 31, a: 1.5f64, b: 0f64, res: GmRes::Threw },
+    GmOp { kind: 31, a: 0f64, b: 1.5f64, res: GmRes::Threw },
+    GmOp { kind: 35, a: -1f64, b: 2f64, res: GmRes::Arr(&[2f64, 1f64]) },
+];
+pub const GM_INVALID: GameMapScenario = GameMapScenario {
+    name: "gm_invalid",
+    w: 2f64,
+    h: 2f64,
+    terrain: &[
+    133u8, 32u8, 32u8, 133u8,
+],
+    num_land: 2f64,
+    ops: GM_INVALID_OPS,
+    terrain_after: &[
+    133u8, 32u8, 32u8, 133u8,
+],
+    state_after: &[
+    0u16, 0u16, 0u16, 0u16,
+],
+    num_land_after: 3f64,
+    water_version_after: 1f64,
+    fallout_after: 1f64,
+};
+
+const GM_UPDATE_OPS: &[GmOp] = &[
+    GmOp { kind: 8, a: 0f64, b: 2097152f64, res: GmRes::Val(1f64) },
+    GmOp { kind: 8, a: 0f64, b: 8716293f64, res: GmRes::Val(1f64) },
+    GmOp { kind: 8, a: 1f64, b: 8724480f64, res: GmRes::Val(1f64) },
+    GmOp { kind: 8, a: 2f64, b: 10428416f64, res: GmRes::Val(0f64) },
+    GmOp { kind: 8, a: 2f64, b: 0f64, res: GmRes::Val(1f64) },
+    GmOp { kind: 23, a: 0f64, b: 0f64, res: GmRes::Val(5f64) },
+    GmOp { kind: 22, a: 0f64, b: 0f64, res: GmRes::Val(5f64) },
+    GmOp { kind: 25, a: 1f64, b: 0f64, res: GmRes::Val(0f64) },
+    GmOp { kind: 24, a: 2f64, b: 0f64, res: GmRes::Val(0f64) },
+];
+pub const GM_UPDATE: GameMapScenario = GameMapScenario {
+    name: "gm_update",
+    w: 3f64,
+    h: 1f64,
+    terrain: &[
+    133u8, 32u8, 159u8,
+],
+    num_land: 2f64,
+    ops: GM_UPDATE_OPS,
+    terrain_after: &[
+    133u8, 133u8, 0u8,
+],
+    state_after: &[
+    5u16, 8192u16, 0u16,
+],
+    num_land_after: 2f64,
+    water_version_after: 4f64,
+    fallout_after: 1f64,
+};
+
+const GM_SEARCH_OPS: &[GmOp] = &[
+    GmOp { kind: 9, a: 12f64, b: 0f64, res: GmRes::Arr(&[7f64, 17f64, 11f64, 13f64]) },
+    GmOp { kind: 11, a: 12f64, b: 0f64, res: GmRes::Arr(&[6f64, 11f64, 16f64, 7f64, 17f64, 8f64, 13f64, 18f64]) },
+    GmOp { kind: 12, a: 12f64, b: 0f64, res: GmRes::Arr(&[6f64, 11f64, 16f64, 7f64, 17f64, 8f64, 13f64, 18f64]) },
+    GmOp { kind: 11, a: 0f64, b: 0f64, res: GmRes::Arr(&[5f64, 1f64, 6f64]) },
+    GmOp { kind: 12, a: 0f64, b: 0f64, res: GmRes::Arr(&[5f64, 1f64, 6f64]) },
+    GmOp { kind: 11, a: 4f64, b: 0f64, res: GmRes::Arr(&[3f64, 8f64, 9f64]) },
+    GmOp { kind: 9, a: 6f64, b: 0f64, res: GmRes::Arr(&[1f64, 11f64, 5f64, 7f64]) },
+    GmOp { kind: 34, a: 0f64, b: 1f64, res: GmRes::Arr(&[0f64, 5f64, 1f64, 2f64, 3f64, 4f64, 9f64, 10f64, 15f64, 20f64, 21f64, 22f64, 23f64, 24f64, 19f64]) },
+    GmOp { kind: 34, a: 12f64, b: 0f64, res: GmRes::Arr(&[12f64, 7f64, 17f64, 11f64, 13f64, 8f64, 18f64, 14f64, 9f64, 19f64, 24f64, 23f64, 22f64, 21f64, 16f64, 20f64, 15f64, 10f64, 5f64, 0f64, 6f64, 1f64, 2f64, 3f64, 4f64]) },
+    GmOp { kind: 34, a: 12f64, b: 2f64, res: GmRes::Arr(&[12f64]) },
+    GmOp { kind: 35, a: 12f64, b: 2f64, res: GmRes::Arr(&[10f64, 6f64, 16f64, 2f64, 12f64, 22f64, 8f64, 18f64, 14f64]) },
+    GmOp { kind: 35, a: 0f64, b: 3f64, res: GmRes::Arr(&[0f64, 10f64, 6f64, 2f64, 12f64]) },
+    GmOp { kind: 27, a: 5f64, b: 0f64, res: GmRes::Val(0f64) },
+    GmOp { kind: 28, a: 12f64, b: 0f64, res: GmRes::Val(0f64) },
+    GmOp { kind: 15, a: 6f64, b: 0f64, res: GmRes::Val(0f64) },
+];
+pub const GM_SEARCH: GameMapScenario = GameMapScenario {
+    name: "gm_search",
+    w: 5f64,
+    h: 5f64,
+    terrain: &[
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 32u8, 32u8, 32u8, 133u8, 133u8, 32u8, 159u8, 133u8, 32u8, 133u8,
+    32u8, 32u8, 32u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+],
+    num_land: 16f64,
+    ops: GM_SEARCH_OPS,
+    terrain_after: &[
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 32u8, 32u8, 32u8, 133u8, 133u8, 32u8, 159u8, 133u8, 32u8, 133u8,
+    32u8, 32u8, 32u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+],
+    state_after: &[
+    0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16,
+    0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16,
+],
+    num_land_after: 16f64,
+    water_version_after: 0f64,
+    fallout_after: 0f64,
+};
+
+pub const GAMEMAP_SCENARIOS: &[GameMapScenario] = &[
+    GM_SWEEP,
+    GM_COUNTERS,
+    GM_INVALID,
+    GM_UPDATE,
+    GM_SEARCH,
+];
+

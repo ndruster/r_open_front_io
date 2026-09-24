@@ -342,6 +342,72 @@ for (const s of S.rail) {
   }
 }
 
+// --- GameMap --- (op-stream replay; scalar-only boundary, arrays via out buf)
+const numTok = (v) => (v === "n" ? NaN : v === "-0" ? -0 : v);
+for (const s of S.gamemap) {
+  for (const b of s.terrain) ex.probe_gm_terrain_byte(b);
+  ex.probe_gm_new(s.w, s.h, s.numLand);
+  s.ops.forEach(([k, a, b, res], i) => {
+    const A = numTok(a);
+    const B = numTok(b);
+    if (k === 5) {
+      // setOwnerID: only the throw path is observable without trapping.
+      const throws = ex.probe_gm_set_owner_throws(B) === 1;
+      checks++;
+      if (res === "t") {
+        if (!throws) fail(`${s.name} setOwnerID throw`, i, "no throw", "throw");
+      } else {
+        if (throws) fail(`${s.name} setOwnerID unexpected throw`, i, "throw", "value");
+        else ex.probe_gm_op(k, A, B);
+      }
+      return;
+    }
+    if (k === 31) {
+      const throws = ex.probe_gm_ref_throws(A, B) === 1;
+      checks++;
+      if (res === "t") {
+        if (!throws) fail(`${s.name} ref throw`, i, "no throw", "throw");
+      } else {
+        if (throws) fail(`${s.name} ref unexpected throw`, i, "throw", "value");
+        else cmpScalar(`${s.name} ref`, ex.probe_gm_op(k, A, B), res, i);
+      }
+      return;
+    }
+    if (k === 9 || k === 10 || k === 11 || k === 12 || k === 34 || k === 35) {
+      ex.probe_gm_op(k, A, B);
+      const want = res;
+      checks++;
+      if (ex.probe_gm_out_len() !== want.length) {
+        fail(`${s.name} arr len`, i, ex.probe_gm_out_len(), want.length);
+        return;
+      }
+      for (let j = 0; j < want.length; j++) {
+        checks++;
+        const got = ex.probe_gm_out_at(j);
+        if (!Object.is(got, numTok(want[j])))
+          fail(`${s.name} arr[${j}]`, i, fmt(got), String(want[j]));
+      }
+      return;
+    }
+    const got = ex.probe_gm_op(k, A, B);
+    cmpScalar(`${s.name} op${k}`, got, res, i);
+  });
+  // Final buffers + counters.
+  for (let i = 0; i < s.terrainAfter.length; i++)
+    cmpU32(`${s.name} terrainAfter`, ex.probe_gm_arr_get(0, i), s.terrainAfter[i], i);
+  for (let i = 0; i < s.stateAfter.length; i++)
+    cmpU32(`${s.name} stateAfter`, ex.probe_gm_arr_get(1, i), s.stateAfter[i], i);
+  cmpBits(`${s.name} numLandAfter`, ex.probe_gm_field(0), toBits(s.numLandAfter), 0);
+  cmpBits(`${s.name} waterVersionAfter`, ex.probe_gm_field(1), toBits(s.waterVersionAfter), 1);
+  cmpBits(`${s.name} falloutAfter`, ex.probe_gm_field(2), toBits(s.falloutAfter), 2);
+}
+function cmpScalar(what, got, res, idx) {
+  checks++;
+  if (res === "v") return; // void mutation: probe returns NaN, nothing to compare
+  const want = res === "u" ? NaN : numTok(res);
+  if (!Object.is(got, want)) fail(what, idx, fmt(got), String(res));
+}
+
 console.log(`${checks} vector comparisons executed against wasm build`);
 if (failures.length) {
   console.error(`FAIL (${failures.length}+ mismatches, first 20):`);

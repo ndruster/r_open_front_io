@@ -567,3 +567,174 @@ pub extern "C" fn probe_rail_arr_get(field: u32, i: usize) -> f64 {
         }
     })
 }
+
+// ---- GameMap ----
+// Op-stream replay over the real `GameMap` port. The kind table matches
+// `runGm` in gen_vectors.mjs. Scalar-only boundary: array results land in a
+// probe-side buffer (`probe_gm_out_len` / `..._at`); `undefined` scalars
+// cross as NaN; the two `throw` paths (setOwnerID overflow, invalid ref)
+// are observed via would-throw checks instead of trapping the instance —
+// the panicking semantics themselves are pinned by the native replay test.
+
+use crate::game_map::GameMap;
+
+thread_local! {
+    static GM: std::cell::RefCell<Option<Box<GameMap>>> =
+        const { std::cell::RefCell::new(None) };
+    static GM_TERRAIN: std::cell::RefCell<Vec<u8>> = const { std::cell::RefCell::new(Vec::new()) };
+    static GM_OUT: std::cell::RefCell<Vec<f64>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
+/// Queue one packed terrain byte for the next map (before `probe_gm_new`).
+#[no_mangle]
+pub extern "C" fn probe_gm_terrain_byte(v: u32) {
+    GM_TERRAIN.with(|t| t.borrow_mut().push(v as u8));
+}
+
+#[no_mangle]
+pub extern "C" fn probe_gm_new(w: f64, h: f64, num_land: f64) {
+    let terrain = GM_TERRAIN.with(|t| std::mem::take(&mut *t.borrow_mut()));
+    GM.with(|g| *g.borrow_mut() = Some(Box::new(GameMap::new(w, h, terrain, num_land))));
+}
+
+/// 1 when `set_owner_id(_, player_id)` would throw.
+#[no_mangle]
+pub extern "C" fn probe_gm_set_owner_throws(player_id: f64) -> u8 {
+    (player_id > 4095.0) as u8
+}
+
+/// 1 when `tile_ref(x, y)` would throw.
+#[no_mangle]
+pub extern "C" fn probe_gm_ref_throws(x: f64, y: f64) -> u8 {
+    with_gm(|gm| !gm.is_valid_coord(x, y)) as u8
+}
+
+fn with_gm<T>(f: impl FnOnce(&GameMap) -> T) -> T {
+    GM.with(|g| f(g.borrow().as_ref().expect("probe_gm_new must be called first")))
+}
+
+fn with_gm_mut<T>(f: impl FnOnce(&mut GameMap) -> T) -> T {
+    GM.with(|g| f(g.borrow_mut().as_mut().expect("probe_gm_new must be called first")))
+}
+
+/// Replay one op; returns the scalar result (NaN for void ops and for
+/// `undefined`), or fills the out buffer for array ops.
+#[allow(clippy::too_many_lines)]
+#[no_mangle]
+pub extern "C" fn probe_gm_op(kind: u32, a: f64, b: f64) -> f64 {
+    match kind {
+        0 => { with_gm_mut(|gm| gm.set_water(a)); f64::NAN }
+        1 => { with_gm_mut(|gm| gm.set_shoreline_bit(a)); f64::NAN }
+        2 => { with_gm_mut(|gm| gm.clear_shoreline_bit(a)); f64::NAN }
+        3 => { with_gm_mut(|gm| gm.set_ocean(a)); f64::NAN }
+        4 => { with_gm_mut(|gm| gm.set_magnitude(a, b)); f64::NAN }
+        5 => { with_gm_mut(|gm| gm.set_owner_id(a, b)); f64::NAN }
+        6 => { with_gm_mut(|gm| gm.set_fallout(a, b != 0.0)); f64::NAN }
+        7 => { with_gm_mut(|gm| gm.set_defense_bonus(a, b != 0.0)); f64::NAN }
+        8 => with_gm_mut(|gm| gm.update_tile(a, b) as u8) as f64,
+        9 => {
+            let v = with_gm(|gm| gm.neighbors(a));
+            GM_OUT.with(|o| *o.borrow_mut() = v);
+            f64::NAN
+        }
+        10 => {
+            let v = with_gm(|gm| {
+                let mut buf = [0.0f64; 4];
+                let n = gm.neighbors4(a, &mut buf);
+                buf[..n].to_vec()
+            });
+            GM_OUT.with(|o| *o.borrow_mut() = v);
+            f64::NAN
+        }
+        11 => {
+            let v = with_gm(|gm| {
+                let mut buf = [0.0f64; 8];
+                let n = gm.neighbors8(a, &mut buf);
+                buf[..n].to_vec()
+            });
+            GM_OUT.with(|o| *o.borrow_mut() = v);
+            f64::NAN
+        }
+        12 => {
+            let mut v = Vec::new();
+            with_gm(|gm| gm.for_each_neighbor_with_diag(a, |t| v.push(t)));
+            GM_OUT.with(|o| *o.borrow_mut() = v);
+            f64::NAN
+        }
+        13 => with_gm(|gm| gm.is_land(a)) as u8 as f64,
+        14 => with_gm(|gm| gm.is_impassable(a)) as u8 as f64,
+        15 => with_gm(|gm| gm.is_ocean_shore(a)) as u8 as f64,
+        16 => with_gm(|gm| gm.is_shore(a)) as u8 as f64,
+        17 => with_gm(|gm| gm.is_water(a)) as u8 as f64,
+        18 => with_gm(|gm| gm.cost(a)),
+        19 => with_gm(|gm| gm.terrain_type(a) as u8) as f64,
+        20 => with_gm(|gm| gm.magnitude(a)),
+        21 => with_gm(|gm| gm.terrain_byte(a)).unwrap_or(f64::NAN),
+        22 => with_gm(|gm| gm.owner_id(a)),
+        23 => with_gm(|gm| gm.tile_state(a)).unwrap_or(f64::NAN),
+        24 => with_gm(|gm| gm.has_fallout(a)) as u8 as f64,
+        25 => with_gm(|gm| gm.has_defense_bonus(a)) as u8 as f64,
+        26 => with_gm(|gm| gm.has_owner(a)) as u8 as f64,
+        27 => with_gm(|gm| gm.is_border(a)) as u8 as f64,
+        28 => with_gm(|gm| gm.is_on_edge_of_map(a)) as u8 as f64,
+        29 => with_gm(|gm| gm.x(a)),
+        30 => with_gm(|gm| gm.y(a)),
+        31 => with_gm(|gm| gm.tile_ref(a, b)),
+        32 => with_gm(|gm| gm.manhattan_dist(a, b)),
+        33 => with_gm(|gm| gm.euclidean_dist_squared(a, b)),
+        34 => {
+            let v = with_gm(|gm| match b {
+                1.0 => gm.bfs(a, &|m: &GameMap, t: f64| m.is_land(t)),
+                2.0 => gm.bfs(a, &|_: &GameMap, t: f64| t % 2.0 == 0.0),
+                _ => gm.bfs(a, &|_: &GameMap, _: f64| true),
+            });
+            GM_OUT.with(|o| *o.borrow_mut() = v);
+            f64::NAN
+        }
+        35 => {
+            let radius = if b.abs() == 0.0 { 1.0 } else { b.abs() };
+            let even = b != 0.0;
+            let v = with_gm(|gm| gm.circle_search(a, radius, move |_, d2| !even || d2 % 2.0 == 0.0));
+            GM_OUT.with(|o| *o.borrow_mut() = v);
+            f64::NAN
+        }
+        k => panic!("unexpected gm op kind {k}"),
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn probe_gm_out_len() -> usize {
+    GM_OUT.with(|o| o.borrow().len())
+}
+
+#[no_mangle]
+pub extern "C" fn probe_gm_out_at(i: usize) -> f64 {
+    GM_OUT.with(|o| o.borrow()[i])
+}
+
+/// Counter field: 0 = numLandTiles, 1 = waterVersion, 2 = numTilesWithFallout.
+#[no_mangle]
+pub extern "C" fn probe_gm_field(which: u32) -> f64 {
+    with_gm(|gm| match which {
+        0 => gm.num_land_tiles(),
+        1 => gm.water_version(),
+        _ => gm.num_tiles_with_fallout(),
+    })
+}
+
+/// field: 0 = terrain bytes, 1 = state words.
+#[no_mangle]
+pub extern "C" fn probe_gm_arr_len(field: u32) -> usize {
+    with_gm(|gm| match field {
+        0 => gm.debug_terrain().len(),
+        _ => gm.debug_state().len(),
+    })
+}
+
+#[no_mangle]
+pub extern "C" fn probe_gm_arr_get(field: u32, i: usize) -> f64 {
+    with_gm(|gm| match field {
+        0 => gm.debug_terrain()[i] as f64,
+        _ => gm.debug_state()[i] as f64,
+    })
+}

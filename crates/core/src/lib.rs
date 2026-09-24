@@ -5,6 +5,8 @@
 //!
 //! * [`pseudo_random`] — `src/core/PseudoRandom.ts` (sfc32 seeded by splitmix32)
 //! * [`detmath`] — `src/core/DetMath.ts` (cross-platform `exp/log/pow/atan2`)
+//! * [`game_map`] — `src/core/game/GameMap.ts` (`GameMapImpl`: packed
+//!   terrain/state typed arrays, neighbour orders, stack-BFS, `updateTile`)
 //! * [`jsnum`] — JS numeric coercions (`ToInt32`/`ToUint32`/`ToUint16`) that
 //!   typed-array element writes in the ported structures rely on
 //! * [`pathfinding::priority_queue`] — `MinHeap` / `BucketQueue`, whose
@@ -30,6 +32,7 @@
 //! file changes.
 
 pub mod detmath;
+pub mod game_map;
 pub mod jsnum;
 pub mod pathfinding;
 pub mod pseudo_random;

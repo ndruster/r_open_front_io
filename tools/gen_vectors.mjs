@@ -532,6 +532,190 @@ captureRail(
   9,
 );
 
+// --- GameMap scenario runner -------------------------------------------------
+// Replays a scripted op stream against the real `GameMapImpl` and records every
+// return value plus the final typed-array state and counters. The Rust twin is
+// `game_map::GameMap`; a divergence in neighbour order, the stack-BFS traversal,
+// typed-array write dropping, or counter bookkeeping shows up in the trace.
+//
+// Op result tokens: "v" void mutation, "u" undefined scalar (invalid-ref
+// getter), "t" threw, 1/0 boolean, number (enc maps NaN->"n", -0->"-0"), or an
+// array of numbers (neighbour / search results).
+const gmScenarios = [];
+function runGm(name, w, h, terrain, numLand, ops) {
+  const gm = new GameMapImpl(w, h, Uint8Array.from(terrain), numLand);
+  const played = ops.map(([k, a, b]) => {
+    let res;
+    switch (k) {
+      case 0: gm.setWater(a); res = "v"; break;
+      case 1: gm.setShorelineBit(a); res = "v"; break;
+      case 2: gm.clearShorelineBit(a); res = "v"; break;
+      case 3: gm.setOcean(a); res = "v"; break;
+      case 4: gm.setMagnitude(a, b); res = "v"; break;
+      case 5:
+        try { gm.setOwnerID(a, b); res = "v"; }
+        catch (e) { if (!/exceeds maximum/.test(String(e.message))) throw e; res = "t"; }
+        break;
+      case 6: gm.setFallout(a, !!b); res = "v"; break;
+      case 7: gm.setDefenseBonus(a, !!b); res = "v"; break;
+      case 8: res = enc(gm.updateTile(a, b)); break;
+      case 9: res = gm.neighbors(a).map(enc); break;
+      case 10: { const o = []; const n = gm.neighbors4(a, o); res = o.slice(0, n).map(enc); break; }
+      case 11: { const o = []; const n = gm.neighbors8(a, o); res = o.slice(0, n).map(enc); break; }
+      case 12: { const o = []; gm.forEachNeighborWithDiag(a, (t) => o.push(t)); res = o.map(enc); break; }
+      case 13: res = enc(gm.isLand(a)); break;
+      case 14: res = enc(gm.isImpassable(a)); break;
+      case 15: res = enc(gm.isOceanShore(a)); break;
+      case 16: res = enc(gm.isShore(a)); break;
+      case 17: res = enc(gm.isWater(a)); break;
+      case 18: res = enc(gm.cost(a)); break;
+      case 19: res = enc(gm.terrainType(a)); break;
+      case 20: res = enc(gm.magnitude(a)); break;
+      case 21: res = gm.terrainByte(a) === undefined ? "u" : gm.terrainByte(a); break;
+      case 22: res = enc(gm.ownerID(a)); break;
+      case 23: res = gm.tileState(a) === undefined ? "u" : gm.tileState(a); break;
+      case 24: res = enc(gm.hasFallout(a)); break;
+      case 25: res = enc(gm.hasDefenseBonus(a)); break;
+      case 26: res = enc(gm.hasOwner(a)); break;
+      case 27: res = enc(gm.isBorder(a)); break;
+      case 28: res = enc(gm.isOnEdgeOfMap(a)); break;
+      case 29: res = enc(gm.x(a)); break;
+      case 30: res = enc(gm.y(a)); break;
+      case 31:
+        try { res = enc(gm.ref(a, b)); }
+        catch (e) { if (!/Invalid coordinates/.test(String(e.message))) throw e; res = "t"; }
+        break;
+      case 32: res = enc(gm.manhattanDist(a, b)); break;
+      case 33: res = enc(gm.euclideanDistSquared(a, b)); break;
+      case 34: {
+        const f = b === 1 ? (t) => gm.isLand(t) : b === 2 ? (t) => t % 2 === 0 : () => true;
+        res = Array.from(gm.bfs(a, (_gm, t) => f(t))).map(enc);
+        break;
+      }
+      case 35: {
+        const radius = b;
+        const f = (t, d2) => (radius === 0 ? true : d2 % 2 === 0);
+        res = Array.from(gm.circleSearch(a, Math.abs(radius) || 1, f)).map(enc);
+        break;
+      }
+      default: throw new Error("bad gm op kind " + k);
+    }
+    return [k, enc(a), enc(b === undefined ? 0 : b), res];
+  });
+  gmScenarios.push({
+    name,
+    w,
+    h,
+    terrain: Array.from(terrain),
+    numLand,
+    ops: played,
+    terrainAfter: Array.from(gm.terrain),
+    stateAfter: Array.from(gm.state),
+    numLandAfter: gm.numLandTiles(),
+    waterVersionAfter: gm.waterVersion(),
+    falloutAfter: gm.numTilesWithFallout(),
+  });
+}
+
+// Glyphs: L land mag5, o ocean, M impassable land, s shoreline water,
+// H highland mag15, R mountain mag25.
+const GL = { L: 0x85, o: 0x20, M: 0x9f, s: 0x40, H: 0x8f, R: 0x99 };
+function rowsTerrain(rows) {
+  return rows.join("").split("").map((c) => GL[c]);
+}
+
+// 4x4 mixed map: exercise every getter/setter and a full query sweep.
+runGm(
+  "gm_sweep",
+  4,
+  4,
+  rowsTerrain(["LLoM", "LHos", "RRoo", "LsoL"]),
+  8,
+  [
+    [13, 0], [14, 5], [15, 3], [16, 6], [17, 2], [18, 0], [19, 5], [20, 5],
+    [21, 0], [22, 0], [23, 0], [29, 5], [30, 5], [31, 2, 1],
+    [9, 0], [10, 5], [11, 5], [12, 5], [9, 15],
+    [0, 0], [13, 0], [18, 0], [21, 0],
+    [3, 2], [19, 2],
+    [4, 1, 22], [19, 1], [20, 1],
+    [5, 6, 100], [22, 6], [26, 6], [27, 6],
+    [5, 7, 5000], // throws: playerId > 0xfff
+    [6, 6, 1], [24, 6], [8, 6, (1 << 13) | (100 << 16)], // updateTile keeps fallout, terrain 100
+    [7, 6, 1], [25, 6],
+    [2, 1], [16, 1],
+    [34, 0, 1], // bfs over land only
+    [34, 0, 0], // bfs all
+    [35, 5, 2], // circleSearch radius 2, d2-even filter
+  ],
+);
+
+// Counter focus: setWater / updateTile land flips, fallout add/remove.
+runGm(
+  "gm_counters",
+  3,
+  3,
+  rowsTerrain(["LLL", "LML", "ooo"]),
+  5,
+  [
+    [0, 0], [0, 4], [0, 1], // water two land tiles, impassable guarded
+    [6, 0, 1], [6, 1, 1], [6, 0, 1], // fallout set twice on tile 0
+    [6, 0, 0], [6, 0, 0], // clear twice
+    [8, 3, (1 << 13) | (0x85 << 16)], // land + fallout on water tile
+    [8, 3, (1 << 13) | (0x20 << 16)], // ocean + fallout, terrain changed
+    [8, 8, 0x85 << 16], // flip ocean corner to land
+  ],
+);
+
+// Invalid / fractional / negative refs: writes drop, counters still move.
+// (No bfs from an invalid ref: the traversal never bounds-checks and would
+// walk the infinite integer lattice.)
+runGm(
+  "gm_invalid",
+  2,
+  2,
+  rowsTerrain(["Lo", "oL"]),
+  2,
+  [
+    [13, -1], [13, 1.5], [13, 99], [20, -1], [21, 1.5], [23, 99], [22, -1],
+    [0, 99], [4, 1.5, 7], [5, -1, 3], [6, 99, 1], [7, 1.5, 1],
+    [8, 99, 0x85 << 16], [8, -1, 0x20], [9, 1.5], [9, -1],
+    [29, -1], [30, -1], [31, 1.5, 0], [31, 0, 1.5],
+    [35, -1, 2],
+  ],
+);
+
+// updateTile packing: state/terrain split, fallout diff, land-flip version.
+runGm(
+  "gm_update",
+  3,
+  1,
+  rowsTerrain(["LoM"]),
+  2,
+  [
+    [8, 0, 0x0000 | (0x20 << 16)], // same terrain (ocean stays? no, tile0 is L)
+    [8, 0, 0x0005 | (0x85 << 16)], // land, owner 5, terrain unchanged
+    [8, 1, 0x2000 | (0x85 << 16)], // ocean->land, defense bit
+    [8, 2, (1 << 13) | (0x9f << 16)], // impassable + fallout
+    [8, 2, 0x0000], // clear fallout + terrain -> water
+    [23, 0], [22, 0], [25, 1], [24, 2],
+  ],
+);
+
+// Larger search surface: neighbour + traversal ordering on a 5x5.
+runGm(
+  "gm_search",
+  5,
+  5,
+  rowsTerrain(["LLLLL", "LoooL", "LoMLo", "LoooL", "LLLLL"]),
+  16,
+  [
+    [9, 12], [11, 12], [12, 12], [11, 0], [12, 0], [11, 4], [9, 6],
+    [34, 0, 1], [34, 12, 0], [34, 12, 2],
+    [35, 12, 2], [35, 0, 3],
+    [27, 5], [28, 12], [15, 6],
+  ],
+);
+
 const structures = {
   minheap: mhScenarios,
   bucket: bqScenarios,
@@ -539,6 +723,7 @@ const structures = {
   bfsgrid: bgScenarios,
   astar: asScenarios,
   rail: railScenarios,
+  gamemap: gmScenarios,
 };
 
 // ================================================================ JSON
@@ -1002,6 +1187,81 @@ for (const s of structures.rail) {
 }
 L.push("pub const RAIL_SCENARIOS: &[RailScenario] = &[");
 for (const s of structures.rail) L.push(`    ${s.name.toUpperCase()},`);
+L.push("];");
+L.push("");
+
+L.push("/// GameMap op result: void mutation, TS throw, `undefined` scalar,");
+L.push("/// a number/boolean value, or a tile array (neighbours / searches).");
+L.push("#[derive(Clone, Copy, Debug)]");
+L.push("pub enum GmRes {");
+L.push("    Void,");
+L.push("    Threw,");
+L.push("    Undef,");
+L.push("    Val(f64),");
+L.push("    Arr(&'static [f64]),");
+L.push("}");
+L.push("");
+L.push("#[derive(Clone, Copy, Debug)]");
+L.push("pub struct GmOp { pub kind: u8, pub a: f64, pub b: f64, pub res: GmRes }");
+L.push("");
+L.push("/// GameMapImpl scenario: initial packed terrain + land count, an op");
+L.push("/// stream replayed against the real TS class (see gen_vectors.mjs for");
+L.push("/// the kind table), and the final terrain/state buffers + counters.");
+L.push("pub struct GameMapScenario {");
+L.push("    pub name: &'static str,");
+L.push("    pub w: f64,");
+L.push("    pub h: f64,");
+L.push("    pub terrain: &'static [u8],");
+L.push("    pub num_land: f64,");
+L.push("    pub ops: &'static [GmOp],");
+L.push("    pub terrain_after: &'static [u8],");
+L.push("    pub state_after: &'static [u16],");
+L.push("    pub num_land_after: f64,");
+L.push("    pub water_version_after: f64,");
+L.push("    pub fallout_after: f64,");
+L.push("}");
+L.push("");
+const gmResLit = (r) => {
+  if (r === "v") return "GmRes::Void";
+  if (r === "t") return "GmRes::Threw";
+  if (r === "u") return "GmRes::Undef";
+  if (Array.isArray(r)) {
+    const items = r.map((v) => (v === "n" ? "f64::NAN" : v === "-0" ? "-0.0f64" : f64(v)));
+    return `GmRes::Arr(&[${items.join(", ")}])`;
+  }
+  if (r === "n") return "GmRes::Val(f64::NAN)";
+  if (r === "-0") return "GmRes::Val(-0.0f64)";
+  return `GmRes::Val(${f64(r)})`;
+};
+for (const s of structures.gamemap) {
+  const id = s.name.toUpperCase();
+  L.push(`const ${id}_OPS: &[GmOp] = &[`);
+  for (const [k, a, b, r] of s.ops)
+    L.push(`    GmOp { kind: ${k}, a: ${argLit(a)}, b: ${argLit(b)}, res: ${gmResLit(r)} },`);
+  L.push("];");
+  L.push(`pub const ${id}: GameMapScenario = GameMapScenario {`);
+  L.push(`    name: "${s.name}",`);
+  L.push(`    w: ${f64(s.w)},`);
+  L.push(`    h: ${f64(s.h)},`);
+  L.push(`    terrain: &[`);
+  L.push(...numArr(s.terrain, "u8", 16));
+  L.push("],");
+  L.push(`    num_land: ${f64(s.numLand)},`);
+  L.push(`    ops: ${id}_OPS,`);
+  L.push(`    terrain_after: &[`);
+  L.push(...numArr(s.terrainAfter, "u8", 16));
+  L.push("],");
+  L.push(`    state_after: &[`);
+  L.push(...numArr(s.stateAfter, "u16", 16));
+  L.push("],");
+  L.push(`    num_land_after: ${f64(s.numLandAfter)},`);
+  L.push(`    water_version_after: ${f64(s.waterVersionAfter)},`);
+  L.push(`    fallout_after: ${f64(s.falloutAfter)},`);
+  L.push("};");
+  L.push("");
+}
+L.push("pub const GAMEMAP_SCENARIOS: &[GameMapScenario] = &[");
+for (const s of structures.gamemap) L.push(`    ${s.name.toUpperCase()},`);
 L.push("];");
 L.push("");
 

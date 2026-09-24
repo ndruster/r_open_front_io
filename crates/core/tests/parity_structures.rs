@@ -1,4 +1,4 @@
-//! Replays the operation traces captured from the real TypeScript queue,
+﻿//! Replays the operation traces captured from the real TypeScript queue,
 //! heap and grid-BFS classes (`data/vectors.rs` -> `structures`) against the
 //! Rust ports, asserting every return value *and* the final internal state.
 //!
@@ -14,11 +14,13 @@ mod vectors;
 use vectors::Op;
 use vectors::Res;
 
+use openfront_core::game_map::GameMap;
 use openfront_core::pathfinding::a_star::{AStar, GridAdapter};
 use openfront_core::pathfinding::bfs_grid::{BfsGrid, Visit};
 use openfront_core::pathfinding::flat_heap::FlatBinaryHeap;
 use openfront_core::pathfinding::priority_queue::{BucketQueue, MinHeap, PriorityQueue};
 use openfront_core::pathfinding::rail::{RailAdapter, TerrainMap};
+use vectors::GmRes;
 
 fn res_eq(want: &Res, got: Option<f64>) -> bool {
     match (want, got) {
@@ -257,5 +259,195 @@ fn replay_rail_scenarios() {
         );
         assert_eq!(a.debug_g_score(), s.g_score, "{} final gScore", s.name);
         assert_eq!(a.debug_came_from(), s.came_from, "{} final cameFrom", s.name);
+    }
+}
+
+// ---------------------------------------------------------------- GameMap
+// Object.is equality: distinguishes -0 from 0 and treats NaN as equal to NaN.
+fn obj_is(a: f64, b: f64) -> bool {
+    if a.is_nan() && b.is_nan() {
+        return true;
+    }
+    if a == 0.0 && b == 0.0 {
+        return a.is_sign_negative() == b.is_sign_negative();
+    }
+    a == b
+}
+
+fn want_val(want: &GmRes) -> f64 {
+    match want {
+        GmRes::Val(v) => *v,
+        _ => panic!("expected GmRes::Val, got {want:?}"),
+    }
+}
+
+fn want_arr(want: &GmRes) -> &'static [f64] {
+    match want {
+        GmRes::Arr(a) => a,
+        _ => panic!("expected GmRes::Arr, got {want:?}"),
+    }
+}
+
+#[test]
+fn replay_gamemap_scenarios() {
+    for s in vectors::GAMEMAP_SCENARIOS {
+        let mut gm = GameMap::new(s.w, s.h, s.terrain.to_vec(), s.num_land);
+        let mut buf4 = [0.0f64; 4];
+        let mut buf8 = [0.0f64; 8];
+        for (i, op) in s.ops.iter().enumerate() {
+            let (a, b) = (op.a, op.b);
+            let ctx = || format!("{} op#{i} kind={}", s.name, op.kind);
+            match op.kind {
+                0 => {
+                    gm.set_water(a);
+                    assert!(matches!(op.res, GmRes::Void), "{}", ctx());
+                }
+                1 => {
+                    gm.set_shoreline_bit(a);
+                    assert!(matches!(op.res, GmRes::Void), "{}", ctx());
+                }
+                2 => {
+                    gm.clear_shoreline_bit(a);
+                    assert!(matches!(op.res, GmRes::Void), "{}", ctx());
+                }
+                3 => {
+                    gm.set_ocean(a);
+                    assert!(matches!(op.res, GmRes::Void), "{}", ctx());
+                }
+                4 => {
+                    gm.set_magnitude(a, b);
+                    assert!(matches!(op.res, GmRes::Void), "{}", ctx());
+                }
+                5 => {
+                    if matches!(op.res, GmRes::Threw) {
+                        // The throw happens before any mutation, so the live
+                        // map is untouched by the caught panic.
+                        let threw = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                            gm.set_owner_id(a, b)
+                        }))
+                        .is_err();
+                        assert!(threw, "{} expected set_owner_id to throw", ctx());
+                    } else {
+                        gm.set_owner_id(a, b);
+                        assert!(matches!(op.res, GmRes::Void), "{}", ctx());
+                    }
+                }
+                6 => {
+                    gm.set_fallout(a, b != 0.0);
+                    assert!(matches!(op.res, GmRes::Void), "{}", ctx());
+                }
+                7 => {
+                    gm.set_defense_bonus(a, b != 0.0);
+                    assert!(matches!(op.res, GmRes::Void), "{}", ctx());
+                }
+                8 => {
+                    let got = gm.update_tile(a, b);
+                    assert_eq!(got, want_val(&op.res) != 0.0, "{} updateTile", ctx());
+                }
+                9 => {
+                    let got = gm.neighbors(a);
+                    assert_arr(&got, want_arr(&op.res), &ctx);
+                }
+                10 => {
+                    let n = gm.neighbors4(a, &mut buf4);
+                    let got = buf4[..n].to_vec();
+                    assert_arr(&got, want_arr(&op.res), &ctx);
+                }
+                11 => {
+                    let n = gm.neighbors8(a, &mut buf8);
+                    let got = buf8[..n].to_vec();
+                    assert_arr(&got, want_arr(&op.res), &ctx);
+                }
+                12 => {
+                    let mut got = Vec::new();
+                    gm.for_each_neighbor_with_diag(a, |t| got.push(t));
+                    assert_arr(&got, want_arr(&op.res), &ctx);
+                }
+                13 => assert_bool(gm.is_land(a), &op.res, &ctx),
+                14 => assert_bool(gm.is_impassable(a), &op.res, &ctx),
+                15 => assert_bool(gm.is_ocean_shore(a), &op.res, &ctx),
+                16 => assert_bool(gm.is_shore(a), &op.res, &ctx),
+                17 => assert_bool(gm.is_water(a), &op.res, &ctx),
+                18 => assert_val(gm.cost(a), &op.res, &ctx),
+                19 => {
+                    let got = gm.terrain_type(a) as u8 as f64;
+                    assert_val(got, &op.res, &ctx);
+                }
+                20 => assert_val(gm.magnitude(a), &op.res, &ctx),
+                21 => assert_opt(gm.terrain_byte(a), &op.res, &ctx),
+                22 => assert_val(gm.owner_id(a), &op.res, &ctx),
+                23 => assert_opt(gm.tile_state(a), &op.res, &ctx),
+                24 => assert_bool(gm.has_fallout(a), &op.res, &ctx),
+                25 => assert_bool(gm.has_defense_bonus(a), &op.res, &ctx),
+                26 => assert_bool(gm.has_owner(a), &op.res, &ctx),
+                27 => assert_bool(gm.is_border(a), &op.res, &ctx),
+                28 => assert_bool(gm.is_on_edge_of_map(a), &op.res, &ctx),
+                29 => assert_val(gm.x(a), &op.res, &ctx),
+                30 => assert_val(gm.y(a), &op.res, &ctx),
+                31 => {
+                    if matches!(op.res, GmRes::Threw) {
+                        let threw = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                            gm.tile_ref(a, b)
+                        }))
+                        .is_err();
+                        assert!(threw, "{} expected ref to throw", ctx());
+                    } else {
+                        assert_val(gm.tile_ref(a, b), &op.res, &ctx);
+                    }
+                }
+                32 => assert_val(gm.manhattan_dist(a, b), &op.res, &ctx),
+                33 => assert_val(gm.euclidean_dist_squared(a, b), &op.res, &ctx),
+                34 => {
+                    let got = match b {
+                        1.0 => gm.bfs(a, &|m: &GameMap, t: f64| m.is_land(t)),
+                        2.0 => gm.bfs(a, &|_: &GameMap, t: f64| t % 2.0 == 0.0),
+                        _ => gm.bfs(a, &|_: &GameMap, _: f64| true),
+                    };
+                    assert_arr(&got, want_arr(&op.res), &ctx);
+                }
+                35 => {
+                    let radius = if b.abs() == 0.0 { 1.0 } else { b.abs() };
+                    let even = b != 0.0;
+                    let got = gm.circle_search(a, radius, |_, d2| !even || d2 % 2.0 == 0.0);
+                    assert_arr(&got, want_arr(&op.res), &ctx);
+                }
+                k => panic!("{} unexpected gm op kind {k}", s.name),
+            }
+        }
+        assert_eq!(gm.debug_terrain(), s.terrain_after, "{} final terrain", s.name);
+        assert_eq!(gm.debug_state(), s.state_after, "{} final state", s.name);
+        assert_eq!(gm.num_land_tiles(), s.num_land_after, "{} final land count", s.name);
+        assert_eq!(gm.water_version(), s.water_version_after, "{} final waterVersion", s.name);
+        assert_eq!(
+            gm.num_tiles_with_fallout(),
+            s.fallout_after,
+            "{} final fallout count",
+            s.name
+        );
+    }
+}
+
+fn assert_arr(got: &[f64], want: &[f64], ctx: &dyn Fn() -> String) {
+    assert_eq!(got.len(), want.len(), "{} array length: got {got:?} want {want:?}", ctx());
+    for (j, (g, w)) in got.iter().zip(want.iter()).enumerate() {
+        assert!(obj_is(*g, *w), "{} element[{j}]: got {g} want {w}", ctx());
+    }
+}
+
+fn assert_bool(got: bool, want: &GmRes, ctx: &dyn Fn() -> String) {
+    let w = want_val(want);
+    assert_eq!(got, w != 0.0, "{} bool: got {got} want {w}", ctx());
+}
+
+fn assert_val(got: f64, want: &GmRes, ctx: &dyn Fn() -> String) {
+    let w = want_val(want);
+    assert!(obj_is(got, w), "{} value: got {got} want {w}", ctx());
+}
+
+fn assert_opt(got: Option<f64>, want: &GmRes, ctx: &dyn Fn() -> String) {
+    match (got, want) {
+        (None, GmRes::Undef) => {}
+        (Some(g), GmRes::Val(w)) => assert!(obj_is(g, *w), "{} opt: got {g} want {w}", ctx()),
+        _ => panic!("{} opt mismatch: got {got:?} want {want:?}", ctx()),
     }
 }

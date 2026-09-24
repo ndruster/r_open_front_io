@@ -16,6 +16,8 @@
 //!   army/ship path the simulation takes
 //! * [`pathfinding::rail`] — the `AStar.Rail` adapter over a `GameMap`-shaped
 //!   terrain surface (`TerrainMap` mirrors `GameMapImpl`'s packed bytes)
+//! * [`pathfinding::water`] — the self-contained `AStarWater` engine (inlined
+//!   expansion, `MinHeap` f32 priorities, cross-product tie-breaker)
 //!
 //! Two rules govern every future port into this crate:
 //!

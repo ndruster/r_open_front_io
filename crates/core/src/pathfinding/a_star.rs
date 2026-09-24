@@ -65,7 +65,7 @@ pub struct AStar<A: AStarAdapter> {
 // ---- typed-array element semantics (dense i32/u32, OOB -> undefined) ----
 
 #[inline]
-fn index_of(i: f64) -> Option<usize> {
+pub(crate) fn index_of(i: f64) -> Option<usize> {
     // Canonical numeric property: integer >= 0 only; -0 is "0".
     if i == 0.0 {
         return Some(0); // covers 0 and -0
@@ -77,12 +77,12 @@ fn index_of(i: f64) -> Option<usize> {
 }
 
 #[inline]
-fn get_u32(arr: &[u32], i: f64) -> Option<f64> {
+pub(crate) fn get_u32(arr: &[u32], i: f64) -> Option<f64> {
     index_of(i).and_then(|j| arr.get(j)).map(|&v| v as f64)
 }
 
 #[inline]
-fn set_u32(arr: &mut [u32], i: f64, v: f64) {
+pub(crate) fn set_u32(arr: &mut [u32], i: f64, v: f64) {
     if let Some(j) = index_of(i) {
         if j < arr.len() {
             arr[j] = to_uint32(v);
@@ -91,12 +91,12 @@ fn set_u32(arr: &mut [u32], i: f64, v: f64) {
 }
 
 #[inline]
-fn get_i32(arr: &[i32], i: f64) -> Option<f64> {
+pub(crate) fn get_i32(arr: &[i32], i: f64) -> Option<f64> {
     index_of(i).and_then(|j| arr.get(j)).map(|&v| v as f64)
 }
 
 #[inline]
-fn set_i32(arr: &mut [i32], i: f64, v: f64) {
+pub(crate) fn set_i32(arr: &mut [i32], i: f64, v: f64) {
     if let Some(j) = index_of(i) {
         if j < arr.len() {
             arr[j] = to_int32(v);

@@ -6127,6 +6127,245 @@ pub const RAIL_SCENARIOS: &[RailScenario] = &[
     RAIL_SHORE_RING,
 ];
 
+/// A* water scenario: packed terrain bytes (GameMapImpl layout) fed to
+/// water::AStarWater (config weight/iterations included), one multi-start
+/// findPath, the returned path (`None` = TS null) and the engine arrays.
+pub struct WaterScenario {
+    pub name: &'static str,
+    pub w: f64,
+    pub h: f64,
+    pub terrain: &'static [u8],
+    pub weight: f64,
+    pub max_iter: f64,
+    pub starts: &'static [f64],
+    pub goal: f64,
+    pub path: Option<&'static [f64]>,
+    pub stamp_after: u64,
+    pub closed: &'static [u32],
+    pub gs_stamp: &'static [u32],
+    pub g_score: &'static [u32],
+    pub came_from: &'static [i32],
+}
+
+pub const W_LINE: WaterScenario = WaterScenario {
+    name: "w_line",
+    w: 9f64,
+    h: 1f64,
+    terrain: &[
+    8u8, 8u8, 8u8, 8u8, 8u8, 8u8, 8u8, 8u8, 8u8,
+],
+    weight: 5f64,
+    max_iter: 1000000f64,
+    starts: &[0f64],
+    goal: 8f64,
+    path: Some(&[0f64, 1f64, 2f64, 3f64, 4f64, 5f64, 6f64, 7f64, 8f64] as &[f64]),
+    stamp_after: 2u64,
+    closed: &[
+    2u32, 2u32, 2u32, 2u32, 2u32, 2u32, 2u32, 2u32, 2u32,
+],
+    gs_stamp: &[
+    2u32, 2u32, 2u32, 2u32, 2u32, 2u32, 2u32, 2u32, 2u32,
+],
+    g_score: &[
+    0u32, 100u32, 200u32, 300u32, 400u32, 500u32, 600u32, 700u32, 800u32,
+],
+    came_from: &[
+    -1i32, 0i32, 1i32, 2i32, 3i32, 4i32, 5i32, 6i32, 7i32,
+],
+};
+
+pub const W_SHALLOW_DETOUR: WaterScenario = WaterScenario {
+    name: "w_shallow_detour",
+    w: 7f64,
+    h: 3f64,
+    terrain: &[
+    1u8, 1u8, 1u8, 1u8, 1u8, 1u8, 1u8, 8u8, 8u8, 8u8, 8u8, 8u8, 8u8, 8u8, 8u8, 8u8,
+    8u8, 8u8, 8u8, 8u8, 8u8,
+],
+    weight: 5f64,
+    max_iter: 1000000f64,
+    starts: &[0f64],
+    goal: 6f64,
+    path: Some(&[0f64, 7f64, 8f64, 9f64, 10f64, 11f64, 12f64, 13f64, 6f64] as &[f64]),
+    stamp_after: 2u64,
+    closed: &[
+    2u32, 2u32, 0u32, 0u32, 0u32, 0u32, 2u32, 2u32, 2u32, 2u32, 2u32, 2u32, 2u32, 2u32, 0u32, 0u32,
+    0u32, 0u32, 0u32, 0u32, 0u32,
+],
+    gs_stamp: &[
+    2u32, 2u32, 2u32, 2u32, 2u32, 2u32, 2u32, 2u32, 2u32, 2u32, 2u32, 2u32, 2u32, 2u32, 2u32, 2u32,
+    2u32, 2u32, 2u32, 2u32, 2u32,
+],
+    g_score: &[
+    0u32, 1100u32, 1400u32, 1500u32, 1600u32, 1700u32, 1800u32, 100u32, 200u32, 300u32, 400u32, 500u32, 600u32, 700u32, 200u32, 300u32,
+    400u32, 500u32, 600u32, 700u32, 800u32,
+],
+    came_from: &[
+    -1i32, 0i32, 9i32, 10i32, 11i32, 12i32, 13i32, 0i32, 7i32, 8i32, 9i32, 10i32, 11i32, 12i32, 7i32, 8i32,
+    9i32, 10i32, 11i32, 12i32, 13i32,
+],
+};
+
+pub const W_LAND_GAP: WaterScenario = WaterScenario {
+    name: "w_land_gap",
+    w: 5f64,
+    h: 5f64,
+    terrain: &[
+    8u8, 8u8, 133u8, 8u8, 8u8, 8u8, 8u8, 133u8, 8u8, 8u8, 8u8, 8u8, 8u8, 8u8, 8u8, 8u8,
+    8u8, 133u8, 8u8, 8u8, 8u8, 8u8, 133u8, 8u8, 8u8,
+],
+    weight: 5f64,
+    max_iter: 1000000f64,
+    starts: &[0f64],
+    goal: 4f64,
+    path: Some(&[0f64, 1f64, 6f64, 11f64, 12f64, 13f64, 8f64, 3f64, 4f64] as &[f64]),
+    stamp_after: 2u64,
+    closed: &[
+    2u32, 2u32, 0u32, 2u32, 2u32, 2u32, 2u32, 0u32, 2u32, 0u32, 0u32, 2u32, 2u32, 2u32, 0u32, 0u32,
+    0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32,
+],
+    gs_stamp: &[
+    2u32, 2u32, 0u32, 2u32, 2u32, 2u32, 2u32, 0u32, 2u32, 2u32, 2u32, 2u32, 2u32, 2u32, 2u32, 0u32,
+    2u32, 0u32, 2u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32,
+],
+    g_score: &[
+    0u32, 100u32, 0u32, 700u32, 800u32, 100u32, 200u32, 0u32, 600u32, 700u32, 200u32, 300u32, 400u32, 500u32, 600u32, 0u32,
+    400u32, 0u32, 600u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32,
+],
+    came_from: &[
+    -1i32, 0i32, 0i32, 8i32, 3i32, 0i32, 1i32, 0i32, 13i32, 8i32, 5i32, 6i32, 11i32, 12i32, 13i32, 0i32,
+    11i32, 0i32, 13i32, 0i32, 0i32, 0i32, 0i32, 0i32, 0i32,
+],
+};
+
+pub const W_GOAL_LAND: WaterScenario = WaterScenario {
+    name: "w_goal_land",
+    w: 3f64,
+    h: 1f64,
+    terrain: &[
+    8u8, 8u8, 133u8,
+],
+    weight: 5f64,
+    max_iter: 1000000f64,
+    starts: &[0f64],
+    goal: 2f64,
+    path: Some(&[0f64, 1f64, 2f64] as &[f64]),
+    stamp_after: 2u64,
+    closed: &[
+    2u32, 2u32, 2u32,
+],
+    gs_stamp: &[
+    2u32, 2u32, 2u32,
+],
+    g_score: &[
+    0u32, 100u32, 200u32,
+],
+    came_from: &[
+    -1i32, 0i32, 1i32,
+],
+};
+
+pub const W_MULTISTART_RING: WaterScenario = WaterScenario {
+    name: "w_multistart_ring",
+    w: 5f64,
+    h: 5f64,
+    terrain: &[
+    8u8, 8u8, 8u8, 8u8, 8u8, 8u8, 133u8, 133u8, 133u8, 8u8, 8u8, 133u8, 133u8, 133u8, 8u8, 8u8,
+    133u8, 133u8, 133u8, 8u8, 8u8, 8u8, 8u8, 8u8, 8u8,
+],
+    weight: 5f64,
+    max_iter: 1000000f64,
+    starts: &[0f64, 24f64],
+    goal: 2f64,
+    path: Some(&[0f64, 1f64, 2f64] as &[f64]),
+    stamp_after: 2u64,
+    closed: &[
+    2u32, 2u32, 2u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32,
+    0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32,
+],
+    gs_stamp: &[
+    2u32, 2u32, 2u32, 0u32, 0u32, 2u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32,
+    0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 2u32,
+],
+    g_score: &[
+    0u32, 100u32, 200u32, 0u32, 0u32, 100u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32,
+    0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32,
+],
+    came_from: &[
+    -1i32, 0i32, 1i32, 0i32, 0i32, 0i32, 0i32, 0i32, 0i32, 0i32, 0i32, 0i32, 0i32, 0i32, 0i32, 0i32,
+    0i32, 0i32, 0i32, 0i32, 0i32, 0i32, 0i32, 0i32, -1i32,
+],
+};
+
+pub const W_WEIGHT1_TIES: WaterScenario = WaterScenario {
+    name: "w_weight1_ties",
+    w: 7f64,
+    h: 2f64,
+    terrain: &[
+    8u8, 8u8, 8u8, 8u8, 8u8, 8u8, 8u8, 8u8, 8u8, 8u8, 8u8, 8u8, 8u8, 8u8,
+],
+    weight: 1f64,
+    max_iter: 1000000f64,
+    starts: &[0f64],
+    goal: 13f64,
+    path: Some(&[0f64, 1f64, 2f64, 3f64, 10f64, 11f64, 12f64, 13f64] as &[f64]),
+    stamp_after: 2u64,
+    closed: &[
+    2u32, 2u32, 2u32, 2u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 2u32, 2u32, 2u32, 2u32,
+],
+    gs_stamp: &[
+    2u32, 2u32, 2u32, 2u32, 2u32, 2u32, 0u32, 2u32, 2u32, 2u32, 2u32, 2u32, 2u32, 2u32,
+],
+    g_score: &[
+    0u32, 100u32, 200u32, 300u32, 400u32, 700u32, 0u32, 100u32, 200u32, 300u32, 400u32, 500u32, 600u32, 700u32,
+],
+    came_from: &[
+    -1i32, 0i32, 1i32, 2i32, 3i32, 12i32, 0i32, 0i32, 1i32, 2i32, 3i32, 10i32, 11i32, 12i32,
+],
+};
+
+pub const W_CAPPED: WaterScenario = WaterScenario {
+    name: "w_capped",
+    w: 5f64,
+    h: 5f64,
+    terrain: &[
+    8u8, 8u8, 8u8, 8u8, 8u8, 133u8, 133u8, 133u8, 133u8, 8u8, 8u8, 8u8, 8u8, 8u8, 8u8, 8u8,
+    133u8, 133u8, 133u8, 133u8, 8u8, 8u8, 8u8, 8u8, 8u8,
+],
+    weight: 5f64,
+    max_iter: 10f64,
+    starts: &[0f64],
+    goal: 24f64,
+    path: None,
+    stamp_after: 2u64,
+    closed: &[
+    2u32, 2u32, 2u32, 2u32, 2u32, 0u32, 0u32, 0u32, 0u32, 2u32, 0u32, 0u32, 2u32, 2u32, 2u32, 0u32,
+    0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32,
+],
+    gs_stamp: &[
+    2u32, 2u32, 2u32, 2u32, 2u32, 0u32, 0u32, 0u32, 0u32, 2u32, 0u32, 2u32, 2u32, 2u32, 2u32, 0u32,
+    0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32,
+],
+    g_score: &[
+    0u32, 100u32, 200u32, 300u32, 400u32, 0u32, 0u32, 0u32, 0u32, 500u32, 0u32, 900u32, 800u32, 700u32, 600u32, 0u32,
+    0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32,
+],
+    came_from: &[
+    -1i32, 0i32, 1i32, 2i32, 3i32, 0i32, 0i32, 0i32, 0i32, 4i32, 0i32, 12i32, 13i32, 14i32, 9i32, 0i32,
+    0i32, 0i32, 0i32, 0i32, 0i32, 0i32, 0i32, 0i32, 0i32,
+],
+};
+
+pub const WATER_SCENARIOS: &[WaterScenario] = &[
+    W_LINE,
+    W_SHALLOW_DETOUR,
+    W_LAND_GAP,
+    W_GOAL_LAND,
+    W_MULTISTART_RING,
+    W_WEIGHT1_TIES,
+    W_CAPPED,
+];
+
 /// GameMap op result: void mutation, TS throw, `undefined` scalar,
 /// a number/boolean value, or a tile array (neighbours / searches).
 #[derive(Clone, Copy, Debug)]

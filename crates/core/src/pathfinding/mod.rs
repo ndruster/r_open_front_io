@@ -11,6 +11,7 @@ pub mod bfs_grid;
 pub mod flat_heap;
 pub mod priority_queue;
 pub mod rail;
+pub mod water;
 
 /// Re-exported so both grid BFS and A* share one visitor contract.
 pub use bfs_grid::Visit;

@@ -342,6 +342,40 @@ for (const s of S.rail) {
   }
 }
 
+// --- AStarWater ---
+for (const s of S.water) {
+  for (const b of s.terrain) ex.probe_water_terrain_byte(b);
+  ex.probe_water_new(s.w, s.h, s.weight, s.maxIter);
+  for (const st of s.starts) ex.probe_water_start(st);
+  const gotPath = ex.probe_water_run(s.goal) === 1;
+  checks++;
+  if (gotPath !== (s.path !== "u")) {
+    fail(`${s.name} path presence`, 0, gotPath, s.path !== "u");
+  }
+  if (s.path !== "u") {
+    checks++;
+    if (ex.probe_water_path_len() !== s.path.length) {
+      fail(`${s.name} path length`, ex.probe_water_path_len(), s.path.length, 0);
+    }
+    for (let i = 0; i < s.path.length; i++)
+      cmpBits(`${s.name} path`, ex.probe_water_path_at(i), toBits(s.path[i]), i);
+  }
+  cmpU32(`${s.name} stamp`, Number(ex.probe_water_stamp()), s.stampAfter, 0);
+  const wfields = [
+    [0, s.closed, "closedStamp"],
+    [1, s.gsStamp, "gScoreStamp"],
+    [2, s.gScore, "gScore"],
+    [3, s.cameFrom, "cameFrom"],
+  ];
+  for (const [f, want, label] of wfields) {
+    checks++;
+    if (ex.probe_water_arr_len(f) !== want.length)
+      fail(`${s.name} ${label} length`, ex.probe_water_arr_len(f), want.length, 0);
+    for (let i = 0; i < want.length; i++)
+      cmpU32(`${s.name} ${label}`, Number(ex.probe_water_arr_get(f, i)), want[i], i);
+  }
+}
+
 // --- GameMap --- (op-stream replay; scalar-only boundary, arrays via out buf)
 const numTok = (v) => (v === "n" ? NaN : v === "-0" ? -0 : v);
 for (const s of S.gamemap) {

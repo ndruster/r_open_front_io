@@ -93,6 +93,21 @@ function prepare(rel) {
       "Rail AStar import",
     );
   }
+  if (rel.endsWith("algorithms/AStar.Water.ts")) {
+    // GameMap/TileRef/PathFinder are all type-only (interfaces / type
+    // aliases); the MinHeap value import is redirected to the prepared
+    // PriorityQueue copy (PriorityQueue itself is an interface -> dropped).
+    out = must(out, 'import { GameMap, TileRef } from "../../game/GameMap";\n', "", "Water GameMap import");
+    out = must(out, 'import { PathFinder } from "../types";\n', "", "Water types import");
+    const pqRel = "src/core/pathfinding/algorithms/PriorityQueue.ts";
+    if (!prepared.has(pqRel)) prepare(pqRel);
+    out = must(
+      out,
+      'import { MinHeap, PriorityQueue } from "./PriorityQueue";',
+      `import { MinHeap } from "./${prepared.get(pqRel)}";`,
+      "Water PQ import",
+    );
+  }
   if (rel.endsWith("algorithms/AStar.ts")) {
     // `PathFinder` is an interface (erased at runtime) and the extensionless
     // "../types" specifier is not loadable; the PriorityQueue value import is

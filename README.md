@@ -25,8 +25,9 @@ rust/
 │   │       ├── flat_heap.rs       port of execution/utils/FlatBinaryHeap.ts
 │   │       ├── bfs_grid.rs        port of algorithms/BFS.Grid.ts
 │   │       ├── a_star.rs          port of algorithms/AStar.ts (+ GridAdapter)
-│   │       └── rail.rs            port of algorithms/AStar.Rail.ts
-│   │                              (+ TerrainMap: GameMapImpl's packed bytes)
+│   │       ├── rail.rs            port of algorithms/AStar.Rail.ts
+│   │       │                      (+ TerrainMap: GameMapImpl's packed bytes)
+│   │       └── water.rs           port of algorithms/AStar.Water.ts
 │   └── tests/
 │       ├── data/vectors.rs        generated golden vectors (do not edit)
 │       ├── data/vectors.json      same data, for the wasm runner
@@ -91,6 +92,14 @@ desync, not a rounding nit. Two things enforce that here:
    `q.pop()`, `Set` order is insertion order with SameValueZero dedup, and
    invalid writes are dropped while the surrounding bookkeeping still runs.
    The `throw` paths (`ref`, `setOwnerID`) are replayed under `catch_unwind`.
+7. **`AStarWater`** (`pathfinding::water`) is pinned with seven scenarios over
+   real `GameMapImpl` terrain bytes: a straight deep-water shot, a shallow
+   magnitude band the search detours around (+1000/tile), a land wall with one
+   water gap, a land *goal* (enterable even though land is a wall), a
+   multi-start lake ring where the cross-product tie-breaker decides the side,
+   a weight-1 (near-Dijkstra) field where every f32 priority ties and the
+   MinHeap's insertion-order pop decides everything, and an iteration cap that
+   forces `null`. Each records the path plus all four stamp-tracked arrays.
 
 Regenerate whenever a ported source changes:
 
@@ -124,7 +133,7 @@ node rust/tools/run_wasm_parity.mjs
 
 `wasm-probe` exposes the ported functions through `extern "C"` scalar
 entrypoints (`src/wasm_probe.rs`); the runner imports `data/vectors.json` and
-compares every value. Last run: **20,349 comparisons, all bit-identical**.
+compares every value. Last run: **20,926 comparisons, all bit-identical**.
 
 ### Windows: the linker environment
 
@@ -167,8 +176,7 @@ Roughly in order of leverage, all currently reachable from the ported layer:
 
 | Module | TS source | Why next |
 |---|---|---|
-| `AStar.Water` | `src/core/pathfinding/algorithms/AStar.Water.ts` | The performance-critical inlined variant; `AStar.Rail` is ported, so the water adapters are the next layer. |
-| `TileSet` | `src/core/game/TileSet.ts` | `GameMapImpl` is now ported (`game_map.rs`); `TileSet` builds on it and lets every adapter share one map type. |
+| `TileSet` | `src/core/game/TileSet.ts` | `GameMapImpl` and the water/rail adapters are ported; `TileSet` is the insertion-ordered tile container every owner/border set uses. |
 | `Util.ts` | `src/core/Util.ts` | Shared helpers (`toInt`, geometry) that the `execution/**` ports will need. |
 
 `execution/**` and `game/**` are the bulk (~500 files, heavy on `zod` schemas,

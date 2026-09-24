@@ -20,6 +20,7 @@ use openfront_core::pathfinding::bfs_grid::{BfsGrid, Visit};
 use openfront_core::pathfinding::flat_heap::FlatBinaryHeap;
 use openfront_core::pathfinding::priority_queue::{BucketQueue, MinHeap, PriorityQueue};
 use openfront_core::pathfinding::rail::{RailAdapter, TerrainMap};
+use openfront_core::pathfinding::water::AStarWater;
 use vectors::GmRes;
 
 fn res_eq(want: &Res, got: Option<f64>) -> bool {
@@ -236,6 +237,42 @@ fn replay_rail_scenarios() {
     for s in vectors::RAIL_SCENARIOS {
         let map = TerrainMap::new(s.w, s.h, s.terrain.to_vec());
         let mut a = AStar::new(RailAdapter::new(map), None);
+        let path = a.find_path(s.starts, s.goal);
+        match (s.path, &path) {
+            (None, None) => {}
+            (Some(want), Some(got)) => {
+                assert_eq!(got.as_slice(), want, "{} path", s.name);
+            }
+            _ => panic!(
+                "{} path: got {:?} want {:?}",
+                s.name,
+                path.as_deref(),
+                s.path
+            ),
+        }
+        assert_eq!(a.debug_stamp(), s.stamp_after, "{} stamp after", s.name);
+        assert_eq!(a.debug_closed_stamp(), s.closed, "{} final closedStamp", s.name);
+        assert_eq!(
+            a.debug_g_score_stamp(),
+            s.gs_stamp,
+            "{} final gScoreStamp",
+            s.name
+        );
+        assert_eq!(a.debug_g_score(), s.g_score, "{} final gScore", s.name);
+        assert_eq!(a.debug_came_from(), s.came_from, "{} final cameFrom", s.name);
+    }
+}
+
+#[test]
+fn replay_water_scenarios() {
+    for s in vectors::WATER_SCENARIOS {
+        let mut a = AStarWater::new(
+            s.w,
+            s.h,
+            s.terrain.to_vec(),
+            Some(s.weight),
+            Some(s.max_iter),
+        );
         let path = a.find_path(s.starts, s.goal);
         match (s.path, &path) {
             (None, None) => {}

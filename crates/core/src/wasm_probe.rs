@@ -568,6 +568,104 @@ pub extern "C" fn probe_rail_arr_get(field: u32, i: usize) -> f64 {
     })
 }
 
+// ---- A* Water ----
+// Same scalar-only pattern as the rail probe, over the self-contained
+// AStarWater. Terrain bytes are queued before probe_water_new; weight/maxIter
+// cross the boundary as f64 (the vectors always carry concrete numbers).
+
+use crate::pathfinding::water::AStarWater;
+
+thread_local! {
+    static WATER: std::cell::RefCell<Option<Box<AStarWater>>> =
+        const { std::cell::RefCell::new(None) };
+    static WATER_TERRAIN: std::cell::RefCell<Vec<u8>> = const { std::cell::RefCell::new(Vec::new()) };
+    static WATER_STARTS: std::cell::RefCell<Vec<f64>> = const { std::cell::RefCell::new(Vec::new()) };
+    static WATER_PATH: std::cell::RefCell<Vec<f64>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
+/// Queue one packed terrain byte (GameMapImpl layout) for the next map.
+#[no_mangle]
+pub extern "C" fn probe_water_terrain_byte(v: u32) {
+    WATER_TERRAIN.with(|t| t.borrow_mut().push(v as u8));
+}
+
+#[no_mangle]
+pub extern "C" fn probe_water_new(w: f64, h: f64, weight: f64, max_iter: f64) {
+    let terrain = WATER_TERRAIN.with(|t| std::mem::take(&mut *t.borrow_mut()));
+    let water = AStarWater::new(w, h, terrain, Some(weight), Some(max_iter));
+    WATER.with(|a| *a.borrow_mut() = Some(Box::new(water)));
+}
+
+#[no_mangle]
+pub extern "C" fn probe_water_start(v: f64) {
+    WATER_STARTS.with(|s| s.borrow_mut().push(v));
+}
+
+/// One multi-start findPath; 1 = path found, 0 = TS null.
+#[no_mangle]
+pub extern "C" fn probe_water_run(goal: f64) -> u8 {
+    let starts = WATER_STARTS.with(|s| std::mem::take(&mut *s.borrow_mut()));
+    let path = WATER.with(|a| {
+        let mut water = a.borrow_mut();
+        let water = water.as_mut().expect("probe_water_new must be called first");
+        water.find_path(&starts, goal)
+    });
+    match path {
+        Some(p) => {
+            WATER_PATH.with(|buf| *buf.borrow_mut() = p);
+            1
+        }
+        None => {
+            WATER_PATH.with(|buf| buf.borrow_mut().clear());
+            0
+        }
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn probe_water_path_len() -> usize {
+    WATER_PATH.with(|p| p.borrow().len())
+}
+
+#[no_mangle]
+pub extern "C" fn probe_water_path_at(i: usize) -> f64 {
+    WATER_PATH.with(|p| p.borrow()[i])
+}
+
+#[no_mangle]
+pub extern "C" fn probe_water_stamp() -> u64 {
+    WATER.with(|a| a.borrow().as_ref().unwrap().debug_stamp())
+}
+
+/// field: 0 = closedStamp, 1 = gScoreStamp, 2 = gScore, 3 = cameFrom.
+#[no_mangle]
+pub extern "C" fn probe_water_arr_len(field: u32) -> usize {
+    WATER.with(|a| {
+        let water = a.borrow();
+        let water = water.as_ref().unwrap();
+        match field {
+            0 => water.debug_closed_stamp().len(),
+            1 => water.debug_g_score_stamp().len(),
+            2 => water.debug_g_score().len(),
+            _ => water.debug_came_from().len(),
+        }
+    })
+}
+
+#[no_mangle]
+pub extern "C" fn probe_water_arr_get(field: u32, i: usize) -> f64 {
+    WATER.with(|a| {
+        let water = a.borrow();
+        let water = water.as_ref().unwrap();
+        match field {
+            0 => water.debug_closed_stamp()[i] as f64,
+            1 => water.debug_g_score_stamp()[i] as f64,
+            2 => water.debug_g_score()[i] as f64,
+            _ => water.debug_came_from()[i] as f64,
+        }
+    })
+}
+
 // ---- GameMap ----
 // Op-stream replay over the real `GameMap` port. The kind table matches
 // `runGm` in gen_vectors.mjs. Scalar-only boundary: array results land in a

@@ -152,6 +152,7 @@ const { FlatBinaryHeap } = await loadTs("src/core/execution/utils/FlatBinaryHeap
 const { BFSGrid } = await loadTs("src/core/pathfinding/algorithms/BFS.Grid.ts");
 const { AStar } = await loadTs("src/core/pathfinding/algorithms/AStar.ts");
 const { AStarRail } = await loadTs("src/core/pathfinding/algorithms/AStar.Rail.ts");
+const { AStarWater } = await loadTs("src/core/pathfinding/algorithms/AStar.Water.ts");
 const { GameMapImpl } = await loadTs("src/core/game/GameMap.ts");
 
 // enc() maps JS-only values JSON cannot carry: undefined -> "u", NaN -> "n",
@@ -532,6 +533,92 @@ captureRail(
   9,
 );
 
+// --- AStarWater scenario runner ----------------------------------------------
+// Runs the real `AStarWater` over a real GameMapImpl (it reaches the map's
+// private `terrain` Uint8Array directly, exactly like the class does) and
+// records the path plus the engine's stamp-tracked arrays. Water cost depends
+// on the magnitude bits (3-10 sweet spot, <3 = +1000, >10 = +100), land is a
+// wall unless it is the goal, and the f32 MinHeap priorities plus the
+// cross-product tie-breaker decide every pop order. The Rust twin is
+// `water::AStarWater`.
+const waterScenarios = [];
+// L land mag5, w deep water mag8 (sweet spot), x shallow water mag1 (+1000).
+const WGL = { L: 0x85, w: 0x08, x: 0x01 };
+function captureWater(name, rows, starts, goal, weight, maxIter) {
+  const h = rows.length;
+  const w = rows[0].length;
+  const terrain = Uint8Array.from(rows.join("").split(""), (c) => WGL[c]);
+  const gm = new GameMapImpl(w, h, terrain, w * h);
+  const cfg = {};
+  if (weight !== null && weight !== undefined) cfg.heuristicWeight = weight;
+  if (maxIter !== null && maxIter !== undefined) cfg.maxIterations = maxIter;
+  const water = new AStarWater(gm, Object.keys(cfg).length ? cfg : undefined);
+  const path = water.findPath(starts, goal);
+  waterScenarios.push({
+    name,
+    w,
+    h,
+    terrain: Array.from(terrain),
+    weight: weight ?? 5,
+    maxIter: maxIter ?? 1000000,
+    starts,
+    goal,
+    path: path === null ? "u" : Array.from(path),
+    stampAfter: water.stamp,
+    closed: Array.from(water.closedStamp),
+    gsStamp: Array.from(water.gScoreStamp),
+    gScore: Array.from(water.gScore),
+    cameFrom: Array.from(water.cameFrom),
+  });
+}
+// Straight shot across a deep-water channel (magnitude 8 = sweet spot).
+captureWater("w_line", ["wwwwwwwww"], [0], 8, null, null);
+// Shallow band (magnitude 1 -> +1000/tile): the search detours around it.
+captureWater(
+  "w_shallow_detour",
+  ["xxxxxxx", "wwwwwww", "wwwwwww"],
+  [0],
+  6,
+  null,
+  null,
+);
+// Land wall down the middle with a single water gap in row 2: the only route
+// from the left shore to the right must pass through the gap tile.
+captureWater(
+  "w_land_gap",
+  ["wwLww", "wwLww", "wwwww", "wwLww", "wwLww"],
+  [0],
+  4,
+  null,
+  null,
+);
+// The goal itself is land: entering it is legal even though land is a wall.
+captureWater("w_goal_land", ["wwL"], [0], 2, null, null);
+// Multi-start on a lake ring: starts hug opposite shores of the impassable
+// centre, so the cross-product tie-breaker (which side of the start->goal
+// line a candidate sits on) decides the route.
+captureWater(
+  "w_multistart_ring",
+  ["wwwww", "wLLLw", "wLLLw", "wLLLw", "wwwww"],
+  [0, 24],
+  2,
+  null,
+  null,
+);
+// Weight-1 heuristic: nearly Dijkstra, so the f32 priority ties (all costs
+// are multiples of 100) exercise the MinHeap's insertion-order pop order.
+captureWater("w_weight1_ties", ["wwwwwww", "wwwwwww"], [0], 13, 1, null);
+// Iteration cap: the maze route needs 17 pops, so a budget of 10 makes the
+// search give up and return null (the cap branch is exercised).
+captureWater(
+  "w_capped",
+  ["wwwww", "LLLLw", "wwwww", "wLLLL", "wwwww"],
+  [0],
+  24,
+  null,
+  10,
+);
+
 // --- GameMap scenario runner -------------------------------------------------
 // Replays a scripted op stream against the real `GameMapImpl` and records every
 // return value plus the final typed-array state and counters. The Rust twin is
@@ -618,8 +705,10 @@ function runGm(name, w, h, terrain, numLand, ops) {
 }
 
 // Glyphs: L land mag5, o ocean, M impassable land, s shoreline water,
-// H highland mag15, R mountain mag25.
-const GL = { L: 0x85, o: 0x20, M: 0x9f, s: 0x40, H: 0x8f, R: 0x99 };
+// H highland mag15, R mountain mag25. w/x are pure water (no land bit) with
+// magnitudes chosen for AStarWater's cost curve: w = mag 8 (sweet spot),
+// x = mag 1 (too close to shore, +1000).
+const GL = { L: 0x85, o: 0x20, M: 0x9f, s: 0x40, H: 0x8f, R: 0x99, w: 0x08, x: 0x01 };
 function rowsTerrain(rows) {
   return rows.join("").split("").map((c) => GL[c]);
 }
@@ -723,6 +812,7 @@ const structures = {
   bfsgrid: bgScenarios,
   astar: asScenarios,
   rail: railScenarios,
+  water: waterScenarios,
   gamemap: gmScenarios,
 };
 
@@ -1187,6 +1277,63 @@ for (const s of structures.rail) {
 }
 L.push("pub const RAIL_SCENARIOS: &[RailScenario] = &[");
 for (const s of structures.rail) L.push(`    ${s.name.toUpperCase()},`);
+L.push("];");
+L.push("");
+
+L.push("/// A* water scenario: packed terrain bytes (GameMapImpl layout) fed to");
+L.push("/// water::AStarWater (config weight/iterations included), one multi-start");
+L.push("/// findPath, the returned path (`None` = TS null) and the engine arrays.");
+L.push("pub struct WaterScenario {");
+L.push("    pub name: &'static str,");
+L.push("    pub w: f64,");
+L.push("    pub h: f64,");
+L.push("    pub terrain: &'static [u8],");
+L.push("    pub weight: f64,");
+L.push("    pub max_iter: f64,");
+L.push("    pub starts: &'static [f64],");
+L.push("    pub goal: f64,");
+L.push("    pub path: Option<&'static [f64]>,");
+L.push("    pub stamp_after: u64,");
+L.push("    pub closed: &'static [u32],");
+L.push("    pub gs_stamp: &'static [u32],");
+L.push("    pub g_score: &'static [u32],");
+L.push("    pub came_from: &'static [i32],");
+L.push("}");
+L.push("");
+for (const s of structures.water) {
+  const id = s.name.toUpperCase();
+  L.push(`pub const ${id}: WaterScenario = WaterScenario {`);
+  L.push(`    name: "${s.name}",`);
+  L.push(`    w: ${f64(s.w)},`);
+  L.push(`    h: ${f64(s.h)},`);
+  L.push(`    terrain: &[`);
+  L.push(...numArr(s.terrain, "u8", 16));
+  L.push("],");
+  L.push(`    weight: ${f64(s.weight)},`);
+  L.push(`    max_iter: ${f64(s.maxIter)},`);
+  L.push(`    starts: &[${s.starts.map(f64).join(", ")}],`);
+  L.push(`    goal: ${f64(s.goal)},`);
+  L.push(
+    `    path: ${s.path === "u" ? "None" : `Some(&[${s.path.map(f64).join(", ")}] as &[f64])`},`,
+  );
+  L.push(`    stamp_after: ${s.stampAfter}u64,`);
+  L.push(`    closed: &[`);
+  L.push(...numArr(s.closed, "u32", 16));
+  L.push("],");
+  L.push(`    gs_stamp: &[`);
+  L.push(...numArr(s.gsStamp, "u32", 16));
+  L.push("],");
+  L.push(`    g_score: &[`);
+  L.push(...numArr(s.gScore, "u32", 16));
+  L.push("],");
+  L.push(`    came_from: &[`);
+  L.push(...numArr(s.cameFrom, "i32", 16));
+  L.push("],");
+  L.push("};");
+  L.push("");
+}
+L.push("pub const WATER_SCENARIOS: &[WaterScenario] = &[");
+for (const s of structures.water) L.push(`    ${s.name.toUpperCase()},`);
 L.push("];");
 L.push("");
 

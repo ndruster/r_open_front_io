@@ -155,6 +155,7 @@ const { AStarRail } = await loadTs("src/core/pathfinding/algorithms/AStar.Rail.t
 const { AStarWater } = await loadTs("src/core/pathfinding/algorithms/AStar.Water.ts");
 const { GameMapImpl } = await loadTs("src/core/game/GameMap.ts");
 const { TileSet } = await loadTs("src/core/game/TileSet.ts");
+const Util = await loadTs("src/core/Util.ts");
 
 // enc() maps JS-only values JSON cannot carry: undefined -> "u", NaN -> "n",
 // booleans -> 1/0, and -0 -> "-0" (JSON collapses -0 to 0, yet the f32 bit
@@ -908,6 +909,243 @@ runTs("ts_clear", [1, 2, 3], [
   [5, 0], [3, 0], [4, 0],
 ]);
 
+// --- Util scenario runner --------------------------------------------------
+// Exercises the deterministic core of `src/core/Util.ts` against the real TS
+// functions and records every result. The Rust twin is `util::*`; a divergence
+// in the UTF-16 hash walk, the first-minimum tie rule, the Map-insertion-order
+// mode, the ±Infinity bigint clamps, the sigmoid exp stream, or the bounding
+// box scans shows up in `res`. `status` is 0 ok, 1 null, 2 threw.
+//
+// kind table (matches the Rust dispatch in parity_structures.rs):
+//   0 manhattanDistWrapped [x1,y1,x2,y2,width] -> [d]
+//   1 within [value,min,max] -> [out]
+//   2 simpleHash strs=[s] -> [hash]
+//   3 findMinimumBy [scoreKind,candKind,v0,v1,...] -> [winner] (1=null)
+//   4 getMode [k0,c0,k1,c1,...] -> [mode] (1=null)
+//   5 toInt [num] -> [bigint as f64] (2=threw on NaN)
+//   6 maxInt [a,b] -> [out]   7 minInt [a,b] -> [out]
+//   8 withinInt [num,min,max] -> [out]
+//   9 sigmoid [value,decayRate,midpoint] -> [out]
+//  10 boundingBoxCenter [minx,miny,maxx,maxy] -> [cx,cy]
+//  11 inscribed [ominx,ominy,omaxx,omaxy,iminx,iminy,imaxx,imaxy] -> [0/1]
+//  12 calculateBoundingBox [w,h,containerKind,tile...] -> [minx,miny,maxx,maxy]
+//  13 boundingBoxTiles [w,h,center,radius] -> [tiles...]
+//  14 calculateBoundingBoxCenter [w,h,tile...] -> [cx,cy]
+const utilScenarios = [];
+// Like enc(), but also maps the infinities to tokens (JSON.stringify would
+// otherwise turn them into null and the host could not tell them apart).
+const uenc = (v) =>
+  v === Number.POSITIVE_INFINITY
+    ? "i"
+    : v === Number.NEGATIVE_INFINITY
+      ? "-i"
+      : enc(v);
+function pushUtil(name, kind, args, res, strs = [], status = 0) {
+  utilScenarios.push({ name, kind, args: args.map(uenc), strs, status, res: res.map(uenc) });
+}
+
+// manhattanDistWrapped: horizontal wrap on a width-100 torus, vertical never
+// wraps, plus same-cell and half-width boundary cases.
+{
+  const cases = [
+    [0, 0, 99, 0, 100],
+    [0, 0, 60, 0, 100],
+    [10, 20, 90, 25, 100],
+    [50, 0, 50, 0, 100],
+    [0, 0, 50, 0, 100],
+    [30, 70, 70, 30, 100],
+    [5, 5, 5, 5, 7],
+  ];
+  for (const [i, a] of cases.entries()) {
+    const [x1, y1, x2, y2, width] = a;
+    const d = Util.manhattanDistWrapped({ x: x1, y: y1 }, { x: x2, y: y2 }, width);
+    pushUtil(`u_mdw_${i}`, 0, a, [enc(d)]);
+  }
+}
+
+// within: clamp below, above, inside, and the min>max / NaN edges.
+{
+  const cases = [
+    [5, 0, 10], [-3, 0, 10], [42, 0, 10], [7, 7, 7],
+    [1.5, 0, 2], [-0.0, -1, 1], [Number.NaN, 0, 10], [5, 10, 0],
+  ];
+  for (const [i, [v, lo, hi]] of cases.entries()) {
+    pushUtil(`u_within_${i}`, 1, [v, lo, hi], [enc(Util.within(v, lo, hi))]);
+  }
+}
+
+// simpleHash: ASCII, empty, a long run, BMP non-ASCII, and a surrogate-pair
+// emoji (two UTF-16 code units) to pin the charCodeAt iteration.
+{
+  const strs = ["", "a", "abc", "OpenFront", "hello world", "café", "😀x", "1234567890", "A".repeat(40)];
+  for (const [i, s] of strs.entries()) {
+    pushUtil(`u_hash_${i}`, 2, [], [enc(Util.simpleHash(s))], [s]);
+  }
+}
+
+// findMinimumBy closures indexed by the Rust score/candidate kinds.
+{
+  const scores = [
+    (v) => v,
+    (v) => Math.abs(v),
+    (v) => v % 3,
+    (v) => (v === -999 ? Number.NaN : v),
+    (v) => -v,
+  ];
+  const cands = [undefined, (v) => v >= 0, (v) => v !== -999, () => false];
+  const valueSets = [
+    [4, 1, 3, 2],
+    [-5, 3, -1, 7, -2],
+    [2, 2, 1, 1],
+    [],
+    [-999, 5, -3],
+    [Number.NaN, 3, 1],
+    [7],
+    [3, 3, 3],
+    [1.5, -2.5, 0.5],
+  ];
+  let n = 0;
+  for (const vs of valueSets) {
+    for (let sk = 0; sk < scores.length; sk++) {
+      for (let ck = 0; ck < cands.length; ck++) {
+        const got = Util.findMinimumBy(vs, scores[sk], cands[ck]);
+        const status = got === null ? 1 : 0;
+        pushUtil(`u_fmb_${n}`, 3, [sk, ck, ...vs], got === null ? [] : [enc(got)], [], status);
+        n++;
+      }
+    }
+  }
+}
+
+// getMode: ties keep the earliest-inserted key; zero/negative counts, empty.
+{
+  const sets = [
+    [[1, 3], [2, 5], [3, 5]],
+    [[7, 1], [8, 1], [9, 1]],
+    [[1, 2], [2, 0]],
+    [],
+    [[-1, 4], [5, 4], [6, 9]],
+    [[2, 1], [1, 2], [3, 2]],
+  ];
+  for (const [i, pairs] of sets.entries()) {
+    const m = new Map(pairs);
+    const args = pairs.flat();
+    const got = Util.getMode(m);
+    pushUtil(`u_mode_${i}`, 4, args, got === null ? [] : [enc(got)], [], got === null ? 1 : 0);
+  }
+}
+
+// toInt: ±Infinity clamps, NaN throws, floor of fractions and negatives.
+{
+  const nums = [3.7, -3.2, 0, -0.0, 1 / 3, 2 ** 53, -(2 ** 53), Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY, Number.NaN, 42.9, -0.5, 5, 1e15];
+  for (const [i, num] of nums.entries()) {
+    let status = 0;
+    let out;
+    try {
+      out = Number(Util.toInt(num));
+    } catch {
+      status = 2;
+    }
+    pushUtil(`u_toint_${i}`, 5, [num], status === 2 ? [] : [enc(out)], [], status);
+  }
+}
+
+// maxInt / minInt / withinInt over the safe-integer lattice.
+{
+  const ab = [[1, 2], [2, 1], [5, 5], [-3, -7], [0, -0.0], [2 ** 53, -(2 ** 53)]];
+  for (const [i, [a, b]] of ab.entries()) {
+    pushUtil(`u_maxint_${i}`, 6, [a, b], [enc(Number(Util.maxInt(BigInt(Math.floor(a)), BigInt(Math.floor(b)))))]);
+    pushUtil(`u_minint_${i}`, 7, [a, b], [enc(Number(Util.minInt(BigInt(Math.floor(a)), BigInt(Math.floor(b)))))]);
+  }
+  const triples = [[5, 0, 10], [-5, 0, 10], [42, 0, 10], [3, 3, 3], [7, 10, 0]];
+  for (const [i, [num, lo, hi]] of triples.entries()) {
+    const got = Util.withinInt(BigInt(num), BigInt(lo), BigInt(hi));
+    pushUtil(`u_withinint_${i}`, 8, [num, lo, hi], [enc(Number(got))]);
+  }
+}
+
+// sigmoid: logistic curve, saturation both ways, zero decay, NaN midpoint.
+{
+  const cases = [
+    [0, 1, 0], [5, 1, 0], [-5, 1, 0], [10, 1, 10], [0, 0, 0],
+    [100, 0.1, 0], [-100, 0.1, 0], [3, 2, 3], [1, 10, 0], [0, 1, 50],
+    [2, -1, 0], [0.5, 0.5, 0.5],
+  ];
+  for (const [i, [v, k, m]] of cases.entries()) {
+    pushUtil(`u_sig_${i}`, 9, [v, k, m], [enc(Util.sigmoid(v, k, m))]);
+  }
+}
+
+// boundingBoxCenter: even and odd spans (floor toward the min corner).
+{
+  const boxes = [
+    [0, 0, 10, 10], [0, 0, 9, 9], [1, 2, 4, 8], [-3, -3, 3, 3], [0, 0, 0, 0], [5, 5, 6, 7],
+  ];
+  for (const [i, [mnx, mny, mxx, mxy]] of boxes.entries()) {
+    const c = Util.boundingBoxCenter({ min: { x: mnx, y: mny }, max: { x: mxx, y: mxy } });
+    pushUtil(`u_bbc_${i}`, 10, [mnx, mny, mxx, mxy], [enc(c.x), enc(c.y)]);
+  }
+}
+
+// inscribed: the four <=/>= comparisons, exact-fit, and each single violation.
+{
+  const cases = [
+    [[0, 0, 10, 10], [2, 2, 8, 8], true],
+    [[0, 0, 10, 10], [0, 0, 10, 10], true],
+    [[0, 0, 10, 10], [-1, 0, 8, 8], false],
+    [[0, 0, 10, 10], [0, 1, 8, 8], false],
+    [[0, 0, 10, 10], [2, 2, 11, 8], false],
+    [[0, 0, 10, 10], [2, 2, 8, 11], false],
+    [[-5, -5, 5, 5], [-2, -2, 2, 2], true],
+  ];
+  for (const [i, [o, inr]] of cases.entries()) {
+    const got = Util.inscribed({ min: { x: o[0], y: o[1] }, max: { x: o[2], y: o[3] } }, { min: { x: inr[0], y: inr[1] }, max: { x: inr[2], y: inr[3] } });
+    pushUtil(`u_insc_${i}`, 11, [...o, ...inr], [enc(got)]);
+  }
+}
+
+// calculateBoundingBox / calculateBoundingBoxCenter / boundingBoxTiles over a
+// real GameMapImpl. Terrain is all-land (magnitude 5); the box/tile math only
+// reads x()/y()/ref()/isValidCoord(), which are terrain-independent. container
+// kind: 0 Array, 1 Set, 2 TileSet — all three TS branches must agree.
+{
+  const maps = [
+    { w: 5, h: 5 },
+    { w: 4, h: 3 },
+    { w: 8, h: 2 },
+  ];
+  const tileSets = [
+    [0, 6, 12, 24],
+    [1, 2, 3],
+    [0, 4, 5, 9, 10, 14, 15, 19, 20, 21, 22, 23],
+    [7],
+    [2, 8, 13, 3, 17],
+  ];
+  let n = 0;
+  for (const { w, h } of maps) {
+    const gm = new GameMapImpl(w, h, new Uint8Array(w * h).fill(0x85), w * h);
+    for (const tiles of tileSets) {
+      for (const kind of [0, 1, 2]) {
+        const container =
+          kind === 0 ? tiles.slice() : kind === 1 ? new Set(tiles) : new TileSet(tiles);
+        const bb = Util.calculateBoundingBox(gm, container);
+        pushUtil(`u_cbb_${n}`, 12, [w, h, kind, ...tiles], [enc(bb.min.x), enc(bb.min.y), enc(bb.max.x), enc(bb.max.y)]);
+        n++;
+      }
+      // Center variant (Array container): boundingBoxCenter(calculateBoundingBox).
+      const c = Util.calculateBoundingBoxCenter(gm, tiles.slice());
+      pushUtil(`u_cbbc_${n}`, 14, [w, h, ...tiles], [enc(c.x), enc(c.y)]);
+      n++;
+    }
+    // boundingBoxTiles: perimeter square around a center, clipped to the map.
+    for (const [center, radius] of [[12, 1], [0, 0], [0, 2], [12, 3], [24, 2], [6, 1], [2, 5]]) {
+      const tiles = Util.boundingBoxTiles(gm, center, radius);
+      pushUtil(`u_bbt_${n}`, 13, [w, h, center, radius], tiles.map(enc));
+      n++;
+    }
+  }
+}
+
 const structures = {
   minheap: mhScenarios,
   bucket: bqScenarios,
@@ -918,6 +1156,7 @@ const structures = {
   water: waterScenarios,
   gamemap: gmScenarios,
   tileset: tsScenarios,
+  util: utilScenarios,
 };
 
 // ================================================================ JSON
@@ -1556,6 +1795,45 @@ for (const s of structures.tileset) {
 }
 L.push("pub const TILESET_SCENARIOS: &[TileSetScenario] = &[");
 for (const s of structures.tileset) L.push(`    ${s.name.toUpperCase()},`);
+L.push("];");
+L.push("");
+
+L.push("/// Util scenario: one call of a ported `Util.ts` function. `kind`");
+L.push("/// selects the function (table in the capture section above), `args`");
+L.push("/// carries its scalar inputs (variable-length payloads for the");
+L.push("/// list-taking kinds), `strs` the strings for simpleHash, `status`");
+L.push("/// 0 ok / 1 TS null / 2 TS threw, and `res` every f64 of the result");
+L.push("/// (NaN and -0 are pinned by bit pattern, not by `==`).");
+L.push("pub struct UtilScenario {");
+L.push("    pub name: &'static str,");
+L.push("    pub kind: u8,");
+L.push("    pub args: &'static [f64],");
+L.push("    pub strs: &'static [&'static str],");
+L.push("    pub status: u8,");
+L.push("    pub res: &'static [f64],");
+L.push("}");
+L.push("");
+const utilResLit = (r) => {
+  if (r === "n") return "f64::NAN";
+  if (r === "-0") return "-0.0f64";
+  if (r === "i") return "f64::INFINITY";
+  if (r === "-i") return "f64::NEG_INFINITY";
+  return f64(r);
+};
+for (const s of structures.util) {
+  const id = s.name.toUpperCase();
+  L.push(`pub const ${id}: UtilScenario = UtilScenario {`);
+  L.push(`    name: "${s.name}",`);
+  L.push(`    kind: ${s.kind}u8,`);
+  L.push(`    args: &[${s.args.map((v) => utilResLit(v === undefined ? 0 : v)).join(", ")}],`);
+  L.push(`    strs: &[${s.strs.map((x) => JSON.stringify(x)).join(", ")}],`);
+  L.push(`    status: ${s.status}u8,`);
+  L.push(`    res: &[${s.res.map(utilResLit).join(", ")}],`);
+  L.push("};");
+  L.push("");
+}
+L.push("pub const UTIL_SCENARIOS: &[UtilScenario] = &[");
+for (const s of structures.util) L.push(`    ${s.name.toUpperCase()},`);
 L.push("];");
 L.push("");
 

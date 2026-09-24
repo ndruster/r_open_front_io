@@ -6961,3 +6961,3491 @@ pub const TILESET_SCENARIOS: &[TileSetScenario] = &[
     TS_CLEAR,
 ];
 
+/// Util scenario: one call of a ported `Util.ts` function. `kind`
+/// selects the function (table in the capture section above), `args`
+/// carries its scalar inputs (variable-length payloads for the
+/// list-taking kinds), `strs` the strings for simpleHash, `status`
+/// 0 ok / 1 TS null / 2 TS threw, and `res` every f64 of the result
+/// (NaN and -0 are pinned by bit pattern, not by `==`).
+pub struct UtilScenario {
+    pub name: &'static str,
+    pub kind: u8,
+    pub args: &'static [f64],
+    pub strs: &'static [&'static str],
+    pub status: u8,
+    pub res: &'static [f64],
+}
+
+pub const U_MDW_0: UtilScenario = UtilScenario {
+    name: "u_mdw_0",
+    kind: 0u8,
+    args: &[0f64, 0f64, 99f64, 0f64, 100f64],
+    strs: &[],
+    status: 0u8,
+    res: &[1f64],
+};
+
+pub const U_MDW_1: UtilScenario = UtilScenario {
+    name: "u_mdw_1",
+    kind: 0u8,
+    args: &[0f64, 0f64, 60f64, 0f64, 100f64],
+    strs: &[],
+    status: 0u8,
+    res: &[40f64],
+};
+
+pub const U_MDW_2: UtilScenario = UtilScenario {
+    name: "u_mdw_2",
+    kind: 0u8,
+    args: &[10f64, 20f64, 90f64, 25f64, 100f64],
+    strs: &[],
+    status: 0u8,
+    res: &[25f64],
+};
+
+pub const U_MDW_3: UtilScenario = UtilScenario {
+    name: "u_mdw_3",
+    kind: 0u8,
+    args: &[50f64, 0f64, 50f64, 0f64, 100f64],
+    strs: &[],
+    status: 0u8,
+    res: &[0f64],
+};
+
+pub const U_MDW_4: UtilScenario = UtilScenario {
+    name: "u_mdw_4",
+    kind: 0u8,
+    args: &[0f64, 0f64, 50f64, 0f64, 100f64],
+    strs: &[],
+    status: 0u8,
+    res: &[50f64],
+};
+
+pub const U_MDW_5: UtilScenario = UtilScenario {
+    name: "u_mdw_5",
+    kind: 0u8,
+    args: &[30f64, 70f64, 70f64, 30f64, 100f64],
+    strs: &[],
+    status: 0u8,
+    res: &[80f64],
+};
+
+pub const U_MDW_6: UtilScenario = UtilScenario {
+    name: "u_mdw_6",
+    kind: 0u8,
+    args: &[5f64, 5f64, 5f64, 5f64, 7f64],
+    strs: &[],
+    status: 0u8,
+    res: &[0f64],
+};
+
+pub const U_WITHIN_0: UtilScenario = UtilScenario {
+    name: "u_within_0",
+    kind: 1u8,
+    args: &[5f64, 0f64, 10f64],
+    strs: &[],
+    status: 0u8,
+    res: &[5f64],
+};
+
+pub const U_WITHIN_1: UtilScenario = UtilScenario {
+    name: "u_within_1",
+    kind: 1u8,
+    args: &[-3f64, 0f64, 10f64],
+    strs: &[],
+    status: 0u8,
+    res: &[0f64],
+};
+
+pub const U_WITHIN_2: UtilScenario = UtilScenario {
+    name: "u_within_2",
+    kind: 1u8,
+    args: &[42f64, 0f64, 10f64],
+    strs: &[],
+    status: 0u8,
+    res: &[10f64],
+};
+
+pub const U_WITHIN_3: UtilScenario = UtilScenario {
+    name: "u_within_3",
+    kind: 1u8,
+    args: &[7f64, 7f64, 7f64],
+    strs: &[],
+    status: 0u8,
+    res: &[7f64],
+};
+
+pub const U_WITHIN_4: UtilScenario = UtilScenario {
+    name: "u_within_4",
+    kind: 1u8,
+    args: &[1.5f64, 0f64, 2f64],
+    strs: &[],
+    status: 0u8,
+    res: &[1.5f64],
+};
+
+pub const U_WITHIN_5: UtilScenario = UtilScenario {
+    name: "u_within_5",
+    kind: 1u8,
+    args: &[-0.0f64, -1f64, 1f64],
+    strs: &[],
+    status: 0u8,
+    res: &[-0.0f64],
+};
+
+pub const U_WITHIN_6: UtilScenario = UtilScenario {
+    name: "u_within_6",
+    kind: 1u8,
+    args: &[f64::NAN, 0f64, 10f64],
+    strs: &[],
+    status: 0u8,
+    res: &[f64::NAN],
+};
+
+pub const U_WITHIN_7: UtilScenario = UtilScenario {
+    name: "u_within_7",
+    kind: 1u8,
+    args: &[5f64, 10f64, 0f64],
+    strs: &[],
+    status: 0u8,
+    res: &[0f64],
+};
+
+pub const U_HASH_0: UtilScenario = UtilScenario {
+    name: "u_hash_0",
+    kind: 2u8,
+    args: &[],
+    strs: &[""],
+    status: 0u8,
+    res: &[0f64],
+};
+
+pub const U_HASH_1: UtilScenario = UtilScenario {
+    name: "u_hash_1",
+    kind: 2u8,
+    args: &[],
+    strs: &["a"],
+    status: 0u8,
+    res: &[97f64],
+};
+
+pub const U_HASH_2: UtilScenario = UtilScenario {
+    name: "u_hash_2",
+    kind: 2u8,
+    args: &[],
+    strs: &["abc"],
+    status: 0u8,
+    res: &[96354f64],
+};
+
+pub const U_HASH_3: UtilScenario = UtilScenario {
+    name: "u_hash_3",
+    kind: 2u8,
+    args: &[],
+    strs: &["OpenFront"],
+    status: 0u8,
+    res: &[767801889f64],
+};
+
+pub const U_HASH_4: UtilScenario = UtilScenario {
+    name: "u_hash_4",
+    kind: 2u8,
+    args: &[],
+    strs: &["hello world"],
+    status: 0u8,
+    res: &[1794106052f64],
+};
+
+pub const U_HASH_5: UtilScenario = UtilScenario {
+    name: "u_hash_5",
+    kind: 2u8,
+    args: &[],
+    strs: &["café"],
+    status: 0u8,
+    res: &[3045921f64],
+};
+
+pub const U_HASH_6: UtilScenario = UtilScenario {
+    name: "u_hash_6",
+    kind: 2u8,
+    args: &[],
+    strs: &["😀x"],
+    status: 0u8,
+    res: &[54959989f64],
+};
+
+pub const U_HASH_7: UtilScenario = UtilScenario {
+    name: "u_hash_7",
+    kind: 2u8,
+    args: &[],
+    strs: &["1234567890"],
+    status: 0u8,
+    res: &[2054162789f64],
+};
+
+pub const U_HASH_8: UtilScenario = UtilScenario {
+    name: "u_hash_8",
+    kind: 2u8,
+    args: &[],
+    strs: &["AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"],
+    status: 0u8,
+    res: &[2046446976f64],
+};
+
+pub const U_FMB_0: UtilScenario = UtilScenario {
+    name: "u_fmb_0",
+    kind: 3u8,
+    args: &[0f64, 0f64, 4f64, 1f64, 3f64, 2f64],
+    strs: &[],
+    status: 0u8,
+    res: &[1f64],
+};
+
+pub const U_FMB_1: UtilScenario = UtilScenario {
+    name: "u_fmb_1",
+    kind: 3u8,
+    args: &[0f64, 1f64, 4f64, 1f64, 3f64, 2f64],
+    strs: &[],
+    status: 0u8,
+    res: &[1f64],
+};
+
+pub const U_FMB_2: UtilScenario = UtilScenario {
+    name: "u_fmb_2",
+    kind: 3u8,
+    args: &[0f64, 2f64, 4f64, 1f64, 3f64, 2f64],
+    strs: &[],
+    status: 0u8,
+    res: &[1f64],
+};
+
+pub const U_FMB_3: UtilScenario = UtilScenario {
+    name: "u_fmb_3",
+    kind: 3u8,
+    args: &[0f64, 3f64, 4f64, 1f64, 3f64, 2f64],
+    strs: &[],
+    status: 1u8,
+    res: &[],
+};
+
+pub const U_FMB_4: UtilScenario = UtilScenario {
+    name: "u_fmb_4",
+    kind: 3u8,
+    args: &[1f64, 0f64, 4f64, 1f64, 3f64, 2f64],
+    strs: &[],
+    status: 0u8,
+    res: &[1f64],
+};
+
+pub const U_FMB_5: UtilScenario = UtilScenario {
+    name: "u_fmb_5",
+    kind: 3u8,
+    args: &[1f64, 1f64, 4f64, 1f64, 3f64, 2f64],
+    strs: &[],
+    status: 0u8,
+    res: &[1f64],
+};
+
+pub const U_FMB_6: UtilScenario = UtilScenario {
+    name: "u_fmb_6",
+    kind: 3u8,
+    args: &[1f64, 2f64, 4f64, 1f64, 3f64, 2f64],
+    strs: &[],
+    status: 0u8,
+    res: &[1f64],
+};
+
+pub const U_FMB_7: UtilScenario = UtilScenario {
+    name: "u_fmb_7",
+    kind: 3u8,
+    args: &[1f64, 3f64, 4f64, 1f64, 3f64, 2f64],
+    strs: &[],
+    status: 1u8,
+    res: &[],
+};
+
+pub const U_FMB_8: UtilScenario = UtilScenario {
+    name: "u_fmb_8",
+    kind: 3u8,
+    args: &[2f64, 0f64, 4f64, 1f64, 3f64, 2f64],
+    strs: &[],
+    status: 0u8,
+    res: &[3f64],
+};
+
+pub const U_FMB_9: UtilScenario = UtilScenario {
+    name: "u_fmb_9",
+    kind: 3u8,
+    args: &[2f64, 1f64, 4f64, 1f64, 3f64, 2f64],
+    strs: &[],
+    status: 0u8,
+    res: &[3f64],
+};
+
+pub const U_FMB_10: UtilScenario = UtilScenario {
+    name: "u_fmb_10",
+    kind: 3u8,
+    args: &[2f64, 2f64, 4f64, 1f64, 3f64, 2f64],
+    strs: &[],
+    status: 0u8,
+    res: &[3f64],
+};
+
+pub const U_FMB_11: UtilScenario = UtilScenario {
+    name: "u_fmb_11",
+    kind: 3u8,
+    args: &[2f64, 3f64, 4f64, 1f64, 3f64, 2f64],
+    strs: &[],
+    status: 1u8,
+    res: &[],
+};
+
+pub const U_FMB_12: UtilScenario = UtilScenario {
+    name: "u_fmb_12",
+    kind: 3u8,
+    args: &[3f64, 0f64, 4f64, 1f64, 3f64, 2f64],
+    strs: &[],
+    status: 0u8,
+    res: &[1f64],
+};
+
+pub const U_FMB_13: UtilScenario = UtilScenario {
+    name: "u_fmb_13",
+    kind: 3u8,
+    args: &[3f64, 1f64, 4f64, 1f64, 3f64, 2f64],
+    strs: &[],
+    status: 0u8,
+    res: &[1f64],
+};
+
+pub const U_FMB_14: UtilScenario = UtilScenario {
+    name: "u_fmb_14",
+    kind: 3u8,
+    args: &[3f64, 2f64, 4f64, 1f64, 3f64, 2f64],
+    strs: &[],
+    status: 0u8,
+    res: &[1f64],
+};
+
+pub const U_FMB_15: UtilScenario = UtilScenario {
+    name: "u_fmb_15",
+    kind: 3u8,
+    args: &[3f64, 3f64, 4f64, 1f64, 3f64, 2f64],
+    strs: &[],
+    status: 1u8,
+    res: &[],
+};
+
+pub const U_FMB_16: UtilScenario = UtilScenario {
+    name: "u_fmb_16",
+    kind: 3u8,
+    args: &[4f64, 0f64, 4f64, 1f64, 3f64, 2f64],
+    strs: &[],
+    status: 0u8,
+    res: &[4f64],
+};
+
+pub const U_FMB_17: UtilScenario = UtilScenario {
+    name: "u_fmb_17",
+    kind: 3u8,
+    args: &[4f64, 1f64, 4f64, 1f64, 3f64, 2f64],
+    strs: &[],
+    status: 0u8,
+    res: &[4f64],
+};
+
+pub const U_FMB_18: UtilScenario = UtilScenario {
+    name: "u_fmb_18",
+    kind: 3u8,
+    args: &[4f64, 2f64, 4f64, 1f64, 3f64, 2f64],
+    strs: &[],
+    status: 0u8,
+    res: &[4f64],
+};
+
+pub const U_FMB_19: UtilScenario = UtilScenario {
+    name: "u_fmb_19",
+    kind: 3u8,
+    args: &[4f64, 3f64, 4f64, 1f64, 3f64, 2f64],
+    strs: &[],
+    status: 1u8,
+    res: &[],
+};
+
+pub const U_FMB_20: UtilScenario = UtilScenario {
+    name: "u_fmb_20",
+    kind: 3u8,
+    args: &[0f64, 0f64, -5f64, 3f64, -1f64, 7f64, -2f64],
+    strs: &[],
+    status: 0u8,
+    res: &[-5f64],
+};
+
+pub const U_FMB_21: UtilScenario = UtilScenario {
+    name: "u_fmb_21",
+    kind: 3u8,
+    args: &[0f64, 1f64, -5f64, 3f64, -1f64, 7f64, -2f64],
+    strs: &[],
+    status: 0u8,
+    res: &[3f64],
+};
+
+pub const U_FMB_22: UtilScenario = UtilScenario {
+    name: "u_fmb_22",
+    kind: 3u8,
+    args: &[0f64, 2f64, -5f64, 3f64, -1f64, 7f64, -2f64],
+    strs: &[],
+    status: 0u8,
+    res: &[-5f64],
+};
+
+pub const U_FMB_23: UtilScenario = UtilScenario {
+    name: "u_fmb_23",
+    kind: 3u8,
+    args: &[0f64, 3f64, -5f64, 3f64, -1f64, 7f64, -2f64],
+    strs: &[],
+    status: 1u8,
+    res: &[],
+};
+
+pub const U_FMB_24: UtilScenario = UtilScenario {
+    name: "u_fmb_24",
+    kind: 3u8,
+    args: &[1f64, 0f64, -5f64, 3f64, -1f64, 7f64, -2f64],
+    strs: &[],
+    status: 0u8,
+    res: &[-1f64],
+};
+
+pub const U_FMB_25: UtilScenario = UtilScenario {
+    name: "u_fmb_25",
+    kind: 3u8,
+    args: &[1f64, 1f64, -5f64, 3f64, -1f64, 7f64, -2f64],
+    strs: &[],
+    status: 0u8,
+    res: &[3f64],
+};
+
+pub const U_FMB_26: UtilScenario = UtilScenario {
+    name: "u_fmb_26",
+    kind: 3u8,
+    args: &[1f64, 2f64, -5f64, 3f64, -1f64, 7f64, -2f64],
+    strs: &[],
+    status: 0u8,
+    res: &[-1f64],
+};
+
+pub const U_FMB_27: UtilScenario = UtilScenario {
+    name: "u_fmb_27",
+    kind: 3u8,
+    args: &[1f64, 3f64, -5f64, 3f64, -1f64, 7f64, -2f64],
+    strs: &[],
+    status: 1u8,
+    res: &[],
+};
+
+pub const U_FMB_28: UtilScenario = UtilScenario {
+    name: "u_fmb_28",
+    kind: 3u8,
+    args: &[2f64, 0f64, -5f64, 3f64, -1f64, 7f64, -2f64],
+    strs: &[],
+    status: 0u8,
+    res: &[-5f64],
+};
+
+pub const U_FMB_29: UtilScenario = UtilScenario {
+    name: "u_fmb_29",
+    kind: 3u8,
+    args: &[2f64, 1f64, -5f64, 3f64, -1f64, 7f64, -2f64],
+    strs: &[],
+    status: 0u8,
+    res: &[3f64],
+};
+
+pub const U_FMB_30: UtilScenario = UtilScenario {
+    name: "u_fmb_30",
+    kind: 3u8,
+    args: &[2f64, 2f64, -5f64, 3f64, -1f64, 7f64, -2f64],
+    strs: &[],
+    status: 0u8,
+    res: &[-5f64],
+};
+
+pub const U_FMB_31: UtilScenario = UtilScenario {
+    name: "u_fmb_31",
+    kind: 3u8,
+    args: &[2f64, 3f64, -5f64, 3f64, -1f64, 7f64, -2f64],
+    strs: &[],
+    status: 1u8,
+    res: &[],
+};
+
+pub const U_FMB_32: UtilScenario = UtilScenario {
+    name: "u_fmb_32",
+    kind: 3u8,
+    args: &[3f64, 0f64, -5f64, 3f64, -1f64, 7f64, -2f64],
+    strs: &[],
+    status: 0u8,
+    res: &[-5f64],
+};
+
+pub const U_FMB_33: UtilScenario = UtilScenario {
+    name: "u_fmb_33",
+    kind: 3u8,
+    args: &[3f64, 1f64, -5f64, 3f64, -1f64, 7f64, -2f64],
+    strs: &[],
+    status: 0u8,
+    res: &[3f64],
+};
+
+pub const U_FMB_34: UtilScenario = UtilScenario {
+    name: "u_fmb_34",
+    kind: 3u8,
+    args: &[3f64, 2f64, -5f64, 3f64, -1f64, 7f64, -2f64],
+    strs: &[],
+    status: 0u8,
+    res: &[-5f64],
+};
+
+pub const U_FMB_35: UtilScenario = UtilScenario {
+    name: "u_fmb_35",
+    kind: 3u8,
+    args: &[3f64, 3f64, -5f64, 3f64, -1f64, 7f64, -2f64],
+    strs: &[],
+    status: 1u8,
+    res: &[],
+};
+
+pub const U_FMB_36: UtilScenario = UtilScenario {
+    name: "u_fmb_36",
+    kind: 3u8,
+    args: &[4f64, 0f64, -5f64, 3f64, -1f64, 7f64, -2f64],
+    strs: &[],
+    status: 0u8,
+    res: &[7f64],
+};
+
+pub const U_FMB_37: UtilScenario = UtilScenario {
+    name: "u_fmb_37",
+    kind: 3u8,
+    args: &[4f64, 1f64, -5f64, 3f64, -1f64, 7f64, -2f64],
+    strs: &[],
+    status: 0u8,
+    res: &[7f64],
+};
+
+pub const U_FMB_38: UtilScenario = UtilScenario {
+    name: "u_fmb_38",
+    kind: 3u8,
+    args: &[4f64, 2f64, -5f64, 3f64, -1f64, 7f64, -2f64],
+    strs: &[],
+    status: 0u8,
+    res: &[7f64],
+};
+
+pub const U_FMB_39: UtilScenario = UtilScenario {
+    name: "u_fmb_39",
+    kind: 3u8,
+    args: &[4f64, 3f64, -5f64, 3f64, -1f64, 7f64, -2f64],
+    strs: &[],
+    status: 1u8,
+    res: &[],
+};
+
+pub const U_FMB_40: UtilScenario = UtilScenario {
+    name: "u_fmb_40",
+    kind: 3u8,
+    args: &[0f64, 0f64, 2f64, 2f64, 1f64, 1f64],
+    strs: &[],
+    status: 0u8,
+    res: &[1f64],
+};
+
+pub const U_FMB_41: UtilScenario = UtilScenario {
+    name: "u_fmb_41",
+    kind: 3u8,
+    args: &[0f64, 1f64, 2f64, 2f64, 1f64, 1f64],
+    strs: &[],
+    status: 0u8,
+    res: &[1f64],
+};
+
+pub const U_FMB_42: UtilScenario = UtilScenario {
+    name: "u_fmb_42",
+    kind: 3u8,
+    args: &[0f64, 2f64, 2f64, 2f64, 1f64, 1f64],
+    strs: &[],
+    status: 0u8,
+    res: &[1f64],
+};
+
+pub const U_FMB_43: UtilScenario = UtilScenario {
+    name: "u_fmb_43",
+    kind: 3u8,
+    args: &[0f64, 3f64, 2f64, 2f64, 1f64, 1f64],
+    strs: &[],
+    status: 1u8,
+    res: &[],
+};
+
+pub const U_FMB_44: UtilScenario = UtilScenario {
+    name: "u_fmb_44",
+    kind: 3u8,
+    args: &[1f64, 0f64, 2f64, 2f64, 1f64, 1f64],
+    strs: &[],
+    status: 0u8,
+    res: &[1f64],
+};
+
+pub const U_FMB_45: UtilScenario = UtilScenario {
+    name: "u_fmb_45",
+    kind: 3u8,
+    args: &[1f64, 1f64, 2f64, 2f64, 1f64, 1f64],
+    strs: &[],
+    status: 0u8,
+    res: &[1f64],
+};
+
+pub const U_FMB_46: UtilScenario = UtilScenario {
+    name: "u_fmb_46",
+    kind: 3u8,
+    args: &[1f64, 2f64, 2f64, 2f64, 1f64, 1f64],
+    strs: &[],
+    status: 0u8,
+    res: &[1f64],
+};
+
+pub const U_FMB_47: UtilScenario = UtilScenario {
+    name: "u_fmb_47",
+    kind: 3u8,
+    args: &[1f64, 3f64, 2f64, 2f64, 1f64, 1f64],
+    strs: &[],
+    status: 1u8,
+    res: &[],
+};
+
+pub const U_FMB_48: UtilScenario = UtilScenario {
+    name: "u_fmb_48",
+    kind: 3u8,
+    args: &[2f64, 0f64, 2f64, 2f64, 1f64, 1f64],
+    strs: &[],
+    status: 0u8,
+    res: &[1f64],
+};
+
+pub const U_FMB_49: UtilScenario = UtilScenario {
+    name: "u_fmb_49",
+    kind: 3u8,
+    args: &[2f64, 1f64, 2f64, 2f64, 1f64, 1f64],
+    strs: &[],
+    status: 0u8,
+    res: &[1f64],
+};
+
+pub const U_FMB_50: UtilScenario = UtilScenario {
+    name: "u_fmb_50",
+    kind: 3u8,
+    args: &[2f64, 2f64, 2f64, 2f64, 1f64, 1f64],
+    strs: &[],
+    status: 0u8,
+    res: &[1f64],
+};
+
+pub const U_FMB_51: UtilScenario = UtilScenario {
+    name: "u_fmb_51",
+    kind: 3u8,
+    args: &[2f64, 3f64, 2f64, 2f64, 1f64, 1f64],
+    strs: &[],
+    status: 1u8,
+    res: &[],
+};
+
+pub const U_FMB_52: UtilScenario = UtilScenario {
+    name: "u_fmb_52",
+    kind: 3u8,
+    args: &[3f64, 0f64, 2f64, 2f64, 1f64, 1f64],
+    strs: &[],
+    status: 0u8,
+    res: &[1f64],
+};
+
+pub const U_FMB_53: UtilScenario = UtilScenario {
+    name: "u_fmb_53",
+    kind: 3u8,
+    args: &[3f64, 1f64, 2f64, 2f64, 1f64, 1f64],
+    strs: &[],
+    status: 0u8,
+    res: &[1f64],
+};
+
+pub const U_FMB_54: UtilScenario = UtilScenario {
+    name: "u_fmb_54",
+    kind: 3u8,
+    args: &[3f64, 2f64, 2f64, 2f64, 1f64, 1f64],
+    strs: &[],
+    status: 0u8,
+    res: &[1f64],
+};
+
+pub const U_FMB_55: UtilScenario = UtilScenario {
+    name: "u_fmb_55",
+    kind: 3u8,
+    args: &[3f64, 3f64, 2f64, 2f64, 1f64, 1f64],
+    strs: &[],
+    status: 1u8,
+    res: &[],
+};
+
+pub const U_FMB_56: UtilScenario = UtilScenario {
+    name: "u_fmb_56",
+    kind: 3u8,
+    args: &[4f64, 0f64, 2f64, 2f64, 1f64, 1f64],
+    strs: &[],
+    status: 0u8,
+    res: &[2f64],
+};
+
+pub const U_FMB_57: UtilScenario = UtilScenario {
+    name: "u_fmb_57",
+    kind: 3u8,
+    args: &[4f64, 1f64, 2f64, 2f64, 1f64, 1f64],
+    strs: &[],
+    status: 0u8,
+    res: &[2f64],
+};
+
+pub const U_FMB_58: UtilScenario = UtilScenario {
+    name: "u_fmb_58",
+    kind: 3u8,
+    args: &[4f64, 2f64, 2f64, 2f64, 1f64, 1f64],
+    strs: &[],
+    status: 0u8,
+    res: &[2f64],
+};
+
+pub const U_FMB_59: UtilScenario = UtilScenario {
+    name: "u_fmb_59",
+    kind: 3u8,
+    args: &[4f64, 3f64, 2f64, 2f64, 1f64, 1f64],
+    strs: &[],
+    status: 1u8,
+    res: &[],
+};
+
+pub const U_FMB_60: UtilScenario = UtilScenario {
+    name: "u_fmb_60",
+    kind: 3u8,
+    args: &[0f64, 0f64],
+    strs: &[],
+    status: 1u8,
+    res: &[],
+};
+
+pub const U_FMB_61: UtilScenario = UtilScenario {
+    name: "u_fmb_61",
+    kind: 3u8,
+    args: &[0f64, 1f64],
+    strs: &[],
+    status: 1u8,
+    res: &[],
+};
+
+pub const U_FMB_62: UtilScenario = UtilScenario {
+    name: "u_fmb_62",
+    kind: 3u8,
+    args: &[0f64, 2f64],
+    strs: &[],
+    status: 1u8,
+    res: &[],
+};
+
+pub const U_FMB_63: UtilScenario = UtilScenario {
+    name: "u_fmb_63",
+    kind: 3u8,
+    args: &[0f64, 3f64],
+    strs: &[],
+    status: 1u8,
+    res: &[],
+};
+
+pub const U_FMB_64: UtilScenario = UtilScenario {
+    name: "u_fmb_64",
+    kind: 3u8,
+    args: &[1f64, 0f64],
+    strs: &[],
+    status: 1u8,
+    res: &[],
+};
+
+pub const U_FMB_65: UtilScenario = UtilScenario {
+    name: "u_fmb_65",
+    kind: 3u8,
+    args: &[1f64, 1f64],
+    strs: &[],
+    status: 1u8,
+    res: &[],
+};
+
+pub const U_FMB_66: UtilScenario = UtilScenario {
+    name: "u_fmb_66",
+    kind: 3u8,
+    args: &[1f64, 2f64],
+    strs: &[],
+    status: 1u8,
+    res: &[],
+};
+
+pub const U_FMB_67: UtilScenario = UtilScenario {
+    name: "u_fmb_67",
+    kind: 3u8,
+    args: &[1f64, 3f64],
+    strs: &[],
+    status: 1u8,
+    res: &[],
+};
+
+pub const U_FMB_68: UtilScenario = UtilScenario {
+    name: "u_fmb_68",
+    kind: 3u8,
+    args: &[2f64, 0f64],
+    strs: &[],
+    status: 1u8,
+    res: &[],
+};
+
+pub const U_FMB_69: UtilScenario = UtilScenario {
+    name: "u_fmb_69",
+    kind: 3u8,
+    args: &[2f64, 1f64],
+    strs: &[],
+    status: 1u8,
+    res: &[],
+};
+
+pub const U_FMB_70: UtilScenario = UtilScenario {
+    name: "u_fmb_70",
+    kind: 3u8,
+    args: &[2f64, 2f64],
+    strs: &[],
+    status: 1u8,
+    res: &[],
+};
+
+pub const U_FMB_71: UtilScenario = UtilScenario {
+    name: "u_fmb_71",
+    kind: 3u8,
+    args: &[2f64, 3f64],
+    strs: &[],
+    status: 1u8,
+    res: &[],
+};
+
+pub const U_FMB_72: UtilScenario = UtilScenario {
+    name: "u_fmb_72",
+    kind: 3u8,
+    args: &[3f64, 0f64],
+    strs: &[],
+    status: 1u8,
+    res: &[],
+};
+
+pub const U_FMB_73: UtilScenario = UtilScenario {
+    name: "u_fmb_73",
+    kind: 3u8,
+    args: &[3f64, 1f64],
+    strs: &[],
+    status: 1u8,
+    res: &[],
+};
+
+pub const U_FMB_74: UtilScenario = UtilScenario {
+    name: "u_fmb_74",
+    kind: 3u8,
+    args: &[3f64, 2f64],
+    strs: &[],
+    status: 1u8,
+    res: &[],
+};
+
+pub const U_FMB_75: UtilScenario = UtilScenario {
+    name: "u_fmb_75",
+    kind: 3u8,
+    args: &[3f64, 3f64],
+    strs: &[],
+    status: 1u8,
+    res: &[],
+};
+
+pub const U_FMB_76: UtilScenario = UtilScenario {
+    name: "u_fmb_76",
+    kind: 3u8,
+    args: &[4f64, 0f64],
+    strs: &[],
+    status: 1u8,
+    res: &[],
+};
+
+pub const U_FMB_77: UtilScenario = UtilScenario {
+    name: "u_fmb_77",
+    kind: 3u8,
+    args: &[4f64, 1f64],
+    strs: &[],
+    status: 1u8,
+    res: &[],
+};
+
+pub const U_FMB_78: UtilScenario = UtilScenario {
+    name: "u_fmb_78",
+    kind: 3u8,
+    args: &[4f64, 2f64],
+    strs: &[],
+    status: 1u8,
+    res: &[],
+};
+
+pub const U_FMB_79: UtilScenario = UtilScenario {
+    name: "u_fmb_79",
+    kind: 3u8,
+    args: &[4f64, 3f64],
+    strs: &[],
+    status: 1u8,
+    res: &[],
+};
+
+pub const U_FMB_80: UtilScenario = UtilScenario {
+    name: "u_fmb_80",
+    kind: 3u8,
+    args: &[0f64, 0f64, -999f64, 5f64, -3f64],
+    strs: &[],
+    status: 0u8,
+    res: &[-999f64],
+};
+
+pub const U_FMB_81: UtilScenario = UtilScenario {
+    name: "u_fmb_81",
+    kind: 3u8,
+    args: &[0f64, 1f64, -999f64, 5f64, -3f64],
+    strs: &[],
+    status: 0u8,
+    res: &[5f64],
+};
+
+pub const U_FMB_82: UtilScenario = UtilScenario {
+    name: "u_fmb_82",
+    kind: 3u8,
+    args: &[0f64, 2f64, -999f64, 5f64, -3f64],
+    strs: &[],
+    status: 0u8,
+    res: &[-3f64],
+};
+
+pub const U_FMB_83: UtilScenario = UtilScenario {
+    name: "u_fmb_83",
+    kind: 3u8,
+    args: &[0f64, 3f64, -999f64, 5f64, -3f64],
+    strs: &[],
+    status: 1u8,
+    res: &[],
+};
+
+pub const U_FMB_84: UtilScenario = UtilScenario {
+    name: "u_fmb_84",
+    kind: 3u8,
+    args: &[1f64, 0f64, -999f64, 5f64, -3f64],
+    strs: &[],
+    status: 0u8,
+    res: &[-3f64],
+};
+
+pub const U_FMB_85: UtilScenario = UtilScenario {
+    name: "u_fmb_85",
+    kind: 3u8,
+    args: &[1f64, 1f64, -999f64, 5f64, -3f64],
+    strs: &[],
+    status: 0u8,
+    res: &[5f64],
+};
+
+pub const U_FMB_86: UtilScenario = UtilScenario {
+    name: "u_fmb_86",
+    kind: 3u8,
+    args: &[1f64, 2f64, -999f64, 5f64, -3f64],
+    strs: &[],
+    status: 0u8,
+    res: &[-3f64],
+};
+
+pub const U_FMB_87: UtilScenario = UtilScenario {
+    name: "u_fmb_87",
+    kind: 3u8,
+    args: &[1f64, 3f64, -999f64, 5f64, -3f64],
+    strs: &[],
+    status: 1u8,
+    res: &[],
+};
+
+pub const U_FMB_88: UtilScenario = UtilScenario {
+    name: "u_fmb_88",
+    kind: 3u8,
+    args: &[2f64, 0f64, -999f64, 5f64, -3f64],
+    strs: &[],
+    status: 0u8,
+    res: &[-999f64],
+};
+
+pub const U_FMB_89: UtilScenario = UtilScenario {
+    name: "u_fmb_89",
+    kind: 3u8,
+    args: &[2f64, 1f64, -999f64, 5f64, -3f64],
+    strs: &[],
+    status: 0u8,
+    res: &[5f64],
+};
+
+pub const U_FMB_90: UtilScenario = UtilScenario {
+    name: "u_fmb_90",
+    kind: 3u8,
+    args: &[2f64, 2f64, -999f64, 5f64, -3f64],
+    strs: &[],
+    status: 0u8,
+    res: &[-3f64],
+};
+
+pub const U_FMB_91: UtilScenario = UtilScenario {
+    name: "u_fmb_91",
+    kind: 3u8,
+    args: &[2f64, 3f64, -999f64, 5f64, -3f64],
+    strs: &[],
+    status: 1u8,
+    res: &[],
+};
+
+pub const U_FMB_92: UtilScenario = UtilScenario {
+    name: "u_fmb_92",
+    kind: 3u8,
+    args: &[3f64, 0f64, -999f64, 5f64, -3f64],
+    strs: &[],
+    status: 0u8,
+    res: &[-3f64],
+};
+
+pub const U_FMB_93: UtilScenario = UtilScenario {
+    name: "u_fmb_93",
+    kind: 3u8,
+    args: &[3f64, 1f64, -999f64, 5f64, -3f64],
+    strs: &[],
+    status: 0u8,
+    res: &[5f64],
+};
+
+pub const U_FMB_94: UtilScenario = UtilScenario {
+    name: "u_fmb_94",
+    kind: 3u8,
+    args: &[3f64, 2f64, -999f64, 5f64, -3f64],
+    strs: &[],
+    status: 0u8,
+    res: &[-3f64],
+};
+
+pub const U_FMB_95: UtilScenario = UtilScenario {
+    name: "u_fmb_95",
+    kind: 3u8,
+    args: &[3f64, 3f64, -999f64, 5f64, -3f64],
+    strs: &[],
+    status: 1u8,
+    res: &[],
+};
+
+pub const U_FMB_96: UtilScenario = UtilScenario {
+    name: "u_fmb_96",
+    kind: 3u8,
+    args: &[4f64, 0f64, -999f64, 5f64, -3f64],
+    strs: &[],
+    status: 0u8,
+    res: &[5f64],
+};
+
+pub const U_FMB_97: UtilScenario = UtilScenario {
+    name: "u_fmb_97",
+    kind: 3u8,
+    args: &[4f64, 1f64, -999f64, 5f64, -3f64],
+    strs: &[],
+    status: 0u8,
+    res: &[5f64],
+};
+
+pub const U_FMB_98: UtilScenario = UtilScenario {
+    name: "u_fmb_98",
+    kind: 3u8,
+    args: &[4f64, 2f64, -999f64, 5f64, -3f64],
+    strs: &[],
+    status: 0u8,
+    res: &[5f64],
+};
+
+pub const U_FMB_99: UtilScenario = UtilScenario {
+    name: "u_fmb_99",
+    kind: 3u8,
+    args: &[4f64, 3f64, -999f64, 5f64, -3f64],
+    strs: &[],
+    status: 1u8,
+    res: &[],
+};
+
+pub const U_FMB_100: UtilScenario = UtilScenario {
+    name: "u_fmb_100",
+    kind: 3u8,
+    args: &[0f64, 0f64, f64::NAN, 3f64, 1f64],
+    strs: &[],
+    status: 0u8,
+    res: &[1f64],
+};
+
+pub const U_FMB_101: UtilScenario = UtilScenario {
+    name: "u_fmb_101",
+    kind: 3u8,
+    args: &[0f64, 1f64, f64::NAN, 3f64, 1f64],
+    strs: &[],
+    status: 0u8,
+    res: &[1f64],
+};
+
+pub const U_FMB_102: UtilScenario = UtilScenario {
+    name: "u_fmb_102",
+    kind: 3u8,
+    args: &[0f64, 2f64, f64::NAN, 3f64, 1f64],
+    strs: &[],
+    status: 0u8,
+    res: &[1f64],
+};
+
+pub const U_FMB_103: UtilScenario = UtilScenario {
+    name: "u_fmb_103",
+    kind: 3u8,
+    args: &[0f64, 3f64, f64::NAN, 3f64, 1f64],
+    strs: &[],
+    status: 1u8,
+    res: &[],
+};
+
+pub const U_FMB_104: UtilScenario = UtilScenario {
+    name: "u_fmb_104",
+    kind: 3u8,
+    args: &[1f64, 0f64, f64::NAN, 3f64, 1f64],
+    strs: &[],
+    status: 0u8,
+    res: &[1f64],
+};
+
+pub const U_FMB_105: UtilScenario = UtilScenario {
+    name: "u_fmb_105",
+    kind: 3u8,
+    args: &[1f64, 1f64, f64::NAN, 3f64, 1f64],
+    strs: &[],
+    status: 0u8,
+    res: &[1f64],
+};
+
+pub const U_FMB_106: UtilScenario = UtilScenario {
+    name: "u_fmb_106",
+    kind: 3u8,
+    args: &[1f64, 2f64, f64::NAN, 3f64, 1f64],
+    strs: &[],
+    status: 0u8,
+    res: &[1f64],
+};
+
+pub const U_FMB_107: UtilScenario = UtilScenario {
+    name: "u_fmb_107",
+    kind: 3u8,
+    args: &[1f64, 3f64, f64::NAN, 3f64, 1f64],
+    strs: &[],
+    status: 1u8,
+    res: &[],
+};
+
+pub const U_FMB_108: UtilScenario = UtilScenario {
+    name: "u_fmb_108",
+    kind: 3u8,
+    args: &[2f64, 0f64, f64::NAN, 3f64, 1f64],
+    strs: &[],
+    status: 0u8,
+    res: &[3f64],
+};
+
+pub const U_FMB_109: UtilScenario = UtilScenario {
+    name: "u_fmb_109",
+    kind: 3u8,
+    args: &[2f64, 1f64, f64::NAN, 3f64, 1f64],
+    strs: &[],
+    status: 0u8,
+    res: &[3f64],
+};
+
+pub const U_FMB_110: UtilScenario = UtilScenario {
+    name: "u_fmb_110",
+    kind: 3u8,
+    args: &[2f64, 2f64, f64::NAN, 3f64, 1f64],
+    strs: &[],
+    status: 0u8,
+    res: &[3f64],
+};
+
+pub const U_FMB_111: UtilScenario = UtilScenario {
+    name: "u_fmb_111",
+    kind: 3u8,
+    args: &[2f64, 3f64, f64::NAN, 3f64, 1f64],
+    strs: &[],
+    status: 1u8,
+    res: &[],
+};
+
+pub const U_FMB_112: UtilScenario = UtilScenario {
+    name: "u_fmb_112",
+    kind: 3u8,
+    args: &[3f64, 0f64, f64::NAN, 3f64, 1f64],
+    strs: &[],
+    status: 0u8,
+    res: &[1f64],
+};
+
+pub const U_FMB_113: UtilScenario = UtilScenario {
+    name: "u_fmb_113",
+    kind: 3u8,
+    args: &[3f64, 1f64, f64::NAN, 3f64, 1f64],
+    strs: &[],
+    status: 0u8,
+    res: &[1f64],
+};
+
+pub const U_FMB_114: UtilScenario = UtilScenario {
+    name: "u_fmb_114",
+    kind: 3u8,
+    args: &[3f64, 2f64, f64::NAN, 3f64, 1f64],
+    strs: &[],
+    status: 0u8,
+    res: &[1f64],
+};
+
+pub const U_FMB_115: UtilScenario = UtilScenario {
+    name: "u_fmb_115",
+    kind: 3u8,
+    args: &[3f64, 3f64, f64::NAN, 3f64, 1f64],
+    strs: &[],
+    status: 1u8,
+    res: &[],
+};
+
+pub const U_FMB_116: UtilScenario = UtilScenario {
+    name: "u_fmb_116",
+    kind: 3u8,
+    args: &[4f64, 0f64, f64::NAN, 3f64, 1f64],
+    strs: &[],
+    status: 0u8,
+    res: &[3f64],
+};
+
+pub const U_FMB_117: UtilScenario = UtilScenario {
+    name: "u_fmb_117",
+    kind: 3u8,
+    args: &[4f64, 1f64, f64::NAN, 3f64, 1f64],
+    strs: &[],
+    status: 0u8,
+    res: &[3f64],
+};
+
+pub const U_FMB_118: UtilScenario = UtilScenario {
+    name: "u_fmb_118",
+    kind: 3u8,
+    args: &[4f64, 2f64, f64::NAN, 3f64, 1f64],
+    strs: &[],
+    status: 0u8,
+    res: &[3f64],
+};
+
+pub const U_FMB_119: UtilScenario = UtilScenario {
+    name: "u_fmb_119",
+    kind: 3u8,
+    args: &[4f64, 3f64, f64::NAN, 3f64, 1f64],
+    strs: &[],
+    status: 1u8,
+    res: &[],
+};
+
+pub const U_FMB_120: UtilScenario = UtilScenario {
+    name: "u_fmb_120",
+    kind: 3u8,
+    args: &[0f64, 0f64, 7f64],
+    strs: &[],
+    status: 0u8,
+    res: &[7f64],
+};
+
+pub const U_FMB_121: UtilScenario = UtilScenario {
+    name: "u_fmb_121",
+    kind: 3u8,
+    args: &[0f64, 1f64, 7f64],
+    strs: &[],
+    status: 0u8,
+    res: &[7f64],
+};
+
+pub const U_FMB_122: UtilScenario = UtilScenario {
+    name: "u_fmb_122",
+    kind: 3u8,
+    args: &[0f64, 2f64, 7f64],
+    strs: &[],
+    status: 0u8,
+    res: &[7f64],
+};
+
+pub const U_FMB_123: UtilScenario = UtilScenario {
+    name: "u_fmb_123",
+    kind: 3u8,
+    args: &[0f64, 3f64, 7f64],
+    strs: &[],
+    status: 1u8,
+    res: &[],
+};
+
+pub const U_FMB_124: UtilScenario = UtilScenario {
+    name: "u_fmb_124",
+    kind: 3u8,
+    args: &[1f64, 0f64, 7f64],
+    strs: &[],
+    status: 0u8,
+    res: &[7f64],
+};
+
+pub const U_FMB_125: UtilScenario = UtilScenario {
+    name: "u_fmb_125",
+    kind: 3u8,
+    args: &[1f64, 1f64, 7f64],
+    strs: &[],
+    status: 0u8,
+    res: &[7f64],
+};
+
+pub const U_FMB_126: UtilScenario = UtilScenario {
+    name: "u_fmb_126",
+    kind: 3u8,
+    args: &[1f64, 2f64, 7f64],
+    strs: &[],
+    status: 0u8,
+    res: &[7f64],
+};
+
+pub const U_FMB_127: UtilScenario = UtilScenario {
+    name: "u_fmb_127",
+    kind: 3u8,
+    args: &[1f64, 3f64, 7f64],
+    strs: &[],
+    status: 1u8,
+    res: &[],
+};
+
+pub const U_FMB_128: UtilScenario = UtilScenario {
+    name: "u_fmb_128",
+    kind: 3u8,
+    args: &[2f64, 0f64, 7f64],
+    strs: &[],
+    status: 0u8,
+    res: &[7f64],
+};
+
+pub const U_FMB_129: UtilScenario = UtilScenario {
+    name: "u_fmb_129",
+    kind: 3u8,
+    args: &[2f64, 1f64, 7f64],
+    strs: &[],
+    status: 0u8,
+    res: &[7f64],
+};
+
+pub const U_FMB_130: UtilScenario = UtilScenario {
+    name: "u_fmb_130",
+    kind: 3u8,
+    args: &[2f64, 2f64, 7f64],
+    strs: &[],
+    status: 0u8,
+    res: &[7f64],
+};
+
+pub const U_FMB_131: UtilScenario = UtilScenario {
+    name: "u_fmb_131",
+    kind: 3u8,
+    args: &[2f64, 3f64, 7f64],
+    strs: &[],
+    status: 1u8,
+    res: &[],
+};
+
+pub const U_FMB_132: UtilScenario = UtilScenario {
+    name: "u_fmb_132",
+    kind: 3u8,
+    args: &[3f64, 0f64, 7f64],
+    strs: &[],
+    status: 0u8,
+    res: &[7f64],
+};
+
+pub const U_FMB_133: UtilScenario = UtilScenario {
+    name: "u_fmb_133",
+    kind: 3u8,
+    args: &[3f64, 1f64, 7f64],
+    strs: &[],
+    status: 0u8,
+    res: &[7f64],
+};
+
+pub const U_FMB_134: UtilScenario = UtilScenario {
+    name: "u_fmb_134",
+    kind: 3u8,
+    args: &[3f64, 2f64, 7f64],
+    strs: &[],
+    status: 0u8,
+    res: &[7f64],
+};
+
+pub const U_FMB_135: UtilScenario = UtilScenario {
+    name: "u_fmb_135",
+    kind: 3u8,
+    args: &[3f64, 3f64, 7f64],
+    strs: &[],
+    status: 1u8,
+    res: &[],
+};
+
+pub const U_FMB_136: UtilScenario = UtilScenario {
+    name: "u_fmb_136",
+    kind: 3u8,
+    args: &[4f64, 0f64, 7f64],
+    strs: &[],
+    status: 0u8,
+    res: &[7f64],
+};
+
+pub const U_FMB_137: UtilScenario = UtilScenario {
+    name: "u_fmb_137",
+    kind: 3u8,
+    args: &[4f64, 1f64, 7f64],
+    strs: &[],
+    status: 0u8,
+    res: &[7f64],
+};
+
+pub const U_FMB_138: UtilScenario = UtilScenario {
+    name: "u_fmb_138",
+    kind: 3u8,
+    args: &[4f64, 2f64, 7f64],
+    strs: &[],
+    status: 0u8,
+    res: &[7f64],
+};
+
+pub const U_FMB_139: UtilScenario = UtilScenario {
+    name: "u_fmb_139",
+    kind: 3u8,
+    args: &[4f64, 3f64, 7f64],
+    strs: &[],
+    status: 1u8,
+    res: &[],
+};
+
+pub const U_FMB_140: UtilScenario = UtilScenario {
+    name: "u_fmb_140",
+    kind: 3u8,
+    args: &[0f64, 0f64, 3f64, 3f64, 3f64],
+    strs: &[],
+    status: 0u8,
+    res: &[3f64],
+};
+
+pub const U_FMB_141: UtilScenario = UtilScenario {
+    name: "u_fmb_141",
+    kind: 3u8,
+    args: &[0f64, 1f64, 3f64, 3f64, 3f64],
+    strs: &[],
+    status: 0u8,
+    res: &[3f64],
+};
+
+pub const U_FMB_142: UtilScenario = UtilScenario {
+    name: "u_fmb_142",
+    kind: 3u8,
+    args: &[0f64, 2f64, 3f64, 3f64, 3f64],
+    strs: &[],
+    status: 0u8,
+    res: &[3f64],
+};
+
+pub const U_FMB_143: UtilScenario = UtilScenario {
+    name: "u_fmb_143",
+    kind: 3u8,
+    args: &[0f64, 3f64, 3f64, 3f64, 3f64],
+    strs: &[],
+    status: 1u8,
+    res: &[],
+};
+
+pub const U_FMB_144: UtilScenario = UtilScenario {
+    name: "u_fmb_144",
+    kind: 3u8,
+    args: &[1f64, 0f64, 3f64, 3f64, 3f64],
+    strs: &[],
+    status: 0u8,
+    res: &[3f64],
+};
+
+pub const U_FMB_145: UtilScenario = UtilScenario {
+    name: "u_fmb_145",
+    kind: 3u8,
+    args: &[1f64, 1f64, 3f64, 3f64, 3f64],
+    strs: &[],
+    status: 0u8,
+    res: &[3f64],
+};
+
+pub const U_FMB_146: UtilScenario = UtilScenario {
+    name: "u_fmb_146",
+    kind: 3u8,
+    args: &[1f64, 2f64, 3f64, 3f64, 3f64],
+    strs: &[],
+    status: 0u8,
+    res: &[3f64],
+};
+
+pub const U_FMB_147: UtilScenario = UtilScenario {
+    name: "u_fmb_147",
+    kind: 3u8,
+    args: &[1f64, 3f64, 3f64, 3f64, 3f64],
+    strs: &[],
+    status: 1u8,
+    res: &[],
+};
+
+pub const U_FMB_148: UtilScenario = UtilScenario {
+    name: "u_fmb_148",
+    kind: 3u8,
+    args: &[2f64, 0f64, 3f64, 3f64, 3f64],
+    strs: &[],
+    status: 0u8,
+    res: &[3f64],
+};
+
+pub const U_FMB_149: UtilScenario = UtilScenario {
+    name: "u_fmb_149",
+    kind: 3u8,
+    args: &[2f64, 1f64, 3f64, 3f64, 3f64],
+    strs: &[],
+    status: 0u8,
+    res: &[3f64],
+};
+
+pub const U_FMB_150: UtilScenario = UtilScenario {
+    name: "u_fmb_150",
+    kind: 3u8,
+    args: &[2f64, 2f64, 3f64, 3f64, 3f64],
+    strs: &[],
+    status: 0u8,
+    res: &[3f64],
+};
+
+pub const U_FMB_151: UtilScenario = UtilScenario {
+    name: "u_fmb_151",
+    kind: 3u8,
+    args: &[2f64, 3f64, 3f64, 3f64, 3f64],
+    strs: &[],
+    status: 1u8,
+    res: &[],
+};
+
+pub const U_FMB_152: UtilScenario = UtilScenario {
+    name: "u_fmb_152",
+    kind: 3u8,
+    args: &[3f64, 0f64, 3f64, 3f64, 3f64],
+    strs: &[],
+    status: 0u8,
+    res: &[3f64],
+};
+
+pub const U_FMB_153: UtilScenario = UtilScenario {
+    name: "u_fmb_153",
+    kind: 3u8,
+    args: &[3f64, 1f64, 3f64, 3f64, 3f64],
+    strs: &[],
+    status: 0u8,
+    res: &[3f64],
+};
+
+pub const U_FMB_154: UtilScenario = UtilScenario {
+    name: "u_fmb_154",
+    kind: 3u8,
+    args: &[3f64, 2f64, 3f64, 3f64, 3f64],
+    strs: &[],
+    status: 0u8,
+    res: &[3f64],
+};
+
+pub const U_FMB_155: UtilScenario = UtilScenario {
+    name: "u_fmb_155",
+    kind: 3u8,
+    args: &[3f64, 3f64, 3f64, 3f64, 3f64],
+    strs: &[],
+    status: 1u8,
+    res: &[],
+};
+
+pub const U_FMB_156: UtilScenario = UtilScenario {
+    name: "u_fmb_156",
+    kind: 3u8,
+    args: &[4f64, 0f64, 3f64, 3f64, 3f64],
+    strs: &[],
+    status: 0u8,
+    res: &[3f64],
+};
+
+pub const U_FMB_157: UtilScenario = UtilScenario {
+    name: "u_fmb_157",
+    kind: 3u8,
+    args: &[4f64, 1f64, 3f64, 3f64, 3f64],
+    strs: &[],
+    status: 0u8,
+    res: &[3f64],
+};
+
+pub const U_FMB_158: UtilScenario = UtilScenario {
+    name: "u_fmb_158",
+    kind: 3u8,
+    args: &[4f64, 2f64, 3f64, 3f64, 3f64],
+    strs: &[],
+    status: 0u8,
+    res: &[3f64],
+};
+
+pub const U_FMB_159: UtilScenario = UtilScenario {
+    name: "u_fmb_159",
+    kind: 3u8,
+    args: &[4f64, 3f64, 3f64, 3f64, 3f64],
+    strs: &[],
+    status: 1u8,
+    res: &[],
+};
+
+pub const U_FMB_160: UtilScenario = UtilScenario {
+    name: "u_fmb_160",
+    kind: 3u8,
+    args: &[0f64, 0f64, 1.5f64, -2.5f64, 0.5f64],
+    strs: &[],
+    status: 0u8,
+    res: &[-2.5f64],
+};
+
+pub const U_FMB_161: UtilScenario = UtilScenario {
+    name: "u_fmb_161",
+    kind: 3u8,
+    args: &[0f64, 1f64, 1.5f64, -2.5f64, 0.5f64],
+    strs: &[],
+    status: 0u8,
+    res: &[0.5f64],
+};
+
+pub const U_FMB_162: UtilScenario = UtilScenario {
+    name: "u_fmb_162",
+    kind: 3u8,
+    args: &[0f64, 2f64, 1.5f64, -2.5f64, 0.5f64],
+    strs: &[],
+    status: 0u8,
+    res: &[-2.5f64],
+};
+
+pub const U_FMB_163: UtilScenario = UtilScenario {
+    name: "u_fmb_163",
+    kind: 3u8,
+    args: &[0f64, 3f64, 1.5f64, -2.5f64, 0.5f64],
+    strs: &[],
+    status: 1u8,
+    res: &[],
+};
+
+pub const U_FMB_164: UtilScenario = UtilScenario {
+    name: "u_fmb_164",
+    kind: 3u8,
+    args: &[1f64, 0f64, 1.5f64, -2.5f64, 0.5f64],
+    strs: &[],
+    status: 0u8,
+    res: &[0.5f64],
+};
+
+pub const U_FMB_165: UtilScenario = UtilScenario {
+    name: "u_fmb_165",
+    kind: 3u8,
+    args: &[1f64, 1f64, 1.5f64, -2.5f64, 0.5f64],
+    strs: &[],
+    status: 0u8,
+    res: &[0.5f64],
+};
+
+pub const U_FMB_166: UtilScenario = UtilScenario {
+    name: "u_fmb_166",
+    kind: 3u8,
+    args: &[1f64, 2f64, 1.5f64, -2.5f64, 0.5f64],
+    strs: &[],
+    status: 0u8,
+    res: &[0.5f64],
+};
+
+pub const U_FMB_167: UtilScenario = UtilScenario {
+    name: "u_fmb_167",
+    kind: 3u8,
+    args: &[1f64, 3f64, 1.5f64, -2.5f64, 0.5f64],
+    strs: &[],
+    status: 1u8,
+    res: &[],
+};
+
+pub const U_FMB_168: UtilScenario = UtilScenario {
+    name: "u_fmb_168",
+    kind: 3u8,
+    args: &[2f64, 0f64, 1.5f64, -2.5f64, 0.5f64],
+    strs: &[],
+    status: 0u8,
+    res: &[-2.5f64],
+};
+
+pub const U_FMB_169: UtilScenario = UtilScenario {
+    name: "u_fmb_169",
+    kind: 3u8,
+    args: &[2f64, 1f64, 1.5f64, -2.5f64, 0.5f64],
+    strs: &[],
+    status: 0u8,
+    res: &[0.5f64],
+};
+
+pub const U_FMB_170: UtilScenario = UtilScenario {
+    name: "u_fmb_170",
+    kind: 3u8,
+    args: &[2f64, 2f64, 1.5f64, -2.5f64, 0.5f64],
+    strs: &[],
+    status: 0u8,
+    res: &[-2.5f64],
+};
+
+pub const U_FMB_171: UtilScenario = UtilScenario {
+    name: "u_fmb_171",
+    kind: 3u8,
+    args: &[2f64, 3f64, 1.5f64, -2.5f64, 0.5f64],
+    strs: &[],
+    status: 1u8,
+    res: &[],
+};
+
+pub const U_FMB_172: UtilScenario = UtilScenario {
+    name: "u_fmb_172",
+    kind: 3u8,
+    args: &[3f64, 0f64, 1.5f64, -2.5f64, 0.5f64],
+    strs: &[],
+    status: 0u8,
+    res: &[-2.5f64],
+};
+
+pub const U_FMB_173: UtilScenario = UtilScenario {
+    name: "u_fmb_173",
+    kind: 3u8,
+    args: &[3f64, 1f64, 1.5f64, -2.5f64, 0.5f64],
+    strs: &[],
+    status: 0u8,
+    res: &[0.5f64],
+};
+
+pub const U_FMB_174: UtilScenario = UtilScenario {
+    name: "u_fmb_174",
+    kind: 3u8,
+    args: &[3f64, 2f64, 1.5f64, -2.5f64, 0.5f64],
+    strs: &[],
+    status: 0u8,
+    res: &[-2.5f64],
+};
+
+pub const U_FMB_175: UtilScenario = UtilScenario {
+    name: "u_fmb_175",
+    kind: 3u8,
+    args: &[3f64, 3f64, 1.5f64, -2.5f64, 0.5f64],
+    strs: &[],
+    status: 1u8,
+    res: &[],
+};
+
+pub const U_FMB_176: UtilScenario = UtilScenario {
+    name: "u_fmb_176",
+    kind: 3u8,
+    args: &[4f64, 0f64, 1.5f64, -2.5f64, 0.5f64],
+    strs: &[],
+    status: 0u8,
+    res: &[1.5f64],
+};
+
+pub const U_FMB_177: UtilScenario = UtilScenario {
+    name: "u_fmb_177",
+    kind: 3u8,
+    args: &[4f64, 1f64, 1.5f64, -2.5f64, 0.5f64],
+    strs: &[],
+    status: 0u8,
+    res: &[1.5f64],
+};
+
+pub const U_FMB_178: UtilScenario = UtilScenario {
+    name: "u_fmb_178",
+    kind: 3u8,
+    args: &[4f64, 2f64, 1.5f64, -2.5f64, 0.5f64],
+    strs: &[],
+    status: 0u8,
+    res: &[1.5f64],
+};
+
+pub const U_FMB_179: UtilScenario = UtilScenario {
+    name: "u_fmb_179",
+    kind: 3u8,
+    args: &[4f64, 3f64, 1.5f64, -2.5f64, 0.5f64],
+    strs: &[],
+    status: 1u8,
+    res: &[],
+};
+
+pub const U_MODE_0: UtilScenario = UtilScenario {
+    name: "u_mode_0",
+    kind: 4u8,
+    args: &[1f64, 3f64, 2f64, 5f64, 3f64, 5f64],
+    strs: &[],
+    status: 0u8,
+    res: &[2f64],
+};
+
+pub const U_MODE_1: UtilScenario = UtilScenario {
+    name: "u_mode_1",
+    kind: 4u8,
+    args: &[7f64, 1f64, 8f64, 1f64, 9f64, 1f64],
+    strs: &[],
+    status: 0u8,
+    res: &[7f64],
+};
+
+pub const U_MODE_2: UtilScenario = UtilScenario {
+    name: "u_mode_2",
+    kind: 4u8,
+    args: &[1f64, 2f64, 2f64, 0f64],
+    strs: &[],
+    status: 0u8,
+    res: &[1f64],
+};
+
+pub const U_MODE_3: UtilScenario = UtilScenario {
+    name: "u_mode_3",
+    kind: 4u8,
+    args: &[],
+    strs: &[],
+    status: 1u8,
+    res: &[],
+};
+
+pub const U_MODE_4: UtilScenario = UtilScenario {
+    name: "u_mode_4",
+    kind: 4u8,
+    args: &[-1f64, 4f64, 5f64, 4f64, 6f64, 9f64],
+    strs: &[],
+    status: 0u8,
+    res: &[6f64],
+};
+
+pub const U_MODE_5: UtilScenario = UtilScenario {
+    name: "u_mode_5",
+    kind: 4u8,
+    args: &[2f64, 1f64, 1f64, 2f64, 3f64, 2f64],
+    strs: &[],
+    status: 0u8,
+    res: &[1f64],
+};
+
+pub const U_TOINT_0: UtilScenario = UtilScenario {
+    name: "u_toint_0",
+    kind: 5u8,
+    args: &[3.7f64],
+    strs: &[],
+    status: 0u8,
+    res: &[3f64],
+};
+
+pub const U_TOINT_1: UtilScenario = UtilScenario {
+    name: "u_toint_1",
+    kind: 5u8,
+    args: &[-3.2f64],
+    strs: &[],
+    status: 0u8,
+    res: &[-4f64],
+};
+
+pub const U_TOINT_2: UtilScenario = UtilScenario {
+    name: "u_toint_2",
+    kind: 5u8,
+    args: &[0f64],
+    strs: &[],
+    status: 0u8,
+    res: &[0f64],
+};
+
+pub const U_TOINT_3: UtilScenario = UtilScenario {
+    name: "u_toint_3",
+    kind: 5u8,
+    args: &[-0.0f64],
+    strs: &[],
+    status: 0u8,
+    res: &[0f64],
+};
+
+pub const U_TOINT_4: UtilScenario = UtilScenario {
+    name: "u_toint_4",
+    kind: 5u8,
+    args: &[0.3333333333333333f64],
+    strs: &[],
+    status: 0u8,
+    res: &[0f64],
+};
+
+pub const U_TOINT_5: UtilScenario = UtilScenario {
+    name: "u_toint_5",
+    kind: 5u8,
+    args: &[9007199254740992f64],
+    strs: &[],
+    status: 0u8,
+    res: &[9007199254740992f64],
+};
+
+pub const U_TOINT_6: UtilScenario = UtilScenario {
+    name: "u_toint_6",
+    kind: 5u8,
+    args: &[-9007199254740992f64],
+    strs: &[],
+    status: 0u8,
+    res: &[-9007199254740992f64],
+};
+
+pub const U_TOINT_7: UtilScenario = UtilScenario {
+    name: "u_toint_7",
+    kind: 5u8,
+    args: &[f64::INFINITY],
+    strs: &[],
+    status: 0u8,
+    res: &[9007199254740991f64],
+};
+
+pub const U_TOINT_8: UtilScenario = UtilScenario {
+    name: "u_toint_8",
+    kind: 5u8,
+    args: &[f64::NEG_INFINITY],
+    strs: &[],
+    status: 0u8,
+    res: &[-9007199254740991f64],
+};
+
+pub const U_TOINT_9: UtilScenario = UtilScenario {
+    name: "u_toint_9",
+    kind: 5u8,
+    args: &[f64::NAN],
+    strs: &[],
+    status: 2u8,
+    res: &[],
+};
+
+pub const U_TOINT_10: UtilScenario = UtilScenario {
+    name: "u_toint_10",
+    kind: 5u8,
+    args: &[42.9f64],
+    strs: &[],
+    status: 0u8,
+    res: &[42f64],
+};
+
+pub const U_TOINT_11: UtilScenario = UtilScenario {
+    name: "u_toint_11",
+    kind: 5u8,
+    args: &[-0.5f64],
+    strs: &[],
+    status: 0u8,
+    res: &[-1f64],
+};
+
+pub const U_TOINT_12: UtilScenario = UtilScenario {
+    name: "u_toint_12",
+    kind: 5u8,
+    args: &[5f64],
+    strs: &[],
+    status: 0u8,
+    res: &[5f64],
+};
+
+pub const U_TOINT_13: UtilScenario = UtilScenario {
+    name: "u_toint_13",
+    kind: 5u8,
+    args: &[1000000000000000f64],
+    strs: &[],
+    status: 0u8,
+    res: &[1000000000000000f64],
+};
+
+pub const U_MAXINT_0: UtilScenario = UtilScenario {
+    name: "u_maxint_0",
+    kind: 6u8,
+    args: &[1f64, 2f64],
+    strs: &[],
+    status: 0u8,
+    res: &[2f64],
+};
+
+pub const U_MININT_0: UtilScenario = UtilScenario {
+    name: "u_minint_0",
+    kind: 7u8,
+    args: &[1f64, 2f64],
+    strs: &[],
+    status: 0u8,
+    res: &[1f64],
+};
+
+pub const U_MAXINT_1: UtilScenario = UtilScenario {
+    name: "u_maxint_1",
+    kind: 6u8,
+    args: &[2f64, 1f64],
+    strs: &[],
+    status: 0u8,
+    res: &[2f64],
+};
+
+pub const U_MININT_1: UtilScenario = UtilScenario {
+    name: "u_minint_1",
+    kind: 7u8,
+    args: &[2f64, 1f64],
+    strs: &[],
+    status: 0u8,
+    res: &[1f64],
+};
+
+pub const U_MAXINT_2: UtilScenario = UtilScenario {
+    name: "u_maxint_2",
+    kind: 6u8,
+    args: &[5f64, 5f64],
+    strs: &[],
+    status: 0u8,
+    res: &[5f64],
+};
+
+pub const U_MININT_2: UtilScenario = UtilScenario {
+    name: "u_minint_2",
+    kind: 7u8,
+    args: &[5f64, 5f64],
+    strs: &[],
+    status: 0u8,
+    res: &[5f64],
+};
+
+pub const U_MAXINT_3: UtilScenario = UtilScenario {
+    name: "u_maxint_3",
+    kind: 6u8,
+    args: &[-3f64, -7f64],
+    strs: &[],
+    status: 0u8,
+    res: &[-3f64],
+};
+
+pub const U_MININT_3: UtilScenario = UtilScenario {
+    name: "u_minint_3",
+    kind: 7u8,
+    args: &[-3f64, -7f64],
+    strs: &[],
+    status: 0u8,
+    res: &[-7f64],
+};
+
+pub const U_MAXINT_4: UtilScenario = UtilScenario {
+    name: "u_maxint_4",
+    kind: 6u8,
+    args: &[0f64, -0.0f64],
+    strs: &[],
+    status: 0u8,
+    res: &[0f64],
+};
+
+pub const U_MININT_4: UtilScenario = UtilScenario {
+    name: "u_minint_4",
+    kind: 7u8,
+    args: &[0f64, -0.0f64],
+    strs: &[],
+    status: 0u8,
+    res: &[0f64],
+};
+
+pub const U_MAXINT_5: UtilScenario = UtilScenario {
+    name: "u_maxint_5",
+    kind: 6u8,
+    args: &[9007199254740992f64, -9007199254740992f64],
+    strs: &[],
+    status: 0u8,
+    res: &[9007199254740992f64],
+};
+
+pub const U_MININT_5: UtilScenario = UtilScenario {
+    name: "u_minint_5",
+    kind: 7u8,
+    args: &[9007199254740992f64, -9007199254740992f64],
+    strs: &[],
+    status: 0u8,
+    res: &[-9007199254740992f64],
+};
+
+pub const U_WITHININT_0: UtilScenario = UtilScenario {
+    name: "u_withinint_0",
+    kind: 8u8,
+    args: &[5f64, 0f64, 10f64],
+    strs: &[],
+    status: 0u8,
+    res: &[5f64],
+};
+
+pub const U_WITHININT_1: UtilScenario = UtilScenario {
+    name: "u_withinint_1",
+    kind: 8u8,
+    args: &[-5f64, 0f64, 10f64],
+    strs: &[],
+    status: 0u8,
+    res: &[0f64],
+};
+
+pub const U_WITHININT_2: UtilScenario = UtilScenario {
+    name: "u_withinint_2",
+    kind: 8u8,
+    args: &[42f64, 0f64, 10f64],
+    strs: &[],
+    status: 0u8,
+    res: &[10f64],
+};
+
+pub const U_WITHININT_3: UtilScenario = UtilScenario {
+    name: "u_withinint_3",
+    kind: 8u8,
+    args: &[3f64, 3f64, 3f64],
+    strs: &[],
+    status: 0u8,
+    res: &[3f64],
+};
+
+pub const U_WITHININT_4: UtilScenario = UtilScenario {
+    name: "u_withinint_4",
+    kind: 8u8,
+    args: &[7f64, 10f64, 0f64],
+    strs: &[],
+    status: 0u8,
+    res: &[0f64],
+};
+
+pub const U_SIG_0: UtilScenario = UtilScenario {
+    name: "u_sig_0",
+    kind: 9u8,
+    args: &[0f64, 1f64, 0f64],
+    strs: &[],
+    status: 0u8,
+    res: &[0.5f64],
+};
+
+pub const U_SIG_1: UtilScenario = UtilScenario {
+    name: "u_sig_1",
+    kind: 9u8,
+    args: &[5f64, 1f64, 0f64],
+    strs: &[],
+    status: 0u8,
+    res: &[0.9933071490757144f64],
+};
+
+pub const U_SIG_2: UtilScenario = UtilScenario {
+    name: "u_sig_2",
+    kind: 9u8,
+    args: &[-5f64, 1f64, 0f64],
+    strs: &[],
+    status: 0u8,
+    res: &[0.006692850924285399f64],
+};
+
+pub const U_SIG_3: UtilScenario = UtilScenario {
+    name: "u_sig_3",
+    kind: 9u8,
+    args: &[10f64, 1f64, 10f64],
+    strs: &[],
+    status: 0u8,
+    res: &[0.5f64],
+};
+
+pub const U_SIG_4: UtilScenario = UtilScenario {
+    name: "u_sig_4",
+    kind: 9u8,
+    args: &[0f64, 0f64, 0f64],
+    strs: &[],
+    status: 0u8,
+    res: &[0.5f64],
+};
+
+pub const U_SIG_5: UtilScenario = UtilScenario {
+    name: "u_sig_5",
+    kind: 9u8,
+    args: &[100f64, 0.1f64, 0f64],
+    strs: &[],
+    status: 0u8,
+    res: &[0.9999546021312947f64],
+};
+
+pub const U_SIG_6: UtilScenario = UtilScenario {
+    name: "u_sig_6",
+    kind: 9u8,
+    args: &[-100f64, 0.1f64, 0f64],
+    strs: &[],
+    status: 0u8,
+    res: &[0.00004539786870410378f64],
+};
+
+pub const U_SIG_7: UtilScenario = UtilScenario {
+    name: "u_sig_7",
+    kind: 9u8,
+    args: &[3f64, 2f64, 3f64],
+    strs: &[],
+    status: 0u8,
+    res: &[0.5f64],
+};
+
+pub const U_SIG_8: UtilScenario = UtilScenario {
+    name: "u_sig_8",
+    kind: 9u8,
+    args: &[1f64, 10f64, 0f64],
+    strs: &[],
+    status: 0u8,
+    res: &[0.9999546021312947f64],
+};
+
+pub const U_SIG_9: UtilScenario = UtilScenario {
+    name: "u_sig_9",
+    kind: 9u8,
+    args: &[0f64, 1f64, 50f64],
+    strs: &[],
+    status: 0u8,
+    res: &[1.928749847963919e-22f64],
+};
+
+pub const U_SIG_10: UtilScenario = UtilScenario {
+    name: "u_sig_10",
+    kind: 9u8,
+    args: &[2f64, -1f64, 0f64],
+    strs: &[],
+    status: 0u8,
+    res: &[0.1192029220221175f64],
+};
+
+pub const U_SIG_11: UtilScenario = UtilScenario {
+    name: "u_sig_11",
+    kind: 9u8,
+    args: &[0.5f64, 0.5f64, 0.5f64],
+    strs: &[],
+    status: 0u8,
+    res: &[0.5f64],
+};
+
+pub const U_BBC_0: UtilScenario = UtilScenario {
+    name: "u_bbc_0",
+    kind: 10u8,
+    args: &[0f64, 0f64, 10f64, 10f64],
+    strs: &[],
+    status: 0u8,
+    res: &[5f64, 5f64],
+};
+
+pub const U_BBC_1: UtilScenario = UtilScenario {
+    name: "u_bbc_1",
+    kind: 10u8,
+    args: &[0f64, 0f64, 9f64, 9f64],
+    strs: &[],
+    status: 0u8,
+    res: &[4f64, 4f64],
+};
+
+pub const U_BBC_2: UtilScenario = UtilScenario {
+    name: "u_bbc_2",
+    kind: 10u8,
+    args: &[1f64, 2f64, 4f64, 8f64],
+    strs: &[],
+    status: 0u8,
+    res: &[2f64, 5f64],
+};
+
+pub const U_BBC_3: UtilScenario = UtilScenario {
+    name: "u_bbc_3",
+    kind: 10u8,
+    args: &[-3f64, -3f64, 3f64, 3f64],
+    strs: &[],
+    status: 0u8,
+    res: &[0f64, 0f64],
+};
+
+pub const U_BBC_4: UtilScenario = UtilScenario {
+    name: "u_bbc_4",
+    kind: 10u8,
+    args: &[0f64, 0f64, 0f64, 0f64],
+    strs: &[],
+    status: 0u8,
+    res: &[0f64, 0f64],
+};
+
+pub const U_BBC_5: UtilScenario = UtilScenario {
+    name: "u_bbc_5",
+    kind: 10u8,
+    args: &[5f64, 5f64, 6f64, 7f64],
+    strs: &[],
+    status: 0u8,
+    res: &[5f64, 6f64],
+};
+
+pub const U_INSC_0: UtilScenario = UtilScenario {
+    name: "u_insc_0",
+    kind: 11u8,
+    args: &[0f64, 0f64, 10f64, 10f64, 2f64, 2f64, 8f64, 8f64],
+    strs: &[],
+    status: 0u8,
+    res: &[1f64],
+};
+
+pub const U_INSC_1: UtilScenario = UtilScenario {
+    name: "u_insc_1",
+    kind: 11u8,
+    args: &[0f64, 0f64, 10f64, 10f64, 0f64, 0f64, 10f64, 10f64],
+    strs: &[],
+    status: 0u8,
+    res: &[1f64],
+};
+
+pub const U_INSC_2: UtilScenario = UtilScenario {
+    name: "u_insc_2",
+    kind: 11u8,
+    args: &[0f64, 0f64, 10f64, 10f64, -1f64, 0f64, 8f64, 8f64],
+    strs: &[],
+    status: 0u8,
+    res: &[0f64],
+};
+
+pub const U_INSC_3: UtilScenario = UtilScenario {
+    name: "u_insc_3",
+    kind: 11u8,
+    args: &[0f64, 0f64, 10f64, 10f64, 0f64, 1f64, 8f64, 8f64],
+    strs: &[],
+    status: 0u8,
+    res: &[1f64],
+};
+
+pub const U_INSC_4: UtilScenario = UtilScenario {
+    name: "u_insc_4",
+    kind: 11u8,
+    args: &[0f64, 0f64, 10f64, 10f64, 2f64, 2f64, 11f64, 8f64],
+    strs: &[],
+    status: 0u8,
+    res: &[0f64],
+};
+
+pub const U_INSC_5: UtilScenario = UtilScenario {
+    name: "u_insc_5",
+    kind: 11u8,
+    args: &[0f64, 0f64, 10f64, 10f64, 2f64, 2f64, 8f64, 11f64],
+    strs: &[],
+    status: 0u8,
+    res: &[0f64],
+};
+
+pub const U_INSC_6: UtilScenario = UtilScenario {
+    name: "u_insc_6",
+    kind: 11u8,
+    args: &[-5f64, -5f64, 5f64, 5f64, -2f64, -2f64, 2f64, 2f64],
+    strs: &[],
+    status: 0u8,
+    res: &[1f64],
+};
+
+pub const U_CBB_0: UtilScenario = UtilScenario {
+    name: "u_cbb_0",
+    kind: 12u8,
+    args: &[5f64, 5f64, 0f64, 0f64, 6f64, 12f64, 24f64],
+    strs: &[],
+    status: 0u8,
+    res: &[0f64, 0f64, 4f64, 4f64],
+};
+
+pub const U_CBB_1: UtilScenario = UtilScenario {
+    name: "u_cbb_1",
+    kind: 12u8,
+    args: &[5f64, 5f64, 1f64, 0f64, 6f64, 12f64, 24f64],
+    strs: &[],
+    status: 0u8,
+    res: &[0f64, 0f64, 4f64, 4f64],
+};
+
+pub const U_CBB_2: UtilScenario = UtilScenario {
+    name: "u_cbb_2",
+    kind: 12u8,
+    args: &[5f64, 5f64, 2f64, 0f64, 6f64, 12f64, 24f64],
+    strs: &[],
+    status: 0u8,
+    res: &[0f64, 0f64, 4f64, 4f64],
+};
+
+pub const U_CBBC_3: UtilScenario = UtilScenario {
+    name: "u_cbbc_3",
+    kind: 14u8,
+    args: &[5f64, 5f64, 0f64, 6f64, 12f64, 24f64],
+    strs: &[],
+    status: 0u8,
+    res: &[2f64, 2f64],
+};
+
+pub const U_CBB_4: UtilScenario = UtilScenario {
+    name: "u_cbb_4",
+    kind: 12u8,
+    args: &[5f64, 5f64, 0f64, 1f64, 2f64, 3f64],
+    strs: &[],
+    status: 0u8,
+    res: &[1f64, 0f64, 3f64, 0f64],
+};
+
+pub const U_CBB_5: UtilScenario = UtilScenario {
+    name: "u_cbb_5",
+    kind: 12u8,
+    args: &[5f64, 5f64, 1f64, 1f64, 2f64, 3f64],
+    strs: &[],
+    status: 0u8,
+    res: &[1f64, 0f64, 3f64, 0f64],
+};
+
+pub const U_CBB_6: UtilScenario = UtilScenario {
+    name: "u_cbb_6",
+    kind: 12u8,
+    args: &[5f64, 5f64, 2f64, 1f64, 2f64, 3f64],
+    strs: &[],
+    status: 0u8,
+    res: &[1f64, 0f64, 3f64, 0f64],
+};
+
+pub const U_CBBC_7: UtilScenario = UtilScenario {
+    name: "u_cbbc_7",
+    kind: 14u8,
+    args: &[5f64, 5f64, 1f64, 2f64, 3f64],
+    strs: &[],
+    status: 0u8,
+    res: &[2f64, 0f64],
+};
+
+pub const U_CBB_8: UtilScenario = UtilScenario {
+    name: "u_cbb_8",
+    kind: 12u8,
+    args: &[5f64, 5f64, 0f64, 0f64, 4f64, 5f64, 9f64, 10f64, 14f64, 15f64, 19f64, 20f64, 21f64, 22f64, 23f64],
+    strs: &[],
+    status: 0u8,
+    res: &[0f64, 0f64, 4f64, 4f64],
+};
+
+pub const U_CBB_9: UtilScenario = UtilScenario {
+    name: "u_cbb_9",
+    kind: 12u8,
+    args: &[5f64, 5f64, 1f64, 0f64, 4f64, 5f64, 9f64, 10f64, 14f64, 15f64, 19f64, 20f64, 21f64, 22f64, 23f64],
+    strs: &[],
+    status: 0u8,
+    res: &[0f64, 0f64, 4f64, 4f64],
+};
+
+pub const U_CBB_10: UtilScenario = UtilScenario {
+    name: "u_cbb_10",
+    kind: 12u8,
+    args: &[5f64, 5f64, 2f64, 0f64, 4f64, 5f64, 9f64, 10f64, 14f64, 15f64, 19f64, 20f64, 21f64, 22f64, 23f64],
+    strs: &[],
+    status: 0u8,
+    res: &[0f64, 0f64, 4f64, 4f64],
+};
+
+pub const U_CBBC_11: UtilScenario = UtilScenario {
+    name: "u_cbbc_11",
+    kind: 14u8,
+    args: &[5f64, 5f64, 0f64, 4f64, 5f64, 9f64, 10f64, 14f64, 15f64, 19f64, 20f64, 21f64, 22f64, 23f64],
+    strs: &[],
+    status: 0u8,
+    res: &[2f64, 2f64],
+};
+
+pub const U_CBB_12: UtilScenario = UtilScenario {
+    name: "u_cbb_12",
+    kind: 12u8,
+    args: &[5f64, 5f64, 0f64, 7f64],
+    strs: &[],
+    status: 0u8,
+    res: &[2f64, 1f64, 2f64, 1f64],
+};
+
+pub const U_CBB_13: UtilScenario = UtilScenario {
+    name: "u_cbb_13",
+    kind: 12u8,
+    args: &[5f64, 5f64, 1f64, 7f64],
+    strs: &[],
+    status: 0u8,
+    res: &[2f64, 1f64, 2f64, 1f64],
+};
+
+pub const U_CBB_14: UtilScenario = UtilScenario {
+    name: "u_cbb_14",
+    kind: 12u8,
+    args: &[5f64, 5f64, 2f64, 7f64],
+    strs: &[],
+    status: 0u8,
+    res: &[2f64, 1f64, 2f64, 1f64],
+};
+
+pub const U_CBBC_15: UtilScenario = UtilScenario {
+    name: "u_cbbc_15",
+    kind: 14u8,
+    args: &[5f64, 5f64, 7f64],
+    strs: &[],
+    status: 0u8,
+    res: &[2f64, 1f64],
+};
+
+pub const U_CBB_16: UtilScenario = UtilScenario {
+    name: "u_cbb_16",
+    kind: 12u8,
+    args: &[5f64, 5f64, 0f64, 2f64, 8f64, 13f64, 3f64, 17f64],
+    strs: &[],
+    status: 0u8,
+    res: &[2f64, 0f64, 3f64, 3f64],
+};
+
+pub const U_CBB_17: UtilScenario = UtilScenario {
+    name: "u_cbb_17",
+    kind: 12u8,
+    args: &[5f64, 5f64, 1f64, 2f64, 8f64, 13f64, 3f64, 17f64],
+    strs: &[],
+    status: 0u8,
+    res: &[2f64, 0f64, 3f64, 3f64],
+};
+
+pub const U_CBB_18: UtilScenario = UtilScenario {
+    name: "u_cbb_18",
+    kind: 12u8,
+    args: &[5f64, 5f64, 2f64, 2f64, 8f64, 13f64, 3f64, 17f64],
+    strs: &[],
+    status: 0u8,
+    res: &[2f64, 0f64, 3f64, 3f64],
+};
+
+pub const U_CBBC_19: UtilScenario = UtilScenario {
+    name: "u_cbbc_19",
+    kind: 14u8,
+    args: &[5f64, 5f64, 2f64, 8f64, 13f64, 3f64, 17f64],
+    strs: &[],
+    status: 0u8,
+    res: &[2f64, 1f64],
+};
+
+pub const U_BBT_20: UtilScenario = UtilScenario {
+    name: "u_bbt_20",
+    kind: 13u8,
+    args: &[5f64, 5f64, 12f64, 1f64],
+    strs: &[],
+    status: 0u8,
+    res: &[6f64, 16f64, 7f64, 17f64, 8f64, 18f64, 11f64, 13f64],
+};
+
+pub const U_BBT_21: UtilScenario = UtilScenario {
+    name: "u_bbt_21",
+    kind: 13u8,
+    args: &[5f64, 5f64, 0f64, 0f64],
+    strs: &[],
+    status: 0u8,
+    res: &[0f64],
+};
+
+pub const U_BBT_22: UtilScenario = UtilScenario {
+    name: "u_bbt_22",
+    kind: 13u8,
+    args: &[5f64, 5f64, 0f64, 2f64],
+    strs: &[],
+    status: 0u8,
+    res: &[10f64, 11f64, 12f64, 2f64, 7f64],
+};
+
+pub const U_BBT_23: UtilScenario = UtilScenario {
+    name: "u_bbt_23",
+    kind: 13u8,
+    args: &[5f64, 5f64, 12f64, 3f64],
+    strs: &[],
+    status: 0u8,
+    res: &[],
+};
+
+pub const U_BBT_24: UtilScenario = UtilScenario {
+    name: "u_bbt_24",
+    kind: 13u8,
+    args: &[5f64, 5f64, 24f64, 2f64],
+    strs: &[],
+    status: 0u8,
+    res: &[12f64, 13f64, 14f64, 17f64, 22f64],
+};
+
+pub const U_BBT_25: UtilScenario = UtilScenario {
+    name: "u_bbt_25",
+    kind: 13u8,
+    args: &[5f64, 5f64, 6f64, 1f64],
+    strs: &[],
+    status: 0u8,
+    res: &[0f64, 10f64, 1f64, 11f64, 2f64, 12f64, 5f64, 7f64],
+};
+
+pub const U_BBT_26: UtilScenario = UtilScenario {
+    name: "u_bbt_26",
+    kind: 13u8,
+    args: &[5f64, 5f64, 2f64, 5f64],
+    strs: &[],
+    status: 0u8,
+    res: &[],
+};
+
+pub const U_CBB_27: UtilScenario = UtilScenario {
+    name: "u_cbb_27",
+    kind: 12u8,
+    args: &[4f64, 3f64, 0f64, 0f64, 6f64, 12f64, 24f64],
+    strs: &[],
+    status: 0u8,
+    res: &[0f64, 0f64, 2f64, 6f64],
+};
+
+pub const U_CBB_28: UtilScenario = UtilScenario {
+    name: "u_cbb_28",
+    kind: 12u8,
+    args: &[4f64, 3f64, 1f64, 0f64, 6f64, 12f64, 24f64],
+    strs: &[],
+    status: 0u8,
+    res: &[0f64, 0f64, 2f64, 6f64],
+};
+
+pub const U_CBB_29: UtilScenario = UtilScenario {
+    name: "u_cbb_29",
+    kind: 12u8,
+    args: &[4f64, 3f64, 2f64, 0f64, 6f64, 12f64, 24f64],
+    strs: &[],
+    status: 0u8,
+    res: &[0f64, 0f64, 2f64, 6f64],
+};
+
+pub const U_CBBC_30: UtilScenario = UtilScenario {
+    name: "u_cbbc_30",
+    kind: 14u8,
+    args: &[4f64, 3f64, 0f64, 6f64, 12f64, 24f64],
+    strs: &[],
+    status: 0u8,
+    res: &[1f64, 3f64],
+};
+
+pub const U_CBB_31: UtilScenario = UtilScenario {
+    name: "u_cbb_31",
+    kind: 12u8,
+    args: &[4f64, 3f64, 0f64, 1f64, 2f64, 3f64],
+    strs: &[],
+    status: 0u8,
+    res: &[1f64, 0f64, 3f64, 0f64],
+};
+
+pub const U_CBB_32: UtilScenario = UtilScenario {
+    name: "u_cbb_32",
+    kind: 12u8,
+    args: &[4f64, 3f64, 1f64, 1f64, 2f64, 3f64],
+    strs: &[],
+    status: 0u8,
+    res: &[1f64, 0f64, 3f64, 0f64],
+};
+
+pub const U_CBB_33: UtilScenario = UtilScenario {
+    name: "u_cbb_33",
+    kind: 12u8,
+    args: &[4f64, 3f64, 2f64, 1f64, 2f64, 3f64],
+    strs: &[],
+    status: 0u8,
+    res: &[1f64, 0f64, 3f64, 0f64],
+};
+
+pub const U_CBBC_34: UtilScenario = UtilScenario {
+    name: "u_cbbc_34",
+    kind: 14u8,
+    args: &[4f64, 3f64, 1f64, 2f64, 3f64],
+    strs: &[],
+    status: 0u8,
+    res: &[2f64, 0f64],
+};
+
+pub const U_CBB_35: UtilScenario = UtilScenario {
+    name: "u_cbb_35",
+    kind: 12u8,
+    args: &[4f64, 3f64, 0f64, 0f64, 4f64, 5f64, 9f64, 10f64, 14f64, 15f64, 19f64, 20f64, 21f64, 22f64, 23f64],
+    strs: &[],
+    status: 0u8,
+    res: &[0f64, 0f64, 3f64, 5f64],
+};
+
+pub const U_CBB_36: UtilScenario = UtilScenario {
+    name: "u_cbb_36",
+    kind: 12u8,
+    args: &[4f64, 3f64, 1f64, 0f64, 4f64, 5f64, 9f64, 10f64, 14f64, 15f64, 19f64, 20f64, 21f64, 22f64, 23f64],
+    strs: &[],
+    status: 0u8,
+    res: &[0f64, 0f64, 3f64, 5f64],
+};
+
+pub const U_CBB_37: UtilScenario = UtilScenario {
+    name: "u_cbb_37",
+    kind: 12u8,
+    args: &[4f64, 3f64, 2f64, 0f64, 4f64, 5f64, 9f64, 10f64, 14f64, 15f64, 19f64, 20f64, 21f64, 22f64, 23f64],
+    strs: &[],
+    status: 0u8,
+    res: &[0f64, 0f64, 3f64, 5f64],
+};
+
+pub const U_CBBC_38: UtilScenario = UtilScenario {
+    name: "u_cbbc_38",
+    kind: 14u8,
+    args: &[4f64, 3f64, 0f64, 4f64, 5f64, 9f64, 10f64, 14f64, 15f64, 19f64, 20f64, 21f64, 22f64, 23f64],
+    strs: &[],
+    status: 0u8,
+    res: &[1f64, 2f64],
+};
+
+pub const U_CBB_39: UtilScenario = UtilScenario {
+    name: "u_cbb_39",
+    kind: 12u8,
+    args: &[4f64, 3f64, 0f64, 7f64],
+    strs: &[],
+    status: 0u8,
+    res: &[3f64, 1f64, 3f64, 1f64],
+};
+
+pub const U_CBB_40: UtilScenario = UtilScenario {
+    name: "u_cbb_40",
+    kind: 12u8,
+    args: &[4f64, 3f64, 1f64, 7f64],
+    strs: &[],
+    status: 0u8,
+    res: &[3f64, 1f64, 3f64, 1f64],
+};
+
+pub const U_CBB_41: UtilScenario = UtilScenario {
+    name: "u_cbb_41",
+    kind: 12u8,
+    args: &[4f64, 3f64, 2f64, 7f64],
+    strs: &[],
+    status: 0u8,
+    res: &[3f64, 1f64, 3f64, 1f64],
+};
+
+pub const U_CBBC_42: UtilScenario = UtilScenario {
+    name: "u_cbbc_42",
+    kind: 14u8,
+    args: &[4f64, 3f64, 7f64],
+    strs: &[],
+    status: 0u8,
+    res: &[3f64, 1f64],
+};
+
+pub const U_CBB_43: UtilScenario = UtilScenario {
+    name: "u_cbb_43",
+    kind: 12u8,
+    args: &[4f64, 3f64, 0f64, 2f64, 8f64, 13f64, 3f64, 17f64],
+    strs: &[],
+    status: 0u8,
+    res: &[0f64, 0f64, 3f64, 4f64],
+};
+
+pub const U_CBB_44: UtilScenario = UtilScenario {
+    name: "u_cbb_44",
+    kind: 12u8,
+    args: &[4f64, 3f64, 1f64, 2f64, 8f64, 13f64, 3f64, 17f64],
+    strs: &[],
+    status: 0u8,
+    res: &[0f64, 0f64, 3f64, 4f64],
+};
+
+pub const U_CBB_45: UtilScenario = UtilScenario {
+    name: "u_cbb_45",
+    kind: 12u8,
+    args: &[4f64, 3f64, 2f64, 2f64, 8f64, 13f64, 3f64, 17f64],
+    strs: &[],
+    status: 0u8,
+    res: &[0f64, 0f64, 3f64, 4f64],
+};
+
+pub const U_CBBC_46: UtilScenario = UtilScenario {
+    name: "u_cbbc_46",
+    kind: 14u8,
+    args: &[4f64, 3f64, 2f64, 8f64, 13f64, 3f64, 17f64],
+    strs: &[],
+    status: 0u8,
+    res: &[1f64, 2f64],
+};
+
+pub const U_BBT_47: UtilScenario = UtilScenario {
+    name: "u_bbt_47",
+    kind: 13u8,
+    args: &[4f64, 3f64, 12f64, 1f64],
+    strs: &[],
+    status: 0u8,
+    res: &[8f64, 9f64],
+};
+
+pub const U_BBT_48: UtilScenario = UtilScenario {
+    name: "u_bbt_48",
+    kind: 13u8,
+    args: &[4f64, 3f64, 0f64, 0f64],
+    strs: &[],
+    status: 0u8,
+    res: &[0f64],
+};
+
+pub const U_BBT_49: UtilScenario = UtilScenario {
+    name: "u_bbt_49",
+    kind: 13u8,
+    args: &[4f64, 3f64, 0f64, 2f64],
+    strs: &[],
+    status: 0u8,
+    res: &[8f64, 9f64, 10f64, 2f64, 6f64],
+};
+
+pub const U_BBT_50: UtilScenario = UtilScenario {
+    name: "u_bbt_50",
+    kind: 13u8,
+    args: &[4f64, 3f64, 12f64, 3f64],
+    strs: &[],
+    status: 0u8,
+    res: &[0f64, 1f64, 2f64, 3f64, 7f64, 11f64],
+};
+
+pub const U_BBT_51: UtilScenario = UtilScenario {
+    name: "u_bbt_51",
+    kind: 13u8,
+    args: &[4f64, 3f64, 24f64, 2f64],
+    strs: &[],
+    status: 0u8,
+    res: &[],
+};
+
+pub const U_BBT_52: UtilScenario = UtilScenario {
+    name: "u_bbt_52",
+    kind: 13u8,
+    args: &[4f64, 3f64, 6f64, 1f64],
+    strs: &[],
+    status: 0u8,
+    res: &[1f64, 9f64, 2f64, 10f64, 3f64, 11f64, 5f64, 7f64],
+};
+
+pub const U_BBT_53: UtilScenario = UtilScenario {
+    name: "u_bbt_53",
+    kind: 13u8,
+    args: &[4f64, 3f64, 2f64, 5f64],
+    strs: &[],
+    status: 0u8,
+    res: &[],
+};
+
+pub const U_CBB_54: UtilScenario = UtilScenario {
+    name: "u_cbb_54",
+    kind: 12u8,
+    args: &[8f64, 2f64, 0f64, 0f64, 6f64, 12f64, 24f64],
+    strs: &[],
+    status: 0u8,
+    res: &[0f64, 0f64, 6f64, 3f64],
+};
+
+pub const U_CBB_55: UtilScenario = UtilScenario {
+    name: "u_cbb_55",
+    kind: 12u8,
+    args: &[8f64, 2f64, 1f64, 0f64, 6f64, 12f64, 24f64],
+    strs: &[],
+    status: 0u8,
+    res: &[0f64, 0f64, 6f64, 3f64],
+};
+
+pub const U_CBB_56: UtilScenario = UtilScenario {
+    name: "u_cbb_56",
+    kind: 12u8,
+    args: &[8f64, 2f64, 2f64, 0f64, 6f64, 12f64, 24f64],
+    strs: &[],
+    status: 0u8,
+    res: &[0f64, 0f64, 6f64, 3f64],
+};
+
+pub const U_CBBC_57: UtilScenario = UtilScenario {
+    name: "u_cbbc_57",
+    kind: 14u8,
+    args: &[8f64, 2f64, 0f64, 6f64, 12f64, 24f64],
+    strs: &[],
+    status: 0u8,
+    res: &[3f64, 1f64],
+};
+
+pub const U_CBB_58: UtilScenario = UtilScenario {
+    name: "u_cbb_58",
+    kind: 12u8,
+    args: &[8f64, 2f64, 0f64, 1f64, 2f64, 3f64],
+    strs: &[],
+    status: 0u8,
+    res: &[1f64, 0f64, 3f64, 0f64],
+};
+
+pub const U_CBB_59: UtilScenario = UtilScenario {
+    name: "u_cbb_59",
+    kind: 12u8,
+    args: &[8f64, 2f64, 1f64, 1f64, 2f64, 3f64],
+    strs: &[],
+    status: 0u8,
+    res: &[1f64, 0f64, 3f64, 0f64],
+};
+
+pub const U_CBB_60: UtilScenario = UtilScenario {
+    name: "u_cbb_60",
+    kind: 12u8,
+    args: &[8f64, 2f64, 2f64, 1f64, 2f64, 3f64],
+    strs: &[],
+    status: 0u8,
+    res: &[1f64, 0f64, 3f64, 0f64],
+};
+
+pub const U_CBBC_61: UtilScenario = UtilScenario {
+    name: "u_cbbc_61",
+    kind: 14u8,
+    args: &[8f64, 2f64, 1f64, 2f64, 3f64],
+    strs: &[],
+    status: 0u8,
+    res: &[2f64, 0f64],
+};
+
+pub const U_CBB_62: UtilScenario = UtilScenario {
+    name: "u_cbb_62",
+    kind: 12u8,
+    args: &[8f64, 2f64, 0f64, 0f64, 4f64, 5f64, 9f64, 10f64, 14f64, 15f64, 19f64, 20f64, 21f64, 22f64, 23f64],
+    strs: &[],
+    status: 0u8,
+    res: &[0f64, 0f64, 7f64, 2f64],
+};
+
+pub const U_CBB_63: UtilScenario = UtilScenario {
+    name: "u_cbb_63",
+    kind: 12u8,
+    args: &[8f64, 2f64, 1f64, 0f64, 4f64, 5f64, 9f64, 10f64, 14f64, 15f64, 19f64, 20f64, 21f64, 22f64, 23f64],
+    strs: &[],
+    status: 0u8,
+    res: &[0f64, 0f64, 7f64, 2f64],
+};
+
+pub const U_CBB_64: UtilScenario = UtilScenario {
+    name: "u_cbb_64",
+    kind: 12u8,
+    args: &[8f64, 2f64, 2f64, 0f64, 4f64, 5f64, 9f64, 10f64, 14f64, 15f64, 19f64, 20f64, 21f64, 22f64, 23f64],
+    strs: &[],
+    status: 0u8,
+    res: &[0f64, 0f64, 7f64, 2f64],
+};
+
+pub const U_CBBC_65: UtilScenario = UtilScenario {
+    name: "u_cbbc_65",
+    kind: 14u8,
+    args: &[8f64, 2f64, 0f64, 4f64, 5f64, 9f64, 10f64, 14f64, 15f64, 19f64, 20f64, 21f64, 22f64, 23f64],
+    strs: &[],
+    status: 0u8,
+    res: &[3f64, 1f64],
+};
+
+pub const U_CBB_66: UtilScenario = UtilScenario {
+    name: "u_cbb_66",
+    kind: 12u8,
+    args: &[8f64, 2f64, 0f64, 7f64],
+    strs: &[],
+    status: 0u8,
+    res: &[7f64, 0f64, 7f64, 0f64],
+};
+
+pub const U_CBB_67: UtilScenario = UtilScenario {
+    name: "u_cbb_67",
+    kind: 12u8,
+    args: &[8f64, 2f64, 1f64, 7f64],
+    strs: &[],
+    status: 0u8,
+    res: &[7f64, 0f64, 7f64, 0f64],
+};
+
+pub const U_CBB_68: UtilScenario = UtilScenario {
+    name: "u_cbb_68",
+    kind: 12u8,
+    args: &[8f64, 2f64, 2f64, 7f64],
+    strs: &[],
+    status: 0u8,
+    res: &[7f64, 0f64, 7f64, 0f64],
+};
+
+pub const U_CBBC_69: UtilScenario = UtilScenario {
+    name: "u_cbbc_69",
+    kind: 14u8,
+    args: &[8f64, 2f64, 7f64],
+    strs: &[],
+    status: 0u8,
+    res: &[7f64, 0f64],
+};
+
+pub const U_CBB_70: UtilScenario = UtilScenario {
+    name: "u_cbb_70",
+    kind: 12u8,
+    args: &[8f64, 2f64, 0f64, 2f64, 8f64, 13f64, 3f64, 17f64],
+    strs: &[],
+    status: 0u8,
+    res: &[0f64, 0f64, 5f64, 2f64],
+};
+
+pub const U_CBB_71: UtilScenario = UtilScenario {
+    name: "u_cbb_71",
+    kind: 12u8,
+    args: &[8f64, 2f64, 1f64, 2f64, 8f64, 13f64, 3f64, 17f64],
+    strs: &[],
+    status: 0u8,
+    res: &[0f64, 0f64, 5f64, 2f64],
+};
+
+pub const U_CBB_72: UtilScenario = UtilScenario {
+    name: "u_cbb_72",
+    kind: 12u8,
+    args: &[8f64, 2f64, 2f64, 2f64, 8f64, 13f64, 3f64, 17f64],
+    strs: &[],
+    status: 0u8,
+    res: &[0f64, 0f64, 5f64, 2f64],
+};
+
+pub const U_CBBC_73: UtilScenario = UtilScenario {
+    name: "u_cbbc_73",
+    kind: 14u8,
+    args: &[8f64, 2f64, 2f64, 8f64, 13f64, 3f64, 17f64],
+    strs: &[],
+    status: 0u8,
+    res: &[2f64, 1f64],
+};
+
+pub const U_BBT_74: UtilScenario = UtilScenario {
+    name: "u_bbt_74",
+    kind: 13u8,
+    args: &[8f64, 2f64, 12f64, 1f64],
+    strs: &[],
+    status: 0u8,
+    res: &[3f64, 4f64, 5f64, 11f64, 13f64],
+};
+
+pub const U_BBT_75: UtilScenario = UtilScenario {
+    name: "u_bbt_75",
+    kind: 13u8,
+    args: &[8f64, 2f64, 0f64, 0f64],
+    strs: &[],
+    status: 0u8,
+    res: &[0f64],
+};
+
+pub const U_BBT_76: UtilScenario = UtilScenario {
+    name: "u_bbt_76",
+    kind: 13u8,
+    args: &[8f64, 2f64, 0f64, 2f64],
+    strs: &[],
+    status: 0u8,
+    res: &[2f64, 10f64],
+};
+
+pub const U_BBT_77: UtilScenario = UtilScenario {
+    name: "u_bbt_77",
+    kind: 13u8,
+    args: &[8f64, 2f64, 12f64, 3f64],
+    strs: &[],
+    status: 0u8,
+    res: &[1f64, 7f64, 9f64, 15f64],
+};
+
+pub const U_BBT_78: UtilScenario = UtilScenario {
+    name: "u_bbt_78",
+    kind: 13u8,
+    args: &[8f64, 2f64, 24f64, 2f64],
+    strs: &[],
+    status: 0u8,
+    res: &[8f64, 9f64, 10f64],
+};
+
+pub const U_BBT_79: UtilScenario = UtilScenario {
+    name: "u_bbt_79",
+    kind: 13u8,
+    args: &[8f64, 2f64, 6f64, 1f64],
+    strs: &[],
+    status: 0u8,
+    res: &[13f64, 14f64, 15f64, 5f64, 7f64],
+};
+
+pub const U_BBT_80: UtilScenario = UtilScenario {
+    name: "u_bbt_80",
+    kind: 13u8,
+    args: &[8f64, 2f64, 2f64, 5f64],
+    strs: &[],
+    status: 0u8,
+    res: &[7f64, 15f64],
+};
+
+pub const UTIL_SCENARIOS: &[UtilScenario] = &[
+    U_MDW_0,
+    U_MDW_1,
+    U_MDW_2,
+    U_MDW_3,
+    U_MDW_4,
+    U_MDW_5,
+    U_MDW_6,
+    U_WITHIN_0,
+    U_WITHIN_1,
+    U_WITHIN_2,
+    U_WITHIN_3,
+    U_WITHIN_4,
+    U_WITHIN_5,
+    U_WITHIN_6,
+    U_WITHIN_7,
+    U_HASH_0,
+    U_HASH_1,
+    U_HASH_2,
+    U_HASH_3,
+    U_HASH_4,
+    U_HASH_5,
+    U_HASH_6,
+    U_HASH_7,
+    U_HASH_8,
+    U_FMB_0,
+    U_FMB_1,
+    U_FMB_2,
+    U_FMB_3,
+    U_FMB_4,
+    U_FMB_5,
+    U_FMB_6,
+    U_FMB_7,
+    U_FMB_8,
+    U_FMB_9,
+    U_FMB_10,
+    U_FMB_11,
+    U_FMB_12,
+    U_FMB_13,
+    U_FMB_14,
+    U_FMB_15,
+    U_FMB_16,
+    U_FMB_17,
+    U_FMB_18,
+    U_FMB_19,
+    U_FMB_20,
+    U_FMB_21,
+    U_FMB_22,
+    U_FMB_23,
+    U_FMB_24,
+    U_FMB_25,
+    U_FMB_26,
+    U_FMB_27,
+    U_FMB_28,
+    U_FMB_29,
+    U_FMB_30,
+    U_FMB_31,
+    U_FMB_32,
+    U_FMB_33,
+    U_FMB_34,
+    U_FMB_35,
+    U_FMB_36,
+    U_FMB_37,
+    U_FMB_38,
+    U_FMB_39,
+    U_FMB_40,
+    U_FMB_41,
+    U_FMB_42,
+    U_FMB_43,
+    U_FMB_44,
+    U_FMB_45,
+    U_FMB_46,
+    U_FMB_47,
+    U_FMB_48,
+    U_FMB_49,
+    U_FMB_50,
+    U_FMB_51,
+    U_FMB_52,
+    U_FMB_53,
+    U_FMB_54,
+    U_FMB_55,
+    U_FMB_56,
+    U_FMB_57,
+    U_FMB_58,
+    U_FMB_59,
+    U_FMB_60,
+    U_FMB_61,
+    U_FMB_62,
+    U_FMB_63,
+    U_FMB_64,
+    U_FMB_65,
+    U_FMB_66,
+    U_FMB_67,
+    U_FMB_68,
+    U_FMB_69,
+    U_FMB_70,
+    U_FMB_71,
+    U_FMB_72,
+    U_FMB_73,
+    U_FMB_74,
+    U_FMB_75,
+    U_FMB_76,
+    U_FMB_77,
+    U_FMB_78,
+    U_FMB_79,
+    U_FMB_80,
+    U_FMB_81,
+    U_FMB_82,
+    U_FMB_83,
+    U_FMB_84,
+    U_FMB_85,
+    U_FMB_86,
+    U_FMB_87,
+    U_FMB_88,
+    U_FMB_89,
+    U_FMB_90,
+    U_FMB_91,
+    U_FMB_92,
+    U_FMB_93,
+    U_FMB_94,
+    U_FMB_95,
+    U_FMB_96,
+    U_FMB_97,
+    U_FMB_98,
+    U_FMB_99,
+    U_FMB_100,
+    U_FMB_101,
+    U_FMB_102,
+    U_FMB_103,
+    U_FMB_104,
+    U_FMB_105,
+    U_FMB_106,
+    U_FMB_107,
+    U_FMB_108,
+    U_FMB_109,
+    U_FMB_110,
+    U_FMB_111,
+    U_FMB_112,
+    U_FMB_113,
+    U_FMB_114,
+    U_FMB_115,
+    U_FMB_116,
+    U_FMB_117,
+    U_FMB_118,
+    U_FMB_119,
+    U_FMB_120,
+    U_FMB_121,
+    U_FMB_122,
+    U_FMB_123,
+    U_FMB_124,
+    U_FMB_125,
+    U_FMB_126,
+    U_FMB_127,
+    U_FMB_128,
+    U_FMB_129,
+    U_FMB_130,
+    U_FMB_131,
+    U_FMB_132,
+    U_FMB_133,
+    U_FMB_134,
+    U_FMB_135,
+    U_FMB_136,
+    U_FMB_137,
+    U_FMB_138,
+    U_FMB_139,
+    U_FMB_140,
+    U_FMB_141,
+    U_FMB_142,
+    U_FMB_143,
+    U_FMB_144,
+    U_FMB_145,
+    U_FMB_146,
+    U_FMB_147,
+    U_FMB_148,
+    U_FMB_149,
+    U_FMB_150,
+    U_FMB_151,
+    U_FMB_152,
+    U_FMB_153,
+    U_FMB_154,
+    U_FMB_155,
+    U_FMB_156,
+    U_FMB_157,
+    U_FMB_158,
+    U_FMB_159,
+    U_FMB_160,
+    U_FMB_161,
+    U_FMB_162,
+    U_FMB_163,
+    U_FMB_164,
+    U_FMB_165,
+    U_FMB_166,
+    U_FMB_167,
+    U_FMB_168,
+    U_FMB_169,
+    U_FMB_170,
+    U_FMB_171,
+    U_FMB_172,
+    U_FMB_173,
+    U_FMB_174,
+    U_FMB_175,
+    U_FMB_176,
+    U_FMB_177,
+    U_FMB_178,
+    U_FMB_179,
+    U_MODE_0,
+    U_MODE_1,
+    U_MODE_2,
+    U_MODE_3,
+    U_MODE_4,
+    U_MODE_5,
+    U_TOINT_0,
+    U_TOINT_1,
+    U_TOINT_2,
+    U_TOINT_3,
+    U_TOINT_4,
+    U_TOINT_5,
+    U_TOINT_6,
+    U_TOINT_7,
+    U_TOINT_8,
+    U_TOINT_9,
+    U_TOINT_10,
+    U_TOINT_11,
+    U_TOINT_12,
+    U_TOINT_13,
+    U_MAXINT_0,
+    U_MININT_0,
+    U_MAXINT_1,
+    U_MININT_1,
+    U_MAXINT_2,
+    U_MININT_2,
+    U_MAXINT_3,
+    U_MININT_3,
+    U_MAXINT_4,
+    U_MININT_4,
+    U_MAXINT_5,
+    U_MININT_5,
+    U_WITHININT_0,
+    U_WITHININT_1,
+    U_WITHININT_2,
+    U_WITHININT_3,
+    U_WITHININT_4,
+    U_SIG_0,
+    U_SIG_1,
+    U_SIG_2,
+    U_SIG_3,
+    U_SIG_4,
+    U_SIG_5,
+    U_SIG_6,
+    U_SIG_7,
+    U_SIG_8,
+    U_SIG_9,
+    U_SIG_10,
+    U_SIG_11,
+    U_BBC_0,
+    U_BBC_1,
+    U_BBC_2,
+    U_BBC_3,
+    U_BBC_4,
+    U_BBC_5,
+    U_INSC_0,
+    U_INSC_1,
+    U_INSC_2,
+    U_INSC_3,
+    U_INSC_4,
+    U_INSC_5,
+    U_INSC_6,
+    U_CBB_0,
+    U_CBB_1,
+    U_CBB_2,
+    U_CBBC_3,
+    U_CBB_4,
+    U_CBB_5,
+    U_CBB_6,
+    U_CBBC_7,
+    U_CBB_8,
+    U_CBB_9,
+    U_CBB_10,
+    U_CBBC_11,
+    U_CBB_12,
+    U_CBB_13,
+    U_CBB_14,
+    U_CBBC_15,
+    U_CBB_16,
+    U_CBB_17,
+    U_CBB_18,
+    U_CBBC_19,
+    U_BBT_20,
+    U_BBT_21,
+    U_BBT_22,
+    U_BBT_23,
+    U_BBT_24,
+    U_BBT_25,
+    U_BBT_26,
+    U_CBB_27,
+    U_CBB_28,
+    U_CBB_29,
+    U_CBBC_30,
+    U_CBB_31,
+    U_CBB_32,
+    U_CBB_33,
+    U_CBBC_34,
+    U_CBB_35,
+    U_CBB_36,
+    U_CBB_37,
+    U_CBBC_38,
+    U_CBB_39,
+    U_CBB_40,
+    U_CBB_41,
+    U_CBBC_42,
+    U_CBB_43,
+    U_CBB_44,
+    U_CBB_45,
+    U_CBBC_46,
+    U_BBT_47,
+    U_BBT_48,
+    U_BBT_49,
+    U_BBT_50,
+    U_BBT_51,
+    U_BBT_52,
+    U_BBT_53,
+    U_CBB_54,
+    U_CBB_55,
+    U_CBB_56,
+    U_CBBC_57,
+    U_CBB_58,
+    U_CBB_59,
+    U_CBB_60,
+    U_CBBC_61,
+    U_CBB_62,
+    U_CBB_63,
+    U_CBB_64,
+    U_CBBC_65,
+    U_CBB_66,
+    U_CBB_67,
+    U_CBB_68,
+    U_CBBC_69,
+    U_CBB_70,
+    U_CBB_71,
+    U_CBB_72,
+    U_CBBC_73,
+    U_BBT_74,
+    U_BBT_75,
+    U_BBT_76,
+    U_BBT_77,
+    U_BBT_78,
+    U_BBT_79,
+    U_BBT_80,
+];
+

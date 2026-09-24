@@ -19,6 +19,7 @@ rust/
 │   │   ├── game_map.rs            port of game/GameMap.ts (GameMapImpl
 │   │   │                          + the distFN factories)
 │   │   ├── tile_set.rs            port of game/TileSet.ts
+│   │   ├── util.rs                port of Util.ts (deterministic core only)
 │   │   ├── wasm_probe.rs          `extern "C"` surface, feature-gated
 │   │   └── pathfinding/
 │   │       ├── mod.rs
@@ -112,6 +113,19 @@ desync, not a rounding nit. Two things enforce that here:
    `has(-1)` is false while `has(4294967295)` is true, yet `values()` skips
    the tombstone-equal slot. Each trace pins the final `dense`/`table`
    buffers, `denseLen`, `size_`, `tableUsed` and `iterDepth`.
+9. **`Util.ts`** (`util.rs`) is pinned with 347 single-call scenarios over the
+   real TS functions: wrapped Manhattan distance on a width-100 torus, the
+   `Math.min/max` clamp edges (including `NaN` and the `-0`/`+0` sign rules
+   that `js_min`/`js_max` now share), `simpleHash` over ASCII, BMP and
+   surrogate-pair strings (the UTF-16 `charCodeAt` walk), `findMinimumBy` /
+   `findClosestBy` across five score and four candidate closures × nine value
+   sets (first-minimum ties, `NaN` scores that never win, empty inputs),
+   `getMode` with insertion-order tie-breaking, the `toInt` ±Infinity clamps
+   and `NaN` throw, `maxInt`/`minInt`/`withinInt`, `sigmoid` over the
+   deterministic exp stream, `boundingBoxCenter`/`inscribed`, and
+   `calculateBoundingBox` / `calculateBoundingBoxCenter` / `boundingBoxTiles`
+   over real `GameMapImpl` maps through all three TS container branches
+   (Array, Set, TileSet). Results compare by IEEE-754 bit pattern.
 
 Regenerate whenever a ported source changes:
 
@@ -145,7 +159,7 @@ node rust/tools/run_wasm_parity.mjs
 
 `wasm-probe` exposes the ported functions through `extern "C"` scalar
 entrypoints (`src/wasm_probe.rs`); the runner imports `data/vectors.json` and
-compares every value. Last run: **21,702 comparisons, all bit-identical**.
+compares every value. Last run: **22,540 comparisons, all bit-identical**.
 
 ### Windows: the linker environment
 
@@ -188,7 +202,8 @@ Roughly in order of leverage, all currently reachable from the ported layer:
 
 | Module | TS source | Why next |
 |---|---|---|
-| `Util.ts` | `src/core/Util.ts` | Shared helpers (`toInt`, geometry) that the `execution/**` ports will need. |
+| `execution/**` scheduler layer | `src/core/execution/**` | The turn/intent pipeline the game logic runs on; leans on the now-ported `Util`, `GameMap` and pathfinding. |
+| `game/Game.ts` types | `src/core/game/Game.ts` | `Cell`/`Unit`/enum surface most `game/**` modules import. |
 
 `execution/**` and `game/**` are the bulk (~500 files, heavy on `zod` schemas,
 `ApiSchemas.ts`, and worker IPC) and will want a serde/zbin schema story before

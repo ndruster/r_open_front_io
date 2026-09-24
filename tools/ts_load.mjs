@@ -98,6 +98,63 @@ function prepare(rel) {
     // in the whole GameMap graph.
     out = must(out, 'import { TileRef } from "./GameMap";\n', "", "TileSet import");
   }
+  if (rel.endsWith("core/Util.ts")) {
+    // The UI/record surface (DOMPurify, nanoid, zod Schemas, Game.ts,
+    // TribeNames) is only referenced from functions the parity capture never
+    // calls, so those imports are dropped outright. `exp` is redirected to
+    // the real DetMath module (sigmoid calls it), and `Cell` / `GameType` /
+    // `PlayerType` are replaced by inert stubs with the same shape —
+    // calculateBoundingBox only ever reads `.x` / `.y` off a Cell.
+    out = must(out, 'import DOMPurify from "dompurify";\n', "", "Util DOMPurify import");
+    out = must(out, 'import { customAlphabet } from "nanoid";\n', "", "Util nanoid import");
+    out = must(
+      out,
+      'import { exp } from "./DetMath";\n',
+      'import { exp } from "../../../src/core/DetMath.ts";\n',
+      "Util DetMath import",
+    );
+    out = must(
+      out,
+      'import { Cell, GameType, PlayerType, Unit } from "./game/Game";\n',
+      "const GameType = { Singleplayer: 4 };\n" +
+        'const PlayerType = { Human: "player" };\n' +
+        "class Cell {\n" +
+        "  constructor(x, y) {\n" +
+        "    this.x = x;\n" +
+        "    this.y = y;\n" +
+        "  }\n" +
+        "}\n",
+      "Util Game import",
+    );
+    out = must(
+      out,
+      'import { GameMap, TileRef } from "./game/GameMap";\n',
+      "",
+      "Util GameMap import",
+    );
+    // TileSet is a *value* use (`borderTiles instanceof TileSet`), so it
+    // must resolve — redirect to the prepared copy.
+    const tileSetRel = "src/core/game/TileSet.ts";
+    if (!prepared.has(tileSetRel)) prepare(tileSetRel);
+    out = must(
+      out,
+      'import { TileSet } from "./game/TileSet";\n',
+      `import { TileSet } from "./${prepared.get(tileSetRel)}";\n`,
+      "Util TileSet import",
+    );
+    out = must(
+      out,
+      'import {\n  GameConfig,\n  GameID,\n  GameRecord,\n  GameStartInfo,\n  PartialGameRecord,\n  PlayerRecord,\n  PlayerReport,\n  Tribe,\n  Turn,\n  Winner,\n} from "./Schemas";\n',
+      "",
+      "Util Schemas import",
+    );
+    out = must(
+      out,
+      'import { resolveTribeNameData } from "./execution/utils/TribeNames";\n',
+      "",
+      "Util TribeNames import",
+    );
+  }
   if (rel.endsWith("algorithms/AStar.Water.ts")) {
     // GameMap/TileRef/PathFinder are all type-only (interfaces / type
     // aliases); the MinHeap value import is redirected to the prepared

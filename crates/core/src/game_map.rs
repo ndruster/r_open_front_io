@@ -59,8 +59,8 @@ fn sz_key(v: f64) -> u64 {
 }
 
 /// `Math.max` with JS NaN propagation (Rust's `f64::max` ignores NaN) and the
-/// `max(-0, 0) === +0` rule.
-fn js_max(a: f64, b: f64) -> f64 {
+/// zero rule: equal zeros yield `+0` unless *both* are `-0`.
+pub(crate) fn js_max(a: f64, b: f64) -> f64 {
     if a.is_nan() || b.is_nan() {
         f64::NAN
     } else if a > b {
@@ -68,15 +68,20 @@ fn js_max(a: f64, b: f64) -> f64 {
     } else if a < b {
         b
     } else if a == 0.0 {
-        // Equal and zero (covers +0/-0 in either order): Math.max -> +0.
-        0.0
+        // Equal and zero: Math.max -> -0 only when both sides are -0.
+        if a.is_sign_negative() && b.is_sign_negative() {
+            -0.0
+        } else {
+            0.0
+        }
     } else {
         a
     }
 }
 
-/// `Math.min` with JS NaN propagation and the `min(+0, -0) === -0` rule.
-fn js_min(a: f64, b: f64) -> f64 {
+/// `Math.min` with JS NaN propagation and the zero rule: equal zeros yield
+/// `-0` unless *both* are `+0`.
+pub(crate) fn js_min(a: f64, b: f64) -> f64 {
     if a.is_nan() || b.is_nan() {
         f64::NAN
     } else if a < b {
@@ -84,7 +89,12 @@ fn js_min(a: f64, b: f64) -> f64 {
     } else if a > b {
         b
     } else if a == 0.0 {
-        -0.0
+        // Equal and zero: Math.min -> +0 only when both sides are +0.
+        if a.is_sign_negative() || b.is_sign_negative() {
+            -0.0
+        } else {
+            0.0
+        }
     } else {
         a
     }

@@ -975,3 +975,112 @@ pub extern "C" fn probe_ts_arr_get(field: u32, i: usize) -> f64 {
         _ => s.debug_table()[i] as f64,
     })
 }
+
+// ---- Util ----
+// Single-call replay over the `util` port. The host queues the scalar args
+// (`probe_util_arg`) and, for simpleHash, the UTF-16 code units
+// (`probe_util_str_unit`) before each `probe_util_op(kind)`; kinds 12/13/14
+// read the map previously built by `probe_gm_new`. Array results (kinds 3/4/5
+// winners, 13 tiles) land in the out buffer.
+
+use crate::util;
+
+thread_local! {
+    static UTIL_ARGS: std::cell::RefCell<Vec<f64>> = const { std::cell::RefCell::new(Vec::new()) };
+    static UTIL_UNITS: std::cell::RefCell<Vec<u16>> = const { std::cell::RefCell::new(Vec::new()) };
+    static UTIL_OUT: std::cell::RefCell<Vec<f64>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
+#[no_mangle]
+pub extern "C" fn probe_util_arg(v: f64) {
+    UTIL_ARGS.with(|t| t.borrow_mut().push(v));
+}
+
+#[no_mangle]
+pub extern "C" fn probe_util_str_unit(u: f64) {
+    UTIL_UNITS.with(|t| t.borrow_mut().push(u as u16));
+}
+
+/// Replay one util call; returns the first result value (array results return
+/// their first element and also fill the out buffer — read it via
+/// `probe_util_out_len` / `probe_util_out_at`).
+#[allow(clippy::too_many_lines)]
+#[no_mangle]
+pub extern "C" fn probe_util_op(kind: u32) -> f64 {
+    let a = UTIL_ARGS.with(|t| std::mem::take(&mut *t.borrow_mut()));
+    let out: Vec<f64> = match kind {
+        0 => vec![util::manhattan_dist_wrapped(
+            &util::Cell { x: a[0], y: a[1] },
+            &util::Cell { x: a[2], y: a[3] },
+            a[4],
+        )],
+        1 => vec![util::within(a[0], a[1], a[2])],
+        2 => {
+            let units = UTIL_UNITS.with(|t| std::mem::take(&mut *t.borrow_mut()));
+            vec![util::simple_hash_units(&units)]
+        }
+        3 => match util::find_minimum_by(&a[2..], a[0] as u8, a[1] as u8) {
+            Some(v) => vec![v],
+            None => vec![],
+        },
+        4 => {
+            let pairs: Vec<(f64, f64)> = a.chunks(2).map(|c| (c[0], c[1])).collect();
+            match util::get_mode(&pairs) {
+                Some(v) => vec![v],
+                None => vec![],
+            }
+        }
+        5 => match util::to_int(a[0]) {
+            Some(v) => vec![v as f64],
+            None => vec![],
+        },
+        6 => vec![util::max_int(a[0] as i64, a[1] as i64) as f64],
+        7 => vec![util::min_int(a[0] as i64, a[1] as i64) as f64],
+        8 => vec![util::within_int(a[0] as i64, a[1] as i64, a[2] as i64) as f64],
+        9 => vec![util::sigmoid(a[0], a[1], a[2])],
+        10 => {
+            let box_ = util::BoundingBox {
+                min: util::Cell { x: a[0], y: a[1] },
+                max: util::Cell { x: a[2], y: a[3] },
+            };
+            let c = util::bounding_box_center(&box_);
+            vec![c.x, c.y]
+        }
+        11 => {
+            let outer = util::BoundingBox {
+                min: util::Cell { x: a[0], y: a[1] },
+                max: util::Cell { x: a[2], y: a[3] },
+            };
+            let inner = util::BoundingBox {
+                min: util::Cell { x: a[4], y: a[5] },
+                max: util::Cell { x: a[6], y: a[7] },
+            };
+            vec![util::inscribed(&outer, &inner) as u8 as f64]
+        }
+        12 => {
+            let tiles = a[3..].to_vec();
+            let bb = with_gm(|gm| util::calculate_bounding_box(gm, tiles));
+            vec![bb.min.x, bb.min.y, bb.max.x, bb.max.y]
+        }
+        13 => with_gm(|gm| util::bounding_box_tiles(gm, a[2], a[3])),
+        14 => {
+            let tiles = a[2..].to_vec();
+            let c = with_gm(|gm| util::calculate_bounding_box_center(gm, tiles));
+            vec![c.x, c.y]
+        }
+        k => panic!("unexpected util op kind {k}"),
+    };
+    let first = out.first().copied().unwrap_or(f64::NAN);
+    UTIL_OUT.with(|o| *o.borrow_mut() = out);
+    first
+}
+
+#[no_mangle]
+pub extern "C" fn probe_util_out_len() -> usize {
+    UTIL_OUT.with(|o| o.borrow().len())
+}
+
+#[no_mangle]
+pub extern "C" fn probe_util_out_at(i: usize) -> f64 {
+    UTIL_OUT.with(|o| o.borrow()[i])
+}

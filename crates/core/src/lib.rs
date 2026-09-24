@@ -21,6 +21,9 @@
 //! * [`tile_set`] — `src/core/game/TileSet.ts` (insertion-ordered tile
 //!   container: open-addressed table, tombstones, `iterDepth`-gated deferred
 //!   compaction, `Uint32Array` storage quirks)
+//! * [`util`] — the deterministic core of `src/core/Util.ts` (wrapped
+//!   Manhattan distance, `simpleHash`, first-minimum searches, `getMode`,
+//!   bigint clamps, `sigmoid`, bounding-box helpers over a `GameMap`)
 //!
 //! Two rules govern every future port into this crate:
 //!
@@ -42,6 +45,7 @@ pub mod jsnum;
 pub mod pathfinding;
 pub mod pseudo_random;
 pub mod tile_set;
+pub mod util;
 
 #[cfg(feature = "wasm-probe")]
 mod wasm_probe;

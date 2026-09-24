@@ -377,7 +377,7 @@ for (const s of S.water) {
 }
 
 // --- GameMap --- (op-stream replay; scalar-only boundary, arrays via out buf)
-const numTok = (v) => (v === "n" ? NaN : v === "-0" ? -0 : v);
+const numTok = (v) => (v === "n" ? NaN : v === "-0" ? -0 : v === "i" ? Infinity : v === "-i" ? -Infinity : v);
 for (const s of S.gamemap) {
   for (const b of s.terrain) ex.probe_gm_terrain_byte(b);
   ex.probe_gm_new(s.w, s.h, s.numLand);
@@ -480,6 +480,42 @@ for (const s of S.tileset) {
   cmpBits(`${s.name} denseLen`, ex.probe_ts_field(0), toBits(s.denseLen), 0);
   cmpBits(`${s.name} tableUsed`, ex.probe_ts_field(1), toBits(s.tableUsed), 1);
   cmpBits(`${s.name} iterDepth`, ex.probe_ts_field(2), toBits(s.iterDepth), 2);
+}
+
+// --- Util --- (single-call replay; kinds match the util runner in
+// gen_vectors.mjs). Kinds 12/13/14 need a GameMap built first; the map is
+// keyed by (w,h) so it is only rebuilt when the dimensions change.
+let utilMapKey = "";
+for (const s of S.util) {
+  const args = s.args.map(numTok);
+  if (s.kind === 12 || s.kind === 13 || s.kind === 14) {
+    const key = `${args[0]}x${args[1]}`;
+    if (key !== utilMapKey) {
+      const w = args[0];
+      const h = args[1];
+      for (let i = 0; i < w * h; i++) ex.probe_gm_terrain_byte(0x85);
+      ex.probe_gm_new(w, h, w * h);
+      utilMapKey = key;
+    }
+  }
+  if (s.kind === 2) {
+    // charCodeAt per *code unit* (not for..of, which walks code points and
+    // would collapse a surrogate pair into its high surrogate only).
+    for (let i = 0; i < s.strs[0].length; i++) ex.probe_util_str_unit(s.strs[0].charCodeAt(i));
+  }
+  for (const v of args) ex.probe_util_arg(v);
+  ex.probe_util_op(s.kind);
+  checks++;
+  if (ex.probe_util_out_len() !== s.res.length) {
+    fail(`${s.name} res len`, 0, ex.probe_util_out_len(), s.res.length);
+    continue;
+  }
+  for (let i = 0; i < s.res.length; i++) {
+    checks++;
+    const got = ex.probe_util_out_at(i);
+    if (!Object.is(got, numTok(s.res[i])))
+      fail(`${s.name} res[${i}]`, i, fmt(got), String(s.res[i]));
+  }
 }
 
 console.log(`${checks} vector comparisons executed against wasm build`);

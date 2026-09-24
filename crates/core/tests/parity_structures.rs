@@ -390,6 +390,109 @@ fn replay_tileset_scenarios() {
     }
 }
 
+// ---------------------------------------------------------------- Util
+// Replays the single-call scenarios the real TS `Util.ts` functions produced
+// (kind table in gen_vectors.mjs). Results are compared by IEEE-754 bit
+// pattern, so -0 and NaN are pinned exactly like every other vector.
+#[test]
+fn replay_util_scenarios() {
+    use openfront_core::util;
+
+    for s in vectors::UTIL_SCENARIOS {
+        let a = s.args;
+        let got: Vec<f64> = match s.kind {
+            0 => vec![util::manhattan_dist_wrapped(
+                &util::Cell { x: a[0], y: a[1] },
+                &util::Cell { x: a[2], y: a[3] },
+                a[4],
+            )],
+            1 => vec![util::within(a[0], a[1], a[2])],
+            2 => vec![util::simple_hash(s.strs[0])],
+            3 => match util::find_minimum_by(&a[2..], a[0] as u8, a[1] as u8) {
+                Some(v) => vec![v],
+                None => vec![],
+            },
+            4 => {
+                let pairs: Vec<(f64, f64)> =
+                    a.chunks(2).map(|c| (c[0], c[1])).collect();
+                match util::get_mode(&pairs) {
+                    Some(v) => vec![v],
+                    None => vec![],
+                }
+            }
+            5 => match util::to_int(a[0]) {
+                Some(v) => vec![v as f64],
+                None => vec![],
+            },
+            6 => vec![util::max_int(a[0] as i64, a[1] as i64) as f64],
+            7 => vec![util::min_int(a[0] as i64, a[1] as i64) as f64],
+            8 => vec![util::within_int(a[0] as i64, a[1] as i64, a[2] as i64) as f64],
+            9 => vec![util::sigmoid(a[0], a[1], a[2])],
+            10 => {
+                let box_ = util::BoundingBox {
+                    min: util::Cell { x: a[0], y: a[1] },
+                    max: util::Cell { x: a[2], y: a[3] },
+                };
+                let c = util::bounding_box_center(&box_);
+                vec![c.x, c.y]
+            }
+            11 => {
+                let outer = util::BoundingBox {
+                    min: util::Cell { x: a[0], y: a[1] },
+                    max: util::Cell { x: a[2], y: a[3] },
+                };
+                let inner = util::BoundingBox {
+                    min: util::Cell { x: a[4], y: a[5] },
+                    max: util::Cell { x: a[6], y: a[7] },
+                };
+                vec![util::inscribed(&outer, &inner) as u8 as f64]
+            }
+            12 => {
+                let gm = GameMap::new(a[0], a[1], vec![0x85; (a[0] * a[1]) as usize], a[0] * a[1]);
+                let tiles = &a[3..];
+                let bb = match a[2] as u8 {
+                    0 => util::calculate_bounding_box(&gm, tiles.to_vec()),
+                    1 => util::calculate_bounding_box(&gm, tiles.to_vec()),
+                    _ => {
+                        let mut ts = TileSet::new(Some(tiles));
+                        ts.iter_begin();
+                        let mut v = Vec::new();
+                        let mut cur = 0usize;
+                        while let Some(x) = ts.iter_next(&mut cur) {
+                            v.push(x);
+                        }
+                        ts.iter_end();
+                        util::calculate_bounding_box(&gm, v)
+                    }
+                };
+                vec![bb.min.x, bb.min.y, bb.max.x, bb.max.y]
+            }
+            13 => {
+                let gm = GameMap::new(a[0], a[1], vec![0x85; (a[0] * a[1]) as usize], a[0] * a[1]);
+                util::bounding_box_tiles(&gm, a[2], a[3])
+            }
+            14 => {
+                let gm = GameMap::new(a[0], a[1], vec![0x85; (a[0] * a[1]) as usize], a[0] * a[1]);
+                let c = util::calculate_bounding_box_center(&gm, a[2..].to_vec());
+                vec![c.x, c.y]
+            }
+            k => panic!("{} unexpected util kind {k}", s.name),
+        };
+        assert_eq!(got.len(), s.res.len(), "{} result length", s.name);
+        for (i, (g, w)) in got.iter().zip(s.res.iter()).enumerate() {
+            assert_eq!(
+                g.to_bits(),
+                w.to_bits(),
+                "{} res[{}]: got {} want {}",
+                s.name,
+                i,
+                g,
+                w
+            );
+        }
+    }
+}
+
 // ---------------------------------------------------------------- GameMap
 // Object.is equality: distinguishes -0 from 0 and treats NaN as equal to NaN.
 fn obj_is(a: f64, b: f64) -> bool {

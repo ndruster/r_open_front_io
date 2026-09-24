@@ -10449,3 +10449,1417 @@ pub const UTIL_SCENARIOS: &[UtilScenario] = &[
     U_BBT_80,
 ];
 
+/// One `PlayerInfo` as `assignTeams` sees it. `player_type`: 0 BOT,
+/// 1 HUMAN, 2 NATION. Empty `client_id` / `clan_tag` mean `null`
+/// (an empty clanTag is falsy anyway, so the two collapse).
+/// `team_index` is the raw `number | null` pin (NaN is a real
+/// token: JS `teams[NaN]` is undefined, i.e. unpinned).
+pub struct TeamPlayer {
+    pub id: &'static str,
+    pub player_type: u8,
+    pub client_id: &'static str,
+    pub clan_tag: &'static str,
+    pub friends: &'static [&'static str],
+    pub team_index: Option<f64>,
+}
+
+/// `TeamCountConfig`: kind 0 Num(num), 1 Duos, 2 Trios, 3 Quads,
+/// 4 HumansVsNations, 5 Other(str).
+pub struct TeamConfig { pub kind: u8, pub num: f64, pub s: &'static str }
+
+/// TeamAssignment scenario. `kind`: 0 assignTeams, 1
+/// assignTeamsLobbyPreview, 2 getMaxTeamSize, 3 resolveTeamsList.
+/// `status`: 0 ok, 1 Unknown config, 2 Too few teams, 3 RangeError.
+/// Kinds 0/1 fill `res` with the result map's insertion-ordered
+/// (player index, team index or -1) pairs; kind 2 fills `res_nums`
+/// with [max]; kind 3 fills `res_teams` with the resolved list.
+pub struct TeamScenario {
+    pub name: &'static str,
+    pub kind: u8,
+    pub players: &'static [TeamPlayer],
+    pub teams: &'static [&'static str],
+    pub is_duo: u8,
+    pub has_max: u8,
+    pub max_team_size: f64,
+    pub nation_count: u64,
+    pub config: TeamConfig,
+    pub total_players: f64,
+    pub status: u8,
+    pub res: &'static [(i64, i64)],
+    pub res_nums: &'static [f64],
+    pub res_teams: &'static [&'static str],
+}
+
+pub const T_EMPTY: TeamScenario = TeamScenario {
+    name: "t_empty",
+    kind: 0u8,
+    players: &[
+    ],
+    teams: &["Red", "Blue"],
+    is_duo: 0u8,
+    has_max: 0u8,
+    max_team_size: 0f64,
+    nation_count: 0u64,
+    config: TeamConfig { kind: 0u8, num: 0f64, s: "" },
+    total_players: 0f64,
+    status: 0u8,
+    res: &[],
+    res_nums: &[],
+    res_teams: &[],
+};
+
+pub const T_EVEN4: TeamScenario = TeamScenario {
+    name: "t_even4",
+    kind: 0u8,
+    players: &[
+        TeamPlayer { id: "a", player_type: 1u8, client_id: "", clan_tag: "", friends: &[], team_index: None },
+        TeamPlayer { id: "b", player_type: 1u8, client_id: "", clan_tag: "", friends: &[], team_index: None },
+        TeamPlayer { id: "c", player_type: 1u8, client_id: "", clan_tag: "", friends: &[], team_index: None },
+        TeamPlayer { id: "d", player_type: 1u8, client_id: "", clan_tag: "", friends: &[], team_index: None },
+    ],
+    teams: &["Red", "Blue"],
+    is_duo: 0u8,
+    has_max: 0u8,
+    max_team_size: 2f64,
+    nation_count: 0u64,
+    config: TeamConfig { kind: 0u8, num: 0f64, s: "" },
+    total_players: 0f64,
+    status: 0u8,
+    res: &[(0i64, 0i64), (1i64, 1i64), (2i64, 0i64), (3i64, 1i64)],
+    res_nums: &[],
+    res_teams: &[],
+};
+
+pub const T_ODD5: TeamScenario = TeamScenario {
+    name: "t_odd5",
+    kind: 0u8,
+    players: &[
+        TeamPlayer { id: "a", player_type: 1u8, client_id: "", clan_tag: "", friends: &[], team_index: None },
+        TeamPlayer { id: "b", player_type: 1u8, client_id: "", clan_tag: "", friends: &[], team_index: None },
+        TeamPlayer { id: "c", player_type: 1u8, client_id: "", clan_tag: "", friends: &[], team_index: None },
+        TeamPlayer { id: "d", player_type: 1u8, client_id: "", clan_tag: "", friends: &[], team_index: None },
+        TeamPlayer { id: "e", player_type: 1u8, client_id: "", clan_tag: "", friends: &[], team_index: None },
+    ],
+    teams: &["Red", "Blue"],
+    is_duo: 0u8,
+    has_max: 0u8,
+    max_team_size: 3f64,
+    nation_count: 0u64,
+    config: TeamConfig { kind: 0u8, num: 0f64, s: "" },
+    total_players: 0f64,
+    status: 0u8,
+    res: &[(0i64, 0i64), (1i64, 1i64), (2i64, 0i64), (3i64, 1i64), (4i64, 0i64)],
+    res_nums: &[],
+    res_teams: &[],
+};
+
+pub const T_4X3: TeamScenario = TeamScenario {
+    name: "t_4x3",
+    kind: 0u8,
+    players: &[
+        TeamPlayer { id: "a", player_type: 1u8, client_id: "", clan_tag: "", friends: &[], team_index: None },
+        TeamPlayer { id: "b", player_type: 1u8, client_id: "", clan_tag: "", friends: &[], team_index: None },
+        TeamPlayer { id: "c", player_type: 1u8, client_id: "", clan_tag: "", friends: &[], team_index: None },
+        TeamPlayer { id: "d", player_type: 1u8, client_id: "", clan_tag: "", friends: &[], team_index: None },
+    ],
+    teams: &["Red", "Blue", "Yellow"],
+    is_duo: 0u8,
+    has_max: 0u8,
+    max_team_size: 2f64,
+    nation_count: 0u64,
+    config: TeamConfig { kind: 0u8, num: 0f64, s: "" },
+    total_players: 0f64,
+    status: 0u8,
+    res: &[(0i64, 0i64), (1i64, 1i64), (2i64, 2i64), (3i64, 0i64)],
+    res_nums: &[],
+    res_teams: &[],
+};
+
+pub const T_PINS: TeamScenario = TeamScenario {
+    name: "t_pins",
+    kind: 0u8,
+    players: &[
+        TeamPlayer { id: "a", player_type: 1u8, client_id: "", clan_tag: "", friends: &[], team_index: Some(1f64) },
+        TeamPlayer { id: "b", player_type: 1u8, client_id: "", clan_tag: "", friends: &[], team_index: Some(1f64) },
+        TeamPlayer { id: "c", player_type: 1u8, client_id: "", clan_tag: "", friends: &[], team_index: None },
+        TeamPlayer { id: "d", player_type: 1u8, client_id: "", clan_tag: "", friends: &[], team_index: None },
+    ],
+    teams: &["Red", "Blue"],
+    is_duo: 0u8,
+    has_max: 0u8,
+    max_team_size: 2f64,
+    nation_count: 0u64,
+    config: TeamConfig { kind: 0u8, num: 0f64, s: "" },
+    total_players: 0f64,
+    status: 0u8,
+    res: &[(0i64, 1i64), (1i64, 1i64), (2i64, 0i64), (3i64, 0i64)],
+    res_nums: &[],
+    res_teams: &[],
+};
+
+pub const T_PIN_OOB: TeamScenario = TeamScenario {
+    name: "t_pin_oob",
+    kind: 0u8,
+    players: &[
+        TeamPlayer { id: "a", player_type: 1u8, client_id: "", clan_tag: "", friends: &[], team_index: Some(5f64) },
+        TeamPlayer { id: "b", player_type: 1u8, client_id: "", clan_tag: "", friends: &[], team_index: None },
+    ],
+    teams: &["Red", "Blue"],
+    is_duo: 0u8,
+    has_max: 0u8,
+    max_team_size: 1f64,
+    nation_count: 0u64,
+    config: TeamConfig { kind: 0u8, num: 0f64, s: "" },
+    total_players: 0f64,
+    status: 0u8,
+    res: &[(0i64, 0i64), (1i64, 1i64)],
+    res_nums: &[],
+    res_teams: &[],
+};
+
+pub const T_PIN_NEG: TeamScenario = TeamScenario {
+    name: "t_pin_neg",
+    kind: 0u8,
+    players: &[
+        TeamPlayer { id: "a", player_type: 1u8, client_id: "", clan_tag: "", friends: &[], team_index: Some(-1f64) },
+        TeamPlayer { id: "b", player_type: 1u8, client_id: "", clan_tag: "", friends: &[], team_index: None },
+    ],
+    teams: &["Red", "Blue"],
+    is_duo: 0u8,
+    has_max: 0u8,
+    max_team_size: 1f64,
+    nation_count: 0u64,
+    config: TeamConfig { kind: 0u8, num: 0f64, s: "" },
+    total_players: 0f64,
+    status: 0u8,
+    res: &[(0i64, 0i64), (1i64, 1i64)],
+    res_nums: &[],
+    res_teams: &[],
+};
+
+pub const T_PIN_FRAC: TeamScenario = TeamScenario {
+    name: "t_pin_frac",
+    kind: 0u8,
+    players: &[
+        TeamPlayer { id: "a", player_type: 1u8, client_id: "", clan_tag: "", friends: &[], team_index: Some(1.5f64) },
+        TeamPlayer { id: "b", player_type: 1u8, client_id: "", clan_tag: "", friends: &[], team_index: None },
+    ],
+    teams: &["Red", "Blue"],
+    is_duo: 0u8,
+    has_max: 0u8,
+    max_team_size: 1f64,
+    nation_count: 0u64,
+    config: TeamConfig { kind: 0u8, num: 0f64, s: "" },
+    total_players: 0f64,
+    status: 0u8,
+    res: &[(0i64, 0i64), (1i64, 1i64)],
+    res_nums: &[],
+    res_teams: &[],
+};
+
+pub const T_PIN_NAN: TeamScenario = TeamScenario {
+    name: "t_pin_nan",
+    kind: 0u8,
+    players: &[
+        TeamPlayer { id: "a", player_type: 1u8, client_id: "", clan_tag: "", friends: &[], team_index: Some(f64::NAN) },
+        TeamPlayer { id: "b", player_type: 1u8, client_id: "", clan_tag: "", friends: &[], team_index: None },
+    ],
+    teams: &["Red", "Blue"],
+    is_duo: 0u8,
+    has_max: 0u8,
+    max_team_size: 1f64,
+    nation_count: 0u64,
+    config: TeamConfig { kind: 0u8, num: 0f64, s: "" },
+    total_players: 0f64,
+    status: 0u8,
+    res: &[(0i64, 0i64), (1i64, 1i64)],
+    res_nums: &[],
+    res_teams: &[],
+};
+
+pub const T_PIN_ZERO: TeamScenario = TeamScenario {
+    name: "t_pin_zero",
+    kind: 0u8,
+    players: &[
+        TeamPlayer { id: "a", player_type: 1u8, client_id: "", clan_tag: "", friends: &[], team_index: Some(0f64) },
+        TeamPlayer { id: "b", player_type: 1u8, client_id: "", clan_tag: "", friends: &[], team_index: None },
+    ],
+    teams: &["Red", "Blue"],
+    is_duo: 0u8,
+    has_max: 0u8,
+    max_team_size: 1f64,
+    nation_count: 0u64,
+    config: TeamConfig { kind: 0u8, num: 0f64, s: "" },
+    total_players: 0f64,
+    status: 0u8,
+    res: &[(0i64, 0i64), (1i64, 1i64)],
+    res_nums: &[],
+    res_teams: &[],
+};
+
+pub const T_CLAN_OVERFLOW: TeamScenario = TeamScenario {
+    name: "t_clan_overflow",
+    kind: 0u8,
+    players: &[
+        TeamPlayer { id: "a", player_type: 1u8, client_id: "ca", clan_tag: "X", friends: &[], team_index: None },
+        TeamPlayer { id: "b", player_type: 1u8, client_id: "cb", clan_tag: "X", friends: &[], team_index: None },
+        TeamPlayer { id: "c", player_type: 1u8, client_id: "cc", clan_tag: "X", friends: &[], team_index: None },
+        TeamPlayer { id: "d", player_type: 1u8, client_id: "cd", clan_tag: "X", friends: &[], team_index: None },
+        TeamPlayer { id: "e", player_type: 1u8, client_id: "", clan_tag: "", friends: &[], team_index: None },
+    ],
+    teams: &["Red", "Blue"],
+    is_duo: 0u8,
+    has_max: 0u8,
+    max_team_size: 3f64,
+    nation_count: 0u64,
+    config: TeamConfig { kind: 0u8, num: 0f64, s: "" },
+    total_players: 0f64,
+    status: 0u8,
+    res: &[(0i64, 0i64), (1i64, 0i64), (2i64, 0i64), (3i64, -1i64), (4i64, 1i64)],
+    res_nums: &[],
+    res_teams: &[],
+};
+
+pub const T_CLAN_TIES: TeamScenario = TeamScenario {
+    name: "t_clan_ties",
+    kind: 0u8,
+    players: &[
+        TeamPlayer { id: "a", player_type: 1u8, client_id: "ca", clan_tag: "X", friends: &[], team_index: None },
+        TeamPlayer { id: "b", player_type: 1u8, client_id: "cb", clan_tag: "X", friends: &[], team_index: None },
+        TeamPlayer { id: "c", player_type: 1u8, client_id: "cc", clan_tag: "Y", friends: &[], team_index: None },
+        TeamPlayer { id: "d", player_type: 1u8, client_id: "cd", clan_tag: "Y", friends: &[], team_index: None },
+    ],
+    teams: &["Red", "Blue"],
+    is_duo: 0u8,
+    has_max: 0u8,
+    max_team_size: 2f64,
+    nation_count: 0u64,
+    config: TeamConfig { kind: 0u8, num: 0f64, s: "" },
+    total_players: 0f64,
+    status: 0u8,
+    res: &[(0i64, 0i64), (1i64, 0i64), (2i64, 1i64), (3i64, 1i64)],
+    res_nums: &[],
+    res_teams: &[],
+};
+
+pub const T_CLAN_SEED: TeamScenario = TeamScenario {
+    name: "t_clan_seed",
+    kind: 0u8,
+    players: &[
+        TeamPlayer { id: "a", player_type: 1u8, client_id: "", clan_tag: "", friends: &[], team_index: Some(1f64) },
+        TeamPlayer { id: "b", player_type: 1u8, client_id: "cb", clan_tag: "X", friends: &[], team_index: None },
+        TeamPlayer { id: "c", player_type: 1u8, client_id: "cc", clan_tag: "X", friends: &[], team_index: None },
+    ],
+    teams: &["Red", "Blue"],
+    is_duo: 0u8,
+    has_max: 0u8,
+    max_team_size: 2f64,
+    nation_count: 0u64,
+    config: TeamConfig { kind: 0u8, num: 0f64, s: "" },
+    total_players: 0f64,
+    status: 0u8,
+    res: &[(0i64, 1i64), (1i64, 0i64), (2i64, 0i64)],
+    res_nums: &[],
+    res_teams: &[],
+};
+
+pub const T_CLAN_EMPTY_TAG: TeamScenario = TeamScenario {
+    name: "t_clan_empty_tag",
+    kind: 0u8,
+    players: &[
+        TeamPlayer { id: "a", player_type: 1u8, client_id: "ca", clan_tag: "", friends: &[], team_index: None },
+        TeamPlayer { id: "b", player_type: 1u8, client_id: "cb", clan_tag: "", friends: &[], team_index: None },
+    ],
+    teams: &["Red", "Blue"],
+    is_duo: 0u8,
+    has_max: 0u8,
+    max_team_size: 1f64,
+    nation_count: 0u64,
+    config: TeamConfig { kind: 0u8, num: 0f64, s: "" },
+    total_players: 0f64,
+    status: 0u8,
+    res: &[(0i64, 0i64), (1i64, 1i64)],
+    res_nums: &[],
+    res_teams: &[],
+};
+
+pub const T_CLAN_ALLFULL: TeamScenario = TeamScenario {
+    name: "t_clan_allfull",
+    kind: 0u8,
+    players: &[
+        TeamPlayer { id: "a", player_type: 1u8, client_id: "", clan_tag: "", friends: &[], team_index: Some(0f64) },
+        TeamPlayer { id: "b", player_type: 1u8, client_id: "", clan_tag: "", friends: &[], team_index: Some(1f64) },
+        TeamPlayer { id: "c", player_type: 1u8, client_id: "cc", clan_tag: "X", friends: &[], team_index: None },
+        TeamPlayer { id: "d", player_type: 1u8, client_id: "cd", clan_tag: "X", friends: &[], team_index: None },
+    ],
+    teams: &["Red", "Blue"],
+    is_duo: 0u8,
+    has_max: 1u8,
+    max_team_size: 1f64,
+    nation_count: 0u64,
+    config: TeamConfig { kind: 0u8, num: 0f64, s: "" },
+    total_players: 0f64,
+    status: 0u8,
+    res: &[(0i64, 0i64), (1i64, 1i64), (2i64, -1i64), (3i64, -1i64)],
+    res_nums: &[],
+    res_teams: &[],
+};
+
+pub const T_FRIENDS_ATTRACT: TeamScenario = TeamScenario {
+    name: "t_friends_attract",
+    kind: 0u8,
+    players: &[
+        TeamPlayer { id: "a", player_type: 1u8, client_id: "ca", clan_tag: "", friends: &["cb"], team_index: None },
+        TeamPlayer { id: "b", player_type: 1u8, client_id: "cb", clan_tag: "", friends: &[], team_index: Some(2f64) },
+        TeamPlayer { id: "c", player_type: 1u8, client_id: "", clan_tag: "", friends: &[], team_index: None },
+    ],
+    teams: &["Red", "Blue", "Yellow"],
+    is_duo: 0u8,
+    has_max: 0u8,
+    max_team_size: 1f64,
+    nation_count: 0u64,
+    config: TeamConfig { kind: 0u8, num: 0f64, s: "" },
+    total_players: 0f64,
+    status: 0u8,
+    res: &[(1i64, 2i64), (0i64, 0i64), (2i64, 1i64)],
+    res_nums: &[],
+    res_teams: &[],
+};
+
+pub const T_FRIENDS_FULL_SPILL: TeamScenario = TeamScenario {
+    name: "t_friends_full_spill",
+    kind: 0u8,
+    players: &[
+        TeamPlayer { id: "a", player_type: 1u8, client_id: "ca", clan_tag: "", friends: &["cb"], team_index: None },
+        TeamPlayer { id: "b", player_type: 1u8, client_id: "cb", clan_tag: "", friends: &[], team_index: Some(1f64) },
+        TeamPlayer { id: "c", player_type: 1u8, client_id: "", clan_tag: "", friends: &[], team_index: None },
+    ],
+    teams: &["Red", "Blue"],
+    is_duo: 0u8,
+    has_max: 1u8,
+    max_team_size: 1f64,
+    nation_count: 0u64,
+    config: TeamConfig { kind: 0u8, num: 0f64, s: "" },
+    total_players: 0f64,
+    status: 0u8,
+    res: &[(1i64, 1i64), (0i64, 0i64), (2i64, -1i64)],
+    res_nums: &[],
+    res_teams: &[],
+};
+
+pub const T_FRIENDS_ABSENT: TeamScenario = TeamScenario {
+    name: "t_friends_absent",
+    kind: 0u8,
+    players: &[
+        TeamPlayer { id: "a", player_type: 1u8, client_id: "ca", clan_tag: "", friends: &["ghost"], team_index: None },
+        TeamPlayer { id: "b", player_type: 1u8, client_id: "", clan_tag: "", friends: &[], team_index: None },
+    ],
+    teams: &["Red", "Blue"],
+    is_duo: 0u8,
+    has_max: 0u8,
+    max_team_size: 1f64,
+    nation_count: 0u64,
+    config: TeamConfig { kind: 0u8, num: 0f64, s: "" },
+    total_players: 0f64,
+    status: 0u8,
+    res: &[(0i64, 0i64), (1i64, 1i64)],
+    res_nums: &[],
+    res_teams: &[],
+};
+
+pub const T_FRIENDS_NULLCLIENT: TeamScenario = TeamScenario {
+    name: "t_friends_nullclient",
+    kind: 0u8,
+    players: &[
+        TeamPlayer { id: "a", player_type: 1u8, client_id: "", clan_tag: "", friends: &["cb", "ca"], team_index: None },
+        TeamPlayer { id: "b", player_type: 1u8, client_id: "cb", clan_tag: "", friends: &[], team_index: None },
+    ],
+    teams: &["Red", "Blue"],
+    is_duo: 0u8,
+    has_max: 0u8,
+    max_team_size: 1f64,
+    nation_count: 0u64,
+    config: TeamConfig { kind: 0u8, num: 0f64, s: "" },
+    total_players: 0f64,
+    status: 0u8,
+    res: &[(0i64, 0i64), (1i64, 1i64)],
+    res_nums: &[],
+    res_teams: &[],
+};
+
+pub const T_FRIENDS_BIDIR: TeamScenario = TeamScenario {
+    name: "t_friends_bidir",
+    kind: 0u8,
+    players: &[
+        TeamPlayer { id: "a", player_type: 1u8, client_id: "ca", clan_tag: "", friends: &[], team_index: Some(1f64) },
+        TeamPlayer { id: "b", player_type: 1u8, client_id: "cb", clan_tag: "", friends: &["ca"], team_index: None },
+        TeamPlayer { id: "c", player_type: 1u8, client_id: "", clan_tag: "", friends: &[], team_index: None },
+    ],
+    teams: &["Red", "Blue"],
+    is_duo: 0u8,
+    has_max: 0u8,
+    max_team_size: 2f64,
+    nation_count: 0u64,
+    config: TeamConfig { kind: 0u8, num: 0f64, s: "" },
+    total_players: 0f64,
+    status: 0u8,
+    res: &[(0i64, 1i64), (1i64, 1i64), (2i64, 0i64)],
+    res_nums: &[],
+    res_teams: &[],
+};
+
+pub const T_DUOS: TeamScenario = TeamScenario {
+    name: "t_duos",
+    kind: 0u8,
+    players: &[
+        TeamPlayer { id: "a", player_type: 1u8, client_id: "", clan_tag: "", friends: &[], team_index: None },
+        TeamPlayer { id: "b", player_type: 1u8, client_id: "", clan_tag: "", friends: &[], team_index: None },
+        TeamPlayer { id: "c", player_type: 1u8, client_id: "", clan_tag: "", friends: &[], team_index: None },
+        TeamPlayer { id: "d", player_type: 1u8, client_id: "", clan_tag: "", friends: &[], team_index: None },
+        TeamPlayer { id: "e", player_type: 1u8, client_id: "", clan_tag: "", friends: &[], team_index: None },
+    ],
+    teams: &["Red", "Blue"],
+    is_duo: 1u8,
+    has_max: 0u8,
+    max_team_size: 3f64,
+    nation_count: 0u64,
+    config: TeamConfig { kind: 0u8, num: 0f64, s: "" },
+    total_players: 0f64,
+    status: 0u8,
+    res: &[(0i64, 0i64), (1i64, 0i64), (2i64, 0i64), (3i64, 1i64), (4i64, 1i64)],
+    res_nums: &[],
+    res_teams: &[],
+};
+
+pub const T_DUOS_PINS: TeamScenario = TeamScenario {
+    name: "t_duos_pins",
+    kind: 0u8,
+    players: &[
+        TeamPlayer { id: "a", player_type: 1u8, client_id: "", clan_tag: "", friends: &[], team_index: Some(0f64) },
+        TeamPlayer { id: "b", player_type: 1u8, client_id: "", clan_tag: "", friends: &[], team_index: Some(0f64) },
+        TeamPlayer { id: "c", player_type: 1u8, client_id: "", clan_tag: "", friends: &[], team_index: None },
+        TeamPlayer { id: "d", player_type: 1u8, client_id: "", clan_tag: "", friends: &[], team_index: None },
+        TeamPlayer { id: "e", player_type: 1u8, client_id: "", clan_tag: "", friends: &[], team_index: None },
+    ],
+    teams: &["Red", "Blue"],
+    is_duo: 1u8,
+    has_max: 0u8,
+    max_team_size: 3f64,
+    nation_count: 0u64,
+    config: TeamConfig { kind: 0u8, num: 0f64, s: "" },
+    total_players: 0f64,
+    status: 0u8,
+    res: &[(0i64, 0i64), (1i64, 0i64), (2i64, 0i64), (3i64, 1i64), (4i64, 1i64)],
+    res_nums: &[],
+    res_teams: &[],
+};
+
+pub const T_NATIONS: TeamScenario = TeamScenario {
+    name: "t_nations",
+    kind: 0u8,
+    players: &[
+        TeamPlayer { id: "n1", player_type: 2u8, client_id: "cn1", clan_tag: "", friends: &[], team_index: None },
+        TeamPlayer { id: "n2", player_type: 2u8, client_id: "cn2", clan_tag: "", friends: &[], team_index: None },
+        TeamPlayer { id: "n3", player_type: 2u8, client_id: "cn3", clan_tag: "", friends: &[], team_index: None },
+        TeamPlayer { id: "h1", player_type: 1u8, client_id: "", clan_tag: "", friends: &[], team_index: None },
+    ],
+    teams: &["Red", "Blue"],
+    is_duo: 0u8,
+    has_max: 0u8,
+    max_team_size: 2f64,
+    nation_count: 0u64,
+    config: TeamConfig { kind: 0u8, num: 0f64, s: "" },
+    total_players: 0f64,
+    status: 0u8,
+    res: &[(3i64, 0i64), (2i64, 1i64), (0i64, 0i64), (1i64, 1i64)],
+    res_nums: &[],
+    res_teams: &[],
+};
+
+pub const T_NATIONS_NULLCLIENT: TeamScenario = TeamScenario {
+    name: "t_nations_nullclient",
+    kind: 0u8,
+    players: &[
+        TeamPlayer { id: "n1", player_type: 2u8, client_id: "", clan_tag: "", friends: &[], team_index: None },
+        TeamPlayer { id: "n2", player_type: 2u8, client_id: "", clan_tag: "", friends: &[], team_index: None },
+        TeamPlayer { id: "h1", player_type: 1u8, client_id: "", clan_tag: "", friends: &[], team_index: None },
+    ],
+    teams: &["Red", "Blue"],
+    is_duo: 0u8,
+    has_max: 0u8,
+    max_team_size: 2f64,
+    nation_count: 0u64,
+    config: TeamConfig { kind: 0u8, num: 0f64, s: "" },
+    total_players: 0f64,
+    status: 0u8,
+    res: &[(2i64, 0i64), (0i64, 1i64), (1i64, 0i64)],
+    res_nums: &[],
+    res_teams: &[],
+};
+
+pub const T_NATIONS_UNICODE: TeamScenario = TeamScenario {
+    name: "t_nations_unicode",
+    kind: 0u8,
+    players: &[
+        TeamPlayer { id: "π-ν1", player_type: 2u8, client_id: "", clan_tag: "", friends: &[], team_index: None },
+        TeamPlayer { id: "🚀n2", player_type: 2u8, client_id: "", clan_tag: "", friends: &[], team_index: None },
+        TeamPlayer { id: "n3", player_type: 2u8, client_id: "", clan_tag: "", friends: &[], team_index: None },
+        TeamPlayer { id: "n4", player_type: 2u8, client_id: "", clan_tag: "", friends: &[], team_index: None },
+    ],
+    teams: &["Red", "Blue", "Yellow"],
+    is_duo: 0u8,
+    has_max: 0u8,
+    max_team_size: 2f64,
+    nation_count: 0u64,
+    config: TeamConfig { kind: 0u8, num: 0f64, s: "" },
+    total_players: 0f64,
+    status: 0u8,
+    res: &[(3i64, 0i64), (0i64, 1i64), (2i64, 2i64), (1i64, 0i64)],
+    res_nums: &[],
+    res_teams: &[],
+};
+
+pub const T_BOTS: TeamScenario = TeamScenario {
+    name: "t_bots",
+    kind: 0u8,
+    players: &[
+        TeamPlayer { id: "b1", player_type: 0u8, client_id: "", clan_tag: "", friends: &[], team_index: None },
+        TeamPlayer { id: "b2", player_type: 0u8, client_id: "", clan_tag: "", friends: &[], team_index: None },
+        TeamPlayer { id: "h1", player_type: 1u8, client_id: "", clan_tag: "", friends: &[], team_index: None },
+    ],
+    teams: &["Red", "Blue"],
+    is_duo: 0u8,
+    has_max: 0u8,
+    max_team_size: 2f64,
+    nation_count: 0u64,
+    config: TeamConfig { kind: 0u8, num: 0f64, s: "" },
+    total_players: 0f64,
+    status: 0u8,
+    res: &[(0i64, 0i64), (1i64, 1i64), (2i64, 0i64)],
+    res_nums: &[],
+    res_teams: &[],
+};
+
+pub const T_MIXED: TeamScenario = TeamScenario {
+    name: "t_mixed",
+    kind: 0u8,
+    players: &[
+        TeamPlayer { id: "a", player_type: 1u8, client_id: "ca", clan_tag: "X", friends: &[], team_index: None },
+        TeamPlayer { id: "b", player_type: 1u8, client_id: "cb", clan_tag: "X", friends: &[], team_index: None },
+        TeamPlayer { id: "c", player_type: 1u8, client_id: "cc", clan_tag: "", friends: &["cd"], team_index: None },
+        TeamPlayer { id: "d", player_type: 1u8, client_id: "cd", clan_tag: "", friends: &[], team_index: Some(0f64) },
+        TeamPlayer { id: "n1", player_type: 2u8, client_id: "cn1", clan_tag: "", friends: &[], team_index: None },
+        TeamPlayer { id: "n2", player_type: 2u8, client_id: "cn2", clan_tag: "", friends: &[], team_index: None },
+        TeamPlayer { id: "e", player_type: 1u8, client_id: "", clan_tag: "", friends: &[], team_index: None },
+    ],
+    teams: &["Red", "Blue", "Yellow", "Green"],
+    is_duo: 0u8,
+    has_max: 0u8,
+    max_team_size: 2f64,
+    nation_count: 0u64,
+    config: TeamConfig { kind: 0u8, num: 0f64, s: "" },
+    total_players: 0f64,
+    status: 0u8,
+    res: &[(3i64, 0i64), (0i64, 1i64), (1i64, 1i64), (2i64, 0i64), (6i64, 2i64), (4i64, 3i64), (5i64, 2i64)],
+    res_nums: &[],
+    res_teams: &[],
+};
+
+pub const T_DUPNAMES: TeamScenario = TeamScenario {
+    name: "t_dupnames",
+    kind: 0u8,
+    players: &[
+        TeamPlayer { id: "a", player_type: 1u8, client_id: "", clan_tag: "", friends: &[], team_index: None },
+        TeamPlayer { id: "b", player_type: 1u8, client_id: "", clan_tag: "", friends: &[], team_index: None },
+        TeamPlayer { id: "c", player_type: 1u8, client_id: "", clan_tag: "", friends: &[], team_index: None },
+    ],
+    teams: &["Red", "Blue", "Red"],
+    is_duo: 0u8,
+    has_max: 0u8,
+    max_team_size: 1f64,
+    nation_count: 0u64,
+    config: TeamConfig { kind: 0u8, num: 0f64, s: "" },
+    total_players: 0f64,
+    status: 0u8,
+    res: &[(0i64, 0i64), (1i64, 1i64), (2i64, -1i64)],
+    res_nums: &[],
+    res_teams: &[],
+};
+
+pub const T_NO_TEAMS: TeamScenario = TeamScenario {
+    name: "t_no_teams",
+    kind: 0u8,
+    players: &[
+        TeamPlayer { id: "a", player_type: 1u8, client_id: "", clan_tag: "", friends: &[], team_index: None },
+        TeamPlayer { id: "b", player_type: 1u8, client_id: "cb", clan_tag: "X", friends: &[], team_index: None },
+    ],
+    teams: &[],
+    is_duo: 0u8,
+    has_max: 0u8,
+    max_team_size: f64::INFINITY,
+    nation_count: 0u64,
+    config: TeamConfig { kind: 0u8, num: 0f64, s: "" },
+    total_players: 0f64,
+    status: 0u8,
+    res: &[(0i64, -1i64)],
+    res_nums: &[],
+    res_teams: &[],
+};
+
+pub const T_KICK_ALL: TeamScenario = TeamScenario {
+    name: "t_kick_all",
+    kind: 0u8,
+    players: &[
+        TeamPlayer { id: "a", player_type: 1u8, client_id: "", clan_tag: "", friends: &[], team_index: None },
+        TeamPlayer { id: "b", player_type: 1u8, client_id: "", clan_tag: "", friends: &[], team_index: None },
+    ],
+    teams: &["Red", "Blue"],
+    is_duo: 0u8,
+    has_max: 1u8,
+    max_team_size: 0f64,
+    nation_count: 0u64,
+    config: TeamConfig { kind: 0u8, num: 0f64, s: "" },
+    total_players: 0f64,
+    status: 0u8,
+    res: &[(0i64, -1i64), (1i64, -1i64)],
+    res_nums: &[],
+    res_teams: &[],
+};
+
+pub const T_MAX_INF: TeamScenario = TeamScenario {
+    name: "t_max_inf",
+    kind: 0u8,
+    players: &[
+        TeamPlayer { id: "a", player_type: 1u8, client_id: "", clan_tag: "", friends: &[], team_index: None },
+        TeamPlayer { id: "b", player_type: 1u8, client_id: "", clan_tag: "", friends: &[], team_index: None },
+        TeamPlayer { id: "c", player_type: 1u8, client_id: "", clan_tag: "", friends: &[], team_index: None },
+    ],
+    teams: &["Red", "Blue"],
+    is_duo: 0u8,
+    has_max: 1u8,
+    max_team_size: f64::INFINITY,
+    nation_count: 0u64,
+    config: TeamConfig { kind: 0u8, num: 0f64, s: "" },
+    total_players: 0f64,
+    status: 0u8,
+    res: &[(0i64, 0i64), (1i64, 1i64), (2i64, 0i64)],
+    res_nums: &[],
+    res_teams: &[],
+};
+
+pub const T_PREV_DUOS: TeamScenario = TeamScenario {
+    name: "t_prev_duos",
+    kind: 1u8,
+    players: &[
+        TeamPlayer { id: "a", player_type: 1u8, client_id: "", clan_tag: "", friends: &[], team_index: None },
+        TeamPlayer { id: "b", player_type: 1u8, client_id: "", clan_tag: "", friends: &[], team_index: None },
+        TeamPlayer { id: "c", player_type: 1u8, client_id: "", clan_tag: "", friends: &[], team_index: None },
+        TeamPlayer { id: "d", player_type: 1u8, client_id: "", clan_tag: "", friends: &[], team_index: None },
+        TeamPlayer { id: "e", player_type: 1u8, client_id: "", clan_tag: "", friends: &[], team_index: None },
+    ],
+    teams: &["Red", "Blue"],
+    is_duo: 0u8,
+    has_max: 0u8,
+    max_team_size: 0f64,
+    nation_count: 3u64,
+    config: TeamConfig { kind: 1u8, num: 0f64, s: "" },
+    total_players: 0f64,
+    status: 0u8,
+    res: &[(0i64, 0i64), (1i64, 0i64), (2i64, 0i64), (3i64, 0i64), (4i64, 1i64)],
+    res_nums: &[],
+    res_teams: &[],
+};
+
+pub const T_PREV_HVN: TeamScenario = TeamScenario {
+    name: "t_prev_hvn",
+    kind: 1u8,
+    players: &[
+        TeamPlayer { id: "a", player_type: 1u8, client_id: "", clan_tag: "", friends: &[], team_index: None },
+        TeamPlayer { id: "b", player_type: 1u8, client_id: "", clan_tag: "", friends: &[], team_index: None },
+        TeamPlayer { id: "c", player_type: 1u8, client_id: "", clan_tag: "", friends: &[], team_index: None },
+    ],
+    teams: &["Humans", "Nations"],
+    is_duo: 0u8,
+    has_max: 0u8,
+    max_team_size: 0f64,
+    nation_count: 5u64,
+    config: TeamConfig { kind: 4u8, num: 0f64, s: "" },
+    total_players: 0f64,
+    status: 0u8,
+    res: &[(0i64, 0i64), (1i64, 1i64), (2i64, 0i64)],
+    res_nums: &[],
+    res_teams: &[],
+};
+
+pub const T_PREV_NUM: TeamScenario = TeamScenario {
+    name: "t_prev_num",
+    kind: 1u8,
+    players: &[
+        TeamPlayer { id: "a", player_type: 1u8, client_id: "", clan_tag: "", friends: &[], team_index: None },
+        TeamPlayer { id: "b", player_type: 1u8, client_id: "", clan_tag: "", friends: &[], team_index: None },
+        TeamPlayer { id: "c", player_type: 1u8, client_id: "", clan_tag: "", friends: &[], team_index: None },
+        TeamPlayer { id: "d", player_type: 1u8, client_id: "", clan_tag: "", friends: &[], team_index: None },
+    ],
+    teams: &["Red", "Blue", "Yellow", "Green"],
+    is_duo: 0u8,
+    has_max: 0u8,
+    max_team_size: 0f64,
+    nation_count: 0u64,
+    config: TeamConfig { kind: 0u8, num: 4f64, s: "" },
+    total_players: 0f64,
+    status: 0u8,
+    res: &[(0i64, 0i64), (1i64, 1i64), (2i64, 2i64), (3i64, 3i64)],
+    res_nums: &[],
+    res_teams: &[],
+};
+
+pub const T_PREV_OTHER: TeamScenario = TeamScenario {
+    name: "t_prev_other",
+    kind: 1u8,
+    players: &[
+        TeamPlayer { id: "a", player_type: 1u8, client_id: "", clan_tag: "", friends: &[], team_index: None },
+        TeamPlayer { id: "b", player_type: 1u8, client_id: "", clan_tag: "", friends: &[], team_index: None },
+        TeamPlayer { id: "c", player_type: 1u8, client_id: "", clan_tag: "", friends: &[], team_index: None },
+    ],
+    teams: &["Red", "Blue"],
+    is_duo: 0u8,
+    has_max: 0u8,
+    max_team_size: 0f64,
+    nation_count: 1u64,
+    config: TeamConfig { kind: 5u8, num: 0f64, s: "Fives" },
+    total_players: 0f64,
+    status: 0u8,
+    res: &[(0i64, 0i64), (1i64, 1i64), (2i64, 0i64)],
+    res_nums: &[],
+    res_teams: &[],
+};
+
+pub const T_PREV_ZERO_NATIONS: TeamScenario = TeamScenario {
+    name: "t_prev_zero_nations",
+    kind: 1u8,
+    players: &[
+        TeamPlayer { id: "a", player_type: 1u8, client_id: "", clan_tag: "", friends: &[], team_index: None },
+        TeamPlayer { id: "b", player_type: 1u8, client_id: "", clan_tag: "", friends: &[], team_index: None },
+    ],
+    teams: &["Red", "Blue"],
+    is_duo: 0u8,
+    has_max: 0u8,
+    max_team_size: 0f64,
+    nation_count: 0u64,
+    config: TeamConfig { kind: 3u8, num: 0f64, s: "" },
+    total_players: 0f64,
+    status: 0u8,
+    res: &[(0i64, 0i64), (1i64, 1i64)],
+    res_nums: &[],
+    res_teams: &[],
+};
+
+pub const T_MAX_10_2: TeamScenario = TeamScenario {
+    name: "t_max_10_2",
+    kind: 2u8,
+    players: &[
+    ],
+    teams: &[],
+    is_duo: 0u8,
+    has_max: 0u8,
+    max_team_size: 0f64,
+    nation_count: 0u64,
+    config: TeamConfig { kind: 0u8, num: 10f64, s: "" },
+    total_players: 2f64,
+    status: 0u8,
+    res: &[],
+    res_nums: &[5f64],
+    res_teams: &[],
+};
+
+pub const T_MAX_5_2: TeamScenario = TeamScenario {
+    name: "t_max_5_2",
+    kind: 2u8,
+    players: &[
+    ],
+    teams: &[],
+    is_duo: 0u8,
+    has_max: 0u8,
+    max_team_size: 0f64,
+    nation_count: 0u64,
+    config: TeamConfig { kind: 0u8, num: 5f64, s: "" },
+    total_players: 2f64,
+    status: 0u8,
+    res: &[],
+    res_nums: &[3f64],
+    res_teams: &[],
+};
+
+pub const T_MAX_0_0: TeamScenario = TeamScenario {
+    name: "t_max_0_0",
+    kind: 2u8,
+    players: &[
+    ],
+    teams: &[],
+    is_duo: 0u8,
+    has_max: 0u8,
+    max_team_size: 0f64,
+    nation_count: 0u64,
+    config: TeamConfig { kind: 0u8, num: 0f64, s: "" },
+    total_players: 0f64,
+    status: 0u8,
+    res: &[],
+    res_nums: &[f64::NAN],
+    res_teams: &[],
+};
+
+pub const T_MAX_1_0: TeamScenario = TeamScenario {
+    name: "t_max_1_0",
+    kind: 2u8,
+    players: &[
+    ],
+    teams: &[],
+    is_duo: 0u8,
+    has_max: 0u8,
+    max_team_size: 0f64,
+    nation_count: 0u64,
+    config: TeamConfig { kind: 0u8, num: 1f64, s: "" },
+    total_players: 0f64,
+    status: 0u8,
+    res: &[],
+    res_nums: &[f64::INFINITY],
+    res_teams: &[],
+};
+
+pub const T_MAX_NEG1_2: TeamScenario = TeamScenario {
+    name: "t_max_neg1_2",
+    kind: 2u8,
+    players: &[
+    ],
+    teams: &[],
+    is_duo: 0u8,
+    has_max: 0u8,
+    max_team_size: 0f64,
+    nation_count: 0u64,
+    config: TeamConfig { kind: 0u8, num: -1f64, s: "" },
+    total_players: 2f64,
+    status: 0u8,
+    res: &[],
+    res_nums: &[-0.0f64],
+    res_teams: &[],
+};
+
+pub const T_MAX_10_3: TeamScenario = TeamScenario {
+    name: "t_max_10_3",
+    kind: 2u8,
+    players: &[
+    ],
+    teams: &[],
+    is_duo: 0u8,
+    has_max: 0u8,
+    max_team_size: 0f64,
+    nation_count: 0u64,
+    config: TeamConfig { kind: 0u8, num: 10f64, s: "" },
+    total_players: 3f64,
+    status: 0u8,
+    res: &[],
+    res_nums: &[4f64],
+    res_teams: &[],
+};
+
+pub const T_RES_HVN: TeamScenario = TeamScenario {
+    name: "t_res_hvn",
+    kind: 3u8,
+    players: &[
+    ],
+    teams: &[],
+    is_duo: 0u8,
+    has_max: 0u8,
+    max_team_size: 0f64,
+    nation_count: 0u64,
+    config: TeamConfig { kind: 4u8, num: 0f64, s: "" },
+    total_players: 10f64,
+    status: 0u8,
+    res: &[],
+    res_nums: &[],
+    res_teams: &["Humans", "Nations"],
+};
+
+pub const T_RES_NUM2: TeamScenario = TeamScenario {
+    name: "t_res_num2",
+    kind: 3u8,
+    players: &[
+    ],
+    teams: &[],
+    is_duo: 0u8,
+    has_max: 0u8,
+    max_team_size: 0f64,
+    nation_count: 0u64,
+    config: TeamConfig { kind: 0u8, num: 2f64, s: "" },
+    total_players: 0f64,
+    status: 0u8,
+    res: &[],
+    res_nums: &[],
+    res_teams: &["Red", "Blue"],
+};
+
+pub const T_RES_NUM3: TeamScenario = TeamScenario {
+    name: "t_res_num3",
+    kind: 3u8,
+    players: &[
+    ],
+    teams: &[],
+    is_duo: 0u8,
+    has_max: 0u8,
+    max_team_size: 0f64,
+    nation_count: 0u64,
+    config: TeamConfig { kind: 0u8, num: 3f64, s: "" },
+    total_players: 0f64,
+    status: 0u8,
+    res: &[],
+    res_nums: &[],
+    res_teams: &["Red", "Blue", "Yellow"],
+};
+
+pub const T_RES_NUM4: TeamScenario = TeamScenario {
+    name: "t_res_num4",
+    kind: 3u8,
+    players: &[
+    ],
+    teams: &[],
+    is_duo: 0u8,
+    has_max: 0u8,
+    max_team_size: 0f64,
+    nation_count: 0u64,
+    config: TeamConfig { kind: 0u8, num: 4f64, s: "" },
+    total_players: 0f64,
+    status: 0u8,
+    res: &[],
+    res_nums: &[],
+    res_teams: &["Red", "Blue", "Yellow", "Green"],
+};
+
+pub const T_RES_NUM5: TeamScenario = TeamScenario {
+    name: "t_res_num5",
+    kind: 3u8,
+    players: &[
+    ],
+    teams: &[],
+    is_duo: 0u8,
+    has_max: 0u8,
+    max_team_size: 0f64,
+    nation_count: 0u64,
+    config: TeamConfig { kind: 0u8, num: 5f64, s: "" },
+    total_players: 0f64,
+    status: 0u8,
+    res: &[],
+    res_nums: &[],
+    res_teams: &["Red", "Blue", "Yellow", "Green", "Purple"],
+};
+
+pub const T_RES_NUM6: TeamScenario = TeamScenario {
+    name: "t_res_num6",
+    kind: 3u8,
+    players: &[
+    ],
+    teams: &[],
+    is_duo: 0u8,
+    has_max: 0u8,
+    max_team_size: 0f64,
+    nation_count: 0u64,
+    config: TeamConfig { kind: 0u8, num: 6f64, s: "" },
+    total_players: 0f64,
+    status: 0u8,
+    res: &[],
+    res_nums: &[],
+    res_teams: &["Red", "Blue", "Yellow", "Green", "Purple", "Orange"],
+};
+
+pub const T_RES_NUM7: TeamScenario = TeamScenario {
+    name: "t_res_num7",
+    kind: 3u8,
+    players: &[
+    ],
+    teams: &[],
+    is_duo: 0u8,
+    has_max: 0u8,
+    max_team_size: 0f64,
+    nation_count: 0u64,
+    config: TeamConfig { kind: 0u8, num: 7f64, s: "" },
+    total_players: 0f64,
+    status: 0u8,
+    res: &[],
+    res_nums: &[],
+    res_teams: &["Red", "Blue", "Yellow", "Green", "Purple", "Orange", "Teal"],
+};
+
+pub const T_RES_NUM8: TeamScenario = TeamScenario {
+    name: "t_res_num8",
+    kind: 3u8,
+    players: &[
+    ],
+    teams: &[],
+    is_duo: 0u8,
+    has_max: 0u8,
+    max_team_size: 0f64,
+    nation_count: 0u64,
+    config: TeamConfig { kind: 0u8, num: 8f64, s: "" },
+    total_players: 0f64,
+    status: 0u8,
+    res: &[],
+    res_nums: &[],
+    res_teams: &["Team 1", "Team 2", "Team 3", "Team 4", "Team 5", "Team 6", "Team 7", "Team 8"],
+};
+
+pub const T_RES_NUM9: TeamScenario = TeamScenario {
+    name: "t_res_num9",
+    kind: 3u8,
+    players: &[
+    ],
+    teams: &[],
+    is_duo: 0u8,
+    has_max: 0u8,
+    max_team_size: 0f64,
+    nation_count: 0u64,
+    config: TeamConfig { kind: 0u8, num: 9f64, s: "" },
+    total_players: 0f64,
+    status: 0u8,
+    res: &[],
+    res_nums: &[],
+    res_teams: &["Team 1", "Team 2", "Team 3", "Team 4", "Team 5", "Team 6", "Team 7", "Team 8", "Team 9"],
+};
+
+pub const T_RES_NUM20: TeamScenario = TeamScenario {
+    name: "t_res_num20",
+    kind: 3u8,
+    players: &[
+    ],
+    teams: &[],
+    is_duo: 0u8,
+    has_max: 0u8,
+    max_team_size: 0f64,
+    nation_count: 0u64,
+    config: TeamConfig { kind: 0u8, num: 20f64, s: "" },
+    total_players: 0f64,
+    status: 0u8,
+    res: &[],
+    res_nums: &[],
+    res_teams: &["Team 1", "Team 2", "Team 3", "Team 4", "Team 5", "Team 6", "Team 7", "Team 8", "Team 9", "Team 10", "Team 11", "Team 12", "Team 13", "Team 14", "Team 15", "Team 16", "Team 17", "Team 18", "Team 19", "Team 20"],
+};
+
+pub const T_RES_NUM0: TeamScenario = TeamScenario {
+    name: "t_res_num0",
+    kind: 3u8,
+    players: &[
+    ],
+    teams: &[],
+    is_duo: 0u8,
+    has_max: 0u8,
+    max_team_size: 0f64,
+    nation_count: 0u64,
+    config: TeamConfig { kind: 0u8, num: 0f64, s: "" },
+    total_players: 10f64,
+    status: 2u8,
+    res: &[],
+    res_nums: &[],
+    res_teams: &[],
+};
+
+pub const T_RES_NUM1: TeamScenario = TeamScenario {
+    name: "t_res_num1",
+    kind: 3u8,
+    players: &[
+    ],
+    teams: &[],
+    is_duo: 0u8,
+    has_max: 0u8,
+    max_team_size: 0f64,
+    nation_count: 0u64,
+    config: TeamConfig { kind: 0u8, num: 1f64, s: "" },
+    total_players: 10f64,
+    status: 2u8,
+    res: &[],
+    res_nums: &[],
+    res_teams: &[],
+};
+
+pub const T_RES_NUMNEG: TeamScenario = TeamScenario {
+    name: "t_res_numneg",
+    kind: 3u8,
+    players: &[
+    ],
+    teams: &[],
+    is_duo: 0u8,
+    has_max: 0u8,
+    max_team_size: 0f64,
+    nation_count: 0u64,
+    config: TeamConfig { kind: 0u8, num: -5f64, s: "" },
+    total_players: 10f64,
+    status: 2u8,
+    res: &[],
+    res_nums: &[],
+    res_teams: &[],
+};
+
+pub const T_RES_NUMNAN: TeamScenario = TeamScenario {
+    name: "t_res_numnan",
+    kind: 3u8,
+    players: &[
+    ],
+    teams: &[],
+    is_duo: 0u8,
+    has_max: 0u8,
+    max_team_size: 0f64,
+    nation_count: 0u64,
+    config: TeamConfig { kind: 0u8, num: f64::NAN, s: "" },
+    total_players: 10f64,
+    status: 0u8,
+    res: &[],
+    res_nums: &[],
+    res_teams: &[],
+};
+
+pub const T_RES_NUMINF: TeamScenario = TeamScenario {
+    name: "t_res_numinf",
+    kind: 3u8,
+    players: &[
+    ],
+    teams: &[],
+    is_duo: 0u8,
+    has_max: 0u8,
+    max_team_size: 0f64,
+    nation_count: 0u64,
+    config: TeamConfig { kind: 0u8, num: f64::INFINITY, s: "" },
+    total_players: 10f64,
+    status: 3u8,
+    res: &[],
+    res_nums: &[],
+    res_teams: &[],
+};
+
+pub const T_RES_NUM8_5: TeamScenario = TeamScenario {
+    name: "t_res_num8_5",
+    kind: 3u8,
+    players: &[
+    ],
+    teams: &[],
+    is_duo: 0u8,
+    has_max: 0u8,
+    max_team_size: 0f64,
+    nation_count: 0u64,
+    config: TeamConfig { kind: 0u8, num: 8.5f64, s: "" },
+    total_players: 0f64,
+    status: 0u8,
+    res: &[],
+    res_nums: &[],
+    res_teams: &["Team 1", "Team 2", "Team 3", "Team 4", "Team 5", "Team 6", "Team 7", "Team 8"],
+};
+
+pub const T_RES_DUOS0: TeamScenario = TeamScenario {
+    name: "t_res_duos0",
+    kind: 3u8,
+    players: &[
+    ],
+    teams: &[],
+    is_duo: 0u8,
+    has_max: 0u8,
+    max_team_size: 0f64,
+    nation_count: 0u64,
+    config: TeamConfig { kind: 1u8, num: 0f64, s: "" },
+    total_players: 0f64,
+    status: 0u8,
+    res: &[],
+    res_nums: &[],
+    res_teams: &["Red", "Blue"],
+};
+
+pub const T_RES_DUOS5: TeamScenario = TeamScenario {
+    name: "t_res_duos5",
+    kind: 3u8,
+    players: &[
+    ],
+    teams: &[],
+    is_duo: 0u8,
+    has_max: 0u8,
+    max_team_size: 0f64,
+    nation_count: 0u64,
+    config: TeamConfig { kind: 1u8, num: 0f64, s: "" },
+    total_players: 5f64,
+    status: 0u8,
+    res: &[],
+    res_nums: &[],
+    res_teams: &["Red", "Blue", "Yellow"],
+};
+
+pub const T_RES_TRIOS7: TeamScenario = TeamScenario {
+    name: "t_res_trios7",
+    kind: 3u8,
+    players: &[
+    ],
+    teams: &[],
+    is_duo: 0u8,
+    has_max: 0u8,
+    max_team_size: 0f64,
+    nation_count: 0u64,
+    config: TeamConfig { kind: 2u8, num: 0f64, s: "" },
+    total_players: 7f64,
+    status: 0u8,
+    res: &[],
+    res_nums: &[],
+    res_teams: &["Red", "Blue", "Yellow"],
+};
+
+pub const T_RES_QUADS9: TeamScenario = TeamScenario {
+    name: "t_res_quads9",
+    kind: 3u8,
+    players: &[
+    ],
+    teams: &[],
+    is_duo: 0u8,
+    has_max: 0u8,
+    max_team_size: 0f64,
+    nation_count: 0u64,
+    config: TeamConfig { kind: 3u8, num: 0f64, s: "" },
+    total_players: 9f64,
+    status: 0u8,
+    res: &[],
+    res_nums: &[],
+    res_teams: &["Red", "Blue", "Yellow"],
+};
+
+pub const T_RES_QUADS0: TeamScenario = TeamScenario {
+    name: "t_res_quads0",
+    kind: 3u8,
+    players: &[
+    ],
+    teams: &[],
+    is_duo: 0u8,
+    has_max: 0u8,
+    max_team_size: 0f64,
+    nation_count: 0u64,
+    config: TeamConfig { kind: 3u8, num: 0f64, s: "" },
+    total_players: 0f64,
+    status: 0u8,
+    res: &[],
+    res_nums: &[],
+    res_teams: &["Red", "Blue"],
+};
+
+pub const T_RES_DUOSNAN: TeamScenario = TeamScenario {
+    name: "t_res_duosnan",
+    kind: 3u8,
+    players: &[
+    ],
+    teams: &[],
+    is_duo: 0u8,
+    has_max: 0u8,
+    max_team_size: 0f64,
+    nation_count: 0u64,
+    config: TeamConfig { kind: 1u8, num: 0f64, s: "" },
+    total_players: f64::NAN,
+    status: 0u8,
+    res: &[],
+    res_nums: &[],
+    res_teams: &[],
+};
+
+pub const T_RES_OTHER: TeamScenario = TeamScenario {
+    name: "t_res_other",
+    kind: 3u8,
+    players: &[
+    ],
+    teams: &[],
+    is_duo: 0u8,
+    has_max: 0u8,
+    max_team_size: 0f64,
+    nation_count: 0u64,
+    config: TeamConfig { kind: 5u8, num: 0f64, s: "Fives" },
+    total_players: 10f64,
+    status: 1u8,
+    res: &[],
+    res_nums: &[],
+    res_teams: &[],
+};
+
+pub const T_RES_EMPTYSTR: TeamScenario = TeamScenario {
+    name: "t_res_emptystr",
+    kind: 3u8,
+    players: &[
+    ],
+    teams: &[],
+    is_duo: 0u8,
+    has_max: 0u8,
+    max_team_size: 0f64,
+    nation_count: 0u64,
+    config: TeamConfig { kind: 5u8, num: 0f64, s: "" },
+    total_players: 10f64,
+    status: 1u8,
+    res: &[],
+    res_nums: &[],
+    res_teams: &[],
+};
+
+pub const TEAM_SCENARIOS: &[TeamScenario] = &[
+    T_EMPTY,
+    T_EVEN4,
+    T_ODD5,
+    T_4X3,
+    T_PINS,
+    T_PIN_OOB,
+    T_PIN_NEG,
+    T_PIN_FRAC,
+    T_PIN_NAN,
+    T_PIN_ZERO,
+    T_CLAN_OVERFLOW,
+    T_CLAN_TIES,
+    T_CLAN_SEED,
+    T_CLAN_EMPTY_TAG,
+    T_CLAN_ALLFULL,
+    T_FRIENDS_ATTRACT,
+    T_FRIENDS_FULL_SPILL,
+    T_FRIENDS_ABSENT,
+    T_FRIENDS_NULLCLIENT,
+    T_FRIENDS_BIDIR,
+    T_DUOS,
+    T_DUOS_PINS,
+    T_NATIONS,
+    T_NATIONS_NULLCLIENT,
+    T_NATIONS_UNICODE,
+    T_BOTS,
+    T_MIXED,
+    T_DUPNAMES,
+    T_NO_TEAMS,
+    T_KICK_ALL,
+    T_MAX_INF,
+    T_PREV_DUOS,
+    T_PREV_HVN,
+    T_PREV_NUM,
+    T_PREV_OTHER,
+    T_PREV_ZERO_NATIONS,
+    T_MAX_10_2,
+    T_MAX_5_2,
+    T_MAX_0_0,
+    T_MAX_1_0,
+    T_MAX_NEG1_2,
+    T_MAX_10_3,
+    T_RES_HVN,
+    T_RES_NUM2,
+    T_RES_NUM3,
+    T_RES_NUM4,
+    T_RES_NUM5,
+    T_RES_NUM6,
+    T_RES_NUM7,
+    T_RES_NUM8,
+    T_RES_NUM9,
+    T_RES_NUM20,
+    T_RES_NUM0,
+    T_RES_NUM1,
+    T_RES_NUMNEG,
+    T_RES_NUMNAN,
+    T_RES_NUMINF,
+    T_RES_NUM8_5,
+    T_RES_DUOS0,
+    T_RES_DUOS5,
+    T_RES_TRIOS7,
+    T_RES_QUADS9,
+    T_RES_QUADS0,
+    T_RES_DUOSNAN,
+    T_RES_OTHER,
+    T_RES_EMPTYSTR,
+];
+

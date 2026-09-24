@@ -155,6 +155,57 @@ function prepare(rel) {
       "Util TribeNames import",
     );
   }
+  if (rel.endsWith("game/TeamAssignment.ts")) {
+    // ClientID / TeamCountConfig / PlayerInfo / Team are type-only (branded
+    // types + interfaces) -> dropped. PseudoRandom and simpleHash are *value*
+    // uses (the nation shuffle), so they resolve: PseudoRandom has no imports
+    // and loads directly; simpleHash redirects to the prepared Util copy. The
+    // Game import is a mix of runtime constants (ColoredTeams, the
+    // TeamCountConfig string literals, PlayerType) and types (PlayerInfo,
+    // Team) — replace it with inert stubs carrying the same values.
+    out = must(
+      out,
+      'import { PseudoRandom } from "../PseudoRandom";\n',
+      'import { PseudoRandom } from "../../../src/core/PseudoRandom.ts";\n',
+      "Team PseudoRandom import",
+    );
+    out = must(
+      out,
+      'import { ClientID, TeamCountConfig } from "../Schemas";\n',
+      "",
+      "Team Schemas import",
+    );
+    const utilRel = "src/core/Util.ts";
+    if (!prepared.has(utilRel)) prepare(utilRel);
+    out = must(
+      out,
+      'import { simpleHash } from "../Util";\n',
+      `import { simpleHash } from "./${prepared.get(utilRel)}";\n`,
+      "Team Util import",
+    );
+    out = must(
+      out,
+      "import {\n" +
+        "  ColoredTeams,\n" +
+        "  Duos,\n" +
+        "  HumansVsNations,\n" +
+        "  PlayerInfo,\n" +
+        "  PlayerType,\n" +
+        "  Quads,\n" +
+        "  Team,\n" +
+        "  Trios,\n" +
+        '} from "./Game";\n',
+      "const ColoredTeams = { Red: \"Red\", Blue: \"Blue\", Teal: \"Teal\", " +
+        "Purple: \"Purple\", Yellow: \"Yellow\", Orange: \"Orange\", Green: \"Green\", " +
+        "Bot: \"Bot\", Humans: \"Humans\", Nations: \"Nations\" };\n" +
+        "const Duos = \"Duos\";\n" +
+        "const Trios = \"Trios\";\n" +
+        "const Quads = \"Quads\";\n" +
+        "const HumansVsNations = \"Humans Vs Nations\";\n" +
+        "const PlayerType = { Bot: \"BOT\", Human: \"HUMAN\", Nation: \"NATION\" };\n",
+      "Team Game import",
+    );
+  }
   if (rel.endsWith("algorithms/AStar.Water.ts")) {
     // GameMap/TileRef/PathFinder are all type-only (interfaces / type
     // aliases); the MinHeap value import is redirected to the prepared

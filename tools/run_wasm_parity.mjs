@@ -514,7 +514,116 @@ for (const s of S.util) {
     checks++;
     const got = ex.probe_util_out_at(i);
     if (!Object.is(got, numTok(s.res[i])))
-      fail(`${s.name} res[${i}]`, i, fmt(got), String(s.res[i]));
+      fail(`${s.name} res[${i}]`, i, fmt(got), s.res[i]);
+  }
+}
+
+// --- TeamAssignment --- (flat f64 token stream; the Rust `Cur` in
+// wasm_probe.rs decodes exactly this layout: a string is [len, ...units],
+// an optional string [present, string], teamIndex [flag] with 0=null /
+// 1=number follows / 2=NaN, config [kind] (+num if 0, +string if 5)).
+const tStr = (push, s) => {
+  push(s.length);
+  for (let i = 0; i < s.length; i++) push(s.charCodeAt(i));
+};
+const tOptStr = (push, s) => {
+  if (s === null || s === undefined) push(0);
+  else {
+    push(1);
+    tStr(push, s);
+  }
+};
+const tTeamIndex = (push, tok) => {
+  if (tok === null || tok === undefined) push(0);
+  else if (tok === "n") push(2);
+  else {
+    push(1);
+    push(numTok(tok));
+  }
+};
+const tConfig = (push, c) => {
+  push(c.kind);
+  if (c.kind === 0) push(numTok(c.num));
+  else if (c.kind === 5) tStr(push, c.str);
+};
+for (const s of S.team) {
+  const push = (v) => ex.probe_team_arg(v);
+  if (s.kind === 0 || s.kind === 1) {
+    push(s.players.length);
+    for (const p of s.players) {
+      push(p.playerType === "BOT" ? 0 : p.playerType === "HUMAN" ? 1 : 2);
+      tTeamIndex(push, p.teamIndex);
+      tStr(push, p.id);
+      tOptStr(push, p.clientID);
+      tOptStr(push, p.clanTag);
+      push(p.friends.length);
+      for (const f of p.friends) tStr(push, f);
+    }
+    push(s.teams.length);
+    for (const t of s.teams) tStr(push, t);
+    push(s.isDuo);
+    if (s.kind === 0) {
+      push(s.hasMax);
+      push(numTok(s.maxTeamSize));
+    } else {
+      push(s.nationCount);
+      tConfig(push, s.config);
+    }
+  } else if (s.kind === 2) {
+    push(numTok(s.config.num));
+    push(numTok(s.totalPlayers));
+  } else {
+    tConfig(push, s.config);
+    push(numTok(s.totalPlayers));
+  }
+  ex.probe_team_op(s.kind);
+  checks++;
+  const n = ex.probe_team_out_len();
+  if (s.kind === 0 || s.kind === 1) {
+    if (n !== s.res.length * 2) {
+      fail(`${s.name} res len`, 0, n, s.res.length * 2);
+      continue;
+    }
+    for (let i = 0; i < s.res.length; i++) {
+      for (let j = 0; j < 2; j++) {
+        checks++;
+        const got = ex.probe_team_out_at(i * 2 + j);
+        if (!Object.is(got, s.res[i][j]))
+          fail(`${s.name} res[${i}][${j}]`, i, fmt(got), s.res[i][j]);
+      }
+    }
+  } else if (s.kind === 2) {
+    if (n !== 1) fail(`${s.name} res len`, 0, n, 1);
+    else {
+      checks++;
+      const got = ex.probe_team_out_at(0);
+      if (!Object.is(got, numTok(s.resNums[0])))
+        fail(`${s.name} max`, 0, fmt(got), s.resNums[0]);
+    }
+  } else {
+    checks++;
+    const status = n > 0 ? ex.probe_team_out_at(0) : -1;
+    if (!Object.is(status, s.status)) {
+      fail(`${s.name} status`, 0, fmt(status), s.status);
+      continue;
+    }
+    if (s.status === 0) {
+      checks++;
+      const len = ex.probe_team_out_at(1);
+      if (!Object.is(len, s.resTeams.length)) {
+        fail(`${s.name} teams len`, 0, len, s.resTeams.length);
+        continue;
+      }
+      let at = 2;
+      for (const want of s.resTeams) {
+        const slen = ex.probe_team_out_at(at++);
+        checks++;
+        let got = "";
+        for (let i = 0; i < slen; i++) got += String.fromCharCode(ex.probe_team_out_at(at++));
+        checks++;
+        if (got !== want) fail(`${s.name} team`, 0, got, want);
+      }
+    }
   }
 }
 

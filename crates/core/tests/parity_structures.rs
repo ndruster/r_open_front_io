@@ -682,3 +682,92 @@ fn assert_opt(got: Option<f64>, want: &GmRes, ctx: &dyn Fn() -> String) {
         _ => panic!("{} opt mismatch: got {got:?} want {want:?}", ctx()),
     }
 }
+
+// ---------------------------------------------------------------- TeamAssignment
+#[test]
+fn replay_team_scenarios() {
+    use openfront_core::team_assignment as ta;
+
+    for s in vectors::TEAM_SCENARIOS {
+        let players: Vec<ta::PlayerInfo> = s
+            .players
+            .iter()
+            .map(|p| ta::PlayerInfo {
+                id: p.id.to_string(),
+                player_type: match p.player_type {
+                    0 => ta::PlayerType::Bot,
+                    1 => ta::PlayerType::Human,
+                    _ => ta::PlayerType::Nation,
+                },
+                client_id: if p.client_id.is_empty() { None } else { Some(p.client_id.to_string()) },
+                clan_tag: if p.clan_tag.is_empty() { None } else { Some(p.clan_tag.to_string()) },
+                friends: p.friends.iter().map(|f| f.to_string()).collect(),
+                team_index: p.team_index,
+            })
+            .collect();
+        let teams: Vec<String> = s.teams.iter().map(|t| t.to_string()).collect();
+        let config = match s.config.kind {
+            0 => ta::TeamCountConfig::Num(s.config.num),
+            1 => ta::TeamCountConfig::Duos,
+            2 => ta::TeamCountConfig::Trios,
+            3 => ta::TeamCountConfig::Quads,
+            4 => ta::TeamCountConfig::HumansVsNations,
+            _ => ta::TeamCountConfig::Other(s.config.s.to_string()),
+        };
+        match s.kind {
+            0 | 1 => {
+                let got = if s.kind == 0 {
+                    if s.has_max == 1 {
+                        ta::assign_teams_with_max(&players, &teams, s.is_duo == 1, s.max_team_size)
+                    } else {
+                        ta::assign_teams(&players, &teams, s.is_duo == 1)
+                    }
+                } else {
+                    ta::assign_teams_lobby_preview(
+                        &players,
+                        &teams,
+                        &config,
+                        s.nation_count as usize,
+                    )
+                };
+                assert_eq!(got.len(), s.res.len(), "{} result length", s.name);
+                for (i, ((pi, assign), want)) in got.iter().zip(s.res.iter()).enumerate() {
+                    let team_idx = match assign {
+                        ta::Assignment::Kicked => -1i64,
+                        ta::Assignment::Team(t) => {
+                            teams.iter().position(|x| x == t).unwrap() as i64
+                        }
+                    };
+                    assert_eq!(
+                        (*pi as i64, team_idx),
+                        *want,
+                        "{} entry#{i}: got ({pi}, {team_idx}) want {want:?}",
+                        s.name
+                    );
+                }
+            }
+            2 => {
+                let got = ta::get_max_team_size(s.config.num, s.total_players);
+                // obj_is: NaN payloads differ between V8 and Rust's
+                // canonical NaN, so compare by Object.is semantics.
+                assert!(obj_is(got, s.res_nums[0]), "{} max: got {got} want {}", s.name, s.res_nums[0]);
+            }
+            3 => {
+                let got = ta::resolve_teams_list(&config, s.total_players);
+                match (s.status, got) {
+                    (0, Ok(list)) => {
+                        assert_eq!(list.len(), s.res_teams.len(), "{} teams len", s.name);
+                        for (i, (g, w)) in list.iter().zip(s.res_teams.iter()).enumerate() {
+                            assert_eq!(g, *w, "{} team#{i}", s.name);
+                        }
+                    }
+                    (1, Err(ta::ResolveTeamsError::UnknownConfig)) => {}
+                    (2, Err(ta::ResolveTeamsError::TooFewTeams)) => {}
+                    (3, Err(ta::ResolveTeamsError::InvalidLength)) => {}
+                    (st, r) => panic!("{} status {st} got {r:?}", s.name),
+                }
+            }
+            k => panic!("{} unexpected team kind {k}", s.name),
+        }
+    }
+}

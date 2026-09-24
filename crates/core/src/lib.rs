@@ -24,6 +24,9 @@
 //! * [`util`] — the deterministic core of `src/core/Util.ts` (wrapped
 //!   Manhattan distance, `simpleHash`, first-minimum searches, `getMode`,
 //!   bigint clamps, `sigmoid`, bounding-box helpers over a `GameMap`)
+//! * [`team_assignment`] — `src/core/game/TeamAssignment.ts` (lobby team
+//!   balancing: pins, strict clans, soft friend preference, nation shuffle,
+//!   and `resolveTeamsList`)
 //!
 //! Two rules govern every future port into this crate:
 //!
@@ -44,6 +47,7 @@ pub mod game_map;
 pub mod jsnum;
 pub mod pathfinding;
 pub mod pseudo_random;
+pub mod team_assignment;
 pub mod tile_set;
 pub mod util;
 

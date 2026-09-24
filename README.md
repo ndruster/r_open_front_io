@@ -20,6 +20,7 @@ rust/
 │   │   │                          + the distFN factories)
 │   │   ├── tile_set.rs            port of game/TileSet.ts
 │   │   ├── util.rs                port of Util.ts (deterministic core only)
+│   │   ├── team_assignment.rs     port of game/TeamAssignment.ts
 │   │   ├── wasm_probe.rs          `extern "C"` surface, feature-gated
 │   │   └── pathfinding/
 │   │       ├── mod.rs
@@ -126,6 +127,17 @@ desync, not a rounding nit. Two things enforce that here:
    `calculateBoundingBox` / `calculateBoundingBoxCenter` / `boundingBoxTiles`
    over real `GameMapImpl` maps through all three TS container branches
    (Array, Set, TileSet). Results compare by IEEE-754 bit pattern.
+10. **`TeamAssignment.ts`** (`team_assignment.rs`) is pinned with 66 lobby
+    scenarios over the real TS functions: server-pinned team slots (including
+    the out-of-range / fractional / `NaN` pins that JS `teams[i]` leaves
+    unpinned), strict clans with overflow kicks and stable equal-size
+    ordering, the falsy empty `clanTag`, soft friend preference (absent IDs,
+    null clientIDs, bidirectional edges, spill-when-full), the Duos/Trios/
+    Quads largest-team mode, the nation shuffle seeded by `simpleHash` of the
+    first nation's id (surrogate-pair ids included), duplicate team names
+    merging by string equality, `getMaxTeamSize` `±Infinity`/`NaN`/`-0`
+    edges, and every `resolveTeamsList` branch plus both `throw` paths. The
+    result map's **insertion order** is compared entry by entry.
 
 Regenerate whenever a ported source changes:
 
@@ -159,7 +171,7 @@ node rust/tools/run_wasm_parity.mjs
 
 `wasm-probe` exposes the ported functions through `extern "C"` scalar
 entrypoints (`src/wasm_probe.rs`); the runner imports `data/vectors.json` and
-compares every value. Last run: **22,540 comparisons, all bit-identical**.
+compares every value. Last run: **23,058 comparisons, all bit-identical**.
 
 ### Windows: the linker environment
 
@@ -204,6 +216,8 @@ Roughly in order of leverage, all currently reachable from the ported layer:
 |---|---|---|
 | `execution/**` scheduler layer | `src/core/execution/**` | The turn/intent pipeline the game logic runs on; leans on the now-ported `Util`, `GameMap` and pathfinding. |
 | `game/Game.ts` types | `src/core/game/Game.ts` | `Cell`/`Unit`/enum surface most `game/**` modules import. |
+| `game/TrainStation.ts` | `src/core/game/TrainStation.ts` | `Cluster`/reservoir-sampling logic, but the stop handlers need the whole `Game`/`Player`/`TrainExecution` graph. |
+| `game/Veterancy.ts` | `src/core/game/Veterancy.ts` | One pure integer-percent function; trivial parity surface, unblocked already. |
 
 `execution/**` and `game/**` are the bulk (~500 files, heavy on `zod` schemas,
 `ApiSchemas.ts`, and worker IPC) and will want a serde/zbin schema story before

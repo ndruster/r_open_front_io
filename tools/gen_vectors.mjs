@@ -156,6 +156,7 @@ const { AStarWater } = await loadTs("src/core/pathfinding/algorithms/AStar.Water
 const { GameMapImpl } = await loadTs("src/core/game/GameMap.ts");
 const { TileSet } = await loadTs("src/core/game/TileSet.ts");
 const Util = await loadTs("src/core/Util.ts");
+const TeamAssignment = await loadTs("src/core/game/TeamAssignment.ts");
 
 // enc() maps JS-only values JSON cannot carry: undefined -> "u", NaN -> "n",
 // booleans -> 1/0, and -0 -> "-0" (JSON collapses -0 to 0, yet the f32 bit
@@ -1146,6 +1147,255 @@ function pushUtil(name, kind, args, res, strs = [], status = 0) {
   }
 }
 
+// --- TeamAssignment scenario runner ------------------------------------------
+// Exercises the real TeamAssignment.ts lobby-balancing functions and records
+// every observable: the result map's insertion order (player index -> team
+// index or -1 for "kicked"), the getMaxTeamSize edges, and resolveTeamsList's
+// team lists / throw kinds. The Rust twin is `team_assignment::*`.
+//
+// kind table (matches the Rust dispatch in parity_structures.rs):
+//   0 assignTeams(players, teams, isDuo, maxTeamSize)
+//   1 assignTeamsLobbyPreview(players, teams, config, nationCount)
+//   2 getMaxTeamSize(numPlayers, numTeams) -> resNums=[max]
+//   3 resolveTeamsList(config, totalPlayers) -> resTeams | status 1/2/3
+// status: 0 ok; 1 Unknown TeamCountConfig; 2 Too few teams; 3 RangeError.
+// player: {id, playerType: "BOT"|"HUMAN"|"NATION", clientID: null|str,
+//          clanTag: null|str, friends: [str], teamIndex: null|uenc token}
+const teamScenarios = [];
+const PT = ["BOT", "HUMAN", "NATION"];
+const mkP = (id, t, c = null, k = null, f = [], i = null) => ({
+  id,
+  playerType: PT[t],
+  clientID: c,
+  clanTag: k,
+  friends: f,
+  teamIndex: i,
+});
+// Encode a player for the vector file: teamIndex keeps the null-vs-NaN
+// distinction (JSON would collapse NaN to null).
+const encPlayer = (p) => ({
+  id: p.id,
+  playerType: p.playerType,
+  clientID: p.clientID,
+  clanTag: p.clanTag,
+  friends: p.friends,
+  teamIndex: p.teamIndex === null ? null : uenc(p.teamIndex),
+});
+const configOf = (c) =>
+  typeof c === "number"
+    ? { kind: 0, num: uenc(c), str: "" }
+    : c === "Duos"
+      ? { kind: 1, num: 0, str: "" }
+      : c === "Trios"
+        ? { kind: 2, num: 0, str: "" }
+        : c === "Quads"
+          ? { kind: 3, num: 0, str: "" }
+          : c === "Humans Vs Nations"
+            ? { kind: 4, num: 0, str: "" }
+            : { kind: 5, num: 0, str: String(c) };
+
+function pushTeamAssign(name, players, teams, isDuo, maxTeamSize) {
+  const hasMax = maxTeamSize !== undefined;
+  const res = hasMax
+    ? TeamAssignment.assignTeams(players, teams, isDuo, maxTeamSize)
+    : TeamAssignment.assignTeams(players, teams, isDuo);
+  const max = hasMax ? maxTeamSize : TeamAssignment.getMaxTeamSize(players.length, teams.length);
+  const pairs = [];
+  for (const [p, v] of res.entries()) {
+    pairs.push([players.indexOf(p), v === "kicked" ? -1 : teams.indexOf(v)]);
+  }
+  teamScenarios.push({
+    name, kind: 0, players: players.map(encPlayer), teams,
+    isDuo: isDuo ? 1 : 0, hasMax: hasMax ? 1 : 0, maxTeamSize: uenc(max),
+    nationCount: 0, config: { kind: 0, num: 0, str: "" }, totalPlayers: 0,
+    status: 0, res: pairs, resNums: [], resTeams: [],
+  });
+}
+
+function pushTeamPreview(name, players, teams, config, nationCount) {
+  const res = TeamAssignment.assignTeamsLobbyPreview(players, teams, config, nationCount);
+  const pairs = [];
+  for (const [p, v] of res.entries()) {
+    pairs.push([players.indexOf(p), v === "kicked" ? -1 : teams.indexOf(v)]);
+  }
+  teamScenarios.push({
+    name, kind: 1, players: players.map(encPlayer), teams,
+    isDuo: 0, hasMax: 0, maxTeamSize: 0, nationCount,
+    config: configOf(config), totalPlayers: 0,
+    status: 0, res: pairs, resNums: [], resTeams: [],
+  });
+}
+
+function pushMaxTeamSize(name, n, t) {
+  teamScenarios.push({
+    name, kind: 2, players: [], teams: [], isDuo: 0, hasMax: 0, maxTeamSize: 0,
+    nationCount: 0, config: { kind: 0, num: uenc(n), str: "" }, totalPlayers: uenc(t),
+    status: 0, res: [], resNums: [uenc(TeamAssignment.getMaxTeamSize(n, t))], resTeams: [],
+  });
+}
+
+function pushResolveTeams(name, config, totalPlayers) {
+  let status = 0;
+  let resTeams = [];
+  try {
+    resTeams = TeamAssignment.resolveTeamsList(config, totalPlayers);
+  } catch (e) {
+    const m = String(e && e.message);
+    status = /Unknown TeamCountConfig/.test(m) ? 1 : /Too few teams/.test(m) ? 2 : 3;
+  }
+  teamScenarios.push({
+    name, kind: 3, players: [], teams: [], isDuo: 0, hasMax: 0, maxTeamSize: 0,
+    nationCount: 0, config: configOf(config), totalPlayers: uenc(totalPlayers),
+    status, res: [], resNums: [], resTeams,
+  });
+}
+
+{
+  const T2 = ["Red", "Blue"];
+  const T3 = ["Red", "Blue", "Yellow"];
+  const T4 = ["Red", "Blue", "Yellow", "Green"];
+  const H = (id, ...rest) => mkP(id, 1, ...rest);
+  const N = (id, ...rest) => mkP(id, 2, ...rest);
+  const B = (id, ...rest) => mkP(id, 0, ...rest);
+
+  // Empty lobby.
+  pushTeamAssign("t_empty", [], T2, false, undefined);
+
+  // Plain humans, default max: even split, odd player lands on the first
+  // minimum team.
+  pushTeamAssign("t_even4", [H("a"), H("b"), H("c"), H("d")], T2, false, undefined);
+  pushTeamAssign("t_odd5", [H("a"), H("b"), H("c"), H("d"), H("e")], T2, false, undefined);
+  pushTeamAssign("t_4x3", [H("a"), H("b"), H("c"), H("d")], T3, false, undefined);
+
+  // Server-pinned slots seed the counts the balancer sees.
+  pushTeamAssign("t_pins", [
+    H("a", null, null, [], 1), H("b", null, null, [], 1),
+    H("c"), H("d"),
+  ], T2, false, undefined);
+  // Out-of-range / negative / fractional / NaN pins leave the player unpinned
+  // (JS `teams[i]` is undefined for all of them).
+  pushTeamAssign("t_pin_oob", [H("a", null, null, [], 5), H("b")], T2, false, undefined);
+  pushTeamAssign("t_pin_neg", [H("a", null, null, [], -1), H("b")], T2, false, undefined);
+  pushTeamAssign("t_pin_frac", [H("a", null, null, [], 1.5), H("b")], T2, false, undefined);
+  pushTeamAssign("t_pin_nan", [H("a", null, null, [], Number.NaN), H("b")], T2, false, undefined);
+  pushTeamAssign("t_pin_zero", [H("a", null, null, [], 0), H("b")], T2, false, undefined);
+
+  // Clans: all-or-nothing with overflow kicks; equal-size clans keep
+  // first-seen order (stable sort); a clan goes to the emptiest team.
+  pushTeamAssign("t_clan_overflow", [
+    H("a", "ca", "X"), H("b", "cb", "X"), H("c", "cc", "X"), H("d", "cd", "X"), H("e"),
+  ], T2, false, undefined);
+  pushTeamAssign("t_clan_ties", [
+    H("a", "ca", "X"), H("b", "cb", "X"),
+    H("c", "cc", "Y"), H("d", "cd", "Y"),
+  ], T2, false, undefined);
+  pushTeamAssign("t_clan_seed", [
+    H("a", null, null, [], 1),
+    H("b", "cb", "X"), H("c", "cc", "X"),
+  ], T2, false, undefined);
+  // Empty clanTag is falsy: the player is treated as clanless.
+  pushTeamAssign("t_clan_empty_tag", [H("a", "ca", ""), H("b", "cb", "")], T2, false, undefined);
+  // Clan when every team is already at max: the *first* team is still
+  // selected (teamSize stays >= max) and the whole clan is kicked.
+  pushTeamAssign("t_clan_allfull", [
+    H("a", null, null, [], 0), H("b", null, null, [], 1),
+    H("c", "cc", "X"), H("d", "cd", "X"),
+  ], T2, false, 1);
+
+  // Friends: soft preference, spill when full, absent IDs ignored, null
+  // clientIDs never form edges, edges are bidirectional.
+  pushTeamAssign("t_friends_attract", [
+    H("a", "ca", null, ["cb"]), H("b", "cb", null, [], 2), H("c"),
+  ], T3, false, undefined);
+  pushTeamAssign("t_friends_full_spill", [
+    H("a", "ca", null, ["cb"]), H("b", "cb", null, [], 1), H("c"),
+  ], T2, false, 1);
+  pushTeamAssign("t_friends_absent", [
+    H("a", "ca", null, ["ghost"]), H("b"),
+  ], T2, false, undefined);
+  pushTeamAssign("t_friends_nullclient", [
+    H("a", null, null, ["cb", "ca"]), H("b", "cb"),
+  ], T2, false, undefined);
+  pushTeamAssign("t_friends_bidir", [
+    H("a", "ca", null, [], 1), H("b", "cb", null, ["ca"]), H("c"),
+  ], T2, false, undefined);
+
+  // Duos/Trios/Quads mode: bestSize starts at -1 and prefers the *largest*
+  // non-full team, so pairs form before singles spread.
+  pushTeamAssign("t_duos", [H("a"), H("b"), H("c"), H("d"), H("e")], T2, true, undefined);
+  pushTeamAssign("t_duos_pins", [
+    H("a", null, null, [], 0), H("b", null, null, [], 0),
+    H("c"), H("d"), H("e"),
+  ], T2, true, undefined);
+
+  // Nations: shuffled once (seeded by simpleHash of the first nation's id)
+  // and placed *after* every other player.
+  pushTeamAssign("t_nations", [
+    N("n1", "cn1"), N("n2", "cn2"), N("n3", "cn3"), H("h1"),
+  ], T2, false, undefined);
+  pushTeamAssign("t_nations_nullclient", [N("n1"), N("n2"), H("h1")], T2, false, undefined);
+  // Non-ASCII ids exercise the UTF-16 simpleHash seed of the shuffle.
+  pushTeamAssign("t_nations_unicode", [
+    N("π-ν1"), N("🚀n2"), N("n3"), N("n4"),
+  ], T3, false, undefined);
+  pushTeamAssign("t_bots", [B("b1"), B("b2"), H("h1")], T2, false, undefined);
+
+  // Everything at once: pins + clan + friends + nations.
+  pushTeamAssign("t_mixed", [
+    H("a", "ca", "X"), H("b", "cb", "X"),
+    H("c", "cc", null, ["cd"]), H("d", "cd", null, [], 0),
+    N("n1", "cn1"), N("n2", "cn2"), H("e"),
+  ], T4, false, undefined);
+
+  // Duplicate team names: the Map keys merge by string equality, so both
+  // slots share one count.
+  pushTeamAssign("t_dupnames", [H("a"), H("b"), H("c")], ["Red", "Blue", "Red"], false, undefined);
+
+  // No teams at all: nothing to pin onto, clans are skipped, everyone is
+  // kicked (placePlayer finds no candidate).
+  pushTeamAssign("t_no_teams", [H("a"), H("b", "cb", "X")], [], false, undefined);
+
+  // maxTeamSize edges.
+  pushTeamAssign("t_kick_all", [H("a"), H("b")], T2, false, 0);
+  pushTeamAssign("t_max_inf", [H("a"), H("b"), H("c")], T2, false, Number.POSITIVE_INFINITY);
+
+  // Lobby preview: maxTeamSize counts the incoming nations, and only
+  // Duos/Trios/Quads flip the fill-preference mode.
+  pushTeamPreview("t_prev_duos", [H("a"), H("b"), H("c"), H("d"), H("e")], T2, "Duos", 3);
+  pushTeamPreview("t_prev_hvn", [H("a"), H("b"), H("c")], ["Humans", "Nations"], "Humans Vs Nations", 5);
+  pushTeamPreview("t_prev_num", [H("a"), H("b"), H("c"), H("d")], T4, 4, 0);
+  pushTeamPreview("t_prev_other", [H("a"), H("b"), H("c")], T2, "Fives", 1);
+  pushTeamPreview("t_prev_zero_nations", [H("a"), H("b")], T2, "Quads", 0);
+
+  // getMaxTeamSize edges: exact, rounding up, zero divisor (Infinity), 0/0
+  // (NaN), and the -0 result of ceil(-0.5).
+  pushMaxTeamSize("t_max_10_2", 10, 2);
+  pushMaxTeamSize("t_max_5_2", 5, 2);
+  pushMaxTeamSize("t_max_0_0", 0, 0);
+  pushMaxTeamSize("t_max_1_0", 1, 0);
+  pushMaxTeamSize("t_max_neg1_2", -1, 2);
+  pushMaxTeamSize("t_max_10_3", 10, 3);
+
+  // resolveTeamsList: every branch, both throws, the fractional / NaN /
+  // Infinity length edges.
+  pushResolveTeams("t_res_hvn", "Humans Vs Nations", 10);
+  for (const n of [2, 3, 4, 5, 6, 7, 8, 9, 20]) pushResolveTeams(`t_res_num${n}`, n, 0);
+  pushResolveTeams("t_res_num0", 0, 10);
+  pushResolveTeams("t_res_num1", 1, 10);
+  pushResolveTeams("t_res_numneg", -5, 10);
+  pushResolveTeams("t_res_numnan", Number.NaN, 10);
+  pushResolveTeams("t_res_numinf", Number.POSITIVE_INFINITY, 10);
+  pushResolveTeams("t_res_num8_5", 8.5, 0);
+  pushResolveTeams("t_res_duos0", "Duos", 0);
+  pushResolveTeams("t_res_duos5", "Duos", 5);
+  pushResolveTeams("t_res_trios7", "Trios", 7);
+  pushResolveTeams("t_res_quads9", "Quads", 9);
+  pushResolveTeams("t_res_quads0", "Quads", 0);
+  pushResolveTeams("t_res_duosnan", "Duos", Number.NaN);
+  pushResolveTeams("t_res_other", "Fives", 10);
+  pushResolveTeams("t_res_emptystr", "", 10);
+}
+
 const structures = {
   minheap: mhScenarios,
   bucket: bqScenarios,
@@ -1157,6 +1407,7 @@ const structures = {
   gamemap: gmScenarios,
   tileset: tsScenarios,
   util: utilScenarios,
+  team: teamScenarios,
 };
 
 // ================================================================ JSON
@@ -1834,6 +2085,87 @@ for (const s of structures.util) {
 }
 L.push("pub const UTIL_SCENARIOS: &[UtilScenario] = &[");
 for (const s of structures.util) L.push(`    ${s.name.toUpperCase()},`);
+L.push("];");
+L.push("");
+
+L.push("/// One `PlayerInfo` as `assignTeams` sees it. `player_type`: 0 BOT,");
+L.push("/// 1 HUMAN, 2 NATION. Empty `client_id` / `clan_tag` mean `null`");
+L.push("/// (an empty clanTag is falsy anyway, so the two collapse).");
+L.push("/// `team_index` is the raw `number | null` pin (NaN is a real");
+L.push("/// token: JS `teams[NaN]` is undefined, i.e. unpinned).");
+L.push("pub struct TeamPlayer {");
+L.push("    pub id: &'static str,");
+L.push("    pub player_type: u8,");
+L.push("    pub client_id: &'static str,");
+L.push("    pub clan_tag: &'static str,");
+L.push("    pub friends: &'static [&'static str],");
+L.push("    pub team_index: Option<f64>,");
+L.push("}");
+L.push("");
+L.push("/// `TeamCountConfig`: kind 0 Num(num), 1 Duos, 2 Trios, 3 Quads,");
+L.push("/// 4 HumansVsNations, 5 Other(str).");
+L.push("pub struct TeamConfig { pub kind: u8, pub num: f64, pub s: &'static str }");
+L.push("");
+L.push("/// TeamAssignment scenario. `kind`: 0 assignTeams, 1");
+L.push("/// assignTeamsLobbyPreview, 2 getMaxTeamSize, 3 resolveTeamsList.");
+L.push("/// `status`: 0 ok, 1 Unknown config, 2 Too few teams, 3 RangeError.");
+L.push("/// Kinds 0/1 fill `res` with the result map's insertion-ordered");
+L.push("/// (player index, team index or -1) pairs; kind 2 fills `res_nums`");
+L.push("/// with [max]; kind 3 fills `res_teams` with the resolved list.");
+L.push("pub struct TeamScenario {");
+L.push("    pub name: &'static str,");
+L.push("    pub kind: u8,");
+L.push("    pub players: &'static [TeamPlayer],");
+L.push("    pub teams: &'static [&'static str],");
+L.push("    pub is_duo: u8,");
+L.push("    pub has_max: u8,");
+L.push("    pub max_team_size: f64,");
+L.push("    pub nation_count: u64,");
+L.push("    pub config: TeamConfig,");
+L.push("    pub total_players: f64,");
+L.push("    pub status: u8,");
+L.push("    pub res: &'static [(i64, i64)],");
+L.push("    pub res_nums: &'static [f64],");
+L.push("    pub res_teams: &'static [&'static str],");
+L.push("}");
+L.push("");
+const ptCode = (t) => (t === "BOT" ? 0 : t === "HUMAN" ? 1 : 2);
+for (const s of structures.team) {
+  const id = s.name.toUpperCase();
+  L.push(`pub const ${id}: TeamScenario = TeamScenario {`);
+  L.push(`    name: "${s.name}",`);
+  L.push(`    kind: ${s.kind}u8,`);
+  L.push("    players: &[");
+  for (const p of s.players) {
+    const ti =
+      p.teamIndex === null ? "None" : `Some(${utilResLit(p.teamIndex)})`;
+    L.push(
+      `        TeamPlayer { id: ${JSON.stringify(p.id)}, player_type: ${ptCode(p.playerType)}u8, ` +
+        `client_id: ${p.clientID === null ? '""' : JSON.stringify(p.clientID)}, ` +
+        `clan_tag: ${p.clanTag === null ? '""' : JSON.stringify(p.clanTag)}, ` +
+        `friends: &[${p.friends.map((f) => JSON.stringify(f)).join(", ")}], ` +
+        `team_index: ${ti} },`,
+    );
+  }
+  L.push("    ],");
+  L.push(`    teams: &[${s.teams.map((t) => JSON.stringify(t)).join(", ")}],`);
+  L.push(`    is_duo: ${s.isDuo}u8,`);
+  L.push(`    has_max: ${s.hasMax}u8,`);
+  L.push(`    max_team_size: ${utilResLit(s.maxTeamSize)},`);
+  L.push(`    nation_count: ${s.nationCount}u64,`);
+  L.push(
+    `    config: TeamConfig { kind: ${s.config.kind}u8, num: ${utilResLit(s.config.num)}, s: ${JSON.stringify(s.config.str)} },`,
+  );
+  L.push(`    total_players: ${utilResLit(s.totalPlayers)},`);
+  L.push(`    status: ${s.status}u8,`);
+  L.push(`    res: &[${s.res.map(([a, b]) => `(${a}i64, ${b}i64)`).join(", ")}],`);
+  L.push(`    res_nums: &[${s.resNums.map(utilResLit).join(", ")}],`);
+  L.push(`    res_teams: &[${s.resTeams.map((t) => JSON.stringify(t)).join(", ")}],`);
+  L.push("};");
+  L.push("");
+}
+L.push("pub const TEAM_SCENARIOS: &[TeamScenario] = &[");
+for (const s of structures.team) L.push(`    ${s.name.toUpperCase()},`);
 L.push("];");
 L.push("");
 

@@ -1084,3 +1084,172 @@ pub extern "C" fn probe_util_out_len() -> usize {
 pub extern "C" fn probe_util_out_at(i: usize) -> f64 {
     UTIL_OUT.with(|o| o.borrow()[i])
 }
+
+// ---------------------------------------------------------------- TeamAssignment
+//
+// The scenario inputs are structured (nested players with string fields), so
+// they cross the boundary as a flat `f64` token stream: a string is
+// `[len, u0, .. u(len-1)]` (UTF-16 code units), an optional string is
+// `[present, (string if present)]`, and a `teamIndex` is `[flag]` where
+// flag 0 = null, 1 = a finite number follows, 2 = NaN. The host (see
+// `run_wasm_parity.mjs`) encodes vectors.json the same way.
+
+use crate::team_assignment as ta;
+
+thread_local! {
+    static TEAM_ARGS: std::cell::RefCell<Vec<f64>> = const { std::cell::RefCell::new(Vec::new()) };
+    static TEAM_OUT: std::cell::RefCell<Vec<f64>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
+#[no_mangle]
+pub extern "C" fn probe_team_arg(v: f64) {
+    TEAM_ARGS.with(|t| t.borrow_mut().push(v));
+}
+
+/// Cursor over the flat token stream.
+struct Cur<'a>(&'a [f64], usize);
+impl<'a> Cur<'a> {
+    fn f(&mut self) -> f64 {
+        let v = self.0[self.1];
+        self.1 += 1;
+        v
+    }
+    fn u(&mut self) -> usize {
+        self.f() as usize
+    }
+    /// Decode a UTF-16-code-unit string correctly across surrogate pairs.
+    fn utf16_string(&mut self) -> String {
+        let len = self.u();
+        let units: Vec<u16> = (0..len).map(|_| self.f() as u16).collect();
+        String::from_utf16_lossy(&units)
+    }
+    fn opt_string(&mut self) -> Option<String> {
+        if self.f() != 0.0 {
+            Some(self.utf16_string())
+        } else {
+            None
+        }
+    }
+    fn team_index(&mut self) -> Option<f64> {
+        match self.f() {
+            flag if flag == 0.0 => None,
+            flag if flag == 1.0 => Some(self.f()),
+            _ => Some(f64::NAN),
+        }
+    }
+    fn config(&mut self) -> ta::TeamCountConfig {
+        match self.u() {
+            0 => ta::TeamCountConfig::Num(self.f()),
+            1 => ta::TeamCountConfig::Duos,
+            2 => ta::TeamCountConfig::Trios,
+            3 => ta::TeamCountConfig::Quads,
+            4 => ta::TeamCountConfig::HumansVsNations,
+            _ => ta::TeamCountConfig::Other(self.utf16_string()),
+        }
+    }
+}
+
+fn push_str(out: &mut Vec<f64>, s: &str) {
+    let units: Vec<u16> = s.encode_utf16().collect();
+    out.push(units.len() as f64);
+    out.extend(units.iter().map(|&u| u as f64));
+}
+
+#[no_mangle]
+pub extern "C" fn probe_team_op(kind: u32) -> f64 {
+    let a = TEAM_ARGS.with(|t| std::mem::take(&mut *t.borrow_mut()));
+    let mut c = Cur(&a, 0);
+    let mut out: Vec<f64> = Vec::new();
+    match kind {
+        0 | 1 => {
+            let n = c.u();
+            let mut players = Vec::with_capacity(n);
+            for _ in 0..n {
+                let pt = match c.u() {
+                    0 => ta::PlayerType::Bot,
+                    1 => ta::PlayerType::Human,
+                    _ => ta::PlayerType::Nation,
+                };
+                let team_index = c.team_index();
+                let id = c.utf16_string();
+                let client_id = c.opt_string();
+                let clan_tag = c.opt_string();
+                let nf = c.u();
+                let friends = (0..nf).map(|_| c.utf16_string()).collect();
+                players.push(ta::PlayerInfo {
+                    id,
+                    player_type: pt,
+                    client_id,
+                    clan_tag,
+                    friends,
+                    team_index,
+                });
+            }
+            let nt = c.u();
+            let teams: Vec<String> = (0..nt).map(|_| c.utf16_string()).collect();
+            let is_duo = c.f() != 0.0;
+            let got = if kind == 0 {
+                let has_max = c.f() != 0.0;
+                let max = c.f();
+                if has_max {
+                    ta::assign_teams_with_max(&players, &teams, is_duo, max)
+                } else {
+                    ta::assign_teams(&players, &teams, is_duo)
+                }
+            } else {
+                let nation_count = c.u();
+                let config = c.config();
+                ta::assign_teams_lobby_preview(&players, &teams, &config, nation_count)
+            };
+            for (pi, assign) in &got {
+                let team_idx = match assign {
+                    ta::Assignment::Kicked => -1.0,
+                    ta::Assignment::Team(t) => {
+                        teams.iter().position(|x| x == t).unwrap() as f64
+                    }
+                };
+                out.push(*pi as f64);
+                out.push(team_idx);
+            }
+        }
+        2 => {
+            let num_players = c.f();
+            let num_teams = c.f();
+            out.push(ta::get_max_team_size(num_players, num_teams));
+        }
+        3 => {
+            let config = c.config();
+            let total = c.f();
+            match ta::resolve_teams_list(&config, total) {
+                Ok(list) => {
+                    out.push(0.0);
+                    out.push(list.len() as f64);
+                    for t in &list {
+                        push_str(&mut out, t);
+                    }
+                }
+                Err(e) => {
+                    out.push(match e {
+                        ta::ResolveTeamsError::UnknownConfig => 1.0,
+                        ta::ResolveTeamsError::TooFewTeams => 2.0,
+                        ta::ResolveTeamsError::InvalidLength => 3.0,
+                    });
+                }
+            }
+        }
+        k => panic!("unexpected team op kind {k}"),
+    }
+    let first = out.first().copied().unwrap_or(f64::NAN);
+    TEAM_OUT.with(|o| *o.borrow_mut() = out);
+    first
+}
+
+#[no_mangle]
+pub extern "C" fn probe_team_out_len() -> usize {
+    TEAM_OUT.with(|o| o.borrow().len())
+}
+
+#[no_mangle]
+pub extern "C" fn probe_team_out_at(i: usize) -> f64 {
+    TEAM_OUT.with(|o| o.borrow()[i])
+}

@@ -435,11 +435,51 @@ for (const s of S.gamemap) {
   cmpBits(`${s.name} waterVersionAfter`, ex.probe_gm_field(1), toBits(s.waterVersionAfter), 1);
   cmpBits(`${s.name} falloutAfter`, ex.probe_gm_field(2), toBits(s.falloutAfter), 2);
 }
+
 function cmpScalar(what, got, res, idx) {
   checks++;
   if (res === "v") return; // void mutation: probe returns NaN, nothing to compare
   const want = res === "u" ? NaN : numTok(res);
   if (!Object.is(got, want)) fail(what, idx, fmt(got), String(res));
+}
+
+// --- TileSet --- (op-stream replay; kinds match runTs in gen_vectors.mjs)
+for (const s of S.tileset) {
+  for (const v of s.initial) ex.probe_ts_initial_value(v);
+  ex.probe_ts_new();
+  s.ops.forEach(([k, a, , res], i) => {
+    if (k === 4 || k === 6 || k === 7 || k === 8) {
+      ex.probe_ts_op(k, numTok(a));
+      checks++;
+      if (ex.probe_ts_out_len() !== res.length) {
+        fail(`${s.name} arr len`, i, ex.probe_ts_out_len(), res.length);
+        return;
+      }
+      for (let j = 0; j < res.length; j++) {
+        checks++;
+        const got = ex.probe_ts_out_at(j);
+        if (!Object.is(got, numTok(res[j])))
+          fail(`${s.name} arr[${j}]`, i, fmt(got), String(res[j]));
+      }
+      return;
+    }
+    const got = ex.probe_ts_op(k, numTok(a));
+    cmpScalar(`${s.name} op${k}`, got, res, i);
+  });
+  // Final internal state.
+  checks++;
+  if (ex.probe_ts_arr_len(0) !== s.dense.length)
+    fail(`${s.name} dense length`, ex.probe_ts_arr_len(0), s.dense.length, 0);
+  for (let i = 0; i < s.dense.length; i++)
+    cmpU32(`${s.name} dense`, Number(ex.probe_ts_arr_get(0, i)), s.dense[i], i);
+  checks++;
+  if (ex.probe_ts_arr_len(1) !== s.table.length)
+    fail(`${s.name} table length`, ex.probe_ts_arr_len(1), s.table.length, 0);
+  for (let i = 0; i < s.table.length; i++)
+    cmpU32(`${s.name} table`, Number(ex.probe_ts_arr_get(1, i)), s.table[i], i);
+  cmpBits(`${s.name} denseLen`, ex.probe_ts_field(0), toBits(s.denseLen), 0);
+  cmpBits(`${s.name} tableUsed`, ex.probe_ts_field(1), toBits(s.tableUsed), 1);
+  cmpBits(`${s.name} iterDepth`, ex.probe_ts_field(2), toBits(s.iterDepth), 2);
 }
 
 console.log(`${checks} vector comparisons executed against wasm build`);

@@ -21,6 +21,7 @@ use openfront_core::pathfinding::flat_heap::FlatBinaryHeap;
 use openfront_core::pathfinding::priority_queue::{BucketQueue, MinHeap, PriorityQueue};
 use openfront_core::pathfinding::rail::{RailAdapter, TerrainMap};
 use openfront_core::pathfinding::water::AStarWater;
+use openfront_core::tile_set::TileSet;
 use vectors::GmRes;
 
 fn res_eq(want: &Res, got: Option<f64>) -> bool {
@@ -296,6 +297,96 @@ fn replay_water_scenarios() {
         );
         assert_eq!(a.debug_g_score(), s.g_score, "{} final gScore", s.name);
         assert_eq!(a.debug_came_from(), s.came_from, "{} final cameFrom", s.name);
+    }
+}
+
+// ---------------------------------------------------------------- TileSet
+// Replays the scripted op streams the real TS `TileSet` executed. Kinds 7/8
+// run mutations *inside* a forEach callback (via the begin/next/end iteration
+// surface), so the trace pins the denseLen-re-read, the tombstone skip, and
+// the iterDepth-gated deferred compaction.
+#[test]
+fn replay_tileset_scenarios() {
+    for s in vectors::TILESET_SCENARIOS {
+        let mut ts = TileSet::new(if s.initial.is_empty() {
+            None
+        } else {
+            Some(s.initial)
+        });
+        for (i, op) in s.ops.iter().enumerate() {
+            let ctx = || format!("{} op#{i} kind={}", s.name, op.kind);
+            let want_bool = |res: &GmRes| matches!(res, GmRes::Val(v) if *v == 1.0);
+            match op.kind {
+                0 => {
+                    ts.add(op.a);
+                    assert!(matches!(op.res, GmRes::Void), "{}", ctx());
+                }
+                1 => {
+                    let got = ts.delete(op.a);
+                    assert_eq!(got, want_bool(&op.res), "{} delete", ctx());
+                }
+                2 => {
+                    let got = ts.has(op.a);
+                    assert_eq!(got, want_bool(&op.res), "{} has", ctx());
+                }
+                3 => {
+                    assert_eq!(ts.size(), want_val(&op.res), "{} size", ctx());
+                }
+                4 => {
+                    let got = ts.collect_values();
+                    assert_arr(&got, want_arr(&op.res), &ctx);
+                }
+                5 => {
+                    ts.clear();
+                    assert!(matches!(op.res, GmRes::Void), "{}", ctx());
+                }
+                6 => {
+                    ts.iter_begin();
+                    let mut got = Vec::new();
+                    let mut cur = 0usize;
+                    while let Some(v) = ts.iter_next(&mut cur) {
+                        got.push(v);
+                    }
+                    ts.iter_end();
+                    assert_arr(&got, want_arr(&op.res), &ctx);
+                }
+                7 => {
+                    // add inside the callback after the first visit.
+                    ts.iter_begin();
+                    let mut got = Vec::new();
+                    let mut cur = 0usize;
+                    while let Some(v) = ts.iter_next(&mut cur) {
+                        got.push(v);
+                        if got.len() == 1 {
+                            ts.add(op.a);
+                        }
+                    }
+                    ts.iter_end();
+                    assert_arr(&got, want_arr(&op.res), &ctx);
+                }
+                8 => {
+                    // delete inside the callback after the first visit.
+                    ts.iter_begin();
+                    let mut got = Vec::new();
+                    let mut cur = 0usize;
+                    while let Some(v) = ts.iter_next(&mut cur) {
+                        got.push(v);
+                        if got.len() == 1 {
+                            ts.delete(op.a);
+                        }
+                    }
+                    ts.iter_end();
+                    assert_arr(&got, want_arr(&op.res), &ctx);
+                }
+                k => panic!("{} unexpected op kind {k}", s.name),
+            }
+        }
+        assert_eq!(ts.debug_dense(), s.dense, "{} final dense", s.name);
+        assert_eq!(ts.debug_dense_len(), s.dense_len as usize, "{} denseLen", s.name);
+        assert_eq!(ts.size(), s.size, "{} final size", s.name);
+        assert_eq!(ts.debug_table(), s.table, "{} final table", s.name);
+        assert_eq!(ts.debug_table_used(), s.table_used, "{} tableUsed", s.name);
+        assert_eq!(ts.debug_iter_depth(), s.iter_depth, "{} iterDepth", s.name);
     }
 }
 

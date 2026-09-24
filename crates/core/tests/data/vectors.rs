@@ -6617,3 +6617,347 @@ pub const GAMEMAP_SCENARIOS: &[GameMapScenario] = &[
     GM_SEARCH,
 ];
 
+/// TileSet scenario: initial values, an op stream replayed against the
+/// real TS class (kind table in gen_vectors.mjs; GmOp/GmRes reused),
+/// and the final dense/table buffers + bookkeeping counters.
+pub struct TileSetScenario {
+    pub name: &'static str,
+    pub initial: &'static [f64],
+    pub ops: &'static [GmOp],
+    pub dense: &'static [u32],
+    pub dense_len: u64,
+    pub size: f64,
+    pub table: &'static [i32],
+    pub table_used: f64,
+    pub iter_depth: f64,
+}
+
+const TS_BASIC_OPS: &[GmOp] = &[
+    GmOp { kind: 0, a: 5f64, b: 0f64, res: GmRes::Void },
+    GmOp { kind: 0, a: 1f64, b: 0f64, res: GmRes::Void },
+    GmOp { kind: 0, a: 9f64, b: 0f64, res: GmRes::Void },
+    GmOp { kind: 0, a: 3f64, b: 0f64, res: GmRes::Void },
+    GmOp { kind: 2, a: 5f64, b: 0f64, res: GmRes::Val(1f64) },
+    GmOp { kind: 2, a: 7f64, b: 0f64, res: GmRes::Val(0f64) },
+    GmOp { kind: 3, a: 0f64, b: 0f64, res: GmRes::Val(4f64) },
+    GmOp { kind: 4, a: 0f64, b: 0f64, res: GmRes::Arr(&[5f64, 1f64, 9f64, 3f64]) },
+];
+pub const TS_BASIC: TileSetScenario = TileSetScenario {
+    name: "ts_basic",
+    initial: &[],
+    ops: TS_BASIC_OPS,
+    dense: &[
+    5u32, 1u32, 9u32, 3u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32,
+],
+    dense_len: 4u64,
+    size: 4f64,
+    table: &[
+    1i32, 2i32, 3i32, -1i32, -1i32, -1i32, -1i32, -1i32, -1i32, -1i32, -1i32, -1i32, -1i32, -1i32, -1i32, -1i32,
+    -1i32, -1i32, -1i32, -1i32, -1i32, -1i32, -1i32, -1i32, -1i32, -1i32, -1i32, -1i32, -1i32, -1i32, -1i32, 0i32,
+],
+    table_used: 4f64,
+    iter_depth: 0f64,
+};
+
+const TS_DUP_OPS: &[GmOp] = &[
+    GmOp { kind: 0, a: 2f64, b: 0f64, res: GmRes::Void },
+    GmOp { kind: 3, a: 0f64, b: 0f64, res: GmRes::Val(3f64) },
+    GmOp { kind: 1, a: 99f64, b: 0f64, res: GmRes::Val(0f64) },
+    GmOp { kind: 1, a: 2f64, b: 0f64, res: GmRes::Val(1f64) },
+    GmOp { kind: 2, a: 2f64, b: 0f64, res: GmRes::Val(0f64) },
+    GmOp { kind: 4, a: 0f64, b: 0f64, res: GmRes::Arr(&[1f64, 3f64]) },
+];
+pub const TS_DUP: TileSetScenario = TileSetScenario {
+    name: "ts_dup",
+    initial: &[1f64, 2f64, 3f64],
+    ops: TS_DUP_OPS,
+    dense: &[
+    1u32, 4294967295u32, 3u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32,
+],
+    dense_len: 3u64,
+    size: 2f64,
+    table: &[
+    -2i32, 2i32, -1i32, -1i32, -1i32, -1i32, -1i32, -1i32, -1i32, -1i32, -1i32, -1i32, -1i32, -1i32, -1i32, -1i32,
+    -1i32, -1i32, -1i32, -1i32, -1i32, -1i32, -1i32, -1i32, -1i32, -1i32, -1i32, -1i32, -1i32, -1i32, -1i32, 0i32,
+],
+    table_used: 3f64,
+    iter_depth: 0f64,
+};
+
+const TS_READD_OPS: &[GmOp] = &[
+    GmOp { kind: 1, a: 2f64, b: 0f64, res: GmRes::Val(1f64) },
+    GmOp { kind: 0, a: 2f64, b: 0f64, res: GmRes::Void },
+    GmOp { kind: 4, a: 0f64, b: 0f64, res: GmRes::Arr(&[1f64, 3f64, 2f64]) },
+    GmOp { kind: 3, a: 0f64, b: 0f64, res: GmRes::Val(3f64) },
+];
+pub const TS_READD: TileSetScenario = TileSetScenario {
+    name: "ts_readd",
+    initial: &[1f64, 2f64, 3f64],
+    ops: TS_READD_OPS,
+    dense: &[
+    1u32, 4294967295u32, 3u32, 2u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32,
+],
+    dense_len: 4u64,
+    size: 3f64,
+    table: &[
+    3i32, 2i32, -1i32, -1i32, -1i32, -1i32, -1i32, -1i32, -1i32, -1i32, -1i32, -1i32, -1i32, -1i32, -1i32, -1i32,
+    -1i32, -1i32, -1i32, -1i32, -1i32, -1i32, -1i32, -1i32, -1i32, -1i32, -1i32, -1i32, -1i32, -1i32, -1i32, 0i32,
+],
+    table_used: 3f64,
+    iter_depth: 0f64,
+};
+
+const TS_UINT32_QUIRK_OPS: &[GmOp] = &[
+    GmOp { kind: 0, a: -1f64, b: 0f64, res: GmRes::Void },
+    GmOp { kind: 2, a: -1f64, b: 0f64, res: GmRes::Val(0f64) },
+    GmOp { kind: 2, a: 4294967295f64, b: 0f64, res: GmRes::Val(1f64) },
+    GmOp { kind: 4, a: 0f64, b: 0f64, res: GmRes::Arr(&[]) },
+    GmOp { kind: 3, a: 0f64, b: 0f64, res: GmRes::Val(1f64) },
+    GmOp { kind: 1, a: 4294967295f64, b: 0f64, res: GmRes::Val(1f64) },
+    GmOp { kind: 3, a: 0f64, b: 0f64, res: GmRes::Val(0f64) },
+];
+pub const TS_UINT32_QUIRK: TileSetScenario = TileSetScenario {
+    name: "ts_uint32_quirk",
+    initial: &[],
+    ops: TS_UINT32_QUIRK_OPS,
+    dense: &[
+    4294967295u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32,
+],
+    dense_len: 1u64,
+    size: 0f64,
+    table: &[
+    -1i32, -1i32, -1i32, -1i32, -1i32, -1i32, -1i32, -1i32, -1i32, -1i32, -1i32, -1i32, -1i32, -1i32, -1i32, -1i32,
+    -1i32, -1i32, -1i32, -1i32, -1i32, -1i32, -1i32, -1i32, -1i32, -1i32, -1i32, -1i32, -1i32, -1i32, -2i32, -1i32,
+],
+    table_used: 1f64,
+    iter_depth: 0f64,
+};
+
+const TS_GROWTH_OPS: &[GmOp] = &[
+    GmOp { kind: 0, a: 1f64, b: 0f64, res: GmRes::Void },
+    GmOp { kind: 0, a: 8f64, b: 0f64, res: GmRes::Void },
+    GmOp { kind: 0, a: 15f64, b: 0f64, res: GmRes::Void },
+    GmOp { kind: 0, a: 22f64, b: 0f64, res: GmRes::Void },
+    GmOp { kind: 0, a: 29f64, b: 0f64, res: GmRes::Void },
+    GmOp { kind: 0, a: 36f64, b: 0f64, res: GmRes::Void },
+    GmOp { kind: 0, a: 43f64, b: 0f64, res: GmRes::Void },
+    GmOp { kind: 0, a: 50f64, b: 0f64, res: GmRes::Void },
+    GmOp { kind: 0, a: 57f64, b: 0f64, res: GmRes::Void },
+    GmOp { kind: 0, a: 64f64, b: 0f64, res: GmRes::Void },
+    GmOp { kind: 0, a: 71f64, b: 0f64, res: GmRes::Void },
+    GmOp { kind: 0, a: 78f64, b: 0f64, res: GmRes::Void },
+    GmOp { kind: 0, a: 85f64, b: 0f64, res: GmRes::Void },
+    GmOp { kind: 0, a: 92f64, b: 0f64, res: GmRes::Void },
+    GmOp { kind: 0, a: 99f64, b: 0f64, res: GmRes::Void },
+    GmOp { kind: 0, a: 106f64, b: 0f64, res: GmRes::Void },
+    GmOp { kind: 0, a: 113f64, b: 0f64, res: GmRes::Void },
+    GmOp { kind: 0, a: 120f64, b: 0f64, res: GmRes::Void },
+    GmOp { kind: 0, a: 127f64, b: 0f64, res: GmRes::Void },
+    GmOp { kind: 0, a: 134f64, b: 0f64, res: GmRes::Void },
+    GmOp { kind: 0, a: 141f64, b: 0f64, res: GmRes::Void },
+    GmOp { kind: 0, a: 148f64, b: 0f64, res: GmRes::Void },
+    GmOp { kind: 0, a: 155f64, b: 0f64, res: GmRes::Void },
+    GmOp { kind: 0, a: 162f64, b: 0f64, res: GmRes::Void },
+    GmOp { kind: 0, a: 169f64, b: 0f64, res: GmRes::Void },
+    GmOp { kind: 0, a: 176f64, b: 0f64, res: GmRes::Void },
+    GmOp { kind: 0, a: 183f64, b: 0f64, res: GmRes::Void },
+    GmOp { kind: 0, a: 190f64, b: 0f64, res: GmRes::Void },
+    GmOp { kind: 0, a: 197f64, b: 0f64, res: GmRes::Void },
+    GmOp { kind: 0, a: 204f64, b: 0f64, res: GmRes::Void },
+    GmOp { kind: 0, a: 211f64, b: 0f64, res: GmRes::Void },
+    GmOp { kind: 0, a: 218f64, b: 0f64, res: GmRes::Void },
+    GmOp { kind: 0, a: 225f64, b: 0f64, res: GmRes::Void },
+    GmOp { kind: 0, a: 232f64, b: 0f64, res: GmRes::Void },
+    GmOp { kind: 0, a: 239f64, b: 0f64, res: GmRes::Void },
+    GmOp { kind: 0, a: 246f64, b: 0f64, res: GmRes::Void },
+    GmOp { kind: 0, a: 253f64, b: 0f64, res: GmRes::Void },
+    GmOp { kind: 0, a: 260f64, b: 0f64, res: GmRes::Void },
+    GmOp { kind: 0, a: 267f64, b: 0f64, res: GmRes::Void },
+    GmOp { kind: 0, a: 274f64, b: 0f64, res: GmRes::Void },
+    GmOp { kind: 3, a: 0f64, b: 0f64, res: GmRes::Val(40f64) },
+    GmOp { kind: 2, a: 1f64, b: 0f64, res: GmRes::Val(1f64) },
+    GmOp { kind: 2, a: 274f64, b: 0f64, res: GmRes::Val(1f64) },
+    GmOp { kind: 2, a: 5f64, b: 0f64, res: GmRes::Val(0f64) },
+];
+pub const TS_GROWTH: TileSetScenario = TileSetScenario {
+    name: "ts_growth",
+    initial: &[],
+    ops: TS_GROWTH_OPS,
+    dense: &[
+    1u32, 8u32, 15u32, 22u32, 29u32, 36u32, 43u32, 50u32, 57u32, 64u32, 71u32, 78u32, 85u32, 92u32, 99u32, 106u32,
+    113u32, 120u32, 127u32, 134u32, 141u32, 148u32, 155u32, 162u32, 169u32, 176u32, 183u32, 190u32, 197u32, 204u32, 211u32, 218u32,
+    225u32, 232u32, 239u32, 246u32, 253u32, 260u32, 267u32, 274u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32,
+    0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32,
+],
+    dense_len: 40u64,
+    size: 40f64,
+    table: &[
+    5i32, 31i32, -1i32, 13i32, -1i32, 18i32, 22i32, 27i32, 26i32, -1i32, -1i32, 35i32, 36i32, -1i32, -1i32, -1i32,
+    -1i32, 30i32, 10i32, 12i32, 28i32, 32i32, -1i32, -1i32, 16i32, 6i32, -1i32, 14i32, 4i32, 8i32, -1i32, 0i32,
+    2i32, 11i32, 20i32, -1i32, 33i32, 29i32, -1i32, 24i32, -1i32, -1i32, 34i32, 37i32, 38i32, -1i32, -1i32, -1i32,
+    21i32, -1i32, 39i32, -1i32, 23i32, 19i32, -1i32, 25i32, -1i32, 7i32, 15i32, 17i32, 9i32, -1i32, 3i32, 1i32,
+],
+    table_used: 40f64,
+    iter_depth: 0f64,
+};
+
+const TS_COMPACT_OPS: &[GmOp] = &[
+    GmOp { kind: 1, a: 0f64, b: 0f64, res: GmRes::Val(1f64) },
+    GmOp { kind: 1, a: 1f64, b: 0f64, res: GmRes::Val(1f64) },
+    GmOp { kind: 1, a: 2f64, b: 0f64, res: GmRes::Val(1f64) },
+    GmOp { kind: 1, a: 3f64, b: 0f64, res: GmRes::Val(1f64) },
+    GmOp { kind: 1, a: 4f64, b: 0f64, res: GmRes::Val(1f64) },
+    GmOp { kind: 1, a: 5f64, b: 0f64, res: GmRes::Val(1f64) },
+    GmOp { kind: 1, a: 6f64, b: 0f64, res: GmRes::Val(1f64) },
+    GmOp { kind: 1, a: 7f64, b: 0f64, res: GmRes::Val(1f64) },
+    GmOp { kind: 1, a: 8f64, b: 0f64, res: GmRes::Val(1f64) },
+    GmOp { kind: 1, a: 9f64, b: 0f64, res: GmRes::Val(1f64) },
+    GmOp { kind: 1, a: 10f64, b: 0f64, res: GmRes::Val(1f64) },
+    GmOp { kind: 1, a: 11f64, b: 0f64, res: GmRes::Val(1f64) },
+    GmOp { kind: 1, a: 12f64, b: 0f64, res: GmRes::Val(1f64) },
+    GmOp { kind: 1, a: 13f64, b: 0f64, res: GmRes::Val(1f64) },
+    GmOp { kind: 1, a: 14f64, b: 0f64, res: GmRes::Val(1f64) },
+    GmOp { kind: 1, a: 15f64, b: 0f64, res: GmRes::Val(1f64) },
+    GmOp { kind: 1, a: 16f64, b: 0f64, res: GmRes::Val(1f64) },
+    GmOp { kind: 1, a: 17f64, b: 0f64, res: GmRes::Val(1f64) },
+    GmOp { kind: 1, a: 18f64, b: 0f64, res: GmRes::Val(1f64) },
+    GmOp { kind: 1, a: 19f64, b: 0f64, res: GmRes::Val(1f64) },
+    GmOp { kind: 1, a: 20f64, b: 0f64, res: GmRes::Val(1f64) },
+    GmOp { kind: 1, a: 21f64, b: 0f64, res: GmRes::Val(1f64) },
+    GmOp { kind: 1, a: 22f64, b: 0f64, res: GmRes::Val(1f64) },
+    GmOp { kind: 1, a: 23f64, b: 0f64, res: GmRes::Val(1f64) },
+    GmOp { kind: 1, a: 24f64, b: 0f64, res: GmRes::Val(1f64) },
+    GmOp { kind: 1, a: 25f64, b: 0f64, res: GmRes::Val(1f64) },
+    GmOp { kind: 1, a: 26f64, b: 0f64, res: GmRes::Val(1f64) },
+    GmOp { kind: 1, a: 27f64, b: 0f64, res: GmRes::Val(1f64) },
+    GmOp { kind: 1, a: 28f64, b: 0f64, res: GmRes::Val(1f64) },
+    GmOp { kind: 1, a: 29f64, b: 0f64, res: GmRes::Val(1f64) },
+    GmOp { kind: 1, a: 30f64, b: 0f64, res: GmRes::Val(1f64) },
+    GmOp { kind: 1, a: 31f64, b: 0f64, res: GmRes::Val(1f64) },
+    GmOp { kind: 1, a: 32f64, b: 0f64, res: GmRes::Val(1f64) },
+    GmOp { kind: 1, a: 33f64, b: 0f64, res: GmRes::Val(1f64) },
+    GmOp { kind: 1, a: 34f64, b: 0f64, res: GmRes::Val(1f64) },
+    GmOp { kind: 1, a: 35f64, b: 0f64, res: GmRes::Val(1f64) },
+    GmOp { kind: 1, a: 36f64, b: 0f64, res: GmRes::Val(1f64) },
+    GmOp { kind: 1, a: 37f64, b: 0f64, res: GmRes::Val(1f64) },
+    GmOp { kind: 1, a: 38f64, b: 0f64, res: GmRes::Val(1f64) },
+    GmOp { kind: 1, a: 39f64, b: 0f64, res: GmRes::Val(1f64) },
+    GmOp { kind: 1, a: 40f64, b: 0f64, res: GmRes::Val(1f64) },
+    GmOp { kind: 1, a: 41f64, b: 0f64, res: GmRes::Val(1f64) },
+    GmOp { kind: 1, a: 42f64, b: 0f64, res: GmRes::Val(1f64) },
+    GmOp { kind: 1, a: 43f64, b: 0f64, res: GmRes::Val(1f64) },
+    GmOp { kind: 1, a: 44f64, b: 0f64, res: GmRes::Val(1f64) },
+    GmOp { kind: 1, a: 45f64, b: 0f64, res: GmRes::Val(1f64) },
+    GmOp { kind: 1, a: 46f64, b: 0f64, res: GmRes::Val(1f64) },
+    GmOp { kind: 1, a: 47f64, b: 0f64, res: GmRes::Val(1f64) },
+    GmOp { kind: 1, a: 48f64, b: 0f64, res: GmRes::Val(1f64) },
+    GmOp { kind: 1, a: 49f64, b: 0f64, res: GmRes::Val(1f64) },
+    GmOp { kind: 1, a: 50f64, b: 0f64, res: GmRes::Val(1f64) },
+    GmOp { kind: 1, a: 51f64, b: 0f64, res: GmRes::Val(1f64) },
+    GmOp { kind: 1, a: 52f64, b: 0f64, res: GmRes::Val(1f64) },
+    GmOp { kind: 1, a: 53f64, b: 0f64, res: GmRes::Val(1f64) },
+    GmOp { kind: 1, a: 54f64, b: 0f64, res: GmRes::Val(1f64) },
+    GmOp { kind: 1, a: 55f64, b: 0f64, res: GmRes::Val(1f64) },
+    GmOp { kind: 1, a: 56f64, b: 0f64, res: GmRes::Val(1f64) },
+    GmOp { kind: 1, a: 57f64, b: 0f64, res: GmRes::Val(1f64) },
+    GmOp { kind: 1, a: 58f64, b: 0f64, res: GmRes::Val(1f64) },
+    GmOp { kind: 1, a: 59f64, b: 0f64, res: GmRes::Val(1f64) },
+    GmOp { kind: 3, a: 0f64, b: 0f64, res: GmRes::Val(10f64) },
+    GmOp { kind: 4, a: 0f64, b: 0f64, res: GmRes::Arr(&[60f64, 61f64, 62f64, 63f64, 64f64, 65f64, 66f64, 67f64, 68f64, 69f64]) },
+];
+pub const TS_COMPACT: TileSetScenario = TileSetScenario {
+    name: "ts_compact",
+    initial: &[0f64, 1f64, 2f64, 3f64, 4f64, 5f64, 6f64, 7f64, 8f64, 9f64, 10f64, 11f64, 12f64, 13f64, 14f64, 15f64, 16f64, 17f64, 18f64, 19f64, 20f64, 21f64, 22f64, 23f64, 24f64, 25f64, 26f64, 27f64, 28f64, 29f64, 30f64, 31f64, 32f64, 33f64, 34f64, 35f64, 36f64, 37f64, 38f64, 39f64, 40f64, 41f64, 42f64, 43f64, 44f64, 45f64, 46f64, 47f64, 48f64, 49f64, 50f64, 51f64, 52f64, 53f64, 54f64, 55f64, 56f64, 57f64, 58f64, 59f64, 60f64, 61f64, 62f64, 63f64, 64f64, 65f64, 66f64, 67f64, 68f64, 69f64],
+    ops: TS_COMPACT_OPS,
+    dense: &[
+    4294967295u32, 4294967295u32, 4294967295u32, 4294967295u32, 4294967295u32, 4294967295u32, 4294967295u32, 4294967295u32, 4294967295u32, 4294967295u32, 4294967295u32, 4294967295u32, 4294967295u32, 60u32, 61u32, 62u32,
+    63u32, 64u32, 65u32, 66u32, 67u32, 68u32, 69u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32,
+],
+    dense_len: 23u64,
+    size: 10f64,
+    table: &[
+    13i32, 15i32, 14i32, 16i32, 21i32, -1i32, -1i32, -1i32, -1i32, -1i32, -1i32, -1i32, -1i32, -1i32, -1i32, -1i32,
+    -1i32, -2i32, 22i32, -1i32, -1i32, -1i32, -1i32, -1i32, -1i32, -2i32, -2i32, 18i32, 20i32, -2i32, -2i32, -2i32,
+    -1i32, -2i32, -1i32, -1i32, -1i32, -1i32, -1i32, -1i32, -1i32, -1i32, -1i32, -1i32, -1i32, -1i32, -1i32, -1i32,
+    -1i32, -2i32, -1i32, -1i32, -1i32, -1i32, -1i32, -1i32, 19i32, -2i32, -2i32, -1i32, 17i32, -2i32, -2i32, -2i32,
+],
+    table_used: 23f64,
+    iter_depth: 0f64,
+};
+
+const TS_ITER_ADD_OPS: &[GmOp] = &[
+    GmOp { kind: 7, a: 999f64, b: 0f64, res: GmRes::Arr(&[10f64, 20f64, 30f64, 999f64]) },
+    GmOp { kind: 4, a: 0f64, b: 0f64, res: GmRes::Arr(&[10f64, 20f64, 30f64, 999f64]) },
+];
+pub const TS_ITER_ADD: TileSetScenario = TileSetScenario {
+    name: "ts_iter_add",
+    initial: &[10f64, 20f64, 30f64],
+    ops: TS_ITER_ADD_OPS,
+    dense: &[
+    10u32, 20u32, 30u32, 999u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32,
+],
+    dense_len: 4u64,
+    size: 4f64,
+    table: &[
+    1i32, 3i32, -1i32, -1i32, -1i32, -1i32, -1i32, -1i32, -1i32, -1i32, -1i32, -1i32, -1i32, -1i32, -1i32, -1i32,
+    -1i32, -1i32, -1i32, -1i32, -1i32, -1i32, -1i32, -1i32, -1i32, -1i32, -1i32, -1i32, -1i32, -1i32, 2i32, 0i32,
+],
+    table_used: 4f64,
+    iter_depth: 0f64,
+};
+
+const TS_ITER_DELETE_OPS: &[GmOp] = &[
+    GmOp { kind: 8, a: 30f64, b: 0f64, res: GmRes::Arr(&[10f64, 20f64, 40f64]) },
+    GmOp { kind: 4, a: 0f64, b: 0f64, res: GmRes::Arr(&[10f64, 20f64, 40f64]) },
+];
+pub const TS_ITER_DELETE: TileSetScenario = TileSetScenario {
+    name: "ts_iter_delete",
+    initial: &[10f64, 20f64, 30f64, 40f64],
+    ops: TS_ITER_DELETE_OPS,
+    dense: &[
+    10u32, 20u32, 4294967295u32, 40u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32,
+],
+    dense_len: 4u64,
+    size: 3f64,
+    table: &[
+    1i32, 3i32, -1i32, -1i32, -1i32, -1i32, -1i32, -1i32, -1i32, -1i32, -1i32, -1i32, -1i32, -1i32, -1i32, -1i32,
+    -1i32, -1i32, -1i32, -1i32, -1i32, -1i32, -1i32, -1i32, -1i32, -1i32, -1i32, -1i32, -1i32, -1i32, -2i32, 0i32,
+],
+    table_used: 4f64,
+    iter_depth: 0f64,
+};
+
+const TS_CLEAR_OPS: &[GmOp] = &[
+    GmOp { kind: 5, a: 0f64, b: 0f64, res: GmRes::Void },
+    GmOp { kind: 3, a: 0f64, b: 0f64, res: GmRes::Val(0f64) },
+    GmOp { kind: 4, a: 0f64, b: 0f64, res: GmRes::Arr(&[]) },
+];
+pub const TS_CLEAR: TileSetScenario = TileSetScenario {
+    name: "ts_clear",
+    initial: &[1f64, 2f64, 3f64],
+    ops: TS_CLEAR_OPS,
+    dense: &[
+    0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32,
+],
+    dense_len: 0u64,
+    size: 0f64,
+    table: &[
+    -1i32, -1i32, -1i32, -1i32, -1i32, -1i32, -1i32, -1i32, -1i32, -1i32, -1i32, -1i32, -1i32, -1i32, -1i32, -1i32,
+    -1i32, -1i32, -1i32, -1i32, -1i32, -1i32, -1i32, -1i32, -1i32, -1i32, -1i32, -1i32, -1i32, -1i32, -1i32, -1i32,
+],
+    table_used: 0f64,
+    iter_depth: 0f64,
+};
+
+pub const TILESET_SCENARIOS: &[TileSetScenario] = &[
+    TS_BASIC,
+    TS_DUP,
+    TS_READD,
+    TS_UINT32_QUIRK,
+    TS_GROWTH,
+    TS_COMPACT,
+    TS_ITER_ADD,
+    TS_ITER_DELETE,
+    TS_CLEAR,
+];
+

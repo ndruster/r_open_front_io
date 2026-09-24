@@ -18,6 +18,7 @@ rust/
 │   │   ├── jsnum.rs               JS coercions: ToInt32/ToUint32/ToUint16/f32
 │   │   ├── game_map.rs            port of game/GameMap.ts (GameMapImpl
 │   │   │                          + the distFN factories)
+│   │   ├── tile_set.rs            port of game/TileSet.ts
 │   │   ├── wasm_probe.rs          `extern "C"` surface, feature-gated
 │   │   └── pathfinding/
 │   │       ├── mod.rs
@@ -100,6 +101,17 @@ desync, not a rounding nit. Two things enforce that here:
    a weight-1 (near-Dijkstra) field where every f32 priority ties and the
    MinHeap's insertion-order pop decides everything, and an iteration cap that
    forces `null`. Each records the path plus all four stamp-tracked arrays.
+8. **`TileSet`** (`tile_set.rs`) is pinned with nine op-trace scenarios over
+   the real class: insertion order, duplicate-add, delete-then-re-add (moves
+   the value to the end), growth past the dense(16)/table(32) defaults, a
+   60-delete sweep that triggers the `iterDepth`-gated deferred compaction,
+   `forEach` that *adds* mid-iteration (the appended value must still be
+   visited — `denseLen` is re-read each step) and one that *deletes* a
+   not-yet-visited entry (it must be skipped), and `clear()`. The Uint32Array
+   storage quirk is its own scenario: `add(-1)` stores `0xffffffff`, so
+   `has(-1)` is false while `has(4294967295)` is true, yet `values()` skips
+   the tombstone-equal slot. Each trace pins the final `dense`/`table`
+   buffers, `denseLen`, `size_`, `tableUsed` and `iterDepth`.
 
 Regenerate whenever a ported source changes:
 
@@ -133,7 +145,7 @@ node rust/tools/run_wasm_parity.mjs
 
 `wasm-probe` exposes the ported functions through `extern "C"` scalar
 entrypoints (`src/wasm_probe.rs`); the runner imports `data/vectors.json` and
-compares every value. Last run: **20,926 comparisons, all bit-identical**.
+compares every value. Last run: **21,702 comparisons, all bit-identical**.
 
 ### Windows: the linker environment
 
@@ -176,7 +188,6 @@ Roughly in order of leverage, all currently reachable from the ported layer:
 
 | Module | TS source | Why next |
 |---|---|---|
-| `TileSet` | `src/core/game/TileSet.ts` | `GameMapImpl` and the water/rail adapters are ported; `TileSet` is the insertion-ordered tile container every owner/border set uses. |
 | `Util.ts` | `src/core/Util.ts` | Shared helpers (`toInt`, geometry) that the `execution/**` ports will need. |
 
 `execution/**` and `game/**` are the bulk (~500 files, heavy on `zod` schemas,

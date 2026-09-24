@@ -154,6 +154,7 @@ const { AStar } = await loadTs("src/core/pathfinding/algorithms/AStar.ts");
 const { AStarRail } = await loadTs("src/core/pathfinding/algorithms/AStar.Rail.ts");
 const { AStarWater } = await loadTs("src/core/pathfinding/algorithms/AStar.Water.ts");
 const { GameMapImpl } = await loadTs("src/core/game/GameMap.ts");
+const { TileSet } = await loadTs("src/core/game/TileSet.ts");
 
 // enc() maps JS-only values JSON cannot carry: undefined -> "u", NaN -> "n",
 // booleans -> 1/0, and -0 -> "-0" (JSON collapses -0 to 0, yet the f32 bit
@@ -805,6 +806,108 @@ runGm(
   ],
 );
 
+// --- TileSet scenario runner -------------------------------------------------
+// Replays a scripted op stream against the real `TileSet` and records every
+// return value plus the final internal buffers. The Rust twin is
+// `tile_set::TileSet`; a divergence in hash probing, tombstone skipping,
+// deferred compaction, or the Uint32Array storage-vs-arg comparison shows up
+// in the trace.
+//
+// Op result tokens reuse the GameMap table: "v" void mutation, 1/0 boolean,
+// number (enc maps NaN->"n", -0->"-0"), or an array (values()/forEach).
+//
+// kind: 0=add(v) "v", 1=delete(v) bool, 2=has(v) bool, 3=size->Val,
+//       4=values()->Arr, 5=clear() "v", 6=forEach collect->Arr,
+//       7=add-during-forEach: a=extra value to append inside the callback,
+//         result is the visited array (pins denseLen re-read + growth),
+//       8=delete-during-forEach: a=value to delete inside the callback,
+//         result is the visited array (pins tombstone skip of not-yet-visited).
+const tsScenarios = [];
+function runTs(name, initial, ops) {
+  const ts = new TileSet(initial.length ? initial : undefined);
+  const played = ops.map(([k, a]) => {
+    let res;
+    switch (k) {
+      case 0: ts.add(a); res = "v"; break;
+      case 1: res = enc(ts.delete(a)); break;
+      case 2: res = enc(ts.has(a)); break;
+      case 3: res = enc(ts.size); break;
+      case 4: res = Array.from(ts.values()).map(enc); break;
+      case 5: ts.clear(); res = "v"; break;
+      case 6: { const o = []; ts.forEach((t) => o.push(t)); res = o.map(enc); break; }
+      case 7: {
+        const o = [];
+        ts.forEach((t) => { o.push(t); if (o.length === 1) ts.add(a); });
+        res = o.map(enc);
+        break;
+      }
+      case 8: {
+        const o = [];
+        ts.forEach((t) => { o.push(t); if (o.length === 1) ts.delete(a); });
+        res = o.map(enc);
+        break;
+      }
+      default: throw new Error("bad ts op kind " + k);
+    }
+    return [k, enc(a === undefined ? 0 : a), 0, res];
+  });
+  tsScenarios.push({
+    name,
+    initial,
+    ops: played,
+    // Final internal state (reached via the same private fields the class uses).
+    dense: Array.from(ts.dense),
+    denseLen: ts.denseLen,
+    size: ts.size_,
+    table: Array.from(ts.table),
+    tableUsed: ts.tableUsed,
+    iterDepth: ts.iterDepth,
+  });
+}
+
+// Basic insertion order, membership, and size bookkeeping.
+runTs("ts_basic", [], [
+  [0, 5], [0, 1], [0, 9], [0, 3], [2, 5], [2, 7], [3, 0], [4, 0],
+]);
+// Duplicate add is a no-op; delete of a missing value is false.
+runTs("ts_dup", [1, 2, 3], [
+  [0, 2], [3, 0], [1, 99], [1, 2], [2, 2], [4, 0],
+]);
+// Delete + re-add moves the value to the end (tombstone then fresh slot).
+runTs("ts_readd", [1, 2, 3], [
+  [1, 2], [0, 2], [4, 0], [3, 0],
+]);
+// The Uint32Array storage quirk: -1 stores 0xffffffff, so has(-1) is false
+// but has(0xffffffff) is true, and iteration skips the tombstone-equal slot.
+runTs("ts_uint32_quirk", [], [
+  [0, -1], [2, -1], [2, 4294967295], [4, 0], [3, 0], [1, 4294967295], [3, 0],
+]);
+// Growth past the initial dense(16)/table(32): 40 adds force a rehash and
+// dense doubling; membership must survive.
+runTs("ts_growth", [], [
+  ...Array.from({ length: 40 }, (_, i) => [0, i * 7 + 1]),
+  [3, 0], [2, 1], [2, 274], [2, 5],
+]);
+// Tombstone compaction on delete: fill past 64 dense slots, delete most, then
+// a delete triggers compact (iterDepth 0). Check the surviving order.
+runTs("ts_compact", Array.from({ length: 70 }, (_, i) => i), [
+  ...Array.from({ length: 60 }, (_, i) => [1, i]),
+  [3, 0], [4, 0],
+]);
+// forEach that appends during iteration: the appended value must be visited
+// (denseLen is re-read each step) and a growth buffer swap must not lose it.
+runTs("ts_iter_add", [10, 20, 30], [
+  [7, 999], [4, 0],
+]);
+// forEach that deletes a not-yet-visited entry: it must be skipped.
+runTs("ts_iter_delete", [10, 20, 30, 40], [
+  [8, 30], [4, 0],
+]);
+// clear() resets both buffers to constructor defaults.
+runTs("ts_clear", [1, 2, 3], [
+  [5, 0], [3, 0], [4, 0],
+]);
+
 const structures = {
   minheap: mhScenarios,
   bucket: bqScenarios,
@@ -814,6 +917,7 @@ const structures = {
   rail: railScenarios,
   water: waterScenarios,
   gamemap: gmScenarios,
+  tileset: tsScenarios,
 };
 
 // ================================================================ JSON
@@ -1409,6 +1513,49 @@ for (const s of structures.gamemap) {
 }
 L.push("pub const GAMEMAP_SCENARIOS: &[GameMapScenario] = &[");
 for (const s of structures.gamemap) L.push(`    ${s.name.toUpperCase()},`);
+L.push("];");
+L.push("");
+
+L.push("/// TileSet scenario: initial values, an op stream replayed against the");
+L.push("/// real TS class (kind table in gen_vectors.mjs; GmOp/GmRes reused),");
+L.push("/// and the final dense/table buffers + bookkeeping counters.");
+L.push("pub struct TileSetScenario {");
+L.push("    pub name: &'static str,");
+L.push("    pub initial: &'static [f64],");
+L.push("    pub ops: &'static [GmOp],");
+L.push("    pub dense: &'static [u32],");
+L.push("    pub dense_len: u64,");
+L.push("    pub size: f64,");
+L.push("    pub table: &'static [i32],");
+L.push("    pub table_used: f64,");
+L.push("    pub iter_depth: f64,");
+L.push("}");
+L.push("");
+for (const s of structures.tileset) {
+  const id = s.name.toUpperCase();
+  L.push(`const ${id}_OPS: &[GmOp] = &[`);
+  for (const [k, a, b, r] of s.ops)
+    L.push(`    GmOp { kind: ${k}, a: ${argLit(a)}, b: ${argLit(b)}, res: ${gmResLit(r)} },`);
+  L.push("];");
+  L.push(`pub const ${id}: TileSetScenario = TileSetScenario {`);
+  L.push(`    name: "${s.name}",`);
+  L.push(`    initial: &[${s.initial.map(f64).join(", ")}],`);
+  L.push(`    ops: ${id}_OPS,`);
+  L.push(`    dense: &[`);
+  L.push(...numArr(s.dense, "u32", 16));
+  L.push("],");
+  L.push(`    dense_len: ${s.denseLen}u64,`);
+  L.push(`    size: ${f64(s.size)},`);
+  L.push(`    table: &[`);
+  L.push(...numArr(s.table, "i32", 16));
+  L.push("],");
+  L.push(`    table_used: ${f64(s.tableUsed)},`);
+  L.push(`    iter_depth: ${f64(s.iterDepth)},`);
+  L.push("};");
+  L.push("");
+}
+L.push("pub const TILESET_SCENARIOS: &[TileSetScenario] = &[");
+for (const s of structures.tileset) L.push(`    ${s.name.toUpperCase()},`);
 L.push("];");
 L.push("");
 

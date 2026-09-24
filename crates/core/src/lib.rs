@@ -18,6 +18,9 @@
 //!   terrain surface (`TerrainMap` mirrors `GameMapImpl`'s packed bytes)
 //! * [`pathfinding::water`] — the self-contained `AStarWater` engine (inlined
 //!   expansion, `MinHeap` f32 priorities, cross-product tie-breaker)
+//! * [`tile_set`] — `src/core/game/TileSet.ts` (insertion-ordered tile
+//!   container: open-addressed table, tombstones, `iterDepth`-gated deferred
+//!   compaction, `Uint32Array` storage quirks)
 //!
 //! Two rules govern every future port into this crate:
 //!
@@ -38,6 +41,7 @@ pub mod game_map;
 pub mod jsnum;
 pub mod pathfinding;
 pub mod pseudo_random;
+pub mod tile_set;
 
 #[cfg(feature = "wasm-probe")]
 mod wasm_probe;

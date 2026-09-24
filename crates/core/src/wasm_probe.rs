@@ -836,3 +836,142 @@ pub extern "C" fn probe_gm_arr_get(field: u32, i: usize) -> f64 {
         _ => gm.debug_state()[i] as f64,
     })
 }
+
+// ---- TileSet ----
+// Op-stream replay over the real `TileSet` port. The kind table matches
+// `runTs` in gen_vectors.mjs: 0=add, 1=delete->bool, 2=has->bool, 3=size,
+// 4=values()->out buffer, 5=clear, 6=forEach collect->out buffer,
+// 7=add-during-forEach, 8=delete-during-forEach (both collect via the
+// begin/next/end iteration surface so the callback mutation happens at the
+// same point in the walk as the TS `forEach`).
+
+use crate::tile_set::TileSet;
+
+thread_local! {
+    static TS: std::cell::RefCell<Option<TileSet>> = const { std::cell::RefCell::new(None) };
+    static TS_INIT: std::cell::RefCell<Vec<f64>> = const { std::cell::RefCell::new(Vec::new()) };
+    static TS_OUT: std::cell::RefCell<Vec<f64>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
+/// Queue one initial value for the next set (before `probe_ts_new`).
+#[no_mangle]
+pub extern "C" fn probe_ts_initial_value(v: f64) {
+    TS_INIT.with(|t| t.borrow_mut().push(v));
+}
+
+#[no_mangle]
+pub extern "C" fn probe_ts_new() {
+    let init = TS_INIT.with(|t| std::mem::take(&mut *t.borrow_mut()));
+    TS.with(|s| {
+        *s.borrow_mut() = Some(TileSet::new(if init.is_empty() {
+            None
+        } else {
+            Some(&init)
+        }))
+    });
+}
+
+fn with_ts<T>(f: impl FnOnce(&TileSet) -> T) -> T {
+    TS.with(|s| f(s.borrow().as_ref().expect("probe_ts_new must be called first")))
+}
+
+fn with_ts_mut<T>(f: impl FnOnce(&mut TileSet) -> T) -> T {
+    TS.with(|s| f(s.borrow_mut().as_mut().expect("probe_ts_new must be called first")))
+}
+
+/// Replay one op; returns the scalar result (NaN for void ops), or fills the
+/// out buffer for array ops (4/6/7/8).
+#[no_mangle]
+pub extern "C" fn probe_ts_op(kind: u32, a: f64) -> f64 {
+    match kind {
+        0 => { with_ts_mut(|s| s.add(a)); f64::NAN }
+        1 => with_ts_mut(|s| s.delete(a)) as u8 as f64,
+        2 => with_ts(|s| s.has(a)) as u8 as f64,
+        3 => with_ts(|s| s.size()),
+        4 => {
+            let v = with_ts(|s| s.collect_values());
+            TS_OUT.with(|o| *o.borrow_mut() = v);
+            f64::NAN
+        }
+        5 => { with_ts_mut(|s| s.clear()); f64::NAN }
+        6 => {
+            with_ts_mut(|s| s.iter_begin());
+            let mut v = Vec::new();
+            let mut cur = 0usize;
+            while let Some(x) = with_ts(|s| s.iter_next(&mut cur)) {
+                v.push(x);
+            }
+            with_ts_mut(|s| s.iter_end());
+            TS_OUT.with(|o| *o.borrow_mut() = v);
+            f64::NAN
+        }
+        7 => {
+            // add inside the callback after the first visit.
+            with_ts_mut(|s| s.iter_begin());
+            let mut v = Vec::new();
+            let mut cur = 0usize;
+            while let Some(x) = with_ts(|s| s.iter_next(&mut cur)) {
+                v.push(x);
+                if v.len() == 1 {
+                    with_ts_mut(|s| s.add(a));
+                }
+            }
+            with_ts_mut(|s| s.iter_end());
+            TS_OUT.with(|o| *o.borrow_mut() = v);
+            f64::NAN
+        }
+        8 => {
+            // delete inside the callback after the first visit.
+            with_ts_mut(|s| s.iter_begin());
+            let mut v = Vec::new();
+            let mut cur = 0usize;
+            while let Some(x) = with_ts(|s| s.iter_next(&mut cur)) {
+                v.push(x);
+                if v.len() == 1 {
+                    with_ts_mut(|s| s.delete(a));
+                }
+            }
+            with_ts_mut(|s| s.iter_end());
+            TS_OUT.with(|o| *o.borrow_mut() = v);
+            f64::NAN
+        }
+        k => panic!("unexpected ts op kind {k}"),
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn probe_ts_out_len() -> usize {
+    TS_OUT.with(|o| o.borrow().len())
+}
+
+#[no_mangle]
+pub extern "C" fn probe_ts_out_at(i: usize) -> f64 {
+    TS_OUT.with(|o| o.borrow()[i])
+}
+
+/// Scalar debug field: 0 = denseLen, 1 = tableUsed, 2 = iterDepth.
+#[no_mangle]
+pub extern "C" fn probe_ts_field(which: u32) -> f64 {
+    with_ts(|s| match which {
+        0 => s.debug_dense_len() as f64,
+        1 => s.debug_table_used(),
+        _ => s.debug_iter_depth(),
+    })
+}
+
+/// Array debug field: 0 = dense (u32), 1 = table (i32).
+#[no_mangle]
+pub extern "C" fn probe_ts_arr_len(field: u32) -> usize {
+    with_ts(|s| match field {
+        0 => s.debug_dense().len(),
+        _ => s.debug_table().len(),
+    })
+}
+
+#[no_mangle]
+pub extern "C" fn probe_ts_arr_get(field: u32, i: usize) -> f64 {
+    with_ts(|s| match field {
+        0 => s.debug_dense()[i] as f64,
+        _ => s.debug_table()[i] as f64,
+    })
+}

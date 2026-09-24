@@ -93,6 +93,11 @@ function prepare(rel) {
       "Rail AStar import",
     );
   }
+  if (rel.endsWith("game/TileSet.ts")) {
+    // TileRef is a type-only import; strip mode cannot tell and would pull
+    // in the whole GameMap graph.
+    out = must(out, 'import { TileRef } from "./GameMap";\n', "", "TileSet import");
+  }
   if (rel.endsWith("algorithms/AStar.Water.ts")) {
     // GameMap/TileRef/PathFinder are all type-only (interfaces / type
     // aliases); the MinHeap value import is redirected to the prepared

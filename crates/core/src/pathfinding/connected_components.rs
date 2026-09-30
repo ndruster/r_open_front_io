@@ -102,6 +102,7 @@ impl Ids {
     }
 }
 
+#[derive(Clone, Debug)]
 pub struct ConnectedComponents {
     width: i64,
     num_tiles: i64,

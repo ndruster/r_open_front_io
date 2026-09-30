@@ -6,6 +6,7 @@
 //! is "equally correct" in a textbook sense but orders ties differently is a
 //! desync, so these are transcriptions, not reimplementations.
 
+pub mod abstract_graph;
 pub mod a_star;
 pub mod bfs_grid;
 pub mod connected_components;

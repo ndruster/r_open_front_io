@@ -1644,3 +1644,220 @@ pub extern "C" fn probe_tsm_out_len() -> usize {
 pub extern "C" fn probe_tsm_out_at(i: usize) -> f64 {
     TSM_OUT.with(|o| o.borrow()[i])
 }
+
+// --------------------------------------------------------- AbstractGraph
+// Terrain bytes and dirty-tile tokens are queued one at a time; `probe_ag_new`
+// builds the graph (cloning a prior scenario's graph as the old graph when
+// `old_idx >= 0`, mirroring the TS capture's `agGraphs` map), `probe_ag_op`
+// replays the access stream — scalar kinds return the value directly, array
+// kinds land in the out buffer where `probe_ag_out_len` == -1 encodes
+// `undefined`/`null` — and the final internal arrays are read back
+// element-wise via `probe_ag_arr_len` / `..._get`.
+
+use crate::pathfinding::abstract_graph::{
+    AbstractEdge, AbstractGraph, AbstractGraphBuilder, AbstractNode,
+};
+
+thread_local! {
+    static AG: std::cell::RefCell<Option<Box<AbstractGraph>>> =
+        const { std::cell::RefCell::new(None) };
+    static AG_BUILT: std::cell::RefCell<Vec<AbstractGraph>> =
+        const { std::cell::RefCell::new(Vec::new()) };
+    static AG_TERRAIN: std::cell::RefCell<Vec<u8>> = const { std::cell::RefCell::new(Vec::new()) };
+    static AG_DIRTY: std::cell::RefCell<Vec<f64>> = const { std::cell::RefCell::new(Vec::new()) };
+    static AG_OUT: std::cell::RefCell<Vec<f64>> = const { std::cell::RefCell::new(Vec::new()) };
+    static AG_OUT_LEN: std::cell::RefCell<i32> = const { std::cell::RefCell::new(-1) };
+}
+
+/// Queue one packed terrain byte for the next map (before `probe_ag_new`).
+#[no_mangle]
+pub extern "C" fn probe_ag_terrain_byte(v: u32) {
+    AG_TERRAIN.with(|t| t.borrow_mut().push(v as u8));
+}
+
+/// Queue one dirty minimap tile for a partial rebuild (before `probe_ag_new`).
+#[no_mangle]
+pub extern "C" fn probe_ag_dirty_byte(v: f64) {
+    AG_DIRTY.with(|d| d.borrow_mut().push(v));
+}
+
+#[no_mangle]
+pub extern "C" fn probe_ag_new(w: f64, h: f64, cluster_size: f64, old_idx: i32) {
+    let terrain = AG_TERRAIN.with(|t| std::mem::take(&mut *t.borrow_mut()));
+    let dirty = AG_DIRTY.with(|d| std::mem::take(&mut *d.borrow_mut()));
+    let gm = GameMap::new(w, h, terrain, 0.0);
+    let cs = cluster_size as i64;
+    let graph = if old_idx >= 0 {
+        let old = AG_BUILT.with(|b| b.borrow()[old_idx as usize].clone());
+        AbstractGraphBuilder::with_rebuild(gm, cs, Some(old), (!dirty.is_empty()).then_some(dirty))
+            .build()
+    } else {
+        AbstractGraphBuilder::new(gm, cs).build()
+    };
+    AG_BUILT.with(|b| b.borrow_mut().push(graph.clone()));
+    AG.with(|g| *g.borrow_mut() = Some(Box::new(graph)));
+}
+
+fn ag_node_flat(n: &AbstractNode) -> Vec<f64> {
+    vec![
+        n.id as f64,
+        n.x as f64,
+        n.y as f64,
+        n.tile,
+        n.component_id as f64,
+    ]
+}
+
+fn ag_edge_flat(e: &AbstractEdge) -> Vec<f64> {
+    vec![
+        e.id as f64,
+        e.node_a as f64,
+        e.node_b as f64,
+        e.cost,
+        e.cluster_x as f64,
+        e.cluster_y as f64,
+    ]
+}
+
+fn set_ag_out(out: Option<Vec<f64>>) -> f64 {
+    AG_OUT.with(|o| {
+        let mut buf = o.borrow_mut();
+        match out {
+            Some(v) => {
+                *buf = v;
+                AG_OUT_LEN.with(|l| *l.borrow_mut() = buf.len() as i32);
+            }
+            None => {
+                buf.clear();
+                AG_OUT_LEN.with(|l| *l.borrow_mut() = -1);
+            }
+        }
+    });
+    f64::NAN
+}
+
+/// Replay one op (kind table in gen_vectors.mjs): 0=nodeCount, 1=edgeCount,
+/// 2=getNode(a), 3=getEdge(a), 4=getNodeEdges(a), 5=getEdgeBetween(a,b),
+/// 6=getOtherNode(edgeId=a,node=b) — NaN when the edge is missing (the TS
+/// throw guard), 7=getClusterKey(a,b), 8=getCluster(cx,cy), 9=getClusterNodes,
+/// 10=getNearbyClusterNodes, 11=getComponentId(a), 12=getComponentSize(a),
+/// 13=getCachedPath(edgeId,fromNode), 14=setCachedPath(a,b) (void).
+/// Array kinds (2,3,4,5,8,9,10,13) return NaN; read `probe_ag_out_len`/`_at`.
+#[no_mangle]
+pub extern "C" fn probe_ag_op(kind: u32, a: f64, b: f64) -> f64 {
+    AG.with(|g| {
+        let mut cell = g.borrow_mut();
+        let graph = cell.as_mut().expect("probe_ag_new must be called first");
+        match kind {
+            0 => graph.node_count(),
+            1 => graph.edge_count(),
+            2 => set_ag_out(graph.get_node(a as i64).map(|n| ag_node_flat(&n))),
+            3 => set_ag_out(graph.get_edge(a as i64).map(|e| ag_edge_flat(&e))),
+            4 => {
+                let mut v = Vec::new();
+                for e in graph.get_node_edges(a as i64) {
+                    v.extend(ag_edge_flat(&e));
+                }
+                set_ag_out(Some(v))
+            }
+            5 => set_ag_out(
+                graph
+                    .get_edge_between(a as i64, b as i64)
+                    .map(|e| ag_edge_flat(&e)),
+            ),
+            6 => match graph.get_edge(a as i64) {
+                Some(e) => AbstractGraph::get_other_node(&e, b as i64) as f64,
+                None => f64::NAN,
+            },
+            7 => graph.get_cluster_key(a as i64, b as i64) as f64,
+            8 => set_ag_out(graph.get_cluster(a as i64, b as i64).map(|c| {
+                let mut v = vec![c.x as f64, c.y as f64, c.node_ids.len() as f64];
+                v.extend(c.node_ids.iter().map(|&id| id as f64));
+                v
+            })),
+            9 => {
+                let mut v = Vec::new();
+                for n in graph.get_cluster_nodes(a as i64, b as i64) {
+                    v.extend(ag_node_flat(&n));
+                }
+                set_ag_out(Some(v))
+            }
+            10 => {
+                let mut v = Vec::new();
+                for n in graph.get_nearby_cluster_nodes(a as i64, b as i64) {
+                    v.extend(ag_node_flat(&n));
+                }
+                set_ag_out(Some(v))
+            }
+            11 => graph.get_component_id(a) as f64,
+            12 => graph.get_component_size(a),
+            13 => set_ag_out(graph.get_cached_path(a as i64, b as i64)),
+            14 => {
+                if let Some(e) = graph.get_edge(a as i64) {
+                    let dir = if b as i64 == e.node_a { 0 } else { 1 };
+                    graph.set_cached_path(a as i64, b as i64, vec![a, b, a * 2.0 + dir as f64]);
+                }
+                f64::NAN
+            }
+            k => panic!("unexpected ag op kind {k}"),
+        }
+    })
+}
+
+#[no_mangle]
+pub extern "C" fn probe_ag_out_len() -> i32 {
+    AG_OUT_LEN.with(|l| *l.borrow())
+}
+
+#[no_mangle]
+pub extern "C" fn probe_ag_out_at(i: usize) -> f64 {
+    AG_OUT.with(|o| o.borrow()[i])
+}
+
+/// Scalar field: 0=nodeCount, 1=edgeCount, 2=pathCacheLen.
+#[no_mangle]
+pub extern "C" fn probe_ag_field(which: u32) -> f64 {
+    AG.with(|g| {
+        let cell = g.borrow();
+        let graph = cell.as_ref().expect("probe_ag_new must be called first");
+        match which {
+            0 => graph.node_count(),
+            1 => graph.edge_count(),
+            2 => graph.debug_path_cache_len(),
+            k => panic!("unexpected ag field {k}"),
+        }
+    })
+}
+
+/// Array field: 0=nodes, 1=edges, 2=clusters, 3=nodeEdgeIds (flattened like
+/// the capture: nodes 5-per-entry, edges 6-per-entry, clusters
+/// [x,y,count,ids...], nodeEdgeIds [count,ids...]).
+#[no_mangle]
+pub extern "C" fn probe_ag_arr_len(field: u32) -> usize {
+    AG.with(|g| {
+        let cell = g.borrow();
+        let graph = cell.as_ref().expect("probe_ag_new must be called first");
+        match field {
+            0 => graph.debug_nodes().len(),
+            1 => graph.debug_edges().len(),
+            2 => graph.debug_clusters().len(),
+            3 => graph.debug_node_edge_ids().len(),
+            k => panic!("unexpected ag array {k}"),
+        }
+    })
+}
+
+#[no_mangle]
+pub extern "C" fn probe_ag_arr_get(field: u32, i: usize) -> f64 {
+    AG.with(|g| {
+        let cell = g.borrow();
+        let graph = cell.as_ref().expect("probe_ag_new must be called first");
+        match field {
+            0 => graph.debug_nodes()[i],
+            1 => graph.debug_edges()[i],
+            2 => graph.debug_clusters()[i],
+            3 => graph.debug_node_edge_ids()[i],
+            k => panic!("unexpected ag array {k}"),
+        }
+    })
+}

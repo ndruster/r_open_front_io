@@ -318,6 +318,97 @@ function prepare(rel) {
       "CC ctor",
     );
   }
+  if (rel.endsWith("algorithms/AbstractGraph.ts")) {
+    // GameMap/TileRef and the BFSGrid/ConnectedComponents imports are
+    // type-vs-value mixed: BFSGrid and ConnectedComponents are *value* uses
+    // (the builder news them), redirected to their prepared copies; DebugSpan
+    // is a value use, redirected too. The two interfaces (AbstractNode, etc.)
+    // and TileRef are type-only. The AbstractGraph ctor's three parameter
+    // properties and the builder ctor's six are expanded (strip mode rejects
+    // them).
+    out = must(out, 'import { GameMap, TileRef } from "../../game/GameMap";\n', "", "AG GameMap import");
+    const dbgRel = "src/core/utilities/DebugSpan.ts";
+    if (!prepared.has(dbgRel)) prepare(dbgRel);
+    const bfsRel = "src/core/pathfinding/algorithms/BFS.Grid.ts";
+    if (!prepared.has(bfsRel)) prepare(bfsRel);
+    const ccRel = "src/core/pathfinding/algorithms/ConnectedComponents.ts";
+    if (!prepared.has(ccRel)) prepare(ccRel);
+    out = must(
+      out,
+      'import { DebugSpan } from "../../utilities/DebugSpan";',
+      `import { DebugSpan } from "./${prepared.get(dbgRel)}";`,
+      "AG DebugSpan import",
+    );
+    out = must(
+      out,
+      'import { BFSGrid } from "./BFS.Grid";',
+      `import { BFSGrid } from "./${prepared.get(bfsRel)}";`,
+      "AG BFSGrid import",
+    );
+    out = must(
+      out,
+      'import { ConnectedComponents } from "./ConnectedComponents";',
+      `import { ConnectedComponents } from "./${prepared.get(ccRel)}";`,
+      "AG ConnectedComponents import",
+    );
+    out = must(
+      out,
+      "  constructor(\n" +
+        "    readonly clusterSize: number,\n" +
+        "    readonly clustersX: number,\n" +
+        "    readonly clustersY: number,\n" +
+        "  ) {}",
+      "  readonly clusterSize: number;\n" +
+        "  readonly clustersX: number;\n" +
+        "  readonly clustersY: number;\n\n" +
+        "  constructor(\n" +
+        "    clusterSize: number,\n" +
+        "    clustersX: number,\n" +
+        "    clustersY: number,\n" +
+        "  ) {\n" +
+        "    this.clusterSize = clusterSize;\n" +
+        "    this.clustersX = clustersX;\n" +
+        "    this.clustersY = clustersY;\n" +
+        "  }",
+      "AG graph ctor",
+    );
+    out = must(
+      out,
+      "  constructor(\n" +
+        "    private readonly map: GameMap,\n" +
+        "    private readonly clusterSize: number = AbstractGraphBuilder.CLUSTER_SIZE,\n" +
+        "    private readonly oldGraph?: AbstractGraph,\n" +
+        "    private readonly dirtyMiniTiles?: Set<TileRef>,\n" +
+        "    // An already-initialized ConnectedComponents kept up to date by the\n" +
+        "    // caller (see WaterManager). Skips the full-map flood fill per build.\n" +
+        "    private readonly sharedWaterComponents?: ConnectedComponents,\n" +
+        "    // Reusable map-sized BFS scratch (stateless between searches).  Avoids\n" +
+        "    // reallocating ~20MB of typed arrays on every water-graph rebuild.\n" +
+        "    sharedTileBFS?: BFSGrid,\n" +
+        "  ) {\n" +
+        "    this.width = map.width();",
+      "  private readonly map: GameMap;\n" +
+        "  private readonly clusterSize: number;\n" +
+        "  private readonly oldGraph?: AbstractGraph;\n" +
+        "  private readonly dirtyMiniTiles?: Set<TileRef>;\n" +
+        "  private readonly sharedWaterComponents?: ConnectedComponents;\n\n" +
+        "  constructor(\n" +
+        "    map: GameMap,\n" +
+        "    clusterSize: number = AbstractGraphBuilder.CLUSTER_SIZE,\n" +
+        "    oldGraph?: AbstractGraph,\n" +
+        "    dirtyMiniTiles?: Set<TileRef>,\n" +
+        "    sharedWaterComponents?: ConnectedComponents,\n" +
+        "    sharedTileBFS?: BFSGrid,\n" +
+        "  ) {\n" +
+        "    this.map = map;\n" +
+        "    this.clusterSize = clusterSize;\n" +
+        "    this.oldGraph = oldGraph;\n" +
+        "    this.dirtyMiniTiles = dirtyMiniTiles;\n" +
+        "    this.sharedWaterComponents = sharedWaterComponents;\n" +
+        "    this.width = map.width();",
+      "AG builder ctor",
+    );
+  }
   if (rel.endsWith("algorithms/AStar.ts")) {
     // `PathFinder` is an interface (erased at runtime) and the extensionless
     // "../types" specifier is not loadable; the PriorityQueue value import is

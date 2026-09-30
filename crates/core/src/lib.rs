@@ -42,6 +42,12 @@
 //!   search view over packed terrain bytes: header-decoded width/height,
 //!   `Land`/`Shore`/`Water` classification, 8-way `neighbors` with JS
 //!   out-of-range and fractional-index semantics)
+//! * [`pathfinding::abstract_graph`] — `src/core/pathfinding/algorithms/AbstractGraph.ts`
+//!   (`AbstractGraph` container + `AbstractGraphBuilder`: cluster-boundary
+//!   gateway nodes from contiguous water "entrance" spans, intra-cluster edges
+//!   from bounded grid-BFS distances (edge ids follow BFS find order),
+//!   canonical `(lo,hi)` edge dedup keeping the cheaper cost, and the
+//!   clean-cluster partial-rebuild cache keyed by `(minTile,maxTile)`)
 //!
 //! Two rules govern every future port into this crate:
 //!

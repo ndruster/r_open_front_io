@@ -13074,3 +13074,382 @@ pub const TSM_SCENARIOS: &[TsmScenario] = &[
     TSM_WIDE_HEADER,
 ];
 
+/// AbstractGraph scenario: a packed-terrain map + clusterSize, an op
+/// stream replayed against the real TS container after the builder
+/// runs (GmOp/GmRes reused; kind table in gen_vectors.mjs), and the
+/// final internal arrays. `nodes` is flattened 5-per-entry
+/// [id,x,y,tile,componentId]; `edges` 6-per-entry
+/// [id,nodeA,nodeB,cost,clusterX,clusterY]; `clusters`
+/// [x,y,count,ids...]; `nodeEdgeIds` [count,ids...]. `oldIdx` is the
+/// prior scenario whose built graph seeds a partial rebuild (-1 =
+/// fresh build); `dirty` are the dirty minimap tiles.
+pub struct AgScenario {
+    pub name: &'static str,
+    pub w: f64,
+    pub h: f64,
+    pub cluster_size: f64,
+    pub terrain: &'static [u8],
+    pub ops: &'static [GmOp],
+    pub node_count: f64,
+    pub edge_count: f64,
+    pub path_cache_len: f64,
+    pub nodes: &'static [f64],
+    pub edges: &'static [f64],
+    pub clusters: &'static [f64],
+    pub node_edge_ids: &'static [f64],
+    pub old_idx: i32,
+    pub dirty: &'static [f64],
+}
+
+const AG_SINGLE_CLUSTER_OPS: &[GmOp] = &[
+    GmOp { kind: 0, a: 0f64, b: 0f64, res: GmRes::Val(0f64) },
+    GmOp { kind: 1, a: 0f64, b: 0f64, res: GmRes::Val(0f64) },
+    GmOp { kind: 2, a: 0f64, b: 0f64, res: GmRes::Undef },
+    GmOp { kind: 3, a: 0f64, b: 0f64, res: GmRes::Undef },
+    GmOp { kind: 4, a: 0f64, b: 0f64, res: GmRes::Arr(&[]) },
+    GmOp { kind: 5, a: 0f64, b: 1f64, res: GmRes::Undef },
+    GmOp { kind: 7, a: 0f64, b: 0f64, res: GmRes::Val(0f64) },
+    GmOp { kind: 8, a: 0f64, b: 0f64, res: GmRes::Arr(&[0f64, 0f64, 0f64]) },
+    GmOp { kind: 9, a: 0f64, b: 0f64, res: GmRes::Arr(&[]) },
+    GmOp { kind: 10, a: 0f64, b: 0f64, res: GmRes::Arr(&[]) },
+];
+pub const AG_SINGLE_CLUSTER: AgScenario = AgScenario {
+    name: "ag_single_cluster",
+    w: 4f64,
+    h: 4f64,
+    cluster_size: 4f64,
+    terrain: &[
+    0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8,
+],
+    ops: AG_SINGLE_CLUSTER_OPS,
+    node_count: 0f64,
+    edge_count: 0f64,
+    path_cache_len: 0f64,
+    nodes: &[
+],
+    edges: &[
+],
+    clusters: &[
+    0f64, 0f64, 0f64,
+],
+    node_edge_ids: &[
+],
+    old_idx: -1i32,
+    dirty: &[],
+};
+
+const AG_ALL_WATER_OPS: &[GmOp] = &[
+    GmOp { kind: 0, a: 0f64, b: 0f64, res: GmRes::Val(4f64) },
+    GmOp { kind: 1, a: 0f64, b: 0f64, res: GmRes::Val(4f64) },
+    GmOp { kind: 2, a: 0f64, b: 0f64, res: GmRes::Arr(&[0f64, 3f64, 2f64, 19f64, 1f64]) },
+    GmOp { kind: 2, a: 1f64, b: 0f64, res: GmRes::Arr(&[1f64, 2f64, 3f64, 26f64, 1f64]) },
+    GmOp { kind: 2, a: 2f64, b: 0f64, res: GmRes::Arr(&[2f64, 6f64, 3f64, 30f64, 1f64]) },
+    GmOp { kind: 2, a: 3f64, b: 0f64, res: GmRes::Arr(&[3f64, 3f64, 6f64, 51f64, 1f64]) },
+    GmOp { kind: 2, a: 4f64, b: 0f64, res: GmRes::Undef },
+    GmOp { kind: 2, a: 5f64, b: 0f64, res: GmRes::Undef },
+    GmOp { kind: 2, a: 999f64, b: 0f64, res: GmRes::Undef },
+    GmOp { kind: 3, a: 0f64, b: 0f64, res: GmRes::Arr(&[0f64, 0f64, 1f64, 2f64, 0f64, 0f64]) },
+    GmOp { kind: 3, a: 1f64, b: 0f64, res: GmRes::Arr(&[1f64, 0f64, 2f64, 4f64, 1f64, 0f64]) },
+    GmOp { kind: 3, a: 999f64, b: 0f64, res: GmRes::Undef },
+    GmOp { kind: 4, a: 0f64, b: 0f64, res: GmRes::Arr(&[0f64, 0f64, 1f64, 2f64, 0f64, 0f64, 1f64, 0f64, 2f64, 4f64, 1f64, 0f64]) },
+    GmOp { kind: 4, a: 1f64, b: 0f64, res: GmRes::Arr(&[0f64, 0f64, 1f64, 2f64, 0f64, 0f64, 2f64, 1f64, 3f64, 4f64, 0f64, 1f64]) },
+    GmOp { kind: 4, a: 999f64, b: 0f64, res: GmRes::Arr(&[]) },
+    GmOp { kind: 5, a: 0f64, b: 1f64, res: GmRes::Arr(&[0f64, 0f64, 1f64, 2f64, 0f64, 0f64]) },
+    GmOp { kind: 5, a: 0f64, b: 2f64, res: GmRes::Arr(&[1f64, 0f64, 2f64, 4f64, 1f64, 0f64]) },
+    GmOp { kind: 5, a: 1f64, b: 0f64, res: GmRes::Arr(&[0f64, 0f64, 1f64, 2f64, 0f64, 0f64]) },
+    GmOp { kind: 5, a: 0f64, b: 999f64, res: GmRes::Undef },
+    GmOp { kind: 6, a: 0f64, b: 0f64, res: GmRes::Val(1f64) },
+    GmOp { kind: 6, a: 1f64, b: 0f64, res: GmRes::Val(2f64) },
+    GmOp { kind: 6, a: 999f64, b: 0f64, res: GmRes::Threw },
+    GmOp { kind: 7, a: 0f64, b: 0f64, res: GmRes::Val(0f64) },
+    GmOp { kind: 7, a: 1f64, b: 0f64, res: GmRes::Val(1f64) },
+    GmOp { kind: 7, a: 0f64, b: 1f64, res: GmRes::Val(2f64) },
+    GmOp { kind: 7, a: 1f64, b: 1f64, res: GmRes::Val(3f64) },
+    GmOp { kind: 8, a: 0f64, b: 0f64, res: GmRes::Arr(&[0f64, 0f64, 2f64, 0f64, 1f64]) },
+    GmOp { kind: 8, a: 1f64, b: 0f64, res: GmRes::Arr(&[1f64, 0f64, 2f64, 0f64, 2f64]) },
+    GmOp { kind: 8, a: 0f64, b: 1f64, res: GmRes::Arr(&[0f64, 1f64, 2f64, 1f64, 3f64]) },
+    GmOp { kind: 8, a: 1f64, b: 1f64, res: GmRes::Arr(&[1f64, 1f64, 2f64, 2f64, 3f64]) },
+    GmOp { kind: 8, a: 2f64, b: 2f64, res: GmRes::Undef },
+    GmOp { kind: 9, a: 0f64, b: 0f64, res: GmRes::Arr(&[0f64, 3f64, 2f64, 19f64, 1f64, 1f64, 2f64, 3f64, 26f64, 1f64]) },
+    GmOp { kind: 9, a: 1f64, b: 0f64, res: GmRes::Arr(&[0f64, 3f64, 2f64, 19f64, 1f64, 2f64, 6f64, 3f64, 30f64, 1f64]) },
+    GmOp { kind: 9, a: 0f64, b: 1f64, res: GmRes::Arr(&[1f64, 2f64, 3f64, 26f64, 1f64, 3f64, 3f64, 6f64, 51f64, 1f64]) },
+    GmOp { kind: 10, a: 0f64, b: 0f64, res: GmRes::Arr(&[0f64, 3f64, 2f64, 19f64, 1f64, 1f64, 2f64, 3f64, 26f64, 1f64, 0f64, 3f64, 2f64, 19f64, 1f64, 2f64, 6f64, 3f64, 30f64, 1f64, 0f64, 3f64, 2f64, 19f64, 1f64, 2f64, 6f64, 3f64, 30f64, 1f64, 1f64, 2f64, 3f64, 26f64, 1f64, 3f64, 3f64, 6f64, 51f64, 1f64, 2f64, 6f64, 3f64, 30f64, 1f64, 3f64, 3f64, 6f64, 51f64, 1f64]) },
+    GmOp { kind: 10, a: 1f64, b: 1f64, res: GmRes::Arr(&[0f64, 3f64, 2f64, 19f64, 1f64, 1f64, 2f64, 3f64, 26f64, 1f64, 0f64, 3f64, 2f64, 19f64, 1f64, 2f64, 6f64, 3f64, 30f64, 1f64, 1f64, 2f64, 3f64, 26f64, 1f64, 3f64, 3f64, 6f64, 51f64, 1f64, 1f64, 2f64, 3f64, 26f64, 1f64, 3f64, 3f64, 6f64, 51f64, 1f64, 2f64, 6f64, 3f64, 30f64, 1f64, 3f64, 3f64, 6f64, 51f64, 1f64]) },
+    GmOp { kind: 11, a: 0f64, b: 0f64, res: GmRes::Val(1f64) },
+    GmOp { kind: 11, a: 4f64, b: 0f64, res: GmRes::Val(1f64) },
+    GmOp { kind: 11, a: 36f64, b: 0f64, res: GmRes::Val(1f64) },
+    GmOp { kind: 11, a: 999f64, b: 0f64, res: GmRes::Val(0f64) },
+    GmOp { kind: 12, a: 1f64, b: 0f64, res: GmRes::Val(64f64) },
+    GmOp { kind: 12, a: 0f64, b: 0f64, res: GmRes::Val(0f64) },
+    GmOp { kind: 12, a: 999f64, b: 0f64, res: GmRes::Val(0f64) },
+    GmOp { kind: 13, a: 0f64, b: 0f64, res: GmRes::Undef },
+    GmOp { kind: 14, a: 0f64, b: 0f64, res: GmRes::Void },
+    GmOp { kind: 13, a: 0f64, b: 0f64, res: GmRes::Arr(&[0f64, 0f64, 0f64]) },
+    GmOp { kind: 13, a: 0f64, b: 1f64, res: GmRes::Undef },
+    GmOp { kind: 13, a: 999f64, b: 0f64, res: GmRes::Undef },
+];
+pub const AG_ALL_WATER: AgScenario = AgScenario {
+    name: "ag_all_water",
+    w: 8f64,
+    h: 8f64,
+    cluster_size: 4f64,
+    terrain: &[
+    0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8,
+    0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8,
+    0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8,
+    0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8,
+],
+    ops: AG_ALL_WATER_OPS,
+    node_count: 4f64,
+    edge_count: 4f64,
+    path_cache_len: 8f64,
+    nodes: &[
+    0f64, 3f64, 2f64, 19f64, 1f64, 1f64, 2f64, 3f64, 26f64, 1f64, 2f64, 6f64, 3f64, 30f64, 1f64, 3f64,
+    3f64, 6f64, 51f64, 1f64,
+],
+    edges: &[
+    0f64, 0f64, 1f64, 2f64, 0f64, 0f64, 1f64, 0f64, 2f64, 4f64, 1f64, 0f64, 2f64, 1f64, 3f64, 4f64,
+    0f64, 1f64, 3f64, 2f64, 3f64, 6f64, 1f64, 1f64,
+],
+    clusters: &[
+    0f64, 0f64, 2f64, 0f64, 1f64, 1f64, 0f64, 2f64, 0f64, 2f64, 0f64, 1f64, 2f64, 1f64, 3f64, 1f64,
+    1f64, 2f64, 2f64, 3f64,
+],
+    node_edge_ids: &[
+    2f64, 0f64, 1f64, 2f64, 0f64, 2f64, 2f64, 1f64, 3f64, 2f64, 2f64, 3f64,
+],
+    old_idx: -1i32,
+    dirty: &[],
+};
+
+const AG_CROSS_OPS: &[GmOp] = &[
+    GmOp { kind: 0, a: 0f64, b: 0f64, res: GmRes::Val(1f64) },
+    GmOp { kind: 1, a: 0f64, b: 0f64, res: GmRes::Val(0f64) },
+    GmOp { kind: 2, a: 0f64, b: 0f64, res: GmRes::Arr(&[0f64, 3f64, 3f64, 27f64, 1f64]) },
+    GmOp { kind: 3, a: 0f64, b: 0f64, res: GmRes::Undef },
+    GmOp { kind: 4, a: 0f64, b: 0f64, res: GmRes::Arr(&[]) },
+    GmOp { kind: 5, a: 0f64, b: 1f64, res: GmRes::Undef },
+    GmOp { kind: 8, a: 0f64, b: 0f64, res: GmRes::Arr(&[0f64, 0f64, 1f64, 0f64]) },
+    GmOp { kind: 9, a: 0f64, b: 0f64, res: GmRes::Arr(&[0f64, 3f64, 3f64, 27f64, 1f64]) },
+    GmOp { kind: 10, a: 0f64, b: 0f64, res: GmRes::Arr(&[0f64, 3f64, 3f64, 27f64, 1f64, 0f64, 3f64, 3f64, 27f64, 1f64, 0f64, 3f64, 3f64, 27f64, 1f64, 0f64, 3f64, 3f64, 27f64, 1f64]) },
+    GmOp { kind: 11, a: 27f64, b: 0f64, res: GmRes::Val(1f64) },
+    GmOp { kind: 12, a: 1f64, b: 0f64, res: GmRes::Val(15f64) },
+];
+pub const AG_CROSS: AgScenario = AgScenario {
+    name: "ag_cross",
+    w: 8f64,
+    h: 8f64,
+    cluster_size: 4f64,
+    terrain: &[
+    133u8, 133u8, 133u8, 0u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 0u8, 133u8, 133u8, 133u8, 133u8,
+    133u8, 133u8, 133u8, 0u8, 133u8, 133u8, 133u8, 133u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8,
+    133u8, 133u8, 133u8, 0u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 0u8, 133u8, 133u8, 133u8, 133u8,
+    133u8, 133u8, 133u8, 0u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 0u8, 133u8, 133u8, 133u8, 133u8,
+],
+    ops: AG_CROSS_OPS,
+    node_count: 1f64,
+    edge_count: 0f64,
+    path_cache_len: 0f64,
+    nodes: &[
+    0f64, 3f64, 3f64, 27f64, 1f64,
+],
+    edges: &[
+],
+    clusters: &[
+    0f64, 0f64, 1f64, 0f64, 1f64, 0f64, 1f64, 0f64, 0f64, 1f64, 1f64, 0f64, 1f64, 1f64, 0f64,
+],
+    node_edge_ids: &[
+    0f64,
+],
+    old_idx: -1i32,
+    dirty: &[],
+};
+
+const AG_CHECKER_OPS: &[GmOp] = &[
+    GmOp { kind: 0, a: 0f64, b: 0f64, res: GmRes::Val(0f64) },
+    GmOp { kind: 1, a: 0f64, b: 0f64, res: GmRes::Val(0f64) },
+    GmOp { kind: 2, a: 0f64, b: 0f64, res: GmRes::Undef },
+    GmOp { kind: 3, a: 0f64, b: 0f64, res: GmRes::Undef },
+    GmOp { kind: 8, a: 0f64, b: 0f64, res: GmRes::Arr(&[0f64, 0f64, 0f64]) },
+    GmOp { kind: 10, a: 0f64, b: 0f64, res: GmRes::Arr(&[]) },
+];
+pub const AG_CHECKER: AgScenario = AgScenario {
+    name: "ag_checker",
+    w: 8f64,
+    h: 8f64,
+    cluster_size: 4f64,
+    terrain: &[
+    0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8,
+    0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8,
+    0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8,
+    0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8,
+],
+    ops: AG_CHECKER_OPS,
+    node_count: 0f64,
+    edge_count: 0f64,
+    path_cache_len: 0f64,
+    nodes: &[
+],
+    edges: &[
+],
+    clusters: &[
+    0f64, 0f64, 0f64, 1f64, 0f64, 0f64, 0f64, 1f64, 0f64, 1f64, 1f64, 0f64,
+],
+    node_edge_ids: &[
+],
+    old_idx: -1i32,
+    dirty: &[],
+};
+
+const AG_ALL_WATER_12_OPS: &[GmOp] = &[
+    GmOp { kind: 0, a: 0f64, b: 0f64, res: GmRes::Val(12f64) },
+    GmOp { kind: 1, a: 0f64, b: 0f64, res: GmRes::Val(22f64) },
+    GmOp { kind: 2, a: 0f64, b: 0f64, res: GmRes::Arr(&[0f64, 3f64, 2f64, 27f64, 1f64]) },
+    GmOp { kind: 3, a: 0f64, b: 0f64, res: GmRes::Arr(&[0f64, 0f64, 1f64, 2f64, 0f64, 0f64]) },
+    GmOp { kind: 4, a: 0f64, b: 0f64, res: GmRes::Arr(&[0f64, 0f64, 1f64, 2f64, 0f64, 0f64, 1f64, 0f64, 3f64, 4f64, 1f64, 0f64, 2f64, 0f64, 2f64, 4f64, 1f64, 0f64]) },
+    GmOp { kind: 5, a: 0f64, b: 1f64, res: GmRes::Arr(&[0f64, 0f64, 1f64, 2f64, 0f64, 0f64]) },
+    GmOp { kind: 6, a: 0f64, b: 0f64, res: GmRes::Val(1f64) },
+    GmOp { kind: 8, a: 0f64, b: 0f64, res: GmRes::Arr(&[0f64, 0f64, 2f64, 0f64, 1f64]) },
+    GmOp { kind: 9, a: 0f64, b: 0f64, res: GmRes::Arr(&[0f64, 3f64, 2f64, 27f64, 1f64, 1f64, 2f64, 3f64, 38f64, 1f64]) },
+    GmOp { kind: 10, a: 0f64, b: 0f64, res: GmRes::Arr(&[0f64, 3f64, 2f64, 27f64, 1f64, 1f64, 2f64, 3f64, 38f64, 1f64, 0f64, 3f64, 2f64, 27f64, 1f64, 2f64, 7f64, 2f64, 31f64, 1f64, 3f64, 6f64, 3f64, 42f64, 1f64, 2f64, 7f64, 2f64, 31f64, 1f64, 4f64, 10f64, 3f64, 46f64, 1f64, 1f64, 2f64, 3f64, 38f64, 1f64, 5f64, 3f64, 6f64, 75f64, 1f64, 6f64, 2f64, 7f64, 86f64, 1f64, 3f64, 6f64, 3f64, 42f64, 1f64, 5f64, 3f64, 6f64, 75f64, 1f64, 7f64, 7f64, 6f64, 79f64, 1f64, 8f64, 6f64, 7f64, 90f64, 1f64]) },
+    GmOp { kind: 11, a: 0f64, b: 0f64, res: GmRes::Val(1f64) },
+    GmOp { kind: 12, a: 1f64, b: 0f64, res: GmRes::Val(144f64) },
+];
+pub const AG_ALL_WATER_12: AgScenario = AgScenario {
+    name: "ag_all_water_12",
+    w: 12f64,
+    h: 12f64,
+    cluster_size: 4f64,
+    terrain: &[
+    0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8,
+    0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8,
+    0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8,
+    0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8,
+    0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8,
+    0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8,
+    0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8,
+    0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8,
+    0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8,
+],
+    ops: AG_ALL_WATER_12_OPS,
+    node_count: 12f64,
+    edge_count: 22f64,
+    path_cache_len: 44f64,
+    nodes: &[
+    0f64, 3f64, 2f64, 27f64, 1f64, 1f64, 2f64, 3f64, 38f64, 1f64, 2f64, 7f64, 2f64, 31f64, 1f64, 3f64,
+    6f64, 3f64, 42f64, 1f64, 4f64, 10f64, 3f64, 46f64, 1f64, 5f64, 3f64, 6f64, 75f64, 1f64, 6f64, 2f64,
+    7f64, 86f64, 1f64, 7f64, 7f64, 6f64, 79f64, 1f64, 8f64, 6f64, 7f64, 90f64, 1f64, 9f64, 10f64, 7f64,
+    94f64, 1f64, 10f64, 3f64, 10f64, 123f64, 1f64, 11f64, 7f64, 10f64, 127f64, 1f64,
+],
+    edges: &[
+    0f64, 0f64, 1f64, 2f64, 0f64, 0f64, 1f64, 0f64, 3f64, 4f64, 1f64, 0f64, 2f64, 0f64, 2f64, 4f64,
+    1f64, 0f64, 3f64, 2f64, 3f64, 2f64, 1f64, 0f64, 4f64, 2f64, 4f64, 4f64, 2f64, 0f64, 5f64, 1f64,
+    6f64, 4f64, 0f64, 1f64, 6f64, 1f64, 5f64, 4f64, 0f64, 1f64, 7f64, 5f64, 6f64, 2f64, 0f64, 1f64,
+    8f64, 3f64, 8f64, 4f64, 1f64, 1f64, 9f64, 3f64, 7f64, 4f64, 1f64, 1f64, 10f64, 3f64, 5f64, 6f64,
+    1f64, 1f64, 11f64, 5f64, 8f64, 4f64, 1f64, 1f64, 12f64, 5f64, 7f64, 4f64, 1f64, 1f64, 13f64, 7f64,
+    8f64, 2f64, 1f64, 1f64, 14f64, 4f64, 9f64, 4f64, 2f64, 1f64, 15f64, 4f64, 7f64, 6f64, 2f64, 1f64,
+    16f64, 7f64, 9f64, 4f64, 2f64, 1f64, 17f64, 6f64, 10f64, 4f64, 0f64, 2f64, 18f64, 8f64, 11f64, 4f64,
+    1f64, 2f64, 19f64, 8f64, 10f64, 6f64, 1f64, 2f64, 20f64, 10f64, 11f64, 4f64, 1f64, 2f64, 21f64, 9f64,
+    11f64, 6f64, 2f64, 2f64,
+],
+    clusters: &[
+    0f64, 0f64, 2f64, 0f64, 1f64, 1f64, 0f64, 3f64, 0f64, 2f64, 3f64, 2f64, 0f64, 2f64, 2f64, 4f64,
+    0f64, 1f64, 3f64, 1f64, 5f64, 6f64, 1f64, 1f64, 4f64, 3f64, 5f64, 7f64, 8f64, 2f64, 1f64, 3f64,
+    4f64, 7f64, 9f64, 0f64, 2f64, 2f64, 6f64, 10f64, 1f64, 2f64, 3f64, 8f64, 10f64, 11f64, 2f64, 2f64,
+    2f64, 9f64, 11f64,
+],
+    node_edge_ids: &[
+    3f64, 0f64, 1f64, 2f64, 3f64, 0f64, 5f64, 6f64, 3f64, 2f64, 3f64, 4f64, 5f64, 1f64, 3f64, 8f64,
+    9f64, 10f64, 3f64, 4f64, 14f64, 15f64, 5f64, 6f64, 7f64, 10f64, 11f64, 12f64, 3f64, 5f64, 7f64, 17f64,
+    5f64, 9f64, 12f64, 13f64, 15f64, 16f64, 5f64, 8f64, 11f64, 13f64, 18f64, 19f64, 3f64, 14f64, 16f64, 21f64,
+    3f64, 17f64, 19f64, 20f64, 3f64, 18f64, 20f64, 21f64,
+],
+    old_idx: -1i32,
+    dirty: &[],
+};
+
+const AG_PARTIAL_REBUILD_OPS: &[GmOp] = &[
+    GmOp { kind: 0, a: 0f64, b: 0f64, res: GmRes::Val(12f64) },
+    GmOp { kind: 1, a: 0f64, b: 0f64, res: GmRes::Val(22f64) },
+    GmOp { kind: 2, a: 0f64, b: 0f64, res: GmRes::Arr(&[0f64, 3f64, 2f64, 27f64, 1f64]) },
+    GmOp { kind: 2, a: 1f64, b: 0f64, res: GmRes::Arr(&[1f64, 2f64, 3f64, 38f64, 1f64]) },
+    GmOp { kind: 3, a: 0f64, b: 0f64, res: GmRes::Arr(&[0f64, 0f64, 1f64, 2f64, 0f64, 0f64]) },
+    GmOp { kind: 3, a: 1f64, b: 0f64, res: GmRes::Arr(&[1f64, 0f64, 3f64, 4f64, 1f64, 0f64]) },
+    GmOp { kind: 4, a: 0f64, b: 0f64, res: GmRes::Arr(&[0f64, 0f64, 1f64, 2f64, 0f64, 0f64, 1f64, 0f64, 3f64, 4f64, 1f64, 0f64, 2f64, 0f64, 2f64, 4f64, 1f64, 0f64]) },
+    GmOp { kind: 5, a: 0f64, b: 1f64, res: GmRes::Arr(&[0f64, 0f64, 1f64, 2f64, 0f64, 0f64]) },
+    GmOp { kind: 6, a: 0f64, b: 0f64, res: GmRes::Val(1f64) },
+    GmOp { kind: 7, a: 0f64, b: 0f64, res: GmRes::Val(0f64) },
+    GmOp { kind: 7, a: 1f64, b: 1f64, res: GmRes::Val(4f64) },
+    GmOp { kind: 8, a: 0f64, b: 0f64, res: GmRes::Arr(&[0f64, 0f64, 2f64, 0f64, 1f64]) },
+    GmOp { kind: 8, a: 2f64, b: 2f64, res: GmRes::Arr(&[2f64, 2f64, 2f64, 9f64, 11f64]) },
+    GmOp { kind: 9, a: 0f64, b: 0f64, res: GmRes::Arr(&[0f64, 3f64, 2f64, 27f64, 1f64, 1f64, 2f64, 3f64, 38f64, 1f64]) },
+    GmOp { kind: 10, a: 0f64, b: 0f64, res: GmRes::Arr(&[0f64, 3f64, 2f64, 27f64, 1f64, 1f64, 2f64, 3f64, 38f64, 1f64, 0f64, 3f64, 2f64, 27f64, 1f64, 2f64, 7f64, 2f64, 31f64, 1f64, 3f64, 6f64, 3f64, 42f64, 1f64, 2f64, 7f64, 2f64, 31f64, 1f64, 4f64, 10f64, 3f64, 46f64, 1f64, 1f64, 2f64, 3f64, 38f64, 1f64, 5f64, 3f64, 6f64, 75f64, 1f64, 6f64, 2f64, 7f64, 86f64, 1f64, 3f64, 6f64, 3f64, 42f64, 1f64, 5f64, 3f64, 6f64, 75f64, 1f64, 7f64, 7f64, 6f64, 79f64, 1f64, 8f64, 6f64, 7f64, 90f64, 1f64]) },
+    GmOp { kind: 10, a: 2f64, b: 2f64, res: GmRes::Arr(&[3f64, 6f64, 3f64, 42f64, 1f64, 5f64, 3f64, 6f64, 75f64, 1f64, 7f64, 7f64, 6f64, 79f64, 1f64, 8f64, 6f64, 7f64, 90f64, 1f64, 4f64, 10f64, 3f64, 46f64, 1f64, 7f64, 7f64, 6f64, 79f64, 1f64, 9f64, 10f64, 7f64, 94f64, 1f64, 6f64, 2f64, 7f64, 86f64, 1f64, 10f64, 3f64, 10f64, 123f64, 1f64, 8f64, 6f64, 7f64, 90f64, 1f64, 10f64, 3f64, 10f64, 123f64, 1f64, 11f64, 7f64, 10f64, 127f64, 1f64, 9f64, 10f64, 7f64, 94f64, 1f64, 11f64, 7f64, 10f64, 127f64, 1f64]) },
+    GmOp { kind: 11, a: 0f64, b: 0f64, res: GmRes::Val(1f64) },
+    GmOp { kind: 12, a: 1f64, b: 0f64, res: GmRes::Val(144f64) },
+    GmOp { kind: 13, a: 0f64, b: 0f64, res: GmRes::Undef },
+    GmOp { kind: 14, a: 0f64, b: 0f64, res: GmRes::Void },
+    GmOp { kind: 13, a: 0f64, b: 0f64, res: GmRes::Arr(&[0f64, 0f64, 0f64]) },
+];
+pub const AG_PARTIAL_REBUILD: AgScenario = AgScenario {
+    name: "ag_partial_rebuild",
+    w: 12f64,
+    h: 12f64,
+    cluster_size: 4f64,
+    terrain: &[
+    0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8,
+    0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8,
+    0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8,
+    0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8,
+    0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8,
+    0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8,
+    0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8,
+    0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8,
+    0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8,
+],
+    ops: AG_PARTIAL_REBUILD_OPS,
+    node_count: 12f64,
+    edge_count: 22f64,
+    path_cache_len: 44f64,
+    nodes: &[
+    0f64, 3f64, 2f64, 27f64, 1f64, 1f64, 2f64, 3f64, 38f64, 1f64, 2f64, 7f64, 2f64, 31f64, 1f64, 3f64,
+    6f64, 3f64, 42f64, 1f64, 4f64, 10f64, 3f64, 46f64, 1f64, 5f64, 3f64, 6f64, 75f64, 1f64, 6f64, 2f64,
+    7f64, 86f64, 1f64, 7f64, 7f64, 6f64, 79f64, 1f64, 8f64, 6f64, 7f64, 90f64, 1f64, 9f64, 10f64, 7f64,
+    94f64, 1f64, 10f64, 3f64, 10f64, 123f64, 1f64, 11f64, 7f64, 10f64, 127f64, 1f64,
+],
+    edges: &[
+    0f64, 0f64, 1f64, 2f64, 0f64, 0f64, 1f64, 0f64, 3f64, 4f64, 1f64, 0f64, 2f64, 0f64, 2f64, 4f64,
+    1f64, 0f64, 3f64, 2f64, 3f64, 2f64, 1f64, 0f64, 4f64, 2f64, 4f64, 4f64, 2f64, 0f64, 5f64, 1f64,
+    6f64, 4f64, 0f64, 1f64, 6f64, 1f64, 5f64, 4f64, 0f64, 1f64, 7f64, 5f64, 6f64, 2f64, 0f64, 1f64,
+    8f64, 3f64, 8f64, 4f64, 1f64, 1f64, 9f64, 3f64, 7f64, 4f64, 1f64, 1f64, 10f64, 3f64, 5f64, 6f64,
+    1f64, 1f64, 11f64, 5f64, 8f64, 4f64, 1f64, 1f64, 12f64, 5f64, 7f64, 4f64, 1f64, 1f64, 13f64, 7f64,
+    8f64, 2f64, 1f64, 1f64, 14f64, 4f64, 7f64, 6f64, 2f64, 1f64, 15f64, 4f64, 9f64, 4f64, 2f64, 1f64,
+    16f64, 7f64, 9f64, 4f64, 2f64, 1f64, 17f64, 6f64, 10f64, 4f64, 0f64, 2f64, 18f64, 8f64, 10f64, 6f64,
+    1f64, 2f64, 19f64, 8f64, 11f64, 4f64, 1f64, 2f64, 20f64, 10f64, 11f64, 4f64, 1f64, 2f64, 21f64, 9f64,
+    11f64, 6f64, 2f64, 2f64,
+],
+    clusters: &[
+    0f64, 0f64, 2f64, 0f64, 1f64, 1f64, 0f64, 3f64, 0f64, 2f64, 3f64, 2f64, 0f64, 2f64, 2f64, 4f64,
+    0f64, 1f64, 3f64, 1f64, 5f64, 6f64, 1f64, 1f64, 4f64, 3f64, 5f64, 7f64, 8f64, 2f64, 1f64, 3f64,
+    4f64, 7f64, 9f64, 0f64, 2f64, 2f64, 6f64, 10f64, 1f64, 2f64, 3f64, 8f64, 10f64, 11f64, 2f64, 2f64,
+    2f64, 9f64, 11f64,
+],
+    node_edge_ids: &[
+    3f64, 0f64, 1f64, 2f64, 3f64, 0f64, 5f64, 6f64, 3f64, 2f64, 3f64, 4f64, 5f64, 1f64, 3f64, 8f64,
+    9f64, 10f64, 3f64, 4f64, 14f64, 15f64, 5f64, 6f64, 7f64, 10f64, 11f64, 12f64, 3f64, 5f64, 7f64, 17f64,
+    5f64, 9f64, 12f64, 13f64, 14f64, 16f64, 5f64, 8f64, 11f64, 13f64, 18f64, 19f64, 3f64, 15f64, 16f64, 21f64,
+    3f64, 17f64, 18f64, 20f64, 3f64, 19f64, 20f64, 21f64,
+],
+    old_idx: 4i32,
+    dirty: &[0f64, 1f64, 12f64, 13f64],
+};
+
+pub const AG_SCENARIOS: &[AgScenario] = &[
+    AG_SINGLE_CLUSTER,
+    AG_ALL_WATER,
+    AG_CROSS,
+    AG_CHECKER,
+    AG_ALL_WATER_12,
+    AG_PARTIAL_REBUILD,
+];
+

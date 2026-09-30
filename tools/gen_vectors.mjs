@@ -166,6 +166,9 @@ const { ConnectedComponents } = await loadTs(
   "src/core/pathfinding/algorithms/ConnectedComponents.ts",
 );
 const { TerrainSearchMap } = await loadTs("src/core/game/TerrainSearchMap.ts");
+const { AbstractGraph, AbstractGraphBuilder } = await loadTs(
+  "src/core/pathfinding/algorithms/AbstractGraph.ts",
+);
 
 // enc() maps JS-only values JSON cannot carry: undefined -> "u", NaN -> "n",
 // booleans -> 1/0, and -0 -> "-0" (JSON collapses -0 to 0, yet the f32 bit
@@ -1783,6 +1786,173 @@ runTsm("tsm_wide_header", 0x1234, 0x00ff, [0x85], [
   [0], [1], [2, 0, 0], [2, -4, 0], [2, -3, 0],
 ]);
 
+// --- AbstractGraph (AbstractGraph.ts) ---------------------------------------
+// Build the coarse navigation graph over a real GameMapImpl with the real
+// AbstractGraphBuilder, then replay the container's accessors against the
+// built graph and pin the final internal arrays. The builder's ordering
+// decisions (cluster scan order, span mid-points, BFS find order -> edge ids,
+// canonical (lo,hi) dedup, clean-cluster cache) are the parity target.
+//
+// op kinds: 0=nodeCount, 1=edgeCount, 2=getNode(a), 3=getEdge(a),
+//   4=getNodeEdges(a), 5=getEdgeBetween(a,b), 6=getOtherNode(edgeId=a,node=b),
+//   7=getClusterKey(a,b), 8=getCluster(a=cx,b=cy), 9=getClusterNodes,
+//   10=getNearbyClusterNodes, 11=getComponentId(a), 12=getComponentSize(a),
+//   13=getCachedPath(a=edgeId,b=fromNodeId), 14=setCachedPath(a,b) -> "v".
+// Node results flatten to [id,x,y,tile,componentId]; edge results to
+// [id,nodeA,nodeB,cost,clusterX,clusterY]; cluster to [x,y,count,ids...].
+const agScenarios = [];
+const agGraphs = new Map(); // name -> built graph, for partial-rebuild oldGraph
+const agNode = (n) =>
+  n === undefined ? "u" : [enc(n.id), enc(n.x), enc(n.y), enc(n.tile), enc(n.componentId)];
+const agEdge = (e) =>
+  e === undefined
+    ? "u"
+    : [enc(e.id), enc(e.nodeA), enc(e.nodeB), enc(e.cost), enc(e.clusterX), enc(e.clusterY)];
+const agCluster = (c) =>
+  c === undefined ? "u" : [enc(c.x), enc(c.y), enc(c.nodeIds.length), ...c.nodeIds.map(enc)];
+const agFlat = (xs) => xs.map((x) => enc(x));
+
+function runAg(name, w, h, clusterSize, terrain, ops, oldName, dirtyTiles) {
+  const gm = new GameMapImpl(w, h, Uint8Array.from(terrain), 0);
+  let oldGraph = null;
+  if (oldName) {
+    oldGraph = agGraphs.get(oldName);
+    if (!oldGraph) throw new Error("ag: unknown old graph " + oldName);
+  }
+  let builder;
+  if (oldGraph) {
+    builder = new AbstractGraphBuilder(gm, clusterSize, oldGraph, new Set(dirtyTiles));
+  } else {
+    builder = new AbstractGraphBuilder(gm, clusterSize);
+  }
+  const graph = builder.build();
+
+  const played = ops.map(([k, a, b]) => {
+    switch (k) {
+      case 0: return [k, 0, 0, enc(graph.nodeCount)];
+      case 1: return [k, 0, 0, enc(graph.edgeCount)];
+      case 2: return [k, enc(a), 0, agNode(graph.getNode(a))];
+      case 3: return [k, enc(a), 0, agEdge(graph.getEdge(a))];
+      case 4: return [k, enc(a), 0, graph.getNodeEdges(a).flatMap((e) => agEdge(e))];
+      case 5: return [k, enc(a), enc(b), agEdge(graph.getEdgeBetween(a, b))];
+      case 6: {
+        const e = graph.getEdge(a);
+        if (!e) return [k, enc(a), enc(b), "t"];
+        return [k, enc(a), enc(b), enc(graph.getOtherNode(e, b))];
+      }
+      case 7: return [k, enc(a), enc(b), enc(graph.getClusterKey(a, b))];
+      case 8: return [k, enc(a), enc(b), agCluster(graph.getCluster(a, b))];
+      case 9: return [k, enc(a), enc(b), graph.getClusterNodes(a, b).flatMap((n) => agNode(n))];
+      case 10:
+        return [k, enc(a), enc(b), graph.getNearbyClusterNodes(a, b).flatMap((n) => agNode(n))];
+      case 11: return [k, enc(a), 0, enc(graph.getComponentId(a))];
+      case 12: return [k, enc(a), 0, enc(graph.getComponentSize(a))];
+      case 13: {
+        const p = graph.getCachedPath(a, b);
+        return [k, enc(a), enc(b), p === null ? "u" : agFlat(p)];
+      }
+      case 14: {
+        const e = graph.getEdge(a);
+        if (!e) return [k, enc(a), enc(b), "v"];
+        const dir = b === e.nodeA ? 0 : 1;
+        graph.setCachedPath(a, b, [a, b, a * 2 + dir]);
+        return [k, enc(a), enc(b), "v"];
+      }
+      default: throw new Error("bad ag op kind " + k);
+    }
+  });
+
+  // Final internal arrays (all dense — ids/keys are sequential).
+  const nodes = [];
+  for (const n of graph._nodes) nodes.push(...agNode(n));
+  const edges = [];
+  for (const e of graph._edges) edges.push(...agEdge(e));
+  const clusters = [];
+  for (const c of graph._clusters) clusters.push(...agCluster(c));
+  const nodeEdgeIds = [];
+  for (const list of graph._nodeEdgeIds) nodeEdgeIds.push(enc(list.length), ...list.map(enc));
+
+  agScenarios.push({
+    name,
+    w,
+    h,
+    clusterSize,
+    terrain: Array.from(terrain),
+    ops: played,
+    nodeCount: enc(graph.nodeCount),
+    edgeCount: enc(graph.edgeCount),
+    pathCacheLen: enc(graph._pathCache.length),
+    nodes,
+    edges,
+    clusters,
+    nodeEdgeIds,
+    oldIdx: oldName ? agScenarios.findIndex((s) => s.name === oldName) : -1,
+    dirty: oldName ? Array.from(dirtyTiles) : [],
+  });
+  agGraphs.set(name, graph);
+}
+
+const AW = 0x00; // water
+const AL = 0x85; // land
+
+// 1x1 cluster grid: no internal boundaries -> zero gateway nodes, zero edges.
+runAg("ag_single_cluster", 4, 4, 4, new Array(16).fill(AW), [
+  [0], [1], [2, 0], [3, 0], [4, 0], [5, 0, 1], [7, 0, 0], [8, 0, 0], [9, 0, 0], [10, 0, 0],
+]);
+// 8x8 all water, clusterSize 4 -> 2x2 clusters. Every cluster boundary is a
+// contiguous water span, so gateways appear at each span mid-point and edges
+// connect them within each cluster (BFS find order -> edge ids).
+runAg("ag_all_water", 8, 8, 4, new Array(64).fill(AW), [
+  [0], [1],
+  [2, 0], [2, 1], [2, 2], [2, 3], [2, 4], [2, 5], [2, 999],
+  [3, 0], [3, 1], [3, 999],
+  [4, 0], [4, 1], [4, 999],
+  [5, 0, 1], [5, 0, 2], [5, 1, 0], [5, 0, 999],
+  [6, 0, 0], [6, 1, 0], [6, 999, 0],
+  [7, 0, 0], [7, 1, 0], [7, 0, 1], [7, 1, 1],
+  [8, 0, 0], [8, 1, 0], [8, 0, 1], [8, 1, 1], [8, 2, 2],
+  [9, 0, 0], [9, 1, 0], [9, 0, 1],
+  [10, 0, 0], [10, 1, 1],
+  [11, 0], [11, 4], [11, 36], [11, 999],
+  [12, 1], [12, 0], [12, 999],
+  [13, 0, 0], [14, 0, 0], [13, 0, 0], [13, 0, 1], [13, 999, 0],
+]);
+// Cross-shaped water on a land map: only the channel tiles are water, so the
+// vertical/horizontal boundary scans find short entrance spans.
+{
+  const t = new Array(64).fill(AL);
+  for (let i = 0; i < 8; i++) {
+    t[3 * 8 + i] = AW; // row 3 water
+    t[i * 8 + 3] = AW; // col 3 water
+  }
+  runAg("ag_cross", 8, 8, 4, t, [
+    [0], [1], [2, 0], [3, 0], [4, 0], [5, 0, 1], [8, 0, 0], [9, 0, 0], [10, 0, 0], [11, 27], [12, 1],
+  ]);
+}
+// Checkerboard: isolated single water tiles, no adjacent water -> no entrance
+// spans -> no gateways.
+{
+  const t = [];
+  for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++) t.push((x + y) % 2 === 0 ? AW : AL);
+  runAg("ag_checker", 8, 8, 4, t, [
+    [0], [1], [2, 0], [3, 0], [8, 0, 0], [10, 0, 0],
+  ]);
+}
+// Partial rebuild: reuse the all-water graph as the old graph and dirty only
+// cluster (0,0)'s tiles. Clusters outside the 1-ring are "clean" and recreate
+// their edges from the old-graph cost cache instead of BFS.
+{
+  const t = new Array(144).fill(AW);
+  runAg("ag_all_water_12", 12, 12, 4, t, [
+    [0], [1], [2, 0], [3, 0], [4, 0], [5, 0, 1], [6, 0, 0], [8, 0, 0], [9, 0, 0], [10, 0, 0], [11, 0], [12, 1],
+  ]);
+  // dirty tiles in cluster (0,0) -> its 1-ring (4 clusters) rebuilt by BFS,
+  // the remaining 5 clusters (of 3x3) recreated from cache.
+  runAg("ag_partial_rebuild", 12, 12, 4, t, [
+    [0], [1], [2, 0], [2, 1], [3, 0], [3, 1], [4, 0], [5, 0, 1], [6, 0, 0], [7, 0, 0], [7, 1, 1], [8, 0, 0], [8, 2, 2], [9, 0, 0], [10, 0, 0], [10, 2, 2], [11, 0], [12, 1], [13, 0, 0], [14, 0, 0], [13, 0, 0],
+  ], "ag_all_water_12", [0, 1, 12, 13]);
+}
+
 const structures = {
   minheap: mhScenarios,
   bucket: bqScenarios,
@@ -1800,6 +1970,7 @@ const structures = {
   motionplans: mpScenarios,
   connectedcomponents: ccScenarios,
   terrainsearchmap: tsmScenarios,
+  abstractgraph: agScenarios,
 };
 
 // ================================================================ JSON
@@ -2753,6 +2924,91 @@ for (const s of structures.terrainsearchmap) {
 }
 L.push("pub const TSM_SCENARIOS: &[TsmScenario] = &[");
 for (const s of structures.terrainsearchmap) L.push(`    ${s.name.toUpperCase()},`);
+L.push("];");
+L.push("");
+
+L.push("/// AbstractGraph scenario: a packed-terrain map + clusterSize, an op");
+L.push("/// stream replayed against the real TS container after the builder");
+L.push("/// runs (GmOp/GmRes reused; kind table in gen_vectors.mjs), and the");
+L.push("/// final internal arrays. `nodes` is flattened 5-per-entry");
+L.push("/// [id,x,y,tile,componentId]; `edges` 6-per-entry");
+L.push("/// [id,nodeA,nodeB,cost,clusterX,clusterY]; `clusters`");
+L.push("/// [x,y,count,ids...]; `nodeEdgeIds` [count,ids...]. `oldIdx` is the");
+L.push("/// prior scenario whose built graph seeds a partial rebuild (-1 =");
+L.push("/// fresh build); `dirty` are the dirty minimap tiles.");
+L.push("pub struct AgScenario {");
+L.push("    pub name: &'static str,");
+L.push("    pub w: f64,");
+L.push("    pub h: f64,");
+L.push("    pub cluster_size: f64,");
+L.push("    pub terrain: &'static [u8],");
+L.push("    pub ops: &'static [GmOp],");
+L.push("    pub node_count: f64,");
+L.push("    pub edge_count: f64,");
+L.push("    pub path_cache_len: f64,");
+L.push("    pub nodes: &'static [f64],");
+L.push("    pub edges: &'static [f64],");
+L.push("    pub clusters: &'static [f64],");
+L.push("    pub node_edge_ids: &'static [f64],");
+L.push("    pub old_idx: i32,");
+L.push("    pub dirty: &'static [f64],");
+L.push("}");
+L.push("");
+// Render an ag flat token array: "u" (undefined) -> NaN, "n" -> NaN, "-0" ->
+// -0.0, otherwise the f64 literal.
+const agBuf = (xs) => {
+  const lits = xs.map((v) => {
+    if (v === "u" || v === "n") return "f64::NAN";
+    if (v === "-0") return "-0.0f64";
+    return `${v}f64`;
+  });
+  const out = [];
+  for (let i = 0; i < lits.length; i += 16)
+    out.push("    " + lits.slice(i, i + 16).join(", ") + ",");
+  return out;
+};
+const agScalar = (v) => {
+  if (v === "u" || v === "n") return "f64::NAN";
+  if (v === "-0") return "-0.0f64";
+  return `${v}f64`;
+};
+for (const s of structures.abstractgraph) {
+  const id = s.name.toUpperCase();
+  L.push(`const ${id}_OPS: &[GmOp] = &[`);
+  for (const [k, a, b, r] of s.ops)
+    L.push(`    GmOp { kind: ${k}, a: ${argLit(a)}, b: ${argLit(b)}, res: ${gmResLit(r)} },`);
+  L.push("];");
+  L.push(`pub const ${id}: AgScenario = AgScenario {`);
+  L.push(`    name: "${s.name}",`);
+  L.push(`    w: ${f64(s.w)},`);
+  L.push(`    h: ${f64(s.h)},`);
+  L.push(`    cluster_size: ${f64(s.clusterSize)},`);
+  L.push("    terrain: &[");
+  L.push(...numArr(s.terrain, "u8", 16));
+  L.push("],");
+  L.push(`    ops: ${id}_OPS,`);
+  L.push(`    node_count: ${agScalar(s.nodeCount)},`);
+  L.push(`    edge_count: ${agScalar(s.edgeCount)},`);
+  L.push(`    path_cache_len: ${agScalar(s.pathCacheLen)},`);
+  L.push("    nodes: &[");
+  L.push(...agBuf(s.nodes));
+  L.push("],");
+  L.push("    edges: &[");
+  L.push(...agBuf(s.edges));
+  L.push("],");
+  L.push("    clusters: &[");
+  L.push(...agBuf(s.clusters));
+  L.push("],");
+  L.push("    node_edge_ids: &[");
+  L.push(...agBuf(s.nodeEdgeIds));
+  L.push("],");
+  L.push(`    old_idx: ${s.oldIdx}i32,`);
+  L.push(`    dirty: &[${s.dirty.map((d) => `${d}f64`).join(", ")}],`);
+  L.push("};");
+  L.push("");
+}
+L.push("pub const AG_SCENARIOS: &[AgScenario] = &[");
+for (const s of structures.abstractgraph) L.push(`    ${s.name.toUpperCase()},`);
 L.push("];");
 L.push("");
 

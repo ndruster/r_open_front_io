@@ -39,6 +39,9 @@ rust/
 │   │       ├── rail.rs            port of algorithms/AStar.Rail.ts
 │   │       │                      (+ TerrainMap: GameMapImpl's packed bytes)
 │   │       ├── water.rs           port of algorithms/AStar.Water.ts
+│   │       ├── abstract_graph.rs  port of algorithms/AbstractGraph.ts
+│   │       │                      (+ AbstractGraphBuilder: gateway nodes,
+│   │       │                       bounded-BFS edges, partial rebuild)
 │   │       └── connected_components.rs
 │   │                              port of algorithms/ConnectedComponents.ts
 │   └── tests/
@@ -174,6 +177,23 @@ desync, not a rounding nit. Two things enforce that here:
     dominance over a magnitude of 31; and `neighbors()` keeps fractional
     coordinates (the bounds test is purely relational) while `NaN` / `±Infinity`
     fail every comparison and yield the empty list, in the TS `dirs` order.
+13. **`AbstractGraph.ts`** (`pathfinding::abstract_graph`) is pinned with six
+    build-and-query scenarios (single cluster, all-water 8×8, a cross-shaped
+    channel, a checkerboard of isolated tiles, all-water 12×12, and a partial
+    rebuild reusing the 12×12 graph with four dirty minimap tiles). Every
+    ordering decision of the builder is observable through the recorded
+    access-op stream (15 kinds: node/edge/cluster lookups, component queries,
+    path-cache get/set) plus the final flattened `_nodes`/`_edges`/`_clusters`/
+    `_nodeEdgeIds` arrays: gateway nodes sit at `spanStart + floor(spanLength/2)`
+    of each contiguous boundary water span, right edge before bottom edge in
+    row-major cluster order; `tileToNode` dedupes corner gateways; edge ids
+    follow the bounded BFS *find* order (JS `Map` insertion order, modelled as
+    a `Vec` where a repeated set updates in place); `addOrUpdateEdge`
+    canonicalises `(lo, hi)` and rewrites the cluster attribution only on a
+    strict cost improvement; and the partial-rebuild path recreates clean
+    clusters' edges from the old graph keyed by `(minTile, maxTile)`, keeping
+    the original cluster. `getOtherNode` on a missing edge mirrors the TS
+    throw (captured as `"t"`, the wasm probe returns `NaN`).
 
 Regenerate whenever a ported source changes:
 
@@ -207,7 +227,7 @@ node rust/tools/run_wasm_parity.mjs
 
 `wasm-probe` exposes the ported functions through `extern "C"` scalar
 entrypoints (`src/wasm_probe.rs`); the runner imports `data/vectors.json` and
-compares every value. Last run: **26,638 comparisons, all bit-identical**.
+compares every value. Last run: **28,092 comparisons, all bit-identical**.
 
 ### Windows: the linker environment
 

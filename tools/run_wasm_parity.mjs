@@ -38,6 +38,9 @@ for (const name of [
   "probe_cc_arr_len", "probe_cc_arr_get",
   "probe_tsm_buffer_byte", "probe_tsm_new", "probe_tsm_op",
   "probe_tsm_out_len", "probe_tsm_out_at",
+  "probe_ag_terrain_byte", "probe_ag_dirty_byte", "probe_ag_new", "probe_ag_op",
+  "probe_ag_out_len", "probe_ag_out_at", "probe_ag_field",
+  "probe_ag_arr_len", "probe_ag_arr_get",
 ]) {
   if (typeof ex[name] !== "function") {
     console.error(`missing wasm export ${name} - rebuild with --features wasm-probe`);
@@ -788,6 +791,84 @@ for (const s of S.terrainsearchmap) {
     const got = ex.probe_tsm_op(k, numTok(a), numTok(b));
     cmpScalar(`${s.name} op${k}`, got, res, i);
   });
+}
+
+// --- AbstractGraph --- (terrain bytes + optional dirty tiles queued before
+// probe_ag_new; scalar kinds 0/1/6/7/11/12 compare directly — kind 6 returns
+// NaN for a missing edge, matching the TS throw guard captured as "t"; array
+// kinds 2/3/4/5/8/9/10/13 land in the out buffer, out_len == -1 encodes
+// undefined/null; final internal arrays read back element-wise).
+const AG_ARR_KINDS = new Set([2, 3, 4, 5, 8, 9, 10, 13]);
+for (const s of S.abstractgraph) {
+  for (const b of s.terrain) ex.probe_ag_terrain_byte(b);
+  for (const d of s.dirty) ex.probe_ag_dirty_byte(numTok(d));
+  ex.probe_ag_new(s.w, s.h, s.clusterSize, s.oldIdx);
+  s.ops.forEach(([k, a, b, res], i) => {
+    const A = numTok(a);
+    const B = numTok(b);
+    if (k === 14) {
+      ex.probe_ag_op(k, A, B); // void mutation, nothing observable
+      return;
+    }
+    if (k === 6) {
+      const got = ex.probe_ag_op(k, A, B);
+      if (res === "t") {
+        checks++;
+        if (!Number.isNaN(got)) fail(`${s.name} getOtherNode throw`, i, got, "NaN");
+      } else {
+        cmpScalar(`${s.name} op6`, got, res, i);
+      }
+      return;
+    }
+    if (AG_ARR_KINDS.has(k)) {
+      ex.probe_ag_op(k, A, B);
+      const gotLen = ex.probe_ag_out_len();
+      if (res === "u") {
+        checks++;
+        if (gotLen !== -1) fail(`${s.name} op${k} undef`, i, gotLen, -1);
+        return;
+      }
+      checks++;
+      if (gotLen !== res.length) {
+        fail(`${s.name} op${k} len`, i, gotLen, res.length);
+        return;
+      }
+      for (let j = 0; j < res.length; j++) {
+        checks++;
+        const got = ex.probe_ag_out_at(j);
+        const tok = res[j];
+        const want = tok === "u" ? NaN : numTok(tok);
+        if (!Object.is(got, want))
+          fail(`${s.name} op${k}[${j}]`, j, fmt(got), String(tok));
+      }
+      return;
+    }
+    const got = ex.probe_ag_op(k, A, B);
+    cmpScalar(`${s.name} op${k}`, got, res, i);
+  });
+  cmpBits(`${s.name} nodeCount`, ex.probe_ag_field(0), toBits(s.nodeCount), 0);
+  cmpBits(`${s.name} edgeCount`, ex.probe_ag_field(1), toBits(s.edgeCount), 1);
+  cmpBits(`${s.name} pathCacheLen`, ex.probe_ag_field(2), toBits(s.pathCacheLen), 2);
+  for (const [field, arr] of [
+    [0, s.nodes],
+    [1, s.edges],
+    [2, s.clusters],
+    [3, s.nodeEdgeIds],
+  ]) {
+    checks++;
+    if (ex.probe_ag_arr_len(field) !== arr.length) {
+      fail(`${s.name} field${field} len`, 0, ex.probe_ag_arr_len(field), arr.length);
+      continue;
+    }
+    for (let j = 0; j < arr.length; j++) {
+      checks++;
+      const got = ex.probe_ag_arr_get(field, j);
+      const tok = arr[j];
+      const want = tok === "u" ? NaN : numTok(tok);
+      if (!Object.is(got, want))
+        fail(`${s.name} field${field}[${j}]`, j, fmt(got), String(tok));
+    }
+  }
 }
 
 console.log(`${checks} vector comparisons executed against wasm build`);

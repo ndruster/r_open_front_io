@@ -15,6 +15,7 @@ use vectors::Op;
 use vectors::Res;
 
 use openfront_core::game_map::GameMap;
+use openfront_core::pathfinding::abstract_graph::{AbstractGraph, AbstractGraphBuilder};
 use openfront_core::pathfinding::a_star::{AStar, GridAdapter};
 use openfront_core::pathfinding::bfs_grid::{BfsGrid, Visit};
 use openfront_core::pathfinding::connected_components::ConnectedComponents;
@@ -1030,5 +1031,193 @@ fn replay_tsm_scenarios() {
                 k => panic!("{} unexpected tsm op kind {k}", s.name),
             }
         }
+    }
+}
+
+// -------------------------------------------------------------- AbstractGraph
+// kind table (gen_vectors.mjs): 0=nodeCount, 1=edgeCount, 2=getNode(a),
+// 3=getEdge(a), 4=getNodeEdges(a), 5=getEdgeBetween(a,b),
+// 6=getOtherNode(edgeId=a,node=b), 7=getClusterKey(a,b), 8=getCluster(cx,cy),
+// 9=getClusterNodes, 10=getNearbyClusterNodes, 11=getComponentId(a),
+// 12=getComponentSize(a), 13=getCachedPath(edgeId,fromNode), 14=setCachedPath.
+// Node results flatten to [id,x,y,tile,componentId]; edge results to
+// [id,nodeA,nodeB,cost,clusterX,clusterY]; cluster to [x,y,count,ids...].
+#[test]
+fn replay_abstract_graph_scenarios() {
+    use openfront_core::pathfinding::abstract_graph::{AbstractEdge, AbstractNode};
+
+    let ag_node = |n: Option<AbstractNode>| -> Vec<f64> {
+        match n {
+            Some(n) => vec![
+                n.id as f64,
+                n.x as f64,
+                n.y as f64,
+                n.tile,
+                n.component_id as f64,
+            ],
+            None => Vec::new(),
+        }
+    };
+    let ag_edge = |e: Option<AbstractEdge>| -> Vec<f64> {
+        match e {
+            Some(e) => vec![
+                e.id as f64,
+                e.node_a as f64,
+                e.node_b as f64,
+                e.cost,
+                e.cluster_x as f64,
+                e.cluster_y as f64,
+            ],
+            None => Vec::new(),
+        }
+    };
+
+    // Scenarios replay in order; each may seed a later partial rebuild.
+    let mut built: Vec<AbstractGraph> = Vec::new();
+
+    for (si, s) in vectors::AG_SCENARIOS.iter().enumerate() {
+        let gm = GameMap::new(s.w, s.h, s.terrain.to_vec(), 0.0);
+        let cs = s.cluster_size as i64;
+        let old = if s.old_idx >= 0 {
+            Some(built[s.old_idx as usize].clone())
+        } else {
+            None
+        };
+        let mut builder = if let Some(old) = old {
+            AbstractGraphBuilder::with_rebuild(
+                gm,
+                cs,
+                Some(old),
+                (!s.dirty.is_empty()).then(|| s.dirty.to_vec()),
+            )
+        } else {
+            AbstractGraphBuilder::new(gm, cs)
+        };
+        let mut graph = builder.build();
+
+        for (i, op) in s.ops.iter().enumerate() {
+            let ctx = || format!("{} op#{i} kind={}", s.name, op.kind);
+            match op.kind {
+                0 => assert_val(graph.node_count(), &op.res, &ctx),
+                1 => assert_val(graph.edge_count(), &op.res, &ctx),
+                2 => {
+                    if matches!(op.res, GmRes::Undef) {
+                        assert!(graph.get_node(op.a as i64).is_none(), "{} getNode none", ctx());
+                    } else {
+                        let got = ag_node(graph.get_node(op.a as i64));
+                        assert_arr(&got, want_arr(&op.res), &ctx);
+                    }
+                }
+                3 => {
+                    if matches!(op.res, GmRes::Undef) {
+                        assert!(graph.get_edge(op.a as i64).is_none(), "{} getEdge none", ctx());
+                    } else {
+                        let got = ag_edge(graph.get_edge(op.a as i64));
+                        assert_arr(&got, want_arr(&op.res), &ctx);
+                    }
+                }
+                4 => {
+                    let mut got = Vec::new();
+                    for e in graph.get_node_edges(op.a as i64) {
+                        got.extend(ag_edge(Some(e)));
+                    }
+                    assert_arr(&got, want_arr(&op.res), &ctx);
+                }
+                5 => {
+                    if matches!(op.res, GmRes::Undef) {
+                        assert!(
+                            graph.get_edge_between(op.a as i64, op.b as i64).is_none(),
+                            "{} getEdgeBetween none",
+                            ctx()
+                        );
+                    } else {
+                        let got = ag_edge(graph.get_edge_between(op.a as i64, op.b as i64));
+                        assert_arr(&got, want_arr(&op.res), &ctx);
+                    }
+                }
+                6 => {
+                    let edge = graph.get_edge(op.a as i64);
+                    if matches!(op.res, GmRes::Threw) {
+                        assert!(edge.is_none(), "{} getOtherNode expects missing edge", ctx());
+                    } else {
+                        let other = AbstractGraph::get_other_node(&edge.unwrap(), op.b as i64);
+                        assert_val(other as f64, &op.res, &ctx);
+                    }
+                }
+                7 => assert_val(
+                    graph.get_cluster_key(op.a as i64, op.b as i64) as f64,
+                    &op.res,
+                    &ctx,
+                ),
+                8 => {
+                    if matches!(op.res, GmRes::Undef) {
+                        assert!(
+                            graph.get_cluster(op.a as i64, op.b as i64).is_none(),
+                            "{} getCluster none",
+                            ctx()
+                        );
+                    } else {
+                        let c = graph.get_cluster(op.a as i64, op.b as i64).unwrap();
+                        let mut got = vec![c.x as f64, c.y as f64, c.node_ids.len() as f64];
+                        got.extend(c.node_ids.iter().map(|&id| id as f64));
+                        assert_arr(&got, want_arr(&op.res), &ctx);
+                    }
+                }
+                9 => {
+                    let mut got = Vec::new();
+                    for n in graph.get_cluster_nodes(op.a as i64, op.b as i64) {
+                        got.extend(ag_node(Some(n)));
+                    }
+                    assert_arr(&got, want_arr(&op.res), &ctx);
+                }
+                10 => {
+                    let mut got = Vec::new();
+                    for n in graph.get_nearby_cluster_nodes(op.a as i64, op.b as i64) {
+                        got.extend(ag_node(Some(n)));
+                    }
+                    assert_arr(&got, want_arr(&op.res), &ctx);
+                }
+                11 => assert_val(graph.get_component_id(op.a) as f64, &op.res, &ctx),
+                12 => assert_val(graph.get_component_size(op.a), &op.res, &ctx),
+                13 => {
+                    let p = graph.get_cached_path(op.a as i64, op.b as i64);
+                    if matches!(op.res, GmRes::Undef) {
+                        assert!(p.is_none(), "{} getCachedPath none", ctx());
+                    } else {
+                        assert_arr(&p.unwrap(), want_arr(&op.res), &ctx);
+                    }
+                }
+                14 => {
+                    // Mirror the TS capture: path = [edgeId, fromNode, dir].
+                    let edge = graph.get_edge(op.a as i64);
+                    if let Some(e) = edge {
+                        let dir = if op.b as i64 == e.node_a { 0 } else { 1 };
+                        graph.set_cached_path(
+                            op.a as i64,
+                            op.b as i64,
+                            vec![op.a, op.b, (op.a * 2.0 + dir as f64)],
+                        );
+                    }
+                    assert!(matches!(op.res, GmRes::Void), "{} setCachedPath void", ctx());
+                }
+                k => panic!("{} unexpected ag op kind {k}", s.name),
+            }
+        }
+
+        // Final internal arrays.
+        assert!(obj_is(graph.node_count(), s.node_count), "{} node_count", s.name);
+        assert!(obj_is(graph.edge_count(), s.edge_count), "{} edge_count", s.name);
+        assert!(
+            obj_is(graph.debug_path_cache_len(), s.path_cache_len),
+            "{} path_cache_len",
+            s.name
+        );
+        assert_arr(&graph.debug_nodes(), s.nodes, &|| s.name.to_string());
+        assert_arr(&graph.debug_edges(), s.edges, &|| s.name.to_string());
+        assert_arr(&graph.debug_clusters(), s.clusters, &|| s.name.to_string());
+        assert_arr(&graph.debug_node_edge_ids(), s.node_edge_ids, &|| s.name.to_string());
+
+        built.push(graph);
+        let _ = si;
     }
 }

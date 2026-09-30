@@ -29,6 +29,11 @@
 //!   and `resolveTeamsList`)
 //! * [`line`] — `src/core/utilities/Line.ts` (`DistanceBasedBezierCurve`:
 //!   fixed-point De Casteljau subdivision for MIRV trajectories)
+//! * [`veterancy`] — `src/core/game/Veterancy.ts` (`maxHealthWithVeterancy`:
+//!   shared warship-veterancy math; integer-percent health bonus floored)
+//! * [`motion_plans`] — `src/core/game/MotionPlans.ts` (`packMotionPlans` /
+//!   `unpackMotionPlans`: two-pass `Uint32Array` wire format with strict
+//!   `wordCount` validation; every field clamped via `to_uint32`)
 //!
 //! Two rules govern every future port into this crate:
 //!
@@ -48,11 +53,13 @@ pub mod detmath;
 pub mod game_map;
 pub mod jsnum;
 pub mod line;
+pub mod motion_plans;
 pub mod pathfinding;
 pub mod pseudo_random;
 pub mod team_assignment;
 pub mod tile_set;
 pub mod util;
+pub mod veterancy;
 
 #[cfg(feature = "wasm-probe")]
 mod wasm_probe;

@@ -1320,3 +1320,168 @@ pub extern "C" fn probe_bezier_out_len() -> usize {
 pub extern "C" fn probe_bezier_out_at(i: usize) -> f64 {
     BEZIER_OUT.with(|o| o.borrow()[i])
 }
+
+// ---------------------------------------------------------------- Veterancy
+//
+// Pure scalar function: three f64 args in, one f64 out. No buffer needed.
+
+use crate::veterancy::max_health_with_veterancy;
+
+thread_local! {
+    static VET_ARGS: std::cell::RefCell<Vec<f64>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
+#[no_mangle]
+pub extern "C" fn probe_veterancy_arg(v: f64) {
+    VET_ARGS.with(|t| t.borrow_mut().push(v));
+}
+
+#[no_mangle]
+pub extern "C" fn probe_veterancy_op() -> f64 {
+    let a = VET_ARGS.with(|t| std::mem::take(&mut *t.borrow_mut()));
+    max_health_with_veterancy(a[0], a[1], a[2])
+}
+
+// ---------------------------------------------------------------- MotionPlans
+//
+// Records cross the boundary as the same flat `f64` token stream the host
+// reads from vectors.json: `[count, per record
+// 1,unitId,planId,startTick,ticksPerStep,pathLen,path... |
+// 2,engineId,planId,startTick,speed,spacing,carCount,pathLen,cars...,path...]`.
+// op kind 0 = pack: input is the record stream, out buffer is
+// `[wlen, ...packedWords]`. op kind 1 = unpack: input is `[wlen, ...words]`,
+// out buffer is the re-encoded record stream. The host drives both legs of a
+// roundtrip scenario (op 0 then feed its words back to op 1).
+
+use crate::motion_plans::{
+    pack_motion_plans, unpack_motion_plans, MotionPlanInput, MotionPlanRecord,
+};
+
+thread_local! {
+    static MP_ARGS: std::cell::RefCell<Vec<f64>> = const { std::cell::RefCell::new(Vec::new()) };
+    static MP_OUT: std::cell::RefCell<Vec<f64>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
+#[no_mangle]
+pub extern "C" fn probe_mp_arg(v: f64) {
+    MP_ARGS.with(|t| t.borrow_mut().push(v));
+}
+
+fn mp_decode_inputs(t: &[f64]) -> Vec<MotionPlanInput<'_>> {
+    let mut out = Vec::new();
+    let count = t[0] as usize;
+    let mut i = 1usize;
+    for _ in 0..count {
+        let kind = t[i] as u32;
+        i += 1;
+        if kind == 1 {
+            let path_len = t[i + 4] as usize;
+            let path = &t[i + 5..i + 5 + path_len];
+            out.push(MotionPlanInput::Grid {
+                unit_id: t[i],
+                plan_id: t[i + 1],
+                start_tick: t[i + 2],
+                ticks_per_step: t[i + 3],
+                path,
+            });
+            i += 5 + path_len;
+        } else {
+            let car_count = t[i + 5] as usize;
+            let path_len = t[i + 6] as usize;
+            let cars = &t[i + 7..i + 7 + car_count];
+            let path = &t[i + 7 + car_count..i + 7 + car_count + path_len];
+            out.push(MotionPlanInput::Train {
+                engine_unit_id: t[i],
+                plan_id: t[i + 1],
+                start_tick: t[i + 2],
+                speed: t[i + 3],
+                spacing: t[i + 4],
+                car_unit_ids: cars,
+                path,
+            });
+            i += 7 + car_count + path_len;
+        }
+    }
+    out
+}
+
+fn mp_encode_records(records: &[MotionPlanRecord]) -> Vec<f64> {
+    let mut out = vec![records.len() as f64];
+    for r in records {
+        match r {
+            MotionPlanRecord::Grid {
+                unit_id,
+                plan_id,
+                start_tick,
+                ticks_per_step,
+                path,
+            } => {
+                out.extend([
+                    1.0,
+                    *unit_id as f64,
+                    *plan_id as f64,
+                    *start_tick as f64,
+                    *ticks_per_step as f64,
+                    path.len() as f64,
+                ]);
+                out.extend(path.iter().map(|v| *v as f64));
+            }
+            MotionPlanRecord::Train {
+                engine_unit_id,
+                car_unit_ids,
+                plan_id,
+                start_tick,
+                speed,
+                spacing,
+                path,
+            } => {
+                out.extend([
+                    2.0,
+                    *engine_unit_id as f64,
+                    *plan_id as f64,
+                    *start_tick as f64,
+                    *speed as f64,
+                    *spacing as f64,
+                    car_unit_ids.len() as f64,
+                    path.len() as f64,
+                ]);
+                out.extend(car_unit_ids.iter().map(|v| *v as f64));
+                out.extend(path.iter().map(|v| *v as f64));
+            }
+        }
+    }
+    out
+}
+
+#[no_mangle]
+pub extern "C" fn probe_mp_op(kind: u32) -> f64 {
+    let a = MP_ARGS.with(|t| std::mem::take(&mut *t.borrow_mut()));
+    let out: Vec<f64> = match kind {
+        0 => {
+            let inputs = mp_decode_inputs(&a);
+            let packed = pack_motion_plans(&inputs);
+            let mut o = vec![packed.len() as f64];
+            o.extend(packed.iter().map(|w| *w as f64));
+            o
+        }
+        1 => {
+            let wlen = a[0] as usize;
+            let words: Vec<u32> = a[1..1 + wlen].iter().map(|v| *v as u32).collect();
+            mp_encode_records(&unpack_motion_plans(&words))
+        }
+        k => panic!("unexpected mp op kind {k}"),
+    };
+    let first = out.first().copied().unwrap_or(f64::NAN);
+    MP_OUT.with(|o| *o.borrow_mut() = out);
+    first
+}
+
+#[no_mangle]
+pub extern "C" fn probe_mp_out_len() -> usize {
+    MP_OUT.with(|o| o.borrow().len())
+}
+
+#[no_mangle]
+pub extern "C" fn probe_mp_out_at(i: usize) -> f64 {
+    MP_OUT.with(|o| o.borrow()[i])
+}

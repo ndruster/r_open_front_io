@@ -23,6 +23,10 @@ rust/
 │   │   ├── team_assignment.rs     port of game/TeamAssignment.ts
 │   │   ├── line.rs                port of utilities/Line.ts
 │   │   │                          (DistanceBasedBezierCurve)
+│   │   ├── veterancy.rs           port of game/Veterancy.ts
+│   │   │                          (maxHealthWithVeterancy)
+│   │   ├── motion_plans.rs        port of game/MotionPlans.ts
+│   │   │                          (packMotionPlans / unpackMotionPlans)
 │   │   ├── wasm_probe.rs          `extern "C"` surface, feature-gated
 │   │   └── pathfinding/
 │   │       ├── mod.rs
@@ -173,7 +177,7 @@ node rust/tools/run_wasm_parity.mjs
 
 `wasm-probe` exposes the ported functions through `extern "C"` scalar
 entrypoints (`src/wasm_probe.rs`); the runner imports `data/vectors.json` and
-compares every value. Last run: **24,912 comparisons, all bit-identical**.
+compares every value. Last run: **25,193 comparisons, all bit-identical**.
 
 ### Windows: the linker environment
 
@@ -219,7 +223,7 @@ Roughly in order of leverage, all currently reachable from the ported layer:
 | `execution/**` scheduler layer | `src/core/execution/**` | The turn/intent pipeline the game logic runs on; leans on the now-ported `Util`, `GameMap` and pathfinding. |
 | `game/Game.ts` types | `src/core/game/Game.ts` | `Cell`/`Unit`/enum surface most `game/**` modules import. |
 | `game/TrainStation.ts` | `src/core/game/TrainStation.ts` | `Cluster`/reservoir-sampling logic, but the stop handlers need the whole `Game`/`Player`/`TrainExecution` graph. |
-| `game/Veterancy.ts` | `src/core/game/Veterancy.ts` | One pure integer-percent function; trivial parity surface, unblocked already. |
+| `game/schemas/**` | `src/core/game/schemas/**` | The `zod` schema layer most `game/**` state types are defined against; needs a serde/zbin story. |
 
 `execution/**` and `game/**` are the bulk (~500 files, heavy on `zod` schemas,
 `ApiSchemas.ts`, and worker IPC) and will want a serde/zbin schema story before

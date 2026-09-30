@@ -12143,3 +12143,314 @@ pub const BEZIER_SCENARIOS: &[BezierScenario] = &[
     B_WALK_BIG,
 ];
 
+/// Veterancy scenario: one `maxHealthWithVeterancy(base, vet, pct)
+/// call with the recorded result. NaN / -0 / Infinity are pinned by
+/// literal, not by `==`.
+pub struct VeterancyScenario {
+    pub name: &'static str,
+    pub base: f64,
+    pub vet: f64,
+    pub pct: f64,
+    pub res: f64,
+}
+
+pub const V_BASIC: VeterancyScenario = VeterancyScenario {
+    name: "v_basic",
+    base: 100f64,
+    vet: 2f64,
+    pct: 10f64,
+    res: 120f64,
+};
+
+pub const V_FLOOR: VeterancyScenario = VeterancyScenario {
+    name: "v_floor",
+    base: 33f64,
+    vet: 1f64,
+    pct: 10f64,
+    res: 36f64,
+};
+
+pub const V_ZERO: VeterancyScenario = VeterancyScenario {
+    name: "v_zero",
+    base: 50f64,
+    vet: 0f64,
+    pct: 10f64,
+    res: 50f64,
+};
+
+pub const V_NEG: VeterancyScenario = VeterancyScenario {
+    name: "v_neg",
+    base: 50f64,
+    vet: -1f64,
+    pct: 10f64,
+    res: 50f64,
+};
+
+pub const V_NEGZERO: VeterancyScenario = VeterancyScenario {
+    name: "v_negzero",
+    base: 50f64,
+    vet: -0.0f64,
+    pct: 10f64,
+    res: 50f64,
+};
+
+pub const V_NAN_VET: VeterancyScenario = VeterancyScenario {
+    name: "v_nan_vet",
+    base: 100f64,
+    vet: f64::NAN,
+    pct: 10f64,
+    res: f64::NAN,
+};
+
+pub const V_NAN_BASE: VeterancyScenario = VeterancyScenario {
+    name: "v_nan_base",
+    base: f64::NAN,
+    vet: 2f64,
+    pct: 10f64,
+    res: f64::NAN,
+};
+
+pub const V_NAN_PCT: VeterancyScenario = VeterancyScenario {
+    name: "v_nan_pct",
+    base: 100f64,
+    vet: 2f64,
+    pct: f64::NAN,
+    res: f64::NAN,
+};
+
+pub const V_FRAC: VeterancyScenario = VeterancyScenario {
+    name: "v_frac",
+    base: 10f64,
+    vet: 1f64,
+    pct: 33.3f64,
+    res: 13f64,
+};
+
+pub const V_HALF: VeterancyScenario = VeterancyScenario {
+    name: "v_half",
+    base: 100f64,
+    vet: 1f64,
+    pct: 0.5f64,
+    res: 100f64,
+};
+
+pub const V_PCT0: VeterancyScenario = VeterancyScenario {
+    name: "v_pct0",
+    base: 100f64,
+    vet: 5f64,
+    pct: 0f64,
+    res: 100f64,
+};
+
+pub const V_NEGPCT: VeterancyScenario = VeterancyScenario {
+    name: "v_negpct",
+    base: 100f64,
+    vet: 2f64,
+    pct: -10f64,
+    res: 80f64,
+};
+
+pub const V_INF_VET: VeterancyScenario = VeterancyScenario {
+    name: "v_inf_vet",
+    base: 100f64,
+    vet: f64::INFINITY,
+    pct: 10f64,
+    res: f64::INFINITY,
+};
+
+pub const V_INF_BASE: VeterancyScenario = VeterancyScenario {
+    name: "v_inf_base",
+    base: f64::INFINITY,
+    vet: 2f64,
+    pct: 10f64,
+    res: f64::INFINITY,
+};
+
+pub const V_NINF_BASE: VeterancyScenario = VeterancyScenario {
+    name: "v_ninf_base",
+    base: f64::NEG_INFINITY,
+    vet: 2f64,
+    pct: 10f64,
+    res: f64::NEG_INFINITY,
+};
+
+pub const V_BIG: VeterancyScenario = VeterancyScenario {
+    name: "v_big",
+    base: 1000000000000000f64,
+    vet: 3f64,
+    pct: 7f64,
+    res: 1210000000000000f64,
+};
+
+pub const VETERANCY_SCENARIOS: &[VeterancyScenario] = &[
+    V_BASIC,
+    V_FLOOR,
+    V_ZERO,
+    V_NEG,
+    V_NEGZERO,
+    V_NAN_VET,
+    V_NAN_BASE,
+    V_NAN_PCT,
+    V_FRAC,
+    V_HALF,
+    V_PCT0,
+    V_NEGPCT,
+    V_INF_VET,
+    V_INF_BASE,
+    V_NINF_BASE,
+    V_BIG,
+];
+
+/// MotionPlans scenario. `kind`: 0 roundtrip (pack `input` -> `words`
+/// -> unpack -> `out`), 1 unpack-only (feed `words` -> `out`).
+/// Record token stream: [count, per record
+/// 1,unitId,planId,startTick,ticksPerStep,pathLen,path... |
+/// 2,engineId,planId,startTick,speed,spacing,carCount,pathLen,
+/// cars...,path...]. All tokens f64; u32 wire values fit exactly.
+/// `input` is empty for kind 1. `words` is [len, ...buffer].
+pub struct MpScenario {
+    pub name: &'static str,
+    pub kind: u8,
+    pub input: &'static [f64],
+    pub words: &'static [f64],
+    pub out: &'static [f64],
+}
+
+pub const MP_RT_EMPTY: MpScenario = MpScenario {
+    name: "mp_rt_empty",
+    kind: 0u8,
+    input: &[0f64],
+    words: &[1f64, 0f64],
+    out: &[0f64],
+};
+
+pub const MP_RT_GRID: MpScenario = MpScenario {
+    name: "mp_rt_grid",
+    kind: 0u8,
+    input: &[1f64, 1f64, 10f64, 20f64, 30f64, 40f64, 3f64, 100f64, 101f64, 102f64],
+    words: &[11f64, 1f64, 1f64, 10f64, 10f64, 20f64, 30f64, 40f64, 3f64, 100f64, 101f64, 102f64],
+    out: &[1f64, 1f64, 10f64, 20f64, 30f64, 40f64, 3f64, 100f64, 101f64, 102f64],
+};
+
+pub const MP_RT_GRID_CLAMP: MpScenario = MpScenario {
+    name: "mp_rt_grid_clamp",
+    kind: 0u8,
+    input: &[1f64, 1f64, -1f64, 4294967296f64, 2.7f64, -0.5f64, 4f64, 5f64, 6f64, 7f64, 8f64],
+    words: &[12f64, 1f64, 1f64, 11f64, 4294967295f64, 0f64, 2f64, 0f64, 4f64, 5f64, 6f64, 7f64, 8f64],
+    out: &[1f64, 1f64, 4294967295f64, 0f64, 2f64, 0f64, 4f64, 5f64, 6f64, 7f64, 8f64],
+};
+
+pub const MP_RT_TRAIN: MpScenario = MpScenario {
+    name: "mp_rt_train",
+    kind: 0u8,
+    input: &[1f64, 2f64, 1f64, 2f64, 3f64, 4f64, 5f64, 3f64, 3f64, 7f64, 8f64, 9f64, 50f64, 51f64, 52f64],
+    words: &[16f64, 1f64, 2f64, 15f64, 1f64, 2f64, 3f64, 4f64, 5f64, 3f64, 3f64, 7f64, 8f64, 9f64, 50f64, 51f64, 52f64],
+    out: &[1f64, 2f64, 1f64, 2f64, 3f64, 4f64, 5f64, 3f64, 3f64, 7f64, 8f64, 9f64, 50f64, 51f64, 52f64],
+};
+
+pub const MP_RT_TRAIN_NOCARS: MpScenario = MpScenario {
+    name: "mp_rt_train_nocars",
+    kind: 0u8,
+    input: &[1f64, 2f64, 1f64, 2f64, 3f64, 4f64, 5f64, 0f64, 1f64, 9f64],
+    words: &[11f64, 1f64, 2f64, 10f64, 1f64, 2f64, 3f64, 4f64, 5f64, 0f64, 1f64, 9f64],
+    out: &[1f64, 2f64, 1f64, 2f64, 3f64, 4f64, 5f64, 0f64, 1f64, 9f64],
+};
+
+pub const MP_RT_MIXED: MpScenario = MpScenario {
+    name: "mp_rt_mixed",
+    kind: 0u8,
+    input: &[3f64, 1f64, 1f64, 2f64, 3f64, 4f64, 2f64, 10f64, 11f64, 2f64, 5f64, 8f64, 9f64, 10f64, 11f64, 2f64, 3f64, 6f64, 7f64, 20f64, 21f64, 22f64, 1f64, 30f64, 40f64, 50f64, 60f64, 0f64],
+    words: &[31f64, 3f64, 1f64, 9f64, 1f64, 2f64, 3f64, 4f64, 2f64, 10f64, 11f64, 2f64, 14f64, 5f64, 8f64, 9f64, 10f64, 11f64, 2f64, 3f64, 6f64, 7f64, 20f64, 21f64, 22f64, 1f64, 7f64, 30f64, 40f64, 50f64, 60f64, 0f64],
+    out: &[3f64, 1f64, 1f64, 2f64, 3f64, 4f64, 2f64, 10f64, 11f64, 2f64, 5f64, 8f64, 9f64, 10f64, 11f64, 2f64, 3f64, 6f64, 7f64, 20f64, 21f64, 22f64, 1f64, 30f64, 40f64, 50f64, 60f64, 0f64],
+};
+
+pub const MP_RT_BIG: MpScenario = MpScenario {
+    name: "mp_rt_big",
+    kind: 0u8,
+    input: &[1f64, 2f64, 1f64, 2f64, 3f64, 4f64, 5f64, 8f64, 12f64, 100f64, 101f64, 102f64, 103f64, 104f64, 105f64, 106f64, 107f64, 200f64, 201f64, 202f64, 203f64, 204f64, 205f64, 206f64, 207f64, 208f64, 209f64, 210f64, 211f64],
+    words: &[30f64, 1f64, 2f64, 29f64, 1f64, 2f64, 3f64, 4f64, 5f64, 8f64, 12f64, 100f64, 101f64, 102f64, 103f64, 104f64, 105f64, 106f64, 107f64, 200f64, 201f64, 202f64, 203f64, 204f64, 205f64, 206f64, 207f64, 208f64, 209f64, 210f64, 211f64],
+    out: &[1f64, 2f64, 1f64, 2f64, 3f64, 4f64, 5f64, 8f64, 12f64, 100f64, 101f64, 102f64, 103f64, 104f64, 105f64, 106f64, 107f64, 200f64, 201f64, 202f64, 203f64, 204f64, 205f64, 206f64, 207f64, 208f64, 209f64, 210f64, 211f64],
+};
+
+pub const MP_UP_EMPTY: MpScenario = MpScenario {
+    name: "mp_up_empty",
+    kind: 1u8,
+    input: &[],
+    words: &[0f64],
+    out: &[0f64],
+};
+
+pub const MP_UP_TRUNC: MpScenario = MpScenario {
+    name: "mp_up_trunc",
+    kind: 1u8,
+    input: &[],
+    words: &[3f64, 1f64, 1f64, 7f64],
+    out: &[0f64],
+};
+
+pub const MP_UP_WC_LOW: MpScenario = MpScenario {
+    name: "mp_up_wc_low",
+    kind: 1u8,
+    input: &[],
+    words: &[3f64, 1f64, 1f64, 1f64],
+    out: &[0f64],
+};
+
+pub const MP_UP_WC_OVER: MpScenario = MpScenario {
+    name: "mp_up_wc_over",
+    kind: 1u8,
+    input: &[],
+    words: &[3f64, 1f64, 1f64, 99f64],
+    out: &[0f64],
+};
+
+pub const MP_UP_UNKNOWN: MpScenario = MpScenario {
+    name: "mp_up_unknown",
+    kind: 1u8,
+    input: &[],
+    words: &[5f64, 1f64, 99f64, 2f64, 0f64, 0f64],
+    out: &[0f64],
+};
+
+pub const MP_UP_GRID_MISMATCH: MpScenario = MpScenario {
+    name: "mp_up_grid_mismatch",
+    kind: 1u8,
+    input: &[],
+    words: &[10f64, 1f64, 1f64, 9f64, 1f64, 2f64, 3f64, 4f64, 7f64, 0f64, 0f64],
+    out: &[0f64],
+};
+
+pub const MP_UP_TRAIN_MISMATCH: MpScenario = MpScenario {
+    name: "mp_up_train_mismatch",
+    kind: 1u8,
+    input: &[],
+    words: &[12f64, 1f64, 2f64, 9f64, 1f64, 2f64, 3f64, 4f64, 5f64, 6f64, 7f64, 0f64, 0f64],
+    out: &[0f64],
+};
+
+pub const MP_UP_TWO_OK: MpScenario = MpScenario {
+    name: "mp_up_two_ok",
+    kind: 1u8,
+    input: &[],
+    words: &[15f64, 2f64, 1f64, 7f64, 5f64, 6f64, 7f64, 8f64, 0f64, 1f64, 7f64, 9f64, 10f64, 11f64, 12f64, 0f64],
+    out: &[2f64, 1f64, 5f64, 6f64, 7f64, 8f64, 0f64, 1f64, 9f64, 10f64, 11f64, 12f64, 0f64],
+};
+
+pub const MP_SCENARIOS: &[MpScenario] = &[
+    MP_RT_EMPTY,
+    MP_RT_GRID,
+    MP_RT_GRID_CLAMP,
+    MP_RT_TRAIN,
+    MP_RT_TRAIN_NOCARS,
+    MP_RT_MIXED,
+    MP_RT_BIG,
+    MP_UP_EMPTY,
+    MP_UP_TRUNC,
+    MP_UP_WC_LOW,
+    MP_UP_WC_OVER,
+    MP_UP_UNKNOWN,
+    MP_UP_GRID_MISMATCH,
+    MP_UP_TRAIN_MISMATCH,
+    MP_UP_TWO_OK,
+];
+

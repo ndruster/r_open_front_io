@@ -1,4 +1,4 @@
-﻿//! Replays the operation traces captured from the real TypeScript queue,
+//! Replays the operation traces captured from the real TypeScript queue,
 //! heap and grid-BFS classes (`data/vectors.rs` -> `structures`) against the
 //! Rust ports, asserting every return value *and* the final internal state.
 //!
@@ -821,5 +821,138 @@ fn replay_bezier_scenarios() {
             }
         }
         assert_eq!(curve.current_index() as u64, s.final_index, "{} final index", s.name);
+    }
+}
+
+// ---------------------------------------------------------------- Veterancy
+#[test]
+fn replay_veterancy_scenarios() {
+    use openfront_core::veterancy::max_health_with_veterancy;
+    for s in vectors::VETERANCY_SCENARIOS {
+        let got = max_health_with_veterancy(s.base, s.vet, s.pct);
+        assert!(obj_is(got, s.res), "{}: got {got} want {}", s.name, s.res);
+    }
+}
+
+// ---------------------------------------------------------------- MotionPlans
+#[test]
+fn replay_motionplans_scenarios() {
+    use openfront_core::motion_plans::{
+        pack_motion_plans, unpack_motion_plans, MotionPlanInput, MotionPlanRecord,
+    };
+
+    // Decode the [count, ...records] token stream into pack inputs. Scalars
+    // and path elements stay f64 so the `>>> 0` coercion inside pack is
+    // exercised exactly as the TS saw it.
+    fn decode_inputs(t: &[f64]) -> Vec<MotionPlanInput<'_>> {
+        let mut out = Vec::new();
+        let mut i = 1usize; // skip the leading count
+        let count = t[0] as usize;
+        for _ in 0..count {
+            let kind = t[i] as u32;
+            i += 1;
+            if kind == 1 {
+                let path_len = t[i + 4] as usize;
+                let path = &t[i + 5..i + 5 + path_len];
+                out.push(MotionPlanInput::Grid {
+                    unit_id: t[i],
+                    plan_id: t[i + 1],
+                    start_tick: t[i + 2],
+                    ticks_per_step: t[i + 3],
+                    path,
+                });
+                i += 5 + path_len;
+            } else {
+                let car_count = t[i + 5] as usize;
+                let path_len = t[i + 6] as usize;
+                let cars = &t[i + 7..i + 7 + car_count];
+                let path = &t[i + 7 + car_count..i + 7 + car_count + path_len];
+                out.push(MotionPlanInput::Train {
+                    engine_unit_id: t[i],
+                    plan_id: t[i + 1],
+                    start_tick: t[i + 2],
+                    speed: t[i + 3],
+                    spacing: t[i + 4],
+                    car_unit_ids: cars,
+                    path,
+                });
+                i += 7 + car_count + path_len;
+            }
+        }
+        out
+    }
+
+    // Encode unpacked records back into the same token-stream shape, with the
+    // u32 fields widened to f64 (they fit exactly).
+    fn encode_records(records: &[MotionPlanRecord]) -> Vec<f64> {
+        let mut out = vec![records.len() as f64];
+        for r in records {
+            match r {
+                MotionPlanRecord::Grid {
+                    unit_id,
+                    plan_id,
+                    start_tick,
+                    ticks_per_step,
+                    path,
+                } => {
+                    out.extend([
+                        1.0,
+                        *unit_id as f64,
+                        *plan_id as f64,
+                        *start_tick as f64,
+                        *ticks_per_step as f64,
+                        path.len() as f64,
+                    ]);
+                    out.extend(path.iter().map(|v| *v as f64));
+                }
+                MotionPlanRecord::Train {
+                    engine_unit_id,
+                    car_unit_ids,
+                    plan_id,
+                    start_tick,
+                    speed,
+                    spacing,
+                    path,
+                } => {
+                    out.extend([
+                        2.0,
+                        *engine_unit_id as f64,
+                        *plan_id as f64,
+                        *start_tick as f64,
+                        *speed as f64,
+                        *spacing as f64,
+                        car_unit_ids.len() as f64,
+                        path.len() as f64,
+                    ]);
+                    out.extend(car_unit_ids.iter().map(|v| *v as f64));
+                    out.extend(path.iter().map(|v| *v as f64));
+                }
+            }
+        }
+        out
+    }
+
+    fn cmp_out(name: &str, got: &[f64], want: &[f64]) {
+        assert_eq!(got.len(), want.len(), "{name} out len: got {} want {}", got.len(), want.len());
+        for (i, v) in got.iter().enumerate() {
+            assert!(obj_is(*v, want[i]), "{name} out#{i}: got {v} want {}", want[i]);
+        }
+    }
+
+    for s in vectors::MP_SCENARIOS {
+        // words = [len, ...buffer]
+        let buf = &s.words[1..];
+        let buf_u32: Vec<u32> = buf.iter().map(|v| *v as u32).collect();
+        if s.kind == 0 {
+            // pack(input) must equal words, then unpack(words) must equal out.
+            let inputs = decode_inputs(s.input);
+            let packed = pack_motion_plans(&inputs);
+            assert_eq!(packed.len(), buf.len(), "{} pack len", s.name);
+            for (i, w) in packed.iter().enumerate() {
+                assert_eq!(*w, buf_u32[i], "{} pack word#{i}: got {w} want {}", s.name, buf_u32[i]);
+            }
+        }
+        let unpacked = unpack_motion_plans(&buf_u32);
+        cmp_out(s.name, &encode_records(&unpacked), s.out);
     }
 }

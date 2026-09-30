@@ -32,6 +32,8 @@ for (const name of [
   "probe_prng_next_id_value", "probe_prng_chance", "probe_prng_shuffle_reset",
   "probe_prng_shuffle_at_last", "probe_exp", "probe_log", "probe_pow",
   "probe_atan2", "probe_pow2",
+  "probe_veterancy_arg", "probe_veterancy_op",
+  "probe_mp_arg", "probe_mp_op", "probe_mp_out_len", "probe_mp_out_at",
 ]) {
   if (typeof ex[name] !== "function") {
     console.error(`missing wasm export ${name} - rebuild with --features wasm-probe`);
@@ -678,6 +680,52 @@ for (const s of S.bezier) {
   checks++;
   const fi = ex.probe_bezier_out_at(nwAt + 1 + walkFlat.length);
   if (!Object.is(fi, s.finalIndex)) fail(`${s.name} finalIndex`, 0, fi, s.finalIndex);
+}
+
+// --- Veterancy --- (pure scalar: three f64 args in, one f64 result out).
+for (const s of S.veterancy) {
+  ex.probe_veterancy_arg(numTok(s.base));
+  ex.probe_veterancy_arg(numTok(s.vet));
+  ex.probe_veterancy_arg(numTok(s.pct));
+  checks++;
+  const got = ex.probe_veterancy_op();
+  if (!Object.is(got, numTok(s.res))) fail(`${s.name}`, 0, fmt(got), s.res);
+}
+
+// --- MotionPlans --- (records cross as the flat token stream; op 0 packs the
+// input stream to [wlen, ...words], op 1 unpacks [wlen, ...words] back to a
+// record stream. A roundtrip scenario checks both legs; unpack-only checks 1).
+for (const s of S.motionplans) {
+  if (s.kind === 0) {
+    for (const v of s.input) ex.probe_mp_arg(numTok(v));
+    ex.probe_mp_op(0);
+    const n = ex.probe_mp_out_len();
+    checks++;
+    if (n !== s.words.length) {
+      fail(`${s.name} pack len`, 0, n, s.words.length);
+    } else {
+      for (let i = 0; i < s.words.length; i++) {
+        checks++;
+        const got = ex.probe_mp_out_at(i);
+        if (!Object.is(got, numTok(s.words[i])))
+          fail(`${s.name} pack word[${i}]`, i, fmt(got), s.words[i]);
+      }
+    }
+  }
+  for (const v of s.words) ex.probe_mp_arg(numTok(v));
+  ex.probe_mp_op(1);
+  const n = ex.probe_mp_out_len();
+  checks++;
+  if (n !== s.out.length) {
+    fail(`${s.name} unpack len`, 0, n, s.out.length);
+    continue;
+  }
+  for (let i = 0; i < s.out.length; i++) {
+    checks++;
+    const got = ex.probe_mp_out_at(i);
+    if (!Object.is(got, numTok(s.out[i])))
+      fail(`${s.name} unpack tok[${i}]`, i, fmt(got), s.out[i]);
+  }
 }
 
 console.log(`${checks} vector comparisons executed against wasm build`);

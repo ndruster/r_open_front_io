@@ -158,6 +158,10 @@ const { TileSet } = await loadTs("src/core/game/TileSet.ts");
 const Util = await loadTs("src/core/Util.ts");
 const TeamAssignment = await loadTs("src/core/game/TeamAssignment.ts");
 const { DistanceBasedBezierCurve } = await loadTs("src/core/utilities/Line.ts");
+const { maxHealthWithVeterancy } = await loadTs("src/core/game/Veterancy.ts");
+const { packMotionPlans, unpackMotionPlans } = await loadTs(
+  "src/core/game/MotionPlans.ts",
+);
 
 // enc() maps JS-only values JSON cannot carry: undefined -> "u", NaN -> "n",
 // booleans -> 1/0, and -0 -> "-0" (JSON collapses -0 to 0, yet the f32 bit
@@ -1468,6 +1472,99 @@ function pushBezierWalk(name, cp, spacing, incs) {
   pushBezierWalk("b_walk_big", [P(0, 0), P(500, 0), P(500, 500), P(0, 500)], 16, [16, 16, 16, 48, 16, 1e9]);
 }
 
+// --- Veterancy (Veterancy.ts) ------------------------------------------------
+// maxHealthWithVeterancy is pure; record the (base, veterancy, percent) triple
+// and the returned number. NaN / -0 / Infinity inputs pin the branch that the
+// `veterancy <= 0` guard selects and the floor of a poisoned product.
+const veterancyScenarios = [];
+function pushVeterancy(name, base, vet, pct) {
+  const res = maxHealthWithVeterancy(base, vet, pct);
+  veterancyScenarios.push({
+    name, base: uenc(base), vet: uenc(vet), pct: uenc(pct), res: uenc(res),
+  });
+}
+{
+  pushVeterancy("v_basic", 100, 2, 10);
+  pushVeterancy("v_floor", 33, 1, 10);
+  pushVeterancy("v_zero", 50, 0, 10);
+  pushVeterancy("v_neg", 50, -1, 10);
+  pushVeterancy("v_negzero", 50, -0, 10);
+  pushVeterancy("v_nan_vet", 100, Number.NaN, 10);
+  pushVeterancy("v_nan_base", Number.NaN, 2, 10);
+  pushVeterancy("v_nan_pct", 100, 2, Number.NaN);
+  pushVeterancy("v_frac", 10, 1, 33.3);
+  pushVeterancy("v_half", 100, 1, 0.5);
+  pushVeterancy("v_pct0", 100, 5, 0);
+  pushVeterancy("v_negpct", 100, 2, -10);
+  pushVeterancy("v_inf_vet", 100, Number.POSITIVE_INFINITY, 10);
+  pushVeterancy("v_inf_base", Number.POSITIVE_INFINITY, 2, 10);
+  pushVeterancy("v_ninf_base", Number.NEGATIVE_INFINITY, 2, 10);
+  pushVeterancy("v_big", 1e15, 3, 7);
+}
+
+// --- MotionPlans (MotionPlans.ts) -------------------------------------------
+// Record encoding shared with the wasm probe:
+//   [count, per record: 1,unitId,planId,startTick,ticksPerStep,pathLen,path...
+//                      | 2,engineUnitId,planId,startTick,speed,spacing,
+//                        carCount,pathLen,cars...,path...]
+// kind 0 = roundtrip: pack `input` -> `words` ([len, ...packed]) -> unpack ->
+// `out`. kind 1 = unpack-only: feed `words` ([len, ...raw]) -> `out`.
+const mpScenarios = [];
+const G = (unitId, planId, startTick, ticksPerStep, path) =>
+  ({ kind: "grid", unitId, planId, startTick, ticksPerStep, path });
+const T = (engineUnitId, carUnitIds, planId, startTick, speed, spacing, path) =>
+  ({ kind: "train", engineUnitId, carUnitIds, planId, startTick, speed, spacing, path });
+const encRec = (r) =>
+  r.kind === "grid"
+    ? [1, r.unitId, r.planId, r.startTick, r.ticksPerStep, r.path.length, ...r.path]
+    : [2, r.engineUnitId, r.planId, r.startTick, r.speed, r.spacing,
+       r.carUnitIds.length, r.path.length, ...r.carUnitIds, ...r.path];
+const encRecs = (rs) => [rs.length, ...rs.map(encRec).flat()];
+
+function pushMpRoundtrip(name, records) {
+  const packed = Array.from(packMotionPlans(records));
+  const unpacked = unpackMotionPlans(new Uint32Array(packed));
+  mpScenarios.push({
+    name, kind: 0,
+    input: encRecs(records).map(uenc),
+    words: [packed.length, ...packed].map(uenc),
+    out: encRecs(unpacked).map(uenc),
+  });
+}
+function pushMpUnpack(name, rawWords) {
+  const unpacked = unpackMotionPlans(new Uint32Array(rawWords));
+  mpScenarios.push({
+    name, kind: 1,
+    input: [],
+    words: [rawWords.length, ...rawWords].map(uenc),
+    out: encRecs(unpacked).map(uenc),
+  });
+}
+{
+  pushMpRoundtrip("mp_rt_empty", []);
+  pushMpRoundtrip("mp_rt_grid", [G(10, 20, 30, 40, [100, 101, 102])]);
+  pushMpRoundtrip("mp_rt_grid_clamp", [G(-1, 4294967296, 2.7, -0.5, [5, 6, 7, 8])]);
+  pushMpRoundtrip("mp_rt_train", [T(1, [7, 8, 9], 2, 3, 4, 5, [50, 51, 52])]);
+  pushMpRoundtrip("mp_rt_train_nocars", [T(1, [], 2, 3, 4, 5, [9])]);
+  pushMpRoundtrip("mp_rt_mixed", [
+    G(1, 2, 3, 4, [10, 11]),
+    T(5, [6, 7], 8, 9, 10, 11, [20, 21, 22]),
+    G(30, 40, 50, 60, []),
+  ]);
+  pushMpRoundtrip("mp_rt_big", [
+    T(1, Array.from({ length: 8 }, (_, i) => i + 100), 2, 3, 4, 5,
+      Array.from({ length: 12 }, (_, i) => 200 + i)),
+  ]);
+  pushMpUnpack("mp_up_empty", []);
+  pushMpUnpack("mp_up_trunc", [1, 1, 7]);
+  pushMpUnpack("mp_up_wc_low", [1, 1, 1]);
+  pushMpUnpack("mp_up_wc_over", [1, 1, 99]);
+  pushMpUnpack("mp_up_unknown", [1, 99, 2, 0, 0]);
+  pushMpUnpack("mp_up_grid_mismatch", [1, 1, 9, 1, 2, 3, 4, 7, 0, 0]);
+  pushMpUnpack("mp_up_train_mismatch", [1, 2, 9, 1, 2, 3, 4, 5, 6, 7, 0, 0]);
+  pushMpUnpack("mp_up_two_ok", [2, 1, 7, 5, 6, 7, 8, 0, 1, 7, 9, 10, 11, 12, 0]);
+}
+
 const structures = {
   minheap: mhScenarios,
   bucket: bqScenarios,
@@ -1481,6 +1578,8 @@ const structures = {
   util: utilScenarios,
   team: teamScenarios,
   bezier: bezierScenarios,
+  veterancy: veterancyScenarios,
+  motionplans: mpScenarios,
 };
 
 // ================================================================ JSON
@@ -2276,6 +2375,65 @@ for (const s of structures.bezier) {
 }
 L.push("pub const BEZIER_SCENARIOS: &[BezierScenario] = &[");
 for (const s of structures.bezier) L.push(`    ${s.name.toUpperCase()},`);
+L.push("];");
+L.push("");
+
+L.push("/// Veterancy scenario: one `maxHealthWithVeterancy(base, vet, pct)");
+L.push("/// call with the recorded result. NaN / -0 / Infinity are pinned by");
+L.push("/// literal, not by `==`.");
+L.push("pub struct VeterancyScenario {");
+L.push("    pub name: &'static str,");
+L.push("    pub base: f64,");
+L.push("    pub vet: f64,");
+L.push("    pub pct: f64,");
+L.push("    pub res: f64,");
+L.push("}");
+L.push("");
+for (const s of structures.veterancy) {
+  const id = s.name.toUpperCase();
+  L.push(`pub const ${id}: VeterancyScenario = VeterancyScenario {`);
+  L.push(`    name: "${s.name}",`);
+  L.push(`    base: ${utilResLit(s.base)},`);
+  L.push(`    vet: ${utilResLit(s.vet)},`);
+  L.push(`    pct: ${utilResLit(s.pct)},`);
+  L.push(`    res: ${utilResLit(s.res)},`);
+  L.push("};");
+  L.push("");
+}
+L.push("pub const VETERANCY_SCENARIOS: &[VeterancyScenario] = &[");
+for (const s of structures.veterancy) L.push(`    ${s.name.toUpperCase()},`);
+L.push("];");
+L.push("");
+
+L.push("/// MotionPlans scenario. `kind`: 0 roundtrip (pack `input` -> `words`");
+L.push("/// -> unpack -> `out`), 1 unpack-only (feed `words` -> `out`).");
+L.push("/// Record token stream: [count, per record");
+L.push("/// 1,unitId,planId,startTick,ticksPerStep,pathLen,path... |");
+L.push("/// 2,engineId,planId,startTick,speed,spacing,carCount,pathLen,");
+L.push("/// cars...,path...]. All tokens f64; u32 wire values fit exactly.");
+L.push("/// `input` is empty for kind 1. `words` is [len, ...buffer].");
+L.push("pub struct MpScenario {");
+L.push("    pub name: &'static str,");
+L.push("    pub kind: u8,");
+L.push("    pub input: &'static [f64],");
+L.push("    pub words: &'static [f64],");
+L.push("    pub out: &'static [f64],");
+L.push("}");
+L.push("");
+const mpLit = (a) => `&[${a.map(utilResLit).join(", ")}]`;
+for (const s of structures.motionplans) {
+  const id = s.name.toUpperCase();
+  L.push(`pub const ${id}: MpScenario = MpScenario {`);
+  L.push(`    name: "${s.name}",`);
+  L.push(`    kind: ${s.kind}u8,`);
+  L.push(`    input: ${mpLit(s.input)},`);
+  L.push(`    words: ${mpLit(s.words)},`);
+  L.push(`    out: ${mpLit(s.out)},`);
+  L.push("};");
+  L.push("");
+}
+L.push("pub const MP_SCENARIOS: &[MpScenario] = &[");
+for (const s of structures.motionplans) L.push(`    ${s.name.toUpperCase()},`);
 L.push("];");
 L.push("");
 

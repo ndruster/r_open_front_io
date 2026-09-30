@@ -106,6 +106,22 @@ function prepare(rel) {
     // in the whole GameMap graph.
     out = must(out, 'import { TileRef } from "./GameMap";\n', "", "TileSet import");
   }
+  if (rel.endsWith("game/MotionPlans.ts")) {
+    // Same type-only TileRef import as TileSet; the enum and the two pack /
+    // unpack functions carry no other runtime dependency.
+    out = must(out, 'import { TileRef } from "./GameMap";\n', "", "MotionPlans import");
+    // Node's strip-only TS loader rejects `export enum`; inline the numeric
+    // enum as a frozen object so the switch comparisons still resolve.
+    out = must(
+      out,
+      "export enum PackedMotionPlanKind {\n  GridPathSet = 1,\n  TrainRailPathSet = 2,\n}",
+      "export const PackedMotionPlanKind = { GridPathSet: 1, TrainRailPathSet: 2 };",
+      "MotionPlans enum",
+    );
+  }
+  if (rel.endsWith("game/Veterancy.ts")) {
+    // No imports at all; nothing to rewrite.
+  }
   if (rel.endsWith("core/Util.ts")) {
     // The UI/record surface (DOMPurify, nanoid, zod Schemas, Game.ts,
     // TribeNames) is only referenced from functions the parity capture never

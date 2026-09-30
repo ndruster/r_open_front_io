@@ -14,7 +14,15 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { createHash } from "node:crypto";
 
 const here = dirname(fileURLToPath(import.meta.url));
-const root = join(here, "..", "..");
+const root = join(here, "..");
+// This repo holds only the Rust port; the authoritative TypeScript sources
+// live in the upstream OpenFrontIO checkout. Override with OPENFRONT_TS_ROOT
+// when the checkout sits elsewhere (the sync workflow points it at a
+// worktree of the commit recorded in UPSTREAM_COMMIT).
+export const TS_ROOT = process.env.OPENFRONT_TS_ROOT
+  ? join(process.env.OPENFRONT_TS_ROOT)
+  : join(root, "..", "OpenFrontIO");
+const TS_URL = pathToFileURL(TS_ROOT).href.replace(/\/?$/, "/");
 const cacheDir = join(here, ".ts-load-cache");
 
 function must(src, from, to, label) {
@@ -29,7 +37,7 @@ const prepared = new Map();
 
 /** Rewrites one file and returns the path of the loadable .ts copy. */
 function prepare(rel) {
-  const src = readFileSync(join(root, rel), "utf8");
+  const src = readFileSync(join(TS_ROOT, rel), "utf8");
   let out = src;
 
   if (rel.endsWith("FlatBinaryHeap.ts")) {
@@ -110,7 +118,7 @@ function prepare(rel) {
     out = must(
       out,
       'import { exp } from "./DetMath";\n',
-      'import { exp } from "../../../src/core/DetMath.ts";\n',
+      `import { exp } from "${TS_URL}src/core/DetMath.ts";\n`,
       "Util DetMath import",
     );
     out = must(
@@ -197,7 +205,7 @@ function prepare(rel) {
     out = must(
       out,
       'import { PseudoRandom } from "../PseudoRandom";\n',
-      'import { PseudoRandom } from "../../../src/core/PseudoRandom.ts";\n',
+      `import { PseudoRandom } from "${TS_URL}src/core/PseudoRandom.ts";\n`,
       "Team PseudoRandom import",
     );
     out = must(

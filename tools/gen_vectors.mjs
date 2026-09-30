@@ -14,15 +14,15 @@ import { writeFileSync, mkdirSync } from "node:fs";
 import { pathToFileURL, fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
-import { loadTs } from "./ts_load.mjs";
+import { loadTs, TS_ROOT } from "./ts_load.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
-const root = join(here, "..", "..");
+const root = join(here, "..");
 
 const { PseudoRandom } = await import(
-  pathToFileURL(join(root, "src/core/PseudoRandom.ts")).href
+  pathToFileURL(join(TS_ROOT, "src/core/PseudoRandom.ts")).href
 );
-const DetMath = await import(pathToFileURL(join(root, "src/core/DetMath.ts")).href);
+const DetMath = await import(pathToFileURL(join(TS_ROOT, "src/core/DetMath.ts")).href);
 
 const dv = new DataView(new ArrayBuffer(8));
 function bits(x) {
@@ -2279,7 +2279,7 @@ for (const s of structures.bezier) L.push(`    ${s.name.toUpperCase()},`);
 L.push("];");
 L.push("");
 
-const dataDir = join(root, "rust", "crates", "core", "tests", "data");
+const dataDir = join(root, "crates", "core", "tests", "data");
 mkdirSync(dataDir, { recursive: true });
 writeFileSync(join(dataDir, "vectors.rs"), L.join("\n") + "\n", "utf8");
 writeFileSync(join(dataDir, "vectors.json"), JSON.stringify(json) + "\n", "utf8");

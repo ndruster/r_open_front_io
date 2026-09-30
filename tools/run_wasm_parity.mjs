@@ -13,12 +13,12 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { dirname, join } from "node:path";
 
 const here = dirname(fileURLToPath(import.meta.url));
-const root = join(here, "..", "..");
+const root = join(here, "..");
 const wasmPath = join(
-  root, "rust", "target", "wasm32-unknown-unknown", "release", "openfront_core.wasm",
+  root, "target", "wasm32-unknown-unknown", "release", "openfront_core.wasm",
 );
 const vectors = JSON.parse(
-  readFileSync(join(root, "rust", "crates", "core", "tests", "data", "vectors.json"), "utf8"),
+  readFileSync(join(root, "crates", "core", "tests", "data", "vectors.json"), "utf8"),
 );
 
 const { instance } = await WebAssembly.instantiate(

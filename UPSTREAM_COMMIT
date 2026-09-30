@@ -1,0 +1,14 @@
+# Upstream OpenFrontIO commit this Rust port is synced to.
+#
+# The parity toolchain (tools/gen_vectors.mjs, tools/ts_load.mjs) reads the
+# authoritative TypeScript sources from a checkout of THIS commit. When the
+# upstream repo advances, run the sync workflow:
+#
+#   1. In the OpenFrontIO checkout:  git diff <UPSTREAM_COMMIT>..<new-sha> -- src/core/
+#   2. For every touched file that maps to a ported module, re-port it and
+#      regenerate golden vectors (node tools/gen_vectors.mjs).
+#   3. Re-run the wasm parity gate; only then bump this file.
+#
+# Ported-module -> source mapping lives in crates/core/src/lib.rs.
+
+bb8af015

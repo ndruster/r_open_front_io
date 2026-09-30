@@ -122,6 +122,16 @@ function prepare(rel) {
   if (rel.endsWith("game/Veterancy.ts")) {
     // No imports at all; nothing to rewrite.
   }
+  if (rel.endsWith("game/TerrainSearchMap.ts")) {
+    // No imports; the only strip-mode problem is `export enum`, inlined as a
+    // plain object with the same numeric values (Land=0, Shore=1, Water=2).
+    out = must(
+      out,
+      "export enum SearchMapTileType {\n  Land,\n  Shore,\n  Water,\n}",
+      "export const SearchMapTileType = { Land: 0, Shore: 1, Water: 2 };",
+      "TerrainSearchMap enum",
+    );
+  }
   if (rel.endsWith("core/Util.ts")) {
     // The UI/record surface (DOMPurify, nanoid, zod Schemas, Game.ts,
     // TribeNames) is only referenced from functions the parity capture never

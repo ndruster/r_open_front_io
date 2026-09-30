@@ -22,6 +22,7 @@ use openfront_core::pathfinding::flat_heap::FlatBinaryHeap;
 use openfront_core::pathfinding::priority_queue::{BucketQueue, MinHeap, PriorityQueue};
 use openfront_core::pathfinding::rail::{RailAdapter, TerrainMap};
 use openfront_core::pathfinding::water::AStarWater;
+use openfront_core::terrain_search_map::TerrainSearchMap;
 use openfront_core::tile_set::TileSet;
 use vectors::GmRes;
 
@@ -992,5 +993,42 @@ fn replay_cc_scenarios() {
             "{} landMarker",
             s.name
         );
+    }
+}
+
+// ---------------------------------------------------------- TerrainSearchMap
+// kind: 0=getWidth, 1=getHeight, 2=node(x,y) -> Val (the tile-type discriminant),
+//       3=neighbors(x,y) -> flattened [x0,y0,x1,y1,...]. The buffer (4-byte
+//       header + packed tiles) is replayed verbatim; node args and neighbor
+//       coordinates may be NaN / infinite / fractional.
+#[test]
+fn replay_tsm_scenarios() {
+    use openfront_core::terrain_search_map::SearchMapTileType;
+    for s in vectors::TSM_SCENARIOS {
+        let tsm = TerrainSearchMap::new(s.buffer.to_vec());
+        for (i, op) in s.ops.iter().enumerate() {
+            let ctx = || format!("{} op#{i} kind={}", s.name, op.kind);
+            match op.kind {
+                0 => assert_val(tsm.get_width(), &op.res, &ctx),
+                1 => assert_val(tsm.get_height(), &op.res, &ctx),
+                2 => {
+                    let code = match tsm.node(op.a, op.b) {
+                        SearchMapTileType::Land => 0.0,
+                        SearchMapTileType::Shore => 1.0,
+                        SearchMapTileType::Water => 2.0,
+                    };
+                    assert_val(code, &op.res, &ctx);
+                }
+                3 => {
+                    let mut got = Vec::new();
+                    for n in tsm.neighbors(op.a, op.b) {
+                        got.push(n.x);
+                        got.push(n.y);
+                    }
+                    assert_arr(&got, want_arr(&op.res), &ctx);
+                }
+                k => panic!("{} unexpected tsm op kind {k}", s.name),
+            }
+        }
     }
 }

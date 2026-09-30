@@ -165,6 +165,7 @@ const { packMotionPlans, unpackMotionPlans } = await loadTs(
 const { ConnectedComponents } = await loadTs(
   "src/core/pathfinding/algorithms/ConnectedComponents.ts",
 );
+const { TerrainSearchMap } = await loadTs("src/core/game/TerrainSearchMap.ts");
 
 // enc() maps JS-only values JSON cannot carry: undefined -> "u", NaN -> "n",
 // booleans -> 1/0, and -0 -> "-0" (JSON collapses -0 to 0, yet the f32 bit
@@ -1688,6 +1689,100 @@ runCc("cc_chain", 5, 1, [CW, CL, CW, CL, CW], false, [
   ]);
 }
 
+// --- TerrainSearchMap (TerrainSearchMap.ts) ---------------------------------
+// The class reads width/height from the buffer's first 4 bytes
+// (little-endian pairs) and classifies the packed byte at 4 + y*width + x:
+// bit 7 -> Land, magnitude < 10 -> Shore, else Water. Out-of-range reads hit
+// `undefined`, whose `& 0x80` / `& 0x1f` are 0 -> Shore; header bytes at
+// indices < 4 are read like any tile. neighbors() keeps fractional
+// coordinates (the bounds test is relational) and drops NaN/Infinity.
+//
+// kind: 0=getWidth, 1=getHeight, 2=node(x,y) -> Val,
+//       3=neighbors(x,y) -> [x0,y0,x1,y1,...]
+const tsmScenarios = [];
+function runTsm(name, w, h, tiles, ops) {
+  const buf = new Uint8Array(4 + tiles.length);
+  buf[0] = w & 0xff;
+  buf[1] = (w >> 8) & 0xff;
+  buf[2] = h & 0xff;
+  buf[3] = (h >> 8) & 0xff;
+  buf.set(tiles, 4);
+  const tsm = new TerrainSearchMap(buf.buffer);
+  const played = ops.map(([k, a, b]) => {
+    if (k === 0) return [k, 0, 0, enc(tsm.getWidth())];
+    if (k === 1) return [k, 0, 0, enc(tsm.getHeight())];
+    if (k === 2) return [k, uenc(a), uenc(b), enc(tsm.node(a, b))];
+    if (k === 3) {
+      const ns = tsm.neighbors(a, b);
+      const flat = [];
+      for (const n of ns) {
+        flat.push(uenc(n.x), uenc(n.y));
+      }
+      return [k, uenc(a), uenc(b), flat];
+    }
+    throw new Error("bad tsm op kind " + k);
+  });
+  tsmScenarios.push({
+    name,
+    buffer: Array.from(buf),
+    ops: played,
+  });
+}
+
+// 3x2 map covering every classification branch plus the out-of-range and
+// header-byte reads. Bytes: land(0x85), shore(0x09), water(0x0a),
+// water-mag31(0x1f), land-mag31(0x9f), shore-mag0(0x00).
+runTsm("tsm_basic", 3, 2, [0x85, 0x09, 0x0a, 0x1f, 0x9f, 0x00], [
+  [0], [1],
+  [2, 0, 0], [2, 1, 0], [2, 2, 0], [2, 0, 1], [2, 1, 1], [2, 2, 1],
+  // out of range -> undefined byte -> Shore
+  [2, 3, 0], [2, -1, 0], [2, 0, 2], [2, 0, -1], [2, 99, 99],
+  // fractional coords: index 4+0*3+1.5 = 5.5 -> undefined -> Shore;
+  // index lands inside the header: node(-4+?,..) style below
+  [2, 1.5, 0], [2, 0.5, 0.5],
+  // header bytes read as tiles: idx 0..3 -> buffer[0..3] = 3,0,2,0
+  [2, -4, 0], [2, -3, 0], [2, -2, 0], [2, -1.5, 0],
+]);
+// The magnitude-10 boundary and bit-7 dominance: 0x09 Shore vs 0x0a Water,
+// 0x80 Land with magnitude 0, 0x9f Land with magnitude 31 (bit 7 wins).
+runTsm("tsm_magnitude", 4, 1, [0x09, 0x0a, 0x80, 0x9f], [
+  [2, 0, 0], [2, 1, 0], [2, 2, 0], [2, 3, 0],
+]);
+// neighbors(): interior, all four corners, and edge centers pin the dirs
+// order and the bounds test.
+runTsm("tsm_neighbors", 3, 3, new Array(9).fill(0x00), [
+  [3, 1, 1], [3, 0, 0], [3, 2, 0], [3, 0, 2], [3, 2, 2],
+  [3, 1, 0], [3, 0, 1], [3, 2, 1], [3, 1, 2],
+]);
+// Fractional coordinates pass the relational bounds test; NaN and the
+// infinities fail every comparison -> empty list.
+runTsm("tsm_frac_neighbors", 3, 3, new Array(9).fill(0x00), [
+  [3, 1.5, 1.5], [3, 0.5, 0.5], [3, 2.5, 2.5],
+  [3, NaN, 1], [3, 1, NaN], [3, Infinity, Infinity], [3, -Infinity, 0],
+  [2, NaN, NaN], [2, Infinity, 0], [2, -0, 0],
+]);
+// A 2-byte buffer: width decodes from the present bytes, height from
+// `undefined` reads -> 0; every node/neighbor query then hits undefined.
+{
+  const buf = new Uint8Array([3, 0]);
+  const tsm = new TerrainSearchMap(buf.buffer);
+  const ops = [
+    [0], [1], [2, 0, 0], [2, -4, 0], [2, -2, 0], [3, 0, 0],
+  ].map(([k, a, b]) => {
+    if (k === 0) return [k, 0, 0, enc(tsm.getWidth())];
+    if (k === 1) return [k, 0, 0, enc(tsm.getHeight())];
+    if (k === 2) return [k, uenc(a), uenc(b), enc(tsm.node(a, b))];
+    const ns = tsm.neighbors(a, b);
+    return [k, uenc(a), uenc(b), ns.flatMap((n) => [uenc(n.x), uenc(n.y)])];
+  });
+  tsmScenarios.push({ name: "tsm_short_header", buffer: Array.from(buf), ops });
+}
+// Width/height above one byte exercise the (d[1]<<8)|d[0] decode; node reads
+// at negative coords land on header bytes (0x34 -> Water, 0x12 -> Water).
+runTsm("tsm_wide_header", 0x1234, 0x00ff, [0x85], [
+  [0], [1], [2, 0, 0], [2, -4, 0], [2, -3, 0],
+]);
+
 const structures = {
   minheap: mhScenarios,
   bucket: bqScenarios,
@@ -1704,6 +1799,7 @@ const structures = {
   veterancy: veterancyScenarios,
   motionplans: mpScenarios,
   connectedcomponents: ccScenarios,
+  terrainsearchmap: tsmScenarios,
 };
 
 // ================================================================ JSON
@@ -2626,6 +2722,37 @@ for (const s of structures.connectedcomponents) {
 }
 L.push("pub const CC_SCENARIOS: &[CcScenario] = &[");
 for (const s of structures.connectedcomponents) L.push(`    ${s.name.toUpperCase()},`);
+L.push("];");
+L.push("");
+
+L.push("/// TerrainSearchMap scenario: the raw buffer bytes (4-byte header +");
+L.push("/// packed tiles) and an op stream replayed against the real TS class");
+L.push("/// (GmOp/GmRes reused; kind 0=getWidth, 1=getHeight, 2=node(x,y),");
+L.push("/// 3=neighbors(x,y) -> flattened [x0,y0,...]; node args and neighbor");
+L.push("/// coordinates may be NaN / infinite / fractional tokens).");
+L.push("pub struct TsmScenario {");
+L.push("    pub name: &'static str,");
+L.push("    pub buffer: &'static [u8],");
+L.push("    pub ops: &'static [GmOp],");
+L.push("}");
+L.push("");
+for (const s of structures.terrainsearchmap) {
+  const id = s.name.toUpperCase();
+  L.push(`const ${id}_OPS: &[GmOp] = &[`);
+  for (const [k, a, b, r] of s.ops)
+    L.push(`    GmOp { kind: ${k}, a: ${utilResLit(a)}, b: ${utilResLit(b)}, res: ${gmResLit(r)} },`);
+  L.push("];");
+  L.push(`pub const ${id}: TsmScenario = TsmScenario {`);
+  L.push(`    name: "${s.name}",`);
+  L.push("    buffer: &[");
+  L.push(...numArr(s.buffer, "u8", 16));
+  L.push("],");
+  L.push(`    ops: ${id}_OPS,`);
+  L.push("};");
+  L.push("");
+}
+L.push("pub const TSM_SCENARIOS: &[TsmScenario] = &[");
+for (const s of structures.terrainsearchmap) L.push(`    ${s.name.toUpperCase()},`);
 L.push("];");
 L.push("");
 

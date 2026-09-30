@@ -27,6 +27,8 @@ rust/
 │   │   │                          (maxHealthWithVeterancy)
 │   │   ├── motion_plans.rs        port of game/MotionPlans.ts
 │   │   │                          (packMotionPlans / unpackMotionPlans)
+│   │   ├── terrain_search_map.rs  port of game/TerrainSearchMap.ts
+│   │   │                          (SearchMapTileType + node / neighbors)
 │   │   ├── wasm_probe.rs          `extern "C"` surface, feature-gated
 │   │   └── pathfinding/
 │   │       ├── mod.rs
@@ -159,6 +161,19 @@ desync, not a rounding nit. Two things enforce that here:
     `0xFF`→`0xFFFF`). Each trace pins the final `componentIds` buffer, the
     sparse `_componentSizes` (JS holes → `NaN`), the union-find `parents`,
     `maxId` and `landMarker`.
+12. **`TerrainSearchMap.ts`** (`terrain_search_map`) is pinned with six
+    buffer-replay scenarios. The class decodes `width`/`height` from the
+    buffer's first four bytes (`(d[1] << 8) | d[0]`, `(d[3] << 8) | d[2]`) and
+    classifies the packed byte at `4 + y*width + x` (bit 7 → `Land`,
+    magnitude `< 10` → `Shore`, else `Water`). The traces pin the JS-isms: a
+    short buffer decodes the missing header bytes as `0` (so `height` is `0`,
+    not a throw); out-of-range, negative, fractional and `NaN` `node()` reads
+    hit `undefined`, whose `& 0x80` / `& 0x1f` are both `0` → `Shore`; a
+    negative coordinate can land the index inside the header, where the
+    header byte is read like any tile; the magnitude-10 boundary and bit-7
+    dominance over a magnitude of 31; and `neighbors()` keeps fractional
+    coordinates (the bounds test is purely relational) while `NaN` / `±Infinity`
+    fail every comparison and yield the empty list, in the TS `dirs` order.
 
 Regenerate whenever a ported source changes:
 
@@ -192,7 +207,7 @@ node rust/tools/run_wasm_parity.mjs
 
 `wasm-probe` exposes the ported functions through `extern "C"` scalar
 entrypoints (`src/wasm_probe.rs`); the runner imports `data/vectors.json` and
-compares every value. Last run: **26,477 comparisons, all bit-identical**.
+compares every value. Last run: **26,638 comparisons, all bit-identical**.
 
 ### Windows: the linker environment
 

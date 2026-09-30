@@ -36,6 +36,8 @@ for (const name of [
   "probe_mp_arg", "probe_mp_op", "probe_mp_out_len", "probe_mp_out_at",
   "probe_cc_terrain_byte", "probe_cc_new", "probe_cc_op", "probe_cc_field",
   "probe_cc_arr_len", "probe_cc_arr_get",
+  "probe_tsm_buffer_byte", "probe_tsm_new", "probe_tsm_op",
+  "probe_tsm_out_len", "probe_tsm_out_at",
 ]) {
   if (typeof ex[name] !== "function") {
     console.error(`missing wasm export ${name} - rebuild with --features wasm-probe`);
@@ -758,6 +760,34 @@ for (const s of S.connectedcomponents) {
         fail(`${s.name} field${field}[${j}]`, j, fmt(got), String(tok));
     }
   }
+}
+
+// --- TerrainSearchMap --- (buffer replay; kinds 0/1/2 compare scalars,
+// kind 3 (neighbors) reads the flattened [x0,y0,...] from the out buffer;
+// NaN / infinite / fractional coordinates cross the boundary as f64).
+for (const s of S.terrainsearchmap) {
+  for (const b of s.buffer) ex.probe_tsm_buffer_byte(b);
+  ex.probe_tsm_new();
+  s.ops.forEach(([k, a, b, res], i) => {
+    if (k === 3) {
+      ex.probe_tsm_op(k, numTok(a), numTok(b));
+      const want = res;
+      checks++;
+      if (ex.probe_tsm_out_len() !== want.length) {
+        fail(`${s.name} neighbors len`, i, ex.probe_tsm_out_len(), want.length);
+        return;
+      }
+      for (let j = 0; j < want.length; j++) {
+        checks++;
+        const got = ex.probe_tsm_out_at(j);
+        if (!Object.is(got, numTok(want[j])))
+          fail(`${s.name} neighbors[${j}]`, i, fmt(got), String(want[j]));
+      }
+      return;
+    }
+    const got = ex.probe_tsm_op(k, numTok(a), numTok(b));
+    cmpScalar(`${s.name} op${k}`, got, res, i);
+  });
 }
 
 console.log(`${checks} vector comparisons executed against wasm build`);

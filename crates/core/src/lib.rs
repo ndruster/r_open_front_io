@@ -38,6 +38,10 @@
 //!   (scan-line flood-fill component labelling over packed terrain bytes,
 //!   `Uint8Array`→`Uint16Array` upgrade at 253 components, union-find alias
 //!   table for incremental `addWaterTiles` merges, path-compressed `find`)
+//! * [`terrain_search_map`] — `src/core/game/TerrainSearchMap.ts` (read-only
+//!   search view over packed terrain bytes: header-decoded width/height,
+//!   `Land`/`Shore`/`Water` classification, 8-way `neighbors` with JS
+//!   out-of-range and fractional-index semantics)
 //!
 //! Two rules govern every future port into this crate:
 //!
@@ -61,6 +65,7 @@ pub mod motion_plans;
 pub mod pathfinding;
 pub mod pseudo_random;
 pub mod team_assignment;
+pub mod terrain_search_map;
 pub mod tile_set;
 pub mod util;
 pub mod veterancy;

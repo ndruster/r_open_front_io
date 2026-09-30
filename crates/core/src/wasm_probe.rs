@@ -1577,3 +1577,70 @@ pub extern "C" fn probe_cc_arr_get(field: u32, i: usize) -> f64 {
         k => panic!("unexpected cc array {k}"),
     })
 }
+
+// ------------------------------------------------------ TerrainSearchMap
+// Buffer bytes are queued one at a time (like the GM/Rail/CC probes); the
+// instance is built by `probe_tsm_new`, ops replayed by `probe_tsm_op`
+// (getWidth/getHeight/node return the scalar; neighbors lands in the
+// probe-side out buffer read back via `probe_tsm_out_len` / `..._at`).
+
+use crate::terrain_search_map::{SearchMapTileType, TerrainSearchMap};
+
+thread_local! {
+    static TSM: std::cell::RefCell<Option<Box<TerrainSearchMap>>> =
+        const { std::cell::RefCell::new(None) };
+    static TSM_BUFFER: std::cell::RefCell<Vec<u8>> = const { std::cell::RefCell::new(Vec::new()) };
+    static TSM_OUT: std::cell::RefCell<Vec<f64>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
+/// Queue one buffer byte for the next map (before `probe_tsm_new`).
+#[no_mangle]
+pub extern "C" fn probe_tsm_buffer_byte(v: u32) {
+    TSM_BUFFER.with(|b| b.borrow_mut().push(v as u8));
+}
+
+#[no_mangle]
+pub extern "C" fn probe_tsm_new() {
+    let buffer = TSM_BUFFER.with(|b| std::mem::take(&mut *b.borrow_mut()));
+    TSM.with(|t| *t.borrow_mut() = Some(Box::new(TerrainSearchMap::new(buffer))));
+}
+
+fn with_tsm<T>(f: impl FnOnce(&TerrainSearchMap) -> T) -> T {
+    TSM.with(|t| {
+        f(t.borrow()
+            .as_ref()
+            .expect("probe_tsm_new must be called first"))
+    })
+}
+
+/// Replay one op: 0=getWidth, 1=getHeight, 2=node(x,y), 3=neighbors(x,y)
+/// (result lands in the out buffer, this returns NaN).
+#[no_mangle]
+pub extern "C" fn probe_tsm_op(kind: u32, a: f64, b: f64) -> f64 {
+    match kind {
+        0 => with_tsm(|tsm| tsm.get_width()),
+        1 => with_tsm(|tsm| tsm.get_height()),
+        2 => with_tsm(|tsm| match tsm.node(a, b) {
+            SearchMapTileType::Land => 0.0,
+            SearchMapTileType::Shore => 1.0,
+            SearchMapTileType::Water => 2.0,
+        }),
+        3 => {
+            let ns = with_tsm(|tsm| tsm.neighbors(a, b));
+            let flat: Vec<f64> = ns.into_iter().flat_map(|n| [n.x, n.y]).collect();
+            TSM_OUT.with(|o| *o.borrow_mut() = flat);
+            f64::NAN
+        }
+        k => panic!("unexpected tsm op kind {k}"),
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn probe_tsm_out_len() -> usize {
+    TSM_OUT.with(|o| o.borrow().len())
+}
+
+#[no_mangle]
+pub extern "C" fn probe_tsm_out_at(i: usize) -> f64 {
+    TSM_OUT.with(|o| o.borrow()[i])
+}

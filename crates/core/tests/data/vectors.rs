@@ -12941,3 +12941,136 @@ pub const CC_SCENARIOS: &[CcScenario] = &[
     CC_UPGRADE_16,
 ];
 
+/// TerrainSearchMap scenario: the raw buffer bytes (4-byte header +
+/// packed tiles) and an op stream replayed against the real TS class
+/// (GmOp/GmRes reused; kind 0=getWidth, 1=getHeight, 2=node(x,y),
+/// 3=neighbors(x,y) -> flattened [x0,y0,...]; node args and neighbor
+/// coordinates may be NaN / infinite / fractional tokens).
+pub struct TsmScenario {
+    pub name: &'static str,
+    pub buffer: &'static [u8],
+    pub ops: &'static [GmOp],
+}
+
+const TSM_BASIC_OPS: &[GmOp] = &[
+    GmOp { kind: 0, a: 0f64, b: 0f64, res: GmRes::Val(3f64) },
+    GmOp { kind: 1, a: 0f64, b: 0f64, res: GmRes::Val(2f64) },
+    GmOp { kind: 2, a: 0f64, b: 0f64, res: GmRes::Val(0f64) },
+    GmOp { kind: 2, a: 1f64, b: 0f64, res: GmRes::Val(1f64) },
+    GmOp { kind: 2, a: 2f64, b: 0f64, res: GmRes::Val(2f64) },
+    GmOp { kind: 2, a: 0f64, b: 1f64, res: GmRes::Val(2f64) },
+    GmOp { kind: 2, a: 1f64, b: 1f64, res: GmRes::Val(0f64) },
+    GmOp { kind: 2, a: 2f64, b: 1f64, res: GmRes::Val(1f64) },
+    GmOp { kind: 2, a: 3f64, b: 0f64, res: GmRes::Val(2f64) },
+    GmOp { kind: 2, a: -1f64, b: 0f64, res: GmRes::Val(1f64) },
+    GmOp { kind: 2, a: 0f64, b: 2f64, res: GmRes::Val(1f64) },
+    GmOp { kind: 2, a: 0f64, b: -1f64, res: GmRes::Val(1f64) },
+    GmOp { kind: 2, a: 99f64, b: 99f64, res: GmRes::Val(1f64) },
+    GmOp { kind: 2, a: 1.5f64, b: 0f64, res: GmRes::Val(1f64) },
+    GmOp { kind: 2, a: 0.5f64, b: 0.5f64, res: GmRes::Val(2f64) },
+    GmOp { kind: 2, a: -4f64, b: 0f64, res: GmRes::Val(1f64) },
+    GmOp { kind: 2, a: -3f64, b: 0f64, res: GmRes::Val(1f64) },
+    GmOp { kind: 2, a: -2f64, b: 0f64, res: GmRes::Val(1f64) },
+    GmOp { kind: 2, a: -1.5f64, b: 0f64, res: GmRes::Val(1f64) },
+];
+pub const TSM_BASIC: TsmScenario = TsmScenario {
+    name: "tsm_basic",
+    buffer: &[
+    3u8, 0u8, 2u8, 0u8, 133u8, 9u8, 10u8, 31u8, 159u8, 0u8,
+],
+    ops: TSM_BASIC_OPS,
+};
+
+const TSM_MAGNITUDE_OPS: &[GmOp] = &[
+    GmOp { kind: 2, a: 0f64, b: 0f64, res: GmRes::Val(1f64) },
+    GmOp { kind: 2, a: 1f64, b: 0f64, res: GmRes::Val(2f64) },
+    GmOp { kind: 2, a: 2f64, b: 0f64, res: GmRes::Val(0f64) },
+    GmOp { kind: 2, a: 3f64, b: 0f64, res: GmRes::Val(0f64) },
+];
+pub const TSM_MAGNITUDE: TsmScenario = TsmScenario {
+    name: "tsm_magnitude",
+    buffer: &[
+    4u8, 0u8, 1u8, 0u8, 9u8, 10u8, 128u8, 159u8,
+],
+    ops: TSM_MAGNITUDE_OPS,
+};
+
+const TSM_NEIGHBORS_OPS: &[GmOp] = &[
+    GmOp { kind: 3, a: 1f64, b: 1f64, res: GmRes::Arr(&[0f64, 0f64, 1f64, 0f64, 2f64, 0f64, 0f64, 1f64, 2f64, 1f64, 0f64, 2f64, 1f64, 2f64, 2f64, 2f64]) },
+    GmOp { kind: 3, a: 0f64, b: 0f64, res: GmRes::Arr(&[1f64, 0f64, 0f64, 1f64, 1f64, 1f64]) },
+    GmOp { kind: 3, a: 2f64, b: 0f64, res: GmRes::Arr(&[1f64, 0f64, 1f64, 1f64, 2f64, 1f64]) },
+    GmOp { kind: 3, a: 0f64, b: 2f64, res: GmRes::Arr(&[0f64, 1f64, 1f64, 1f64, 1f64, 2f64]) },
+    GmOp { kind: 3, a: 2f64, b: 2f64, res: GmRes::Arr(&[1f64, 1f64, 2f64, 1f64, 1f64, 2f64]) },
+    GmOp { kind: 3, a: 1f64, b: 0f64, res: GmRes::Arr(&[0f64, 0f64, 2f64, 0f64, 0f64, 1f64, 1f64, 1f64, 2f64, 1f64]) },
+    GmOp { kind: 3, a: 0f64, b: 1f64, res: GmRes::Arr(&[0f64, 0f64, 1f64, 0f64, 1f64, 1f64, 0f64, 2f64, 1f64, 2f64]) },
+    GmOp { kind: 3, a: 2f64, b: 1f64, res: GmRes::Arr(&[1f64, 0f64, 2f64, 0f64, 1f64, 1f64, 1f64, 2f64, 2f64, 2f64]) },
+    GmOp { kind: 3, a: 1f64, b: 2f64, res: GmRes::Arr(&[0f64, 1f64, 1f64, 1f64, 2f64, 1f64, 0f64, 2f64, 2f64, 2f64]) },
+];
+pub const TSM_NEIGHBORS: TsmScenario = TsmScenario {
+    name: "tsm_neighbors",
+    buffer: &[
+    3u8, 0u8, 3u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8,
+],
+    ops: TSM_NEIGHBORS_OPS,
+};
+
+const TSM_FRAC_NEIGHBORS_OPS: &[GmOp] = &[
+    GmOp { kind: 3, a: 1.5f64, b: 1.5f64, res: GmRes::Arr(&[0.5f64, 0.5f64, 1.5f64, 0.5f64, 2.5f64, 0.5f64, 0.5f64, 1.5f64, 2.5f64, 1.5f64, 0.5f64, 2.5f64, 1.5f64, 2.5f64, 2.5f64, 2.5f64]) },
+    GmOp { kind: 3, a: 0.5f64, b: 0.5f64, res: GmRes::Arr(&[1.5f64, 0.5f64, 0.5f64, 1.5f64, 1.5f64, 1.5f64]) },
+    GmOp { kind: 3, a: 2.5f64, b: 2.5f64, res: GmRes::Arr(&[1.5f64, 1.5f64, 2.5f64, 1.5f64, 1.5f64, 2.5f64]) },
+    GmOp { kind: 3, a: f64::NAN, b: 1f64, res: GmRes::Arr(&[]) },
+    GmOp { kind: 3, a: 1f64, b: f64::NAN, res: GmRes::Arr(&[]) },
+    GmOp { kind: 3, a: f64::INFINITY, b: f64::INFINITY, res: GmRes::Arr(&[]) },
+    GmOp { kind: 3, a: f64::NEG_INFINITY, b: 0f64, res: GmRes::Arr(&[]) },
+    GmOp { kind: 2, a: f64::NAN, b: f64::NAN, res: GmRes::Val(1f64) },
+    GmOp { kind: 2, a: f64::INFINITY, b: 0f64, res: GmRes::Val(1f64) },
+    GmOp { kind: 2, a: -0.0f64, b: 0f64, res: GmRes::Val(1f64) },
+];
+pub const TSM_FRAC_NEIGHBORS: TsmScenario = TsmScenario {
+    name: "tsm_frac_neighbors",
+    buffer: &[
+    3u8, 0u8, 3u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8,
+],
+    ops: TSM_FRAC_NEIGHBORS_OPS,
+};
+
+const TSM_SHORT_HEADER_OPS: &[GmOp] = &[
+    GmOp { kind: 0, a: 0f64, b: 0f64, res: GmRes::Val(3f64) },
+    GmOp { kind: 1, a: 0f64, b: 0f64, res: GmRes::Val(0f64) },
+    GmOp { kind: 2, a: 0f64, b: 0f64, res: GmRes::Val(1f64) },
+    GmOp { kind: 2, a: -4f64, b: 0f64, res: GmRes::Val(1f64) },
+    GmOp { kind: 2, a: -2f64, b: 0f64, res: GmRes::Val(1f64) },
+    GmOp { kind: 3, a: 0f64, b: 0f64, res: GmRes::Arr(&[]) },
+];
+pub const TSM_SHORT_HEADER: TsmScenario = TsmScenario {
+    name: "tsm_short_header",
+    buffer: &[
+    3u8, 0u8,
+],
+    ops: TSM_SHORT_HEADER_OPS,
+};
+
+const TSM_WIDE_HEADER_OPS: &[GmOp] = &[
+    GmOp { kind: 0, a: 0f64, b: 0f64, res: GmRes::Val(4660f64) },
+    GmOp { kind: 1, a: 0f64, b: 0f64, res: GmRes::Val(255f64) },
+    GmOp { kind: 2, a: 0f64, b: 0f64, res: GmRes::Val(0f64) },
+    GmOp { kind: 2, a: -4f64, b: 0f64, res: GmRes::Val(2f64) },
+    GmOp { kind: 2, a: -3f64, b: 0f64, res: GmRes::Val(2f64) },
+];
+pub const TSM_WIDE_HEADER: TsmScenario = TsmScenario {
+    name: "tsm_wide_header",
+    buffer: &[
+    52u8, 18u8, 255u8, 0u8, 133u8,
+],
+    ops: TSM_WIDE_HEADER_OPS,
+};
+
+pub const TSM_SCENARIOS: &[TsmScenario] = &[
+    TSM_BASIC,
+    TSM_MAGNITUDE,
+    TSM_NEIGHBORS,
+    TSM_FRAC_NEIGHBORS,
+    TSM_SHORT_HEADER,
+    TSM_WIDE_HEADER,
+];
+

@@ -17,6 +17,7 @@ use vectors::Res;
 use openfront_core::game_map::GameMap;
 use openfront_core::pathfinding::a_star::{AStar, GridAdapter};
 use openfront_core::pathfinding::bfs_grid::{BfsGrid, Visit};
+use openfront_core::pathfinding::connected_components::ConnectedComponents;
 use openfront_core::pathfinding::flat_heap::FlatBinaryHeap;
 use openfront_core::pathfinding::priority_queue::{BucketQueue, MinHeap, PriorityQueue};
 use openfront_core::pathfinding::rail::{RailAdapter, TerrainMap};
@@ -954,5 +955,42 @@ fn replay_motionplans_scenarios() {
         }
         let unpacked = unpack_motion_plans(&buf_u32);
         cmp_out(s.name, &encode_records(&unpacked), s.out);
+    }
+}
+
+// ---------------------------------------------------------- ConnectedComponents
+// kind: 0=initialize (void), 1=addWaterTiles([a]) (void), 2=getComponentId(a),
+//       3=getComponentSize(a). The trace pins the final componentIds buffer,
+//       the sparse _componentSizes (holes -> NaN), the union-find parents,
+//       maxId and landMarker.
+#[test]
+fn replay_cc_scenarios() {
+    for s in vectors::CC_SCENARIOS {
+        let mut cc = ConnectedComponents::new(
+            s.w as i64,
+            s.h as i64,
+            s.terrain.to_vec(),
+            s.direct != 0,
+        );
+        for (i, op) in s.ops.iter().enumerate() {
+            let ctx = || format!("{} op#{i} kind={}", s.name, op.kind);
+            match op.kind {
+                0 => cc.initialize(),
+                1 => cc.add_water_tile(op.a),
+                2 => assert_val(cc.get_component_id(op.a) as f64, &op.res, &ctx),
+                3 => assert_val(cc.get_component_size(op.a), &op.res, &ctx),
+                k => panic!("{} unexpected cc op kind {k}", s.name),
+            }
+        }
+        assert_eq!(cc.debug_bits(), s.bits, "{} final bits", s.name);
+        assert_arr(&cc.debug_ids(), s.ids, &|| format!("{} ids", s.name));
+        assert_arr(&cc.debug_sizes(), s.sizes, &|| format!("{} sizes", s.name));
+        assert_arr(&cc.debug_parents(), s.parents, &|| format!("{} parents", s.name));
+        assert!(obj_is(cc.debug_max_id(), s.max_id), "{} maxId", s.name);
+        assert!(
+            obj_is(cc.debug_land_marker(), s.land_marker),
+            "{} landMarker",
+            s.name
+        );
     }
 }

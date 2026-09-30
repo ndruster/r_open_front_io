@@ -162,6 +162,9 @@ const { maxHealthWithVeterancy } = await loadTs("src/core/game/Veterancy.ts");
 const { packMotionPlans, unpackMotionPlans } = await loadTs(
   "src/core/game/MotionPlans.ts",
 );
+const { ConnectedComponents } = await loadTs(
+  "src/core/pathfinding/algorithms/ConnectedComponents.ts",
+);
 
 // enc() maps JS-only values JSON cannot carry: undefined -> "u", NaN -> "n",
 // booleans -> 1/0, and -0 -> "-0" (JSON collapses -0 to 0, yet the f32 bit
@@ -1565,6 +1568,126 @@ function pushMpUnpack(name, rawWords) {
   pushMpUnpack("mp_up_two_ok", [2, 1, 7, 5, 6, 7, 8, 0, 1, 7, 9, 10, 11, 12, 0]);
 }
 
+// --- ConnectedComponents (ConnectedComponents.ts) ---------------------------
+// Op-stream replay over the real class, driven by a real GameMapImpl (packed
+// terrain bytes; bit 7 = land). The class exposes initialize(), the
+// incremental addWaterTiles(), the two queries (getComponentId /
+// getComponentSize), and the internal buffers the trace pins: componentIds
+// (Uint8Array or Uint16Array after the 253-component upgrade), the sparse
+// _componentSizes (JS holes -> "u"), parents (union-find, mutated by path
+// compression), maxId, landMarker.
+//
+// kind: 0=initialize "v", 1=addWaterTiles(a) "v", 2=getComponentId(a) -> Val,
+//       3=getComponentSize(a) -> Val
+const ccScenarios = [];
+function runCc(name, w, h, terrain, direct, ops) {
+  const gm = new GameMapImpl(w, h, Uint8Array.from(terrain), 0);
+  const cc = new ConnectedComponents(gm, direct);
+  const played = ops.map(([k, a]) => {
+    let res;
+    switch (k) {
+      case 0: cc.initialize(); res = "v"; break;
+      case 1: cc.addWaterTiles([a]); res = "v"; break;
+      case 2: res = enc(cc.getComponentId(a)); break;
+      case 3: res = enc(cc.getComponentSize(a)); break;
+      default: throw new Error("bad cc op kind " + k);
+    }
+    return [k, enc(a === undefined ? 0 : a), 0, res];
+  });
+  const ids = cc.componentIds;
+  ccScenarios.push({
+    name,
+    w,
+    h,
+    terrain: Array.from(terrain),
+    direct: direct ? 1 : 0,
+    ops: played,
+    // 0 = not yet created (null), 8 = Uint8Array, 16 = Uint16Array.
+    bits: ids === null ? 0 : ids instanceof Uint16Array ? 16 : 8,
+    ids: ids === null ? [] : Array.from(ids),
+    // _componentSizes is a sparse JS array (holes for unused ids); Array.from
+    // iterates by index so each hole becomes enc(undefined) -> "u", unlike
+    // .map() which skips holes and leaves the result sparse.
+    sizes: Array.from(cc._componentSizes, (v) => enc(v)),
+    parents: Array.from(cc.parents, (v) => enc(v)),
+    maxId: enc(cc.maxId),
+    landMarker: enc(cc.landMarker),
+  });
+}
+
+const CW = 0x00; // water
+const CL = 0x85; // land, magnitude 5
+
+// Two blobs separated by a land wall: labels, sizes, and the land marker.
+runCc("cc_two_blobs", 3, 2, [CW, CW, CL, CW, CW, CL], true, [
+  [0], [2, 0], [2, 1], [2, 2], [2, 3], [3, 1], [3, 2],
+]);
+// The premark paths must agree byte-for-byte: same map, direct vs isWater.
+runCc("cc_iter_premark", 3, 2, [CW, CW, CL, CW, CW, CL], false, [
+  [0], [2, 0], [2, 1], [2, 2], [2, 3], [3, 1], [3, 2],
+]);
+// Queries before initialize(): getComponentId is 0, addWaterTiles no-ops.
+runCc("cc_pre_init", 2, 2, [CL, CW, CW, CW], true, [
+  [2, 0], [1, 0], [2, 0], [0], [2, 0], [3, 1],
+]);
+// Bridging: two components merge through one added land tile; the union-find
+// alias, the moved size, and the zeroed old size are all pinned.
+runCc("cc_bridge", 3, 2, [CW, CL, CW, CW, CL, CW], false, [
+  [0], [1, 1], [2, 1], [2, 2], [3, 1], [3, 2],
+]);
+// Isolated crater: an all-land map, then one interior tile converts -> a
+// fresh component id (allocComponentId path).
+runCc("cc_crater", 3, 3, [CL, CL, CL, CL, CL, CL, CL, CL, CL], true, [
+  [0], [1, 4], [2, 4], [3, 2], [2, 0],
+]);
+// A vertical wall bridges the top and bottom water: one added tile joins the
+// four cardinal neighbours' roots (two distinct components) into the
+// canonical (smallest) root.
+runCc("cc_multi_merge", 3, 3, [CW, CL, CW, CW, CL, CW, CW, CL, CW], true, [
+  [0], [1, 1], [2, 0], [2, 2], [2, 4], [3, 1], [3, 2],
+]);
+// Edge guards: adding a tile in the first/last row and first/last column
+// exercises the four boundary conditions of the neighbour collection.
+runCc("cc_edges", 4, 2, [CL, CL, CL, CL, CL, CL, CL, CL], true, [
+  [0], [1, 0], [1, 3], [1, 4], [1, 7], [1, 1], [2, 0], [2, 1], [3, 1],
+]);
+// Double add of the same tile: the second is a no-op (already water).
+runCc("cc_double_add", 2, 1, [CL, CW], true, [
+  [0], [1, 0], [1, 0], [2, 0], [3, 1],
+]);
+// Invalid refs: out-of-range / fractional / negative tiles are skipped by
+// the land-marker test (undefined !== marker) and read as 0.
+runCc("cc_invalid_refs", 2, 2, [CW, CW, CW, CW], true, [
+  [0], [1, 9], [1, 1.5], [1, -1], [2, 9], [2, 1.5], [2, -1], [3, 0], [3, -1],
+  [3, 99999], [3, 0.5],
+]);
+// Path compression: a merge chain (parents[r] = canon) makes find() walk and
+// rewrite parents; the final parents buffer is the observable.
+runCc("cc_chain", 5, 1, [CW, CL, CW, CL, CW], false, [
+  [0], [1, 1], [1, 3], [2, 0], [2, 2], [2, 4], [3, 3], [3, 1],
+]);
+// The Uint8Array -> Uint16Array upgrade: 253 isolated single-tile water
+// pockets on a 13x40 map (row 0 all water, rows 1-2 land, then alternating
+// water columns). Simpler: a 1x254 map with land at every odd index gives
+// 127 components... instead use a 254x2 map whose first row is 254 isolated
+// water tiles separated by single land tiles: 127 blobs, not enough. Use
+// 2x128: no. The direct construction: 128x2, row0 = W,L,W,L,... row1 all L
+// -> 64 components. To exceed 253 cheaply: 16x32 with a checkerboard of
+// water/land -> 256 water tiles, each isolated -> 256 components, forcing
+// the upgrade at 253 and the 0xFFFF break at 65535.
+{
+  const w = 16;
+  const h = 32;
+  const terrain = [];
+  for (let y = 0; y < h; y++)
+    for (let x = 0; x < w; x++)
+      terrain.push((x + y) % 2 === 0 ? CW : CL);
+  runCc("cc_upgrade_16", w, h, terrain, true, [
+    [0], [2, 0], [2, 1], [2, 16], [3, 1], [3, 253], [3, 254], [3, 255],
+    [3, 256], [1, 1], [2, 1], [3, 1],
+  ]);
+}
+
 const structures = {
   minheap: mhScenarios,
   bucket: bqScenarios,
@@ -1580,6 +1703,7 @@ const structures = {
   bezier: bezierScenarios,
   veterancy: veterancyScenarios,
   motionplans: mpScenarios,
+  connectedcomponents: ccScenarios,
 };
 
 // ================================================================ JSON
@@ -2434,6 +2558,74 @@ for (const s of structures.motionplans) {
 }
 L.push("pub const MP_SCENARIOS: &[MpScenario] = &[");
 for (const s of structures.motionplans) L.push(`    ${s.name.toUpperCase()},`);
+L.push("];");
+L.push("");
+
+L.push("/// ConnectedComponents scenario: a packed-terrain map, an op stream");
+L.push("/// replayed against the real TS class (kind table in gen_vectors.mjs;");
+L.push("/// GmOp/GmRes reused), and the final internal buffers. `bits` is 0");
+L.push("/// (componentIds still null), 8 (Uint8Array) or 16 (Uint16Array after");
+L.push("/// the 253-component upgrade). `ids` is the componentIds buffer as");
+L.push("/// numbers; `sizes` and `parents` render JS holes as NaN (`u`).");
+L.push("pub struct CcScenario {");
+L.push("    pub name: &'static str,");
+L.push("    pub w: f64,");
+L.push("    pub h: f64,");
+L.push("    pub terrain: &'static [u8],");
+L.push("    pub direct: u8,");
+L.push("    pub ops: &'static [GmOp],");
+L.push("    pub bits: u8,");
+L.push("    pub ids: &'static [f64],");
+L.push("    pub sizes: &'static [f64],");
+L.push("    pub parents: &'static [f64],");
+L.push("    pub max_id: f64,");
+L.push("    pub land_marker: f64,");
+L.push("}");
+L.push("");
+// Render a cc scalar token: "u" (a JS `undefined` hole) becomes NaN so the
+// Rust side can compare it with Object.is semantics.
+const ccLit = (r) => (r === "u" ? "f64::NAN" : utilResLit(r));
+// Render a cc buffer as Rust f64 literals, 16 per line. Plain numbers get the
+// `f64` suffix; "u" (undefined hole) becomes NaN.
+const ccBuf = (xs) => {
+  const lits = xs.map((v) => (v === "u" ? "f64::NAN" : `${v}f64`));
+  const out = [];
+  for (let i = 0; i < lits.length; i += 16)
+    out.push("    " + lits.slice(i, i + 16).join(", ") + ",");
+  return out;
+};
+for (const s of structures.connectedcomponents) {
+  const id = s.name.toUpperCase();
+  L.push(`const ${id}_OPS: &[GmOp] = &[`);
+  for (const [k, a, b, r] of s.ops)
+    L.push(`    GmOp { kind: ${k}, a: ${argLit(a)}, b: ${argLit(b)}, res: ${gmResLit(r)} },`);
+  L.push("];");
+  L.push(`pub const ${id}: CcScenario = CcScenario {`);
+  L.push(`    name: "${s.name}",`);
+  L.push(`    w: ${f64(s.w)},`);
+  L.push(`    h: ${f64(s.h)},`);
+  L.push(`    terrain: &[`);
+  L.push(...numArr(s.terrain, "u8", 16));
+  L.push("],");
+  L.push(`    direct: ${s.direct}u8,`);
+  L.push(`    ops: ${id}_OPS,`);
+  L.push(`    bits: ${s.bits}u8,`);
+  L.push("    ids: &[");
+  L.push(...ccBuf(s.ids));
+  L.push("],");
+  L.push(`    sizes: &[`);
+  L.push(...ccBuf(s.sizes));
+  L.push("],");
+  L.push(`    parents: &[`);
+  L.push(...ccBuf(s.parents));
+  L.push("],");
+  L.push(`    max_id: ${ccLit(s.maxId)},`);
+  L.push(`    land_marker: ${ccLit(s.landMarker)},`);
+  L.push("};");
+  L.push("");
+}
+L.push("pub const CC_SCENARIOS: &[CcScenario] = &[");
+for (const s of structures.connectedcomponents) L.push(`    ${s.name.toUpperCase()},`);
 L.push("];");
 L.push("");
 

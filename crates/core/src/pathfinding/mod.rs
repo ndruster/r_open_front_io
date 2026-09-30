@@ -8,6 +8,7 @@
 
 pub mod a_star;
 pub mod bfs_grid;
+pub mod connected_components;
 pub mod flat_heap;
 pub mod priority_queue;
 pub mod rail;

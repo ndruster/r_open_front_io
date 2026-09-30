@@ -276,6 +276,38 @@ function prepare(rel) {
       "Water PQ import",
     );
   }
+  if (rel.endsWith("algorithms/ConnectedComponents.ts")) {
+    // GameMap/TileRef are type-only (interface + branded type) -> dropped; the
+    // DebugSpan value import is redirected to its prepared copy. The ctor's two
+    // parameter properties are expanded (strip mode rejects them).
+    out = must(out, 'import { GameMap, TileRef } from "../../game/GameMap";\n', "", "CC GameMap import");
+    const dbgRel = "src/core/utilities/DebugSpan.ts";
+    if (!prepared.has(dbgRel)) prepare(dbgRel);
+    out = must(
+      out,
+      'import { DebugSpan } from "../../utilities/DebugSpan";',
+      `import { DebugSpan } from "./${prepared.get(dbgRel)}";`,
+      "CC DebugSpan import",
+    );
+    out = must(
+      out,
+      "  constructor(\n" +
+        "    private readonly map: GameMap,\n" +
+        "    private readonly accessTerrainDirectly: boolean = true,\n" +
+        "  ) {\n" +
+        "    this.width = map.width();",
+      "  private readonly map: GameMap;\n" +
+        "  private readonly accessTerrainDirectly: boolean;\n\n" +
+        "  constructor(\n" +
+        "    map: GameMap,\n" +
+        "    accessTerrainDirectly: boolean = true,\n" +
+        "  ) {\n" +
+        "    this.map = map;\n" +
+        "    this.accessTerrainDirectly = accessTerrainDirectly;\n" +
+        "    this.width = map.width();",
+      "CC ctor",
+    );
+  }
   if (rel.endsWith("algorithms/AStar.ts")) {
     // `PathFinder` is an interface (erased at runtime) and the extensionless
     // "../types" specifier is not loadable; the PriorityQueue value import is

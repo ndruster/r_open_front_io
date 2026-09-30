@@ -34,6 +34,10 @@
 //! * [`motion_plans`] — `src/core/game/MotionPlans.ts` (`packMotionPlans` /
 //!   `unpackMotionPlans`: two-pass `Uint32Array` wire format with strict
 //!   `wordCount` validation; every field clamped via `to_uint32`)
+//! * [`pathfinding::connected_components`] — `src/core/pathfinding/algorithms/ConnectedComponents.ts`
+//!   (scan-line flood-fill component labelling over packed terrain bytes,
+//!   `Uint8Array`→`Uint16Array` upgrade at 253 components, union-find alias
+//!   table for incremental `addWaterTiles` merges, path-compressed `find`)
 //!
 //! Two rules govern every future port into this crate:
 //!

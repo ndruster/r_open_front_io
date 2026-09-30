@@ -36,7 +36,9 @@ rust/
 │   │       ├── a_star.rs          port of algorithms/AStar.ts (+ GridAdapter)
 │   │       ├── rail.rs            port of algorithms/AStar.Rail.ts
 │   │       │                      (+ TerrainMap: GameMapImpl's packed bytes)
-│   │       └── water.rs           port of algorithms/AStar.Water.ts
+│   │       ├── water.rs           port of algorithms/AStar.Water.ts
+│   │       └── connected_components.rs
+│   │                              port of algorithms/ConnectedComponents.ts
 │   └── tests/
 │       ├── data/vectors.rs        generated golden vectors (do not edit)
 │       ├── data/vectors.json      same data, for the wasm runner
@@ -144,6 +146,19 @@ desync, not a rounding nit. Two things enforce that here:
     merging by string equality, `getMaxTeamSize` `±Infinity`/`NaN`/`-0`
     edges, and every `resolveTeamsList` branch plus both `throw` paths. The
     result map's **insertion order** is compared entry by entry.
+11. **`ConnectedComponents.ts`** (`pathfinding::connected_components`) is
+    pinned with eleven op-trace scenarios over real `GameMapImpl` terrain
+    bytes: two-blob labelling, the `accessTerrainDirectly` vs `isWater`
+    premark paths (must agree byte-for-byte), queries before `initialize()`,
+    bridging two components through one added land tile (the union-find alias,
+    the moved size, the zeroed old size), an isolated crater (fresh-id
+    alloc), a four-neighbour multi-merge onto the canonical root, edge
+    guards on all four borders, a double-add no-op, out-of-range / fractional
+    / negative refs, a path-compression chain, and the `Uint8Array`→
+    `Uint16Array` upgrade at 253 components (with the land marker moving
+    `0xFF`→`0xFFFF`). Each trace pins the final `componentIds` buffer, the
+    sparse `_componentSizes` (JS holes → `NaN`), the union-find `parents`,
+    `maxId` and `landMarker`.
 
 Regenerate whenever a ported source changes:
 
@@ -177,7 +192,7 @@ node rust/tools/run_wasm_parity.mjs
 
 `wasm-probe` exposes the ported functions through `extern "C"` scalar
 entrypoints (`src/wasm_probe.rs`); the runner imports `data/vectors.json` and
-compares every value. Last run: **25,193 comparisons, all bit-identical**.
+compares every value. Last run: **26,477 comparisons, all bit-identical**.
 
 ### Windows: the linker environment
 

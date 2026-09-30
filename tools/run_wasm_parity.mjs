@@ -34,6 +34,8 @@ for (const name of [
   "probe_atan2", "probe_pow2",
   "probe_veterancy_arg", "probe_veterancy_op",
   "probe_mp_arg", "probe_mp_op", "probe_mp_out_len", "probe_mp_out_at",
+  "probe_cc_terrain_byte", "probe_cc_new", "probe_cc_op", "probe_cc_field",
+  "probe_cc_arr_len", "probe_cc_arr_get",
 ]) {
   if (typeof ex[name] !== "function") {
     console.error(`missing wasm export ${name} - rebuild with --features wasm-probe`);
@@ -725,6 +727,36 @@ for (const s of S.motionplans) {
     const got = ex.probe_mp_out_at(i);
     if (!Object.is(got, numTok(s.out[i])))
       fail(`${s.name} unpack tok[${i}]`, i, fmt(got), s.out[i]);
+  }
+}
+
+// --- ConnectedComponents --- (op-stream replay; void ops 0/1 return NaN,
+// queries 2/3 compare scalars; final buffers read back element-wise, JS
+// holes in sizes cross as NaN and compare via Object.is).
+for (const s of S.connectedcomponents) {
+  for (const b of s.terrain) ex.probe_cc_terrain_byte(b);
+  ex.probe_cc_new(s.w, s.h, s.direct);
+  s.ops.forEach(([k, a, , res], i) => {
+    const got = ex.probe_cc_op(k, numTok(a));
+    cmpScalar(`${s.name} op${k}`, got, res, i);
+  });
+  cmpBits(`${s.name} bits`, ex.probe_cc_field(0), toBits(s.bits), 0);
+  cmpBits(`${s.name} landMarker`, ex.probe_cc_field(1), toBits(s.landMarker), 1);
+  cmpBits(`${s.name} maxId`, ex.probe_cc_field(2), toBits(s.maxId), 2);
+  for (const [field, arr] of [[0, s.ids], [1, s.sizes], [2, s.parents]]) {
+    checks++;
+    if (ex.probe_cc_arr_len(field) !== arr.length) {
+      fail(`${s.name} field${field} len`, 0, ex.probe_cc_arr_len(field), arr.length);
+      continue;
+    }
+    for (let j = 0; j < arr.length; j++) {
+      checks++;
+      const got = ex.probe_cc_arr_get(field, j);
+      const tok = arr[j];
+      const want = tok === "u" ? NaN : numTok(tok);
+      if (!Object.is(got, want))
+        fail(`${s.name} field${field}[${j}]`, j, fmt(got), String(tok));
+    }
   }
 }
 

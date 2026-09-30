@@ -1485,3 +1485,95 @@ pub extern "C" fn probe_mp_out_len() -> usize {
 pub extern "C" fn probe_mp_out_at(i: usize) -> f64 {
     MP_OUT.with(|o| o.borrow()[i])
 }
+
+// ------------------------------------------------------ ConnectedComponents
+// terrain bytes are queued one at a time (like the GM/Rail probes); the
+// instance is built by `probe_cc_new`, ops replayed by `probe_cc_op` (void
+// ops return NaN, queries return the scalar), and the internal buffers are
+// read back element-wise via `probe_cc_arr_len` / `..._get`.
+
+use crate::pathfinding::connected_components::ConnectedComponents;
+
+thread_local! {
+    static CC: std::cell::RefCell<Option<Box<ConnectedComponents>>> =
+        const { std::cell::RefCell::new(None) };
+    static CC_TERRAIN: std::cell::RefCell<Vec<u8>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
+/// Queue one packed terrain byte for the next map (before `probe_cc_new`).
+#[no_mangle]
+pub extern "C" fn probe_cc_terrain_byte(v: u32) {
+    CC_TERRAIN.with(|t| t.borrow_mut().push(v as u8));
+}
+
+#[no_mangle]
+pub extern "C" fn probe_cc_new(w: f64, h: f64, direct: u32) {
+    let terrain = CC_TERRAIN.with(|t| std::mem::take(&mut *t.borrow_mut()));
+    CC.with(|c| {
+        *c.borrow_mut() = Some(Box::new(ConnectedComponents::new(
+            w as i64,
+            h as i64,
+            terrain,
+            direct != 0,
+        )))
+    });
+}
+
+fn with_cc<T>(f: impl FnOnce(&ConnectedComponents) -> T) -> T {
+    CC.with(|c| {
+        f(c.borrow().as_ref().expect("probe_cc_new must be called first"))
+    })
+}
+
+fn with_cc_mut<T>(f: impl FnOnce(&mut ConnectedComponents) -> T) -> T {
+    CC.with(|c| {
+        f(c.borrow_mut()
+            .as_mut()
+            .expect("probe_cc_new must be called first"))
+    })
+}
+
+/// Replay one op: 0=initialize, 1=addWaterTiles(a), 2=getComponentId(a),
+/// 3=getComponentSize(a). Void ops (0, 1) return NaN.
+#[no_mangle]
+pub extern "C" fn probe_cc_op(kind: u32, a: f64) -> f64 {
+    match kind {
+        0 => { with_cc_mut(|cc| cc.initialize()); f64::NAN }
+        1 => { with_cc_mut(|cc| cc.add_water_tile(a)); f64::NAN }
+        2 => with_cc_mut(|cc| cc.get_component_id(a)) as f64,
+        3 => with_cc_mut(|cc| cc.get_component_size(a)),
+        k => panic!("unexpected cc op kind {k}"),
+    }
+}
+
+/// Scalar field: 0=bits, 1=landMarker, 2=maxId.
+#[no_mangle]
+pub extern "C" fn probe_cc_field(which: u32) -> f64 {
+    with_cc(|cc| match which {
+        0 => cc.debug_bits() as f64,
+        1 => cc.debug_land_marker(),
+        2 => cc.debug_max_id(),
+        k => panic!("unexpected cc field {k}"),
+    })
+}
+
+/// Array field: 0=ids, 1=sizes, 2=parents.
+#[no_mangle]
+pub extern "C" fn probe_cc_arr_len(field: u32) -> usize {
+    with_cc(|cc| match field {
+        0 => cc.debug_ids().len(),
+        1 => cc.debug_sizes().len(),
+        2 => cc.debug_parents().len(),
+        k => panic!("unexpected cc array {k}"),
+    })
+}
+
+#[no_mangle]
+pub extern "C" fn probe_cc_arr_get(field: u32, i: usize) -> f64 {
+    with_cc(|cc| match field {
+        0 => cc.debug_ids()[i],
+        1 => cc.debug_sizes()[i],
+        2 => cc.debug_parents()[i],
+        k => panic!("unexpected cc array {k}"),
+    })
+}

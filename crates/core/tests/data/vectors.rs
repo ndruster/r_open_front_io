@@ -12454,3 +12454,490 @@ pub const MP_SCENARIOS: &[MpScenario] = &[
     MP_UP_TWO_OK,
 ];
 
+/// ConnectedComponents scenario: a packed-terrain map, an op stream
+/// replayed against the real TS class (kind table in gen_vectors.mjs;
+/// GmOp/GmRes reused), and the final internal buffers. `bits` is 0
+/// (componentIds still null), 8 (Uint8Array) or 16 (Uint16Array after
+/// the 253-component upgrade). `ids` is the componentIds buffer as
+/// numbers; `sizes` and `parents` render JS holes as NaN (`u`).
+pub struct CcScenario {
+    pub name: &'static str,
+    pub w: f64,
+    pub h: f64,
+    pub terrain: &'static [u8],
+    pub direct: u8,
+    pub ops: &'static [GmOp],
+    pub bits: u8,
+    pub ids: &'static [f64],
+    pub sizes: &'static [f64],
+    pub parents: &'static [f64],
+    pub max_id: f64,
+    pub land_marker: f64,
+}
+
+const CC_TWO_BLOBS_OPS: &[GmOp] = &[
+    GmOp { kind: 0, a: 0f64, b: 0f64, res: GmRes::Void },
+    GmOp { kind: 2, a: 0f64, b: 0f64, res: GmRes::Val(1f64) },
+    GmOp { kind: 2, a: 1f64, b: 0f64, res: GmRes::Val(1f64) },
+    GmOp { kind: 2, a: 2f64, b: 0f64, res: GmRes::Val(255f64) },
+    GmOp { kind: 2, a: 3f64, b: 0f64, res: GmRes::Val(1f64) },
+    GmOp { kind: 3, a: 1f64, b: 0f64, res: GmRes::Val(4f64) },
+    GmOp { kind: 3, a: 2f64, b: 0f64, res: GmRes::Val(0f64) },
+];
+pub const CC_TWO_BLOBS: CcScenario = CcScenario {
+    name: "cc_two_blobs",
+    w: 3f64,
+    h: 2f64,
+    terrain: &[
+    0u8, 0u8, 133u8, 0u8, 0u8, 133u8,
+],
+    direct: 1u8,
+    ops: CC_TWO_BLOBS_OPS,
+    bits: 8u8,
+    ids: &[
+    1f64, 1f64, 255f64, 1f64, 1f64, 255f64,
+],
+    sizes: &[
+    f64::NAN, 4f64,
+],
+    parents: &[
+    0f64, 1f64,
+],
+    max_id: 1f64,
+    land_marker: 255f64,
+};
+
+const CC_ITER_PREMARK_OPS: &[GmOp] = &[
+    GmOp { kind: 0, a: 0f64, b: 0f64, res: GmRes::Void },
+    GmOp { kind: 2, a: 0f64, b: 0f64, res: GmRes::Val(1f64) },
+    GmOp { kind: 2, a: 1f64, b: 0f64, res: GmRes::Val(1f64) },
+    GmOp { kind: 2, a: 2f64, b: 0f64, res: GmRes::Val(255f64) },
+    GmOp { kind: 2, a: 3f64, b: 0f64, res: GmRes::Val(1f64) },
+    GmOp { kind: 3, a: 1f64, b: 0f64, res: GmRes::Val(4f64) },
+    GmOp { kind: 3, a: 2f64, b: 0f64, res: GmRes::Val(0f64) },
+];
+pub const CC_ITER_PREMARK: CcScenario = CcScenario {
+    name: "cc_iter_premark",
+    w: 3f64,
+    h: 2f64,
+    terrain: &[
+    0u8, 0u8, 133u8, 0u8, 0u8, 133u8,
+],
+    direct: 0u8,
+    ops: CC_ITER_PREMARK_OPS,
+    bits: 8u8,
+    ids: &[
+    1f64, 1f64, 255f64, 1f64, 1f64, 255f64,
+],
+    sizes: &[
+    f64::NAN, 4f64,
+],
+    parents: &[
+    0f64, 1f64,
+],
+    max_id: 1f64,
+    land_marker: 255f64,
+};
+
+const CC_PRE_INIT_OPS: &[GmOp] = &[
+    GmOp { kind: 2, a: 0f64, b: 0f64, res: GmRes::Val(0f64) },
+    GmOp { kind: 1, a: 0f64, b: 0f64, res: GmRes::Void },
+    GmOp { kind: 2, a: 0f64, b: 0f64, res: GmRes::Val(0f64) },
+    GmOp { kind: 0, a: 0f64, b: 0f64, res: GmRes::Void },
+    GmOp { kind: 2, a: 0f64, b: 0f64, res: GmRes::Val(255f64) },
+    GmOp { kind: 3, a: 1f64, b: 0f64, res: GmRes::Val(3f64) },
+];
+pub const CC_PRE_INIT: CcScenario = CcScenario {
+    name: "cc_pre_init",
+    w: 2f64,
+    h: 2f64,
+    terrain: &[
+    133u8, 0u8, 0u8, 0u8,
+],
+    direct: 1u8,
+    ops: CC_PRE_INIT_OPS,
+    bits: 8u8,
+    ids: &[
+    255f64, 1f64, 1f64, 1f64,
+],
+    sizes: &[
+    f64::NAN, 3f64,
+],
+    parents: &[
+    0f64, 1f64,
+],
+    max_id: 1f64,
+    land_marker: 255f64,
+};
+
+const CC_BRIDGE_OPS: &[GmOp] = &[
+    GmOp { kind: 0, a: 0f64, b: 0f64, res: GmRes::Void },
+    GmOp { kind: 1, a: 1f64, b: 0f64, res: GmRes::Void },
+    GmOp { kind: 2, a: 1f64, b: 0f64, res: GmRes::Val(1f64) },
+    GmOp { kind: 2, a: 2f64, b: 0f64, res: GmRes::Val(1f64) },
+    GmOp { kind: 3, a: 1f64, b: 0f64, res: GmRes::Val(5f64) },
+    GmOp { kind: 3, a: 2f64, b: 0f64, res: GmRes::Val(5f64) },
+];
+pub const CC_BRIDGE: CcScenario = CcScenario {
+    name: "cc_bridge",
+    w: 3f64,
+    h: 2f64,
+    terrain: &[
+    0u8, 133u8, 0u8, 0u8, 133u8, 0u8,
+],
+    direct: 0u8,
+    ops: CC_BRIDGE_OPS,
+    bits: 8u8,
+    ids: &[
+    1f64, 1f64, 2f64, 1f64, 255f64, 2f64,
+],
+    sizes: &[
+    f64::NAN, 5f64, 0f64,
+],
+    parents: &[
+    0f64, 1f64, 1f64,
+],
+    max_id: 2f64,
+    land_marker: 255f64,
+};
+
+const CC_CRATER_OPS: &[GmOp] = &[
+    GmOp { kind: 0, a: 0f64, b: 0f64, res: GmRes::Void },
+    GmOp { kind: 1, a: 4f64, b: 0f64, res: GmRes::Void },
+    GmOp { kind: 2, a: 4f64, b: 0f64, res: GmRes::Val(1f64) },
+    GmOp { kind: 3, a: 2f64, b: 0f64, res: GmRes::Val(0f64) },
+    GmOp { kind: 2, a: 0f64, b: 0f64, res: GmRes::Val(255f64) },
+];
+pub const CC_CRATER: CcScenario = CcScenario {
+    name: "cc_crater",
+    w: 3f64,
+    h: 3f64,
+    terrain: &[
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+],
+    direct: 1u8,
+    ops: CC_CRATER_OPS,
+    bits: 8u8,
+    ids: &[
+    255f64, 255f64, 255f64, 255f64, 1f64, 255f64, 255f64, 255f64, 255f64,
+],
+    sizes: &[
+    f64::NAN, 1f64,
+],
+    parents: &[
+    0f64, 1f64,
+],
+    max_id: 1f64,
+    land_marker: 255f64,
+};
+
+const CC_MULTI_MERGE_OPS: &[GmOp] = &[
+    GmOp { kind: 0, a: 0f64, b: 0f64, res: GmRes::Void },
+    GmOp { kind: 1, a: 1f64, b: 0f64, res: GmRes::Void },
+    GmOp { kind: 2, a: 0f64, b: 0f64, res: GmRes::Val(1f64) },
+    GmOp { kind: 2, a: 2f64, b: 0f64, res: GmRes::Val(1f64) },
+    GmOp { kind: 2, a: 4f64, b: 0f64, res: GmRes::Val(255f64) },
+    GmOp { kind: 3, a: 1f64, b: 0f64, res: GmRes::Val(7f64) },
+    GmOp { kind: 3, a: 2f64, b: 0f64, res: GmRes::Val(7f64) },
+];
+pub const CC_MULTI_MERGE: CcScenario = CcScenario {
+    name: "cc_multi_merge",
+    w: 3f64,
+    h: 3f64,
+    terrain: &[
+    0u8, 133u8, 0u8, 0u8, 133u8, 0u8, 0u8, 133u8, 0u8,
+],
+    direct: 1u8,
+    ops: CC_MULTI_MERGE_OPS,
+    bits: 8u8,
+    ids: &[
+    1f64, 1f64, 2f64, 1f64, 255f64, 2f64, 1f64, 255f64, 2f64,
+],
+    sizes: &[
+    f64::NAN, 7f64, 0f64,
+],
+    parents: &[
+    0f64, 1f64, 1f64,
+],
+    max_id: 2f64,
+    land_marker: 255f64,
+};
+
+const CC_EDGES_OPS: &[GmOp] = &[
+    GmOp { kind: 0, a: 0f64, b: 0f64, res: GmRes::Void },
+    GmOp { kind: 1, a: 0f64, b: 0f64, res: GmRes::Void },
+    GmOp { kind: 1, a: 3f64, b: 0f64, res: GmRes::Void },
+    GmOp { kind: 1, a: 4f64, b: 0f64, res: GmRes::Void },
+    GmOp { kind: 1, a: 7f64, b: 0f64, res: GmRes::Void },
+    GmOp { kind: 1, a: 1f64, b: 0f64, res: GmRes::Void },
+    GmOp { kind: 2, a: 0f64, b: 0f64, res: GmRes::Val(1f64) },
+    GmOp { kind: 2, a: 1f64, b: 0f64, res: GmRes::Val(1f64) },
+    GmOp { kind: 3, a: 1f64, b: 0f64, res: GmRes::Val(3f64) },
+];
+pub const CC_EDGES: CcScenario = CcScenario {
+    name: "cc_edges",
+    w: 4f64,
+    h: 2f64,
+    terrain: &[
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+],
+    direct: 1u8,
+    ops: CC_EDGES_OPS,
+    bits: 8u8,
+    ids: &[
+    1f64, 1f64, 255f64, 2f64, 1f64, 255f64, 255f64, 2f64,
+],
+    sizes: &[
+    f64::NAN, 3f64, 2f64,
+],
+    parents: &[
+    0f64, 1f64, 2f64,
+],
+    max_id: 2f64,
+    land_marker: 255f64,
+};
+
+const CC_DOUBLE_ADD_OPS: &[GmOp] = &[
+    GmOp { kind: 0, a: 0f64, b: 0f64, res: GmRes::Void },
+    GmOp { kind: 1, a: 0f64, b: 0f64, res: GmRes::Void },
+    GmOp { kind: 1, a: 0f64, b: 0f64, res: GmRes::Void },
+    GmOp { kind: 2, a: 0f64, b: 0f64, res: GmRes::Val(1f64) },
+    GmOp { kind: 3, a: 1f64, b: 0f64, res: GmRes::Val(2f64) },
+];
+pub const CC_DOUBLE_ADD: CcScenario = CcScenario {
+    name: "cc_double_add",
+    w: 2f64,
+    h: 1f64,
+    terrain: &[
+    133u8, 0u8,
+],
+    direct: 1u8,
+    ops: CC_DOUBLE_ADD_OPS,
+    bits: 8u8,
+    ids: &[
+    1f64, 1f64,
+],
+    sizes: &[
+    f64::NAN, 2f64,
+],
+    parents: &[
+    0f64, 1f64,
+],
+    max_id: 1f64,
+    land_marker: 255f64,
+};
+
+const CC_INVALID_REFS_OPS: &[GmOp] = &[
+    GmOp { kind: 0, a: 0f64, b: 0f64, res: GmRes::Void },
+    GmOp { kind: 1, a: 9f64, b: 0f64, res: GmRes::Void },
+    GmOp { kind: 1, a: 1.5f64, b: 0f64, res: GmRes::Void },
+    GmOp { kind: 1, a: -1f64, b: 0f64, res: GmRes::Void },
+    GmOp { kind: 2, a: 9f64, b: 0f64, res: GmRes::Val(0f64) },
+    GmOp { kind: 2, a: 1.5f64, b: 0f64, res: GmRes::Val(0f64) },
+    GmOp { kind: 2, a: -1f64, b: 0f64, res: GmRes::Val(0f64) },
+    GmOp { kind: 3, a: 0f64, b: 0f64, res: GmRes::Val(0f64) },
+    GmOp { kind: 3, a: -1f64, b: 0f64, res: GmRes::Val(0f64) },
+    GmOp { kind: 3, a: 99999f64, b: 0f64, res: GmRes::Val(0f64) },
+    GmOp { kind: 3, a: 0.5f64, b: 0f64, res: GmRes::Val(0f64) },
+];
+pub const CC_INVALID_REFS: CcScenario = CcScenario {
+    name: "cc_invalid_refs",
+    w: 2f64,
+    h: 2f64,
+    terrain: &[
+    0u8, 0u8, 0u8, 0u8,
+],
+    direct: 1u8,
+    ops: CC_INVALID_REFS_OPS,
+    bits: 8u8,
+    ids: &[
+    1f64, 1f64, 1f64, 1f64,
+],
+    sizes: &[
+    f64::NAN, 4f64,
+],
+    parents: &[
+    0f64, 1f64,
+],
+    max_id: 1f64,
+    land_marker: 255f64,
+};
+
+const CC_CHAIN_OPS: &[GmOp] = &[
+    GmOp { kind: 0, a: 0f64, b: 0f64, res: GmRes::Void },
+    GmOp { kind: 1, a: 1f64, b: 0f64, res: GmRes::Void },
+    GmOp { kind: 1, a: 3f64, b: 0f64, res: GmRes::Void },
+    GmOp { kind: 2, a: 0f64, b: 0f64, res: GmRes::Val(1f64) },
+    GmOp { kind: 2, a: 2f64, b: 0f64, res: GmRes::Val(1f64) },
+    GmOp { kind: 2, a: 4f64, b: 0f64, res: GmRes::Val(1f64) },
+    GmOp { kind: 3, a: 3f64, b: 0f64, res: GmRes::Val(5f64) },
+    GmOp { kind: 3, a: 1f64, b: 0f64, res: GmRes::Val(5f64) },
+];
+pub const CC_CHAIN: CcScenario = CcScenario {
+    name: "cc_chain",
+    w: 5f64,
+    h: 1f64,
+    terrain: &[
+    0u8, 133u8, 0u8, 133u8, 0u8,
+],
+    direct: 0u8,
+    ops: CC_CHAIN_OPS,
+    bits: 8u8,
+    ids: &[
+    1f64, 1f64, 2f64, 1f64, 3f64,
+],
+    sizes: &[
+    f64::NAN, 5f64, 0f64, 0f64,
+],
+    parents: &[
+    0f64, 1f64, 1f64, 1f64,
+],
+    max_id: 3f64,
+    land_marker: 255f64,
+};
+
+const CC_UPGRADE_16_OPS: &[GmOp] = &[
+    GmOp { kind: 0, a: 0f64, b: 0f64, res: GmRes::Void },
+    GmOp { kind: 2, a: 0f64, b: 0f64, res: GmRes::Val(1f64) },
+    GmOp { kind: 2, a: 1f64, b: 0f64, res: GmRes::Val(65535f64) },
+    GmOp { kind: 2, a: 16f64, b: 0f64, res: GmRes::Val(65535f64) },
+    GmOp { kind: 3, a: 1f64, b: 0f64, res: GmRes::Val(1f64) },
+    GmOp { kind: 3, a: 253f64, b: 0f64, res: GmRes::Val(1f64) },
+    GmOp { kind: 3, a: 254f64, b: 0f64, res: GmRes::Val(1f64) },
+    GmOp { kind: 3, a: 255f64, b: 0f64, res: GmRes::Val(1f64) },
+    GmOp { kind: 3, a: 256f64, b: 0f64, res: GmRes::Val(1f64) },
+    GmOp { kind: 1, a: 1f64, b: 0f64, res: GmRes::Void },
+    GmOp { kind: 2, a: 1f64, b: 0f64, res: GmRes::Val(1f64) },
+    GmOp { kind: 3, a: 1f64, b: 0f64, res: GmRes::Val(4f64) },
+];
+pub const CC_UPGRADE_16: CcScenario = CcScenario {
+    name: "cc_upgrade_16",
+    w: 16f64,
+    h: 32f64,
+    terrain: &[
+    0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8,
+    133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8,
+    0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8,
+    133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8,
+    0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8,
+    133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8,
+    0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8,
+    133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8,
+    0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8,
+    133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8,
+    0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8,
+    133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8,
+    0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8,
+    133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8,
+    0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8,
+    133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8,
+    0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8,
+    133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8,
+    0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8,
+    133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8,
+    0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8,
+    133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8,
+    0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8,
+    133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8,
+    0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8,
+    133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8,
+    0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8,
+    133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8,
+    0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8,
+    133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8,
+    0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8,
+    133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8, 133u8, 0u8,
+],
+    direct: 1u8,
+    ops: CC_UPGRADE_16_OPS,
+    bits: 16u8,
+    ids: &[
+    1f64, 1f64, 2f64, 65535f64, 3f64, 65535f64, 4f64, 65535f64, 5f64, 65535f64, 6f64, 65535f64, 7f64, 65535f64, 8f64, 65535f64,
+    65535f64, 9f64, 65535f64, 10f64, 65535f64, 11f64, 65535f64, 12f64, 65535f64, 13f64, 65535f64, 14f64, 65535f64, 15f64, 65535f64, 16f64,
+    17f64, 65535f64, 18f64, 65535f64, 19f64, 65535f64, 20f64, 65535f64, 21f64, 65535f64, 22f64, 65535f64, 23f64, 65535f64, 24f64, 65535f64,
+    65535f64, 25f64, 65535f64, 26f64, 65535f64, 27f64, 65535f64, 28f64, 65535f64, 29f64, 65535f64, 30f64, 65535f64, 31f64, 65535f64, 32f64,
+    33f64, 65535f64, 34f64, 65535f64, 35f64, 65535f64, 36f64, 65535f64, 37f64, 65535f64, 38f64, 65535f64, 39f64, 65535f64, 40f64, 65535f64,
+    65535f64, 41f64, 65535f64, 42f64, 65535f64, 43f64, 65535f64, 44f64, 65535f64, 45f64, 65535f64, 46f64, 65535f64, 47f64, 65535f64, 48f64,
+    49f64, 65535f64, 50f64, 65535f64, 51f64, 65535f64, 52f64, 65535f64, 53f64, 65535f64, 54f64, 65535f64, 55f64, 65535f64, 56f64, 65535f64,
+    65535f64, 57f64, 65535f64, 58f64, 65535f64, 59f64, 65535f64, 60f64, 65535f64, 61f64, 65535f64, 62f64, 65535f64, 63f64, 65535f64, 64f64,
+    65f64, 65535f64, 66f64, 65535f64, 67f64, 65535f64, 68f64, 65535f64, 69f64, 65535f64, 70f64, 65535f64, 71f64, 65535f64, 72f64, 65535f64,
+    65535f64, 73f64, 65535f64, 74f64, 65535f64, 75f64, 65535f64, 76f64, 65535f64, 77f64, 65535f64, 78f64, 65535f64, 79f64, 65535f64, 80f64,
+    81f64, 65535f64, 82f64, 65535f64, 83f64, 65535f64, 84f64, 65535f64, 85f64, 65535f64, 86f64, 65535f64, 87f64, 65535f64, 88f64, 65535f64,
+    65535f64, 89f64, 65535f64, 90f64, 65535f64, 91f64, 65535f64, 92f64, 65535f64, 93f64, 65535f64, 94f64, 65535f64, 95f64, 65535f64, 96f64,
+    97f64, 65535f64, 98f64, 65535f64, 99f64, 65535f64, 100f64, 65535f64, 101f64, 65535f64, 102f64, 65535f64, 103f64, 65535f64, 104f64, 65535f64,
+    65535f64, 105f64, 65535f64, 106f64, 65535f64, 107f64, 65535f64, 108f64, 65535f64, 109f64, 65535f64, 110f64, 65535f64, 111f64, 65535f64, 112f64,
+    113f64, 65535f64, 114f64, 65535f64, 115f64, 65535f64, 116f64, 65535f64, 117f64, 65535f64, 118f64, 65535f64, 119f64, 65535f64, 120f64, 65535f64,
+    65535f64, 121f64, 65535f64, 122f64, 65535f64, 123f64, 65535f64, 124f64, 65535f64, 125f64, 65535f64, 126f64, 65535f64, 127f64, 65535f64, 128f64,
+    129f64, 65535f64, 130f64, 65535f64, 131f64, 65535f64, 132f64, 65535f64, 133f64, 65535f64, 134f64, 65535f64, 135f64, 65535f64, 136f64, 65535f64,
+    65535f64, 137f64, 65535f64, 138f64, 65535f64, 139f64, 65535f64, 140f64, 65535f64, 141f64, 65535f64, 142f64, 65535f64, 143f64, 65535f64, 144f64,
+    145f64, 65535f64, 146f64, 65535f64, 147f64, 65535f64, 148f64, 65535f64, 149f64, 65535f64, 150f64, 65535f64, 151f64, 65535f64, 152f64, 65535f64,
+    65535f64, 153f64, 65535f64, 154f64, 65535f64, 155f64, 65535f64, 156f64, 65535f64, 157f64, 65535f64, 158f64, 65535f64, 159f64, 65535f64, 160f64,
+    161f64, 65535f64, 162f64, 65535f64, 163f64, 65535f64, 164f64, 65535f64, 165f64, 65535f64, 166f64, 65535f64, 167f64, 65535f64, 168f64, 65535f64,
+    65535f64, 169f64, 65535f64, 170f64, 65535f64, 171f64, 65535f64, 172f64, 65535f64, 173f64, 65535f64, 174f64, 65535f64, 175f64, 65535f64, 176f64,
+    177f64, 65535f64, 178f64, 65535f64, 179f64, 65535f64, 180f64, 65535f64, 181f64, 65535f64, 182f64, 65535f64, 183f64, 65535f64, 184f64, 65535f64,
+    65535f64, 185f64, 65535f64, 186f64, 65535f64, 187f64, 65535f64, 188f64, 65535f64, 189f64, 65535f64, 190f64, 65535f64, 191f64, 65535f64, 192f64,
+    193f64, 65535f64, 194f64, 65535f64, 195f64, 65535f64, 196f64, 65535f64, 197f64, 65535f64, 198f64, 65535f64, 199f64, 65535f64, 200f64, 65535f64,
+    65535f64, 201f64, 65535f64, 202f64, 65535f64, 203f64, 65535f64, 204f64, 65535f64, 205f64, 65535f64, 206f64, 65535f64, 207f64, 65535f64, 208f64,
+    209f64, 65535f64, 210f64, 65535f64, 211f64, 65535f64, 212f64, 65535f64, 213f64, 65535f64, 214f64, 65535f64, 215f64, 65535f64, 216f64, 65535f64,
+    65535f64, 217f64, 65535f64, 218f64, 65535f64, 219f64, 65535f64, 220f64, 65535f64, 221f64, 65535f64, 222f64, 65535f64, 223f64, 65535f64, 224f64,
+    225f64, 65535f64, 226f64, 65535f64, 227f64, 65535f64, 228f64, 65535f64, 229f64, 65535f64, 230f64, 65535f64, 231f64, 65535f64, 232f64, 65535f64,
+    65535f64, 233f64, 65535f64, 234f64, 65535f64, 235f64, 65535f64, 236f64, 65535f64, 237f64, 65535f64, 238f64, 65535f64, 239f64, 65535f64, 240f64,
+    241f64, 65535f64, 242f64, 65535f64, 243f64, 65535f64, 244f64, 65535f64, 245f64, 65535f64, 246f64, 65535f64, 247f64, 65535f64, 248f64, 65535f64,
+    65535f64, 249f64, 65535f64, 250f64, 65535f64, 251f64, 65535f64, 252f64, 65535f64, 253f64, 65535f64, 254f64, 65535f64, 255f64, 65535f64, 256f64,
+],
+    sizes: &[
+    f64::NAN, 4f64, 0f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 0f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64,
+    1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64,
+    1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64,
+    1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64,
+    1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64,
+    1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64,
+    1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64,
+    1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64,
+    1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64,
+    1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64,
+    1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64,
+    1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64,
+    1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64,
+    1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64,
+    1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64,
+    1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64,
+    1f64,
+],
+    parents: &[
+    0f64, 1f64, 1f64, 3f64, 4f64, 5f64, 6f64, 7f64, 8f64, 1f64, 10f64, 11f64, 12f64, 13f64, 14f64, 15f64,
+    16f64, 17f64, 18f64, 19f64, 20f64, 21f64, 22f64, 23f64, 24f64, 25f64, 26f64, 27f64, 28f64, 29f64, 30f64, 31f64,
+    32f64, 33f64, 34f64, 35f64, 36f64, 37f64, 38f64, 39f64, 40f64, 41f64, 42f64, 43f64, 44f64, 45f64, 46f64, 47f64,
+    48f64, 49f64, 50f64, 51f64, 52f64, 53f64, 54f64, 55f64, 56f64, 57f64, 58f64, 59f64, 60f64, 61f64, 62f64, 63f64,
+    64f64, 65f64, 66f64, 67f64, 68f64, 69f64, 70f64, 71f64, 72f64, 73f64, 74f64, 75f64, 76f64, 77f64, 78f64, 79f64,
+    80f64, 81f64, 82f64, 83f64, 84f64, 85f64, 86f64, 87f64, 88f64, 89f64, 90f64, 91f64, 92f64, 93f64, 94f64, 95f64,
+    96f64, 97f64, 98f64, 99f64, 100f64, 101f64, 102f64, 103f64, 104f64, 105f64, 106f64, 107f64, 108f64, 109f64, 110f64, 111f64,
+    112f64, 113f64, 114f64, 115f64, 116f64, 117f64, 118f64, 119f64, 120f64, 121f64, 122f64, 123f64, 124f64, 125f64, 126f64, 127f64,
+    128f64, 129f64, 130f64, 131f64, 132f64, 133f64, 134f64, 135f64, 136f64, 137f64, 138f64, 139f64, 140f64, 141f64, 142f64, 143f64,
+    144f64, 145f64, 146f64, 147f64, 148f64, 149f64, 150f64, 151f64, 152f64, 153f64, 154f64, 155f64, 156f64, 157f64, 158f64, 159f64,
+    160f64, 161f64, 162f64, 163f64, 164f64, 165f64, 166f64, 167f64, 168f64, 169f64, 170f64, 171f64, 172f64, 173f64, 174f64, 175f64,
+    176f64, 177f64, 178f64, 179f64, 180f64, 181f64, 182f64, 183f64, 184f64, 185f64, 186f64, 187f64, 188f64, 189f64, 190f64, 191f64,
+    192f64, 193f64, 194f64, 195f64, 196f64, 197f64, 198f64, 199f64, 200f64, 201f64, 202f64, 203f64, 204f64, 205f64, 206f64, 207f64,
+    208f64, 209f64, 210f64, 211f64, 212f64, 213f64, 214f64, 215f64, 216f64, 217f64, 218f64, 219f64, 220f64, 221f64, 222f64, 223f64,
+    224f64, 225f64, 226f64, 227f64, 228f64, 229f64, 230f64, 231f64, 232f64, 233f64, 234f64, 235f64, 236f64, 237f64, 238f64, 239f64,
+    240f64, 241f64, 242f64, 243f64, 244f64, 245f64, 246f64, 247f64, 248f64, 249f64, 250f64, 251f64, 252f64, 253f64, 254f64, 255f64,
+    256f64,
+],
+    max_id: 256f64,
+    land_marker: 65535f64,
+};
+
+pub const CC_SCENARIOS: &[CcScenario] = &[
+    CC_TWO_BLOBS,
+    CC_ITER_PREMARK,
+    CC_PRE_INIT,
+    CC_BRIDGE,
+    CC_CRATER,
+    CC_MULTI_MERGE,
+    CC_EDGES,
+    CC_DOUBLE_ADD,
+    CC_INVALID_REFS,
+    CC_CHAIN,
+    CC_UPGRADE_16,
+];
+

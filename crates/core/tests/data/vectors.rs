@@ -6366,6 +6366,406 @@ pub const WATER_SCENARIOS: &[WaterScenario] = &[
     W_CAPPED,
 ];
 
+/// A* bounded-water scenario: packed terrain bytes, the
+/// `maxSearchArea` constructor arg, config weight/iterations, one
+/// findPath (mode 0, bounds derived) or searchBounded (mode 1,
+/// explicit `bounds` = [minX,maxX,minY,maxY]; empty when mode 0),
+/// the returned path (`None` = TS null) and the engine's LOCAL
+/// stamp-tracked arrays. Twin: `water_bounded::AStarWaterBounded`.
+pub struct WaterBoundedScenario {
+    pub name: &'static str,
+    pub mode: u8,
+    pub w: f64,
+    pub h: f64,
+    pub terrain: &'static [u8],
+    pub max_area: f64,
+    pub weight: f64,
+    pub max_iter: f64,
+    pub starts: &'static [f64],
+    pub goal: f64,
+    pub bounds: &'static [f64],
+    pub path: Option<&'static [f64]>,
+    pub stamp_after: u64,
+    pub closed: &'static [u32],
+    pub gs_stamp: &'static [u32],
+    pub g_score: &'static [u32],
+    pub came_from: &'static [i32],
+}
+
+pub const WB_LINE: WaterBoundedScenario = WaterBoundedScenario {
+    name: "wb_line",
+    mode: 0u8,
+    w: 9f64,
+    h: 1f64,
+    terrain: &[
+    8u8, 8u8, 8u8, 8u8, 8u8, 8u8, 8u8, 8u8, 8u8,
+],
+    max_area: 9f64,
+    weight: 3f64,
+    max_iter: 100000f64,
+    starts: &[0f64],
+    goal: 8f64,
+    bounds: &[],
+    path: Some(&[0f64, 1f64, 2f64, 3f64, 4f64, 5f64, 6f64, 7f64, 8f64] as &[f64]),
+    stamp_after: 2u64,
+    closed: &[
+    2u32, 2u32, 2u32, 2u32, 2u32, 2u32, 2u32, 2u32, 2u32,
+],
+    gs_stamp: &[
+    2u32, 2u32, 2u32, 2u32, 2u32, 2u32, 2u32, 2u32, 2u32,
+],
+    g_score: &[
+    0u32, 100u32, 200u32, 300u32, 400u32, 500u32, 600u32, 700u32, 800u32,
+],
+    came_from: &[
+    -1i32, 0i32, 1i32, 2i32, 3i32, 4i32, 5i32, 6i32, 7i32,
+],
+};
+
+pub const WB_SHALLOW_DETOUR: WaterBoundedScenario = WaterBoundedScenario {
+    name: "wb_shallow_detour",
+    mode: 0u8,
+    w: 7f64,
+    h: 3f64,
+    terrain: &[
+    1u8, 1u8, 1u8, 1u8, 1u8, 1u8, 1u8, 8u8, 8u8, 8u8, 8u8, 8u8, 8u8, 8u8, 8u8, 8u8,
+    8u8, 8u8, 8u8, 8u8, 8u8,
+],
+    max_area: 21f64,
+    weight: 3f64,
+    max_iter: 100000f64,
+    starts: &[0f64],
+    goal: 6f64,
+    bounds: &[],
+    path: Some(&[0f64, 1f64, 2f64, 3f64, 4f64, 5f64, 6f64] as &[f64]),
+    stamp_after: 2u64,
+    closed: &[
+    2u32, 2u32, 2u32, 2u32, 2u32, 2u32, 2u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32,
+    0u32, 0u32, 0u32, 0u32, 0u32,
+],
+    gs_stamp: &[
+    2u32, 2u32, 2u32, 2u32, 2u32, 2u32, 2u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32,
+    0u32, 0u32, 0u32, 0u32, 0u32,
+],
+    g_score: &[
+    0u32, 400u32, 800u32, 1200u32, 1600u32, 2000u32, 2400u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32,
+    0u32, 0u32, 0u32, 0u32, 0u32,
+],
+    came_from: &[
+    -1i32, 0i32, 1i32, 2i32, 3i32, 4i32, 5i32, 0i32, 0i32, 0i32, 0i32, 0i32, 0i32, 0i32, 0i32, 0i32,
+    0i32, 0i32, 0i32, 0i32, 0i32,
+],
+};
+
+pub const WB_LAND_GAP: WaterBoundedScenario = WaterBoundedScenario {
+    name: "wb_land_gap",
+    mode: 0u8,
+    w: 5f64,
+    h: 5f64,
+    terrain: &[
+    8u8, 8u8, 133u8, 8u8, 8u8, 8u8, 8u8, 133u8, 8u8, 8u8, 8u8, 8u8, 8u8, 8u8, 8u8, 8u8,
+    8u8, 133u8, 8u8, 8u8, 8u8, 8u8, 133u8, 8u8, 8u8,
+],
+    max_area: 25f64,
+    weight: 3f64,
+    max_iter: 100000f64,
+    starts: &[0f64],
+    goal: 4f64,
+    bounds: &[],
+    path: None,
+    stamp_after: 2u64,
+    closed: &[
+    2u32, 2u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32,
+    0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32,
+],
+    gs_stamp: &[
+    2u32, 2u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32,
+    0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32,
+],
+    g_score: &[
+    0u32, 100u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32,
+    0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32,
+],
+    came_from: &[
+    -1i32, 0i32, 0i32, 0i32, 0i32, 0i32, 0i32, 0i32, 0i32, 0i32, 0i32, 0i32, 0i32, 0i32, 0i32, 0i32,
+    0i32, 0i32, 0i32, 0i32, 0i32, 0i32, 0i32, 0i32, 0i32,
+],
+};
+
+pub const WB_GOAL_LAND: WaterBoundedScenario = WaterBoundedScenario {
+    name: "wb_goal_land",
+    mode: 0u8,
+    w: 3f64,
+    h: 1f64,
+    terrain: &[
+    8u8, 8u8, 133u8,
+],
+    max_area: 3f64,
+    weight: 3f64,
+    max_iter: 100000f64,
+    starts: &[0f64],
+    goal: 2f64,
+    bounds: &[],
+    path: Some(&[0f64, 1f64, 2f64] as &[f64]),
+    stamp_after: 2u64,
+    closed: &[
+    2u32, 2u32, 2u32,
+],
+    gs_stamp: &[
+    2u32, 2u32, 2u32,
+],
+    g_score: &[
+    0u32, 100u32, 200u32,
+],
+    came_from: &[
+    -1i32, 0i32, 1i32,
+],
+};
+
+pub const WB_MULTISTART_RING: WaterBoundedScenario = WaterBoundedScenario {
+    name: "wb_multistart_ring",
+    mode: 0u8,
+    w: 5f64,
+    h: 5f64,
+    terrain: &[
+    8u8, 8u8, 8u8, 8u8, 8u8, 8u8, 133u8, 133u8, 133u8, 8u8, 8u8, 133u8, 133u8, 133u8, 8u8, 8u8,
+    133u8, 133u8, 133u8, 8u8, 8u8, 8u8, 8u8, 8u8, 8u8,
+],
+    max_area: 25f64,
+    weight: 3f64,
+    max_iter: 100000f64,
+    starts: &[0f64, 24f64],
+    goal: 2f64,
+    bounds: &[],
+    path: Some(&[0f64, 1f64, 2f64] as &[f64]),
+    stamp_after: 2u64,
+    closed: &[
+    2u32, 2u32, 2u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32,
+    0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32,
+],
+    gs_stamp: &[
+    2u32, 2u32, 2u32, 0u32, 0u32, 2u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32,
+    0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 2u32,
+],
+    g_score: &[
+    0u32, 100u32, 200u32, 0u32, 0u32, 100u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32,
+    0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32,
+],
+    came_from: &[
+    -1i32, 0i32, 1i32, 0i32, 0i32, 0i32, 0i32, 0i32, 0i32, 0i32, 0i32, 0i32, 0i32, 0i32, 0i32, 0i32,
+    0i32, 0i32, 0i32, 0i32, 0i32, 0i32, 0i32, 0i32, -1i32,
+],
+};
+
+pub const WB_WEIGHT1_TIES: WaterBoundedScenario = WaterBoundedScenario {
+    name: "wb_weight1_ties",
+    mode: 0u8,
+    w: 7f64,
+    h: 2f64,
+    terrain: &[
+    8u8, 8u8, 8u8, 8u8, 8u8, 8u8, 8u8, 8u8, 8u8, 8u8, 8u8, 8u8, 8u8, 8u8,
+],
+    max_area: 14f64,
+    weight: 1f64,
+    max_iter: 100000f64,
+    starts: &[0f64],
+    goal: 13f64,
+    bounds: &[],
+    path: Some(&[0f64, 1f64, 2f64, 3f64, 10f64, 11f64, 12f64, 13f64] as &[f64]),
+    stamp_after: 2u64,
+    closed: &[
+    2u32, 2u32, 2u32, 2u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 2u32, 2u32, 2u32, 2u32,
+],
+    gs_stamp: &[
+    2u32, 2u32, 2u32, 2u32, 2u32, 2u32, 0u32, 2u32, 2u32, 2u32, 2u32, 2u32, 2u32, 2u32,
+],
+    g_score: &[
+    0u32, 100u32, 200u32, 300u32, 400u32, 700u32, 0u32, 100u32, 200u32, 300u32, 400u32, 500u32, 600u32, 700u32,
+],
+    came_from: &[
+    -1i32, 0i32, 1i32, 2i32, 3i32, 12i32, 0i32, 0i32, 1i32, 2i32, 3i32, 10i32, 11i32, 12i32,
+],
+};
+
+pub const WB_CAPPED: WaterBoundedScenario = WaterBoundedScenario {
+    name: "wb_capped",
+    mode: 0u8,
+    w: 5f64,
+    h: 5f64,
+    terrain: &[
+    8u8, 8u8, 8u8, 8u8, 8u8, 133u8, 133u8, 133u8, 133u8, 8u8, 8u8, 8u8, 8u8, 8u8, 8u8, 8u8,
+    133u8, 133u8, 133u8, 133u8, 8u8, 8u8, 8u8, 8u8, 8u8,
+],
+    max_area: 25f64,
+    weight: 3f64,
+    max_iter: 10f64,
+    starts: &[0f64],
+    goal: 24f64,
+    bounds: &[],
+    path: None,
+    stamp_after: 2u64,
+    closed: &[
+    2u32, 2u32, 2u32, 2u32, 2u32, 0u32, 0u32, 0u32, 0u32, 2u32, 0u32, 0u32, 2u32, 2u32, 2u32, 0u32,
+    0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32,
+],
+    gs_stamp: &[
+    2u32, 2u32, 2u32, 2u32, 2u32, 0u32, 0u32, 0u32, 0u32, 2u32, 0u32, 2u32, 2u32, 2u32, 2u32, 0u32,
+    0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32,
+],
+    g_score: &[
+    0u32, 100u32, 200u32, 300u32, 400u32, 0u32, 0u32, 0u32, 0u32, 500u32, 0u32, 900u32, 800u32, 700u32, 600u32, 0u32,
+    0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32,
+],
+    came_from: &[
+    -1i32, 0i32, 1i32, 2i32, 3i32, 0i32, 0i32, 0i32, 0i32, 4i32, 0i32, 12i32, 13i32, 14i32, 9i32, 0i32,
+    0i32, 0i32, 0i32, 0i32, 0i32, 0i32, 0i32, 0i32, 0i32,
+],
+};
+
+pub const WB_UNREACHABLE: WaterBoundedScenario = WaterBoundedScenario {
+    name: "wb_unreachable",
+    mode: 0u8,
+    w: 5f64,
+    h: 5f64,
+    terrain: &[
+    8u8, 8u8, 133u8, 8u8, 8u8, 8u8, 8u8, 8u8, 8u8, 8u8, 8u8, 8u8, 8u8, 8u8, 8u8, 8u8,
+    8u8, 8u8, 8u8, 8u8, 8u8, 8u8, 8u8, 8u8, 8u8,
+],
+    max_area: 25f64,
+    weight: 3f64,
+    max_iter: 100000f64,
+    starts: &[0f64],
+    goal: 4f64,
+    bounds: &[],
+    path: None,
+    stamp_after: 2u64,
+    closed: &[
+    2u32, 2u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32,
+    0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32,
+],
+    gs_stamp: &[
+    2u32, 2u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32,
+    0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32,
+],
+    g_score: &[
+    0u32, 100u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32,
+    0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32,
+],
+    came_from: &[
+    -1i32, 0i32, 0i32, 0i32, 0i32, 0i32, 0i32, 0i32, 0i32, 0i32, 0i32, 0i32, 0i32, 0i32, 0i32, 0i32,
+    0i32, 0i32, 0i32, 0i32, 0i32, 0i32, 0i32, 0i32, 0i32,
+],
+};
+
+pub const WB_TOO_SMALL: WaterBoundedScenario = WaterBoundedScenario {
+    name: "wb_too_small",
+    mode: 0u8,
+    w: 3f64,
+    h: 3f64,
+    terrain: &[
+    8u8, 8u8, 8u8, 8u8, 8u8, 8u8, 8u8, 8u8, 8u8,
+],
+    max_area: 4f64,
+    weight: 3f64,
+    max_iter: 100000f64,
+    starts: &[0f64],
+    goal: 8f64,
+    bounds: &[],
+    path: None,
+    stamp_after: 2u64,
+    closed: &[
+    0u32, 0u32, 0u32, 0u32,
+],
+    gs_stamp: &[
+    0u32, 0u32, 0u32, 0u32,
+],
+    g_score: &[
+    0u32, 0u32, 0u32, 0u32,
+],
+    came_from: &[
+    0i32, 0i32, 0i32, 0i32,
+],
+};
+
+pub const WB_CLAMPED_GOAL: WaterBoundedScenario = WaterBoundedScenario {
+    name: "wb_clamped_goal",
+    mode: 1u8,
+    w: 5f64,
+    h: 5f64,
+    terrain: &[
+    8u8, 8u8, 8u8, 8u8, 8u8, 8u8, 8u8, 8u8, 8u8, 8u8, 8u8, 8u8, 8u8, 8u8, 8u8, 8u8,
+    8u8, 8u8, 8u8, 8u8, 8u8, 8u8, 8u8, 8u8, 8u8,
+],
+    max_area: 25f64,
+    weight: 3f64,
+    max_iter: 100000f64,
+    starts: &[0f64],
+    goal: 24f64,
+    bounds: &[1f64, 3f64, 1f64, 3f64],
+    path: Some(&[6f64, 11f64, 12f64, 17f64, 18f64] as &[f64]),
+    stamp_after: 2u64,
+    closed: &[
+    2u32, 0u32, 0u32, 2u32, 2u32, 0u32, 0u32, 2u32, 2u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32,
+    0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32,
+],
+    gs_stamp: &[
+    2u32, 2u32, 0u32, 2u32, 2u32, 2u32, 2u32, 2u32, 2u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32,
+    0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32,
+],
+    g_score: &[
+    0u32, 100u32, 0u32, 100u32, 200u32, 300u32, 200u32, 300u32, 400u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32,
+    0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32,
+],
+    came_from: &[
+    -1i32, 0i32, 0i32, 0i32, 3i32, 4i32, 3i32, 4i32, 7i32, 0i32, 0i32, 0i32, 0i32, 0i32, 0i32, 0i32,
+    0i32, 0i32, 0i32, 0i32, 0i32, 0i32, 0i32, 0i32, 0i32,
+],
+};
+
+pub const WB_INVERTED_BOUNDS: WaterBoundedScenario = WaterBoundedScenario {
+    name: "wb_inverted_bounds",
+    mode: 1u8,
+    w: 3f64,
+    h: 3f64,
+    terrain: &[
+    8u8, 8u8, 8u8, 8u8, 8u8, 8u8, 8u8, 8u8, 8u8,
+],
+    max_area: 9f64,
+    weight: 3f64,
+    max_iter: 100000f64,
+    starts: &[0f64],
+    goal: 4f64,
+    bounds: &[2f64, 0f64, 2f64, 0f64],
+    path: Some(&[8f64] as &[f64]),
+    stamp_after: 2u64,
+    closed: &[
+    2u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32,
+],
+    gs_stamp: &[
+    2u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32,
+],
+    g_score: &[
+    0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32,
+],
+    came_from: &[
+    -1i32, 0i32, 0i32, 0i32, 0i32, 0i32, 0i32, 0i32, 0i32,
+],
+};
+
+pub const WATERBOUNDED_SCENARIOS: &[WaterBoundedScenario] = &[
+    WB_LINE,
+    WB_SHALLOW_DETOUR,
+    WB_LAND_GAP,
+    WB_GOAL_LAND,
+    WB_MULTISTART_RING,
+    WB_WEIGHT1_TIES,
+    WB_CAPPED,
+    WB_UNREACHABLE,
+    WB_TOO_SMALL,
+    WB_CLAMPED_GOAL,
+    WB_INVERTED_BOUNDS,
+];
+
 /// GameMap op result: void mutation, TS throw, `undefined` scalar,
 /// a number/boolean value, or a tile array (neighbours / searches).
 #[derive(Clone, Copy, Debug)]

@@ -666,6 +666,111 @@ pub extern "C" fn probe_water_arr_get(field: u32, i: usize) -> f64 {
     })
 }
 
+// ---- AStarWaterBounded ----
+// Same scalar-only pattern as the water probe. Terrain bytes are queued
+// before probe_wb_new (the constructor needs width/maxSearchArea/config, not
+// height); starts are queued, then one run chooses findPath (mode 0) or
+// searchBounded (mode 1, bounds cross as four f64s — always integers in the
+// recorded scenarios).
+
+use crate::pathfinding::water_bounded::AStarWaterBounded;
+
+thread_local! {
+    static WB: std::cell::RefCell<Option<Box<AStarWaterBounded>>> =
+        const { std::cell::RefCell::new(None) };
+    static WB_TERRAIN: std::cell::RefCell<Vec<u8>> = const { std::cell::RefCell::new(Vec::new()) };
+    static WB_STARTS: std::cell::RefCell<Vec<f64>> = const { std::cell::RefCell::new(Vec::new()) };
+    static WB_PATH: std::cell::RefCell<Vec<f64>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
+/// Queue one packed terrain byte (GameMapImpl layout) for the next map.
+#[no_mangle]
+pub extern "C" fn probe_wb_terrain_byte(v: u32) {
+    WB_TERRAIN.with(|t| t.borrow_mut().push(v as u8));
+}
+
+#[no_mangle]
+pub extern "C" fn probe_wb_new(w: f64, max_area: f64, weight: f64, max_iter: f64) {
+    let terrain = WB_TERRAIN.with(|t| std::mem::take(&mut *t.borrow_mut()));
+    let wb = AStarWaterBounded::new(w, terrain, max_area, Some(weight), Some(max_iter));
+    WB.with(|a| *a.borrow_mut() = Some(Box::new(wb)));
+}
+
+#[no_mangle]
+pub extern "C" fn probe_wb_start(v: f64) {
+    WB_STARTS.with(|s| s.borrow_mut().push(v));
+}
+
+/// One search; mode 0 = findPath (bounds ignored), 1 = searchBounded with
+/// explicit [minX,maxX,minY,maxY]. 1 = path found, 0 = TS null.
+#[no_mangle]
+pub extern "C" fn probe_wb_run(goal: f64, mode: u32, b0: f64, b1: f64, b2: f64, b3: f64) -> u8 {
+    let starts = WB_STARTS.with(|s| std::mem::take(&mut *s.borrow_mut()));
+    let path = WB.with(|a| {
+        let mut wb = a.borrow_mut();
+        let wb = wb.as_mut().expect("probe_wb_new must be called first");
+        if mode == 1 {
+            wb.search_bounded(&starts, goal, b0, b1, b2, b3)
+        } else {
+            wb.find_path(&starts, goal)
+        }
+    });
+    match path {
+        Some(p) => {
+            WB_PATH.with(|buf| *buf.borrow_mut() = p);
+            1
+        }
+        None => {
+            WB_PATH.with(|buf| buf.borrow_mut().clear());
+            0
+        }
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn probe_wb_path_len() -> usize {
+    WB_PATH.with(|p| p.borrow().len())
+}
+
+#[no_mangle]
+pub extern "C" fn probe_wb_path_at(i: usize) -> f64 {
+    WB_PATH.with(|p| p.borrow()[i])
+}
+
+#[no_mangle]
+pub extern "C" fn probe_wb_stamp() -> u64 {
+    WB.with(|a| a.borrow().as_ref().unwrap().debug_stamp())
+}
+
+/// field: 0 = closedStamp, 1 = gScoreStamp, 2 = gScore, 3 = cameFrom.
+#[no_mangle]
+pub extern "C" fn probe_wb_arr_len(field: u32) -> usize {
+    WB.with(|a| {
+        let wb = a.borrow();
+        let wb = wb.as_ref().unwrap();
+        match field {
+            0 => wb.debug_closed_stamp().len(),
+            1 => wb.debug_g_score_stamp().len(),
+            2 => wb.debug_g_score().len(),
+            _ => wb.debug_came_from().len(),
+        }
+    })
+}
+
+#[no_mangle]
+pub extern "C" fn probe_wb_arr_get(field: u32, i: usize) -> f64 {
+    WB.with(|a| {
+        let wb = a.borrow();
+        let wb = wb.as_ref().unwrap();
+        match field {
+            0 => wb.debug_closed_stamp()[i] as f64,
+            1 => wb.debug_g_score_stamp()[i] as f64,
+            2 => wb.debug_g_score()[i] as f64,
+            _ => wb.debug_came_from()[i] as f64,
+        }
+    })
+}
+
 // ---- GameMap ----
 // Op-stream replay over the real `GameMap` port. The kind table matches
 // `runGm` in gen_vectors.mjs. Scalar-only boundary: array results land in a

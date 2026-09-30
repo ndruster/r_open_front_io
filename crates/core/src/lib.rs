@@ -48,6 +48,11 @@
 //!   from bounded grid-BFS distances (edge ids follow BFS find order),
 //!   canonical `(lo,hi)` edge dedup keeping the cheaper cost, and the
 //!   clean-cluster partial-rebuild cache keyed by `(minTile,maxTile)`)
+//! * [`pathfinding::water_bounded`] — `src/core/pathfinding/algorithms/AStar.WaterBounded.ts`
+//!   (`AStarWaterBounded`: the bounded-window sibling of `AStarWater` — all
+//!   four stamp arrays indexed by a clamped window-local id, the
+//!   `numLocalNodes` guard, the 3× shore penalty curve, and defaults
+//!   `heuristicWeight ?? 3` / `maxIterations ?? 100_000`)
 //!
 //! Two rules govern every future port into this crate:
 //!

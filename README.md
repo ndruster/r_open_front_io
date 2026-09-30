@@ -39,6 +39,8 @@ rust/
 │   │       ├── rail.rs            port of algorithms/AStar.Rail.ts
 │   │       │                      (+ TerrainMap: GameMapImpl's packed bytes)
 │   │       ├── water.rs           port of algorithms/AStar.Water.ts
+│   │       ├── water_bounded.rs   port of algorithms/AStar.WaterBounded.ts
+│   │       │                      (window-local indexing, clamped bounds)
 │   │       ├── abstract_graph.rs  port of algorithms/AbstractGraph.ts
 │   │       │                      (+ AbstractGraphBuilder: gateway nodes,
 │   │       │                       bounded-BFS edges, partial rebuild)
@@ -194,6 +196,21 @@ desync, not a rounding nit. Two things enforce that here:
     clusters' edges from the old graph keyed by `(minTile, maxTile)`, keeping
     the original cluster. `getOtherNode` on a missing edge mirrors the TS
     throw (captured as `"t"`, the wasm probe returns `NaN`).
+14. **`AStar.WaterBounded.ts`** (`pathfinding::water_bounded`) is pinned with
+    eleven scenarios (nine `findPath`, two direct `searchBounded` with
+    explicit bounds). The class indexes all four stamp-tracked arrays by a
+    *window-local* id inside the start/goal hull, so the port pins the mapping
+    itself: a same-row start/goal restricts the window to one row — the
+    shallow-band case that `AStarWater` detours around here goes straight
+    through (`wb_shallow_detour`), and a routable land-wall case becomes
+    `null` (`wb_unreachable`); `maxSearchArea` below `numLocalNodes`
+    short-circuits before searching (`wb_too_small`); an explicit window that
+    excludes the goal *clamps* it to the window corner and reaches the
+    clamped tile instead (`wb_clamped_goal`); inverted bounds (`min > max`)
+    make `boundsWidth` negative, `numLocalNodes` 1, and the degenerate window
+    returns the single clamped tile (`wb_inverted_bounds`). The magnitude
+    curve also differs from `AStarWater` (`< 3` costs 300, not 1000), and the
+    defaults are `heuristicWeight ?? 3` / `maxIterations ?? 100_000`.
 
 Regenerate whenever a ported source changes:
 
@@ -227,7 +244,7 @@ node rust/tools/run_wasm_parity.mjs
 
 `wasm-probe` exposes the ported functions through `extern "C"` scalar
 entrypoints (`src/wasm_probe.rs`); the runner imports `data/vectors.json` and
-compares every value. Last run: **28,092 comparisons, all bit-identical**.
+compares every value. Last run: **28,941 comparisons, all bit-identical**.
 
 ### Windows: the linker environment
 

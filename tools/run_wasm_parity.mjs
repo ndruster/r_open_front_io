@@ -38,6 +38,9 @@ for (const name of [
   "probe_cc_arr_len", "probe_cc_arr_get",
   "probe_tsm_buffer_byte", "probe_tsm_new", "probe_tsm_op",
   "probe_tsm_out_len", "probe_tsm_out_at",
+  "probe_wb_terrain_byte", "probe_wb_new", "probe_wb_start", "probe_wb_run",
+  "probe_wb_path_len", "probe_wb_path_at", "probe_wb_stamp",
+  "probe_wb_arr_len", "probe_wb_arr_get",
   "probe_ag_terrain_byte", "probe_ag_dirty_byte", "probe_ag_new", "probe_ag_op",
   "probe_ag_out_len", "probe_ag_out_at", "probe_ag_field",
   "probe_ag_arr_len", "probe_ag_arr_get",
@@ -382,6 +385,42 @@ for (const s of S.water) {
       fail(`${s.name} ${label} length`, ex.probe_water_arr_len(f), want.length, 0);
     for (let i = 0; i < want.length; i++)
       cmpU32(`${s.name} ${label}`, Number(ex.probe_water_arr_get(f, i)), want[i], i);
+  }
+}
+
+// --- AStarWaterBounded --- (same shape as the water probe; mode 1 runs
+// searchBounded with the recorded explicit bounds)
+for (const s of S.waterbounded) {
+  for (const b of s.terrain) ex.probe_wb_terrain_byte(b);
+  ex.probe_wb_new(s.w, s.maxArea, s.weight, s.maxIter);
+  for (const st of s.starts) ex.probe_wb_start(st);
+  const bd = s.bounds ?? [0, 0, 0, 0];
+  const gotPath = ex.probe_wb_run(s.goal, s.mode, bd[0], bd[1], bd[2], bd[3]) === 1;
+  checks++;
+  if (gotPath !== (s.path !== "u")) {
+    fail(`${s.name} path presence`, 0, gotPath, s.path !== "u");
+  }
+  if (s.path !== "u") {
+    checks++;
+    if (ex.probe_wb_path_len() !== s.path.length) {
+      fail(`${s.name} path length`, ex.probe_wb_path_len(), s.path.length, 0);
+    }
+    for (let i = 0; i < s.path.length; i++)
+      cmpBits(`${s.name} path`, ex.probe_wb_path_at(i), toBits(s.path[i]), i);
+  }
+  cmpU32(`${s.name} stamp`, Number(ex.probe_wb_stamp()), s.stampAfter, 0);
+  const bfields = [
+    [0, s.closed, "closedStamp"],
+    [1, s.gsStamp, "gScoreStamp"],
+    [2, s.gScore, "gScore"],
+    [3, s.cameFrom, "cameFrom"],
+  ];
+  for (const [f, want, label] of bfields) {
+    checks++;
+    if (ex.probe_wb_arr_len(f) !== want.length)
+      fail(`${s.name} ${label} length`, ex.probe_wb_arr_len(f), want.length, 0);
+    for (let i = 0; i < want.length; i++)
+      cmpU32(`${s.name} ${label}`, Number(ex.probe_wb_arr_get(f, i)), want[i], i);
   }
 }
 

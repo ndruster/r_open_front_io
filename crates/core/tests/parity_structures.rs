@@ -23,6 +23,7 @@ use openfront_core::pathfinding::flat_heap::FlatBinaryHeap;
 use openfront_core::pathfinding::priority_queue::{BucketQueue, MinHeap, PriorityQueue};
 use openfront_core::pathfinding::rail::{RailAdapter, TerrainMap};
 use openfront_core::pathfinding::water::AStarWater;
+use openfront_core::pathfinding::water_bounded::AStarWaterBounded;
 use openfront_core::terrain_search_map::TerrainSearchMap;
 use openfront_core::tile_set::TileSet;
 use vectors::GmRes;
@@ -278,6 +279,46 @@ fn replay_water_scenarios() {
             Some(s.max_iter),
         );
         let path = a.find_path(s.starts, s.goal);
+        match (s.path, &path) {
+            (None, None) => {}
+            (Some(want), Some(got)) => {
+                assert_eq!(got.as_slice(), want, "{} path", s.name);
+            }
+            _ => panic!(
+                "{} path: got {:?} want {:?}",
+                s.name,
+                path.as_deref(),
+                s.path
+            ),
+        }
+        assert_eq!(a.debug_stamp(), s.stamp_after, "{} stamp after", s.name);
+        assert_eq!(a.debug_closed_stamp(), s.closed, "{} final closedStamp", s.name);
+        assert_eq!(
+            a.debug_g_score_stamp(),
+            s.gs_stamp,
+            "{} final gScoreStamp",
+            s.name
+        );
+        assert_eq!(a.debug_g_score(), s.g_score, "{} final gScore", s.name);
+        assert_eq!(a.debug_came_from(), s.came_from, "{} final cameFrom", s.name);
+    }
+}
+
+#[test]
+fn replay_waterbounded_scenarios() {
+    for s in vectors::WATERBOUNDED_SCENARIOS {
+        let mut a = AStarWaterBounded::new(
+            s.w,
+            s.terrain.to_vec(),
+            s.max_area,
+            Some(s.weight),
+            Some(s.max_iter),
+        );
+        let path = if s.mode == 1 {
+            a.search_bounded(s.starts, s.goal, s.bounds[0], s.bounds[1], s.bounds[2], s.bounds[3])
+        } else {
+            a.find_path(s.starts, s.goal)
+        };
         match (s.path, &path) {
             (None, None) => {}
             (Some(want), Some(got)) => {

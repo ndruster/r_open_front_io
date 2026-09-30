@@ -153,6 +153,9 @@ const { BFSGrid } = await loadTs("src/core/pathfinding/algorithms/BFS.Grid.ts");
 const { AStar } = await loadTs("src/core/pathfinding/algorithms/AStar.ts");
 const { AStarRail } = await loadTs("src/core/pathfinding/algorithms/AStar.Rail.ts");
 const { AStarWater } = await loadTs("src/core/pathfinding/algorithms/AStar.Water.ts");
+const { AStarWaterBounded } = await loadTs(
+  "src/core/pathfinding/algorithms/AStar.WaterBounded.ts",
+);
 const { GameMapImpl } = await loadTs("src/core/game/GameMap.ts");
 const { TileSet } = await loadTs("src/core/game/TileSet.ts");
 const Util = await loadTs("src/core/Util.ts");
@@ -633,6 +636,90 @@ captureWater(
   null,
   10,
 );
+
+// --- AStarWaterBounded scenario runner ---------------------------------------
+// Runs the real `AStarWaterBounded` over a real GameMapImpl (private terrain
+// bytes again) and records the path plus the engine's four stamp-tracked
+// LOCAL arrays. mode 0 = findPath (bounds derived from the start/goal hull);
+// mode 1 = searchBounded with explicit bounds (pins the clamp, the
+// numLocalNodes guard and the inverted-bounds degeneracies). The Rust twin is
+// `water_bounded::AStarWaterBounded`.
+const wbScenarios = [];
+function captureWB(name, rows, starts, goal, opts) {
+  const h = rows.length;
+  const w = rows[0].length;
+  const terrain = Uint8Array.from(rows.join("").split(""), (c) => WGL[c]);
+  const gm = new GameMapImpl(w, h, terrain, w * h);
+  const { weight = null, maxIter = null, maxArea = w * h, bounds = null } = opts ?? {};
+  const cfg = {};
+  if (weight !== null) cfg.heuristicWeight = weight;
+  if (maxIter !== null) cfg.maxIterations = maxIter;
+  const wb = new AStarWaterBounded(gm, maxArea, Object.keys(cfg).length ? cfg : undefined);
+  let path;
+  let mode;
+  if (bounds) {
+    mode = 1;
+    path = wb.searchBounded(starts, goal, {
+      minX: bounds[0],
+      maxX: bounds[1],
+      minY: bounds[2],
+      maxY: bounds[3],
+    });
+  } else {
+    mode = 0;
+    path = wb.findPath(starts, goal);
+  }
+  wbScenarios.push({
+    name,
+    mode,
+    w,
+    h,
+    terrain: Array.from(terrain),
+    maxArea,
+    weight: weight ?? 3,
+    maxIter: maxIter ?? 100000,
+    starts,
+    goal,
+    bounds: bounds ?? null,
+    path: path === null ? "u" : Array.from(path),
+    stampAfter: wb.stamp,
+    closed: Array.from(wb.closedStamp),
+    gsStamp: Array.from(wb.gScoreStamp),
+    gScore: Array.from(wb.gScore),
+    cameFrom: Array.from(wb.cameFrom),
+  });
+}
+// Straight shot across a deep-water channel (window = the row itself).
+captureWB("wb_line", ["wwwwwwwww"], [0], 8);
+// Shallow band (magnitude 1 -> +300/tile here, not +1000): detour decision
+// depends on this class's penalty curve.
+captureWB("wb_shallow_detour", ["xxxxxxx", "wwwwwww", "wwwwwww"], [0], 6);
+// Land wall with a single gap in row 2.
+captureWB("wb_land_gap", ["wwLww", "wwLww", "wwwww", "wwLww", "wwLww"], [0], 4);
+// The goal itself is land: entering it is legal even though land is a wall.
+captureWB("wb_goal_land", ["wwL"], [0], 2);
+// Multi-start on a lake ring: tie-breaker decides which side of the line.
+captureWB("wb_multistart_ring", ["wwwww", "wLLLw", "wLLLw", "wLLLw", "wwwww"], [0, 24], 2);
+// Weight-1 heuristic: f32 priority ties exercise the MinHeap pop order.
+captureWB("wb_weight1_ties", ["wwwwwww", "wwwwwww"], [0], 13, { weight: 1 });
+// Iteration cap: budget 10 makes the search give up (null).
+captureWB("wb_capped", ["wwwww", "LLLLw", "wwwww", "wLLLL", "wwwww"], [0], 24, { maxIter: 10 });
+// Same-row start/goal: the derived window is one row tall, so the land column
+// cannot be detoured around -> null (the window restricts the search).
+captureWB("wb_unreachable", ["wwLww", "wwwww", "wwwww", "wwwww", "wwwww"], [0], 4);
+// maxSearchArea 4 < numLocalNodes 9: the guard returns null before searching.
+captureWB("wb_too_small", ["www", "www", "www"], [0], 8, { maxArea: 4 });
+// Explicit window excluding the goal corner: toLocal clamps goal (24) to the
+// window corner tile 18, so the search targets the CLAMPED tile.
+captureWB("wb_clamped_goal", ["wwwww", "wwwww", "wwwww", "wwwww", "wwwww"], [0], 24, {
+  bounds: [1, 3, 1, 3],
+});
+// Inverted bounds (minX > maxX, minY > maxY): boundsWidth/Height are -1,
+// numLocalNodes = 1, and the degenerate window maps everything to local 0 —
+// the search "succeeds" with a single clamped tile.
+captureWB("wb_inverted_bounds", ["www", "www", "www"], [0], 4, {
+  bounds: [2, 0, 2, 0],
+});
 
 // --- GameMap scenario runner -------------------------------------------------
 // Replays a scripted op stream against the real `GameMapImpl` and records every
@@ -1961,6 +2048,7 @@ const structures = {
   astar: asScenarios,
   rail: railScenarios,
   water: waterScenarios,
+  waterbounded: wbScenarios,
   gamemap: gmScenarios,
   tileset: tsScenarios,
   util: utilScenarios,
@@ -2491,6 +2579,74 @@ for (const s of structures.water) {
 }
 L.push("pub const WATER_SCENARIOS: &[WaterScenario] = &[");
 for (const s of structures.water) L.push(`    ${s.name.toUpperCase()},`);
+L.push("];");
+L.push("");
+
+L.push("/// A* bounded-water scenario: packed terrain bytes, the");
+L.push("/// `maxSearchArea` constructor arg, config weight/iterations, one");
+L.push("/// findPath (mode 0, bounds derived) or searchBounded (mode 1,");
+L.push("/// explicit `bounds` = [minX,maxX,minY,maxY]; empty when mode 0),");
+L.push("/// the returned path (`None` = TS null) and the engine's LOCAL");
+L.push("/// stamp-tracked arrays. Twin: `water_bounded::AStarWaterBounded`.");
+L.push("pub struct WaterBoundedScenario {");
+L.push("    pub name: &'static str,");
+L.push("    pub mode: u8,");
+L.push("    pub w: f64,");
+L.push("    pub h: f64,");
+L.push("    pub terrain: &'static [u8],");
+L.push("    pub max_area: f64,");
+L.push("    pub weight: f64,");
+L.push("    pub max_iter: f64,");
+L.push("    pub starts: &'static [f64],");
+L.push("    pub goal: f64,");
+L.push("    pub bounds: &'static [f64],");
+L.push("    pub path: Option<&'static [f64]>,");
+L.push("    pub stamp_after: u64,");
+L.push("    pub closed: &'static [u32],");
+L.push("    pub gs_stamp: &'static [u32],");
+L.push("    pub g_score: &'static [u32],");
+L.push("    pub came_from: &'static [i32],");
+L.push("}");
+L.push("");
+for (const s of structures.waterbounded) {
+  const id = s.name.toUpperCase();
+  L.push(`pub const ${id}: WaterBoundedScenario = WaterBoundedScenario {`);
+  L.push(`    name: "${s.name}",`);
+  L.push(`    mode: ${s.mode}u8,`);
+  L.push(`    w: ${f64(s.w)},`);
+  L.push(`    h: ${f64(s.h)},`);
+  L.push("    terrain: &[");
+  L.push(...numArr(s.terrain, "u8", 16));
+  L.push("],");
+  L.push(`    max_area: ${f64(s.maxArea)},`);
+  L.push(`    weight: ${f64(s.weight)},`);
+  L.push(`    max_iter: ${f64(s.maxIter)},`);
+  L.push(`    starts: &[${s.starts.map(f64).join(", ")}],`);
+  L.push(`    goal: ${f64(s.goal)},`);
+  L.push(
+    `    bounds: &[${s.bounds ? s.bounds.map(f64).join(", ") : ""}],`,
+  );
+  L.push(
+    `    path: ${s.path === "u" ? "None" : `Some(&[${s.path.map(f64).join(", ")}] as &[f64])`},`,
+  );
+  L.push(`    stamp_after: ${s.stampAfter}u64,`);
+  L.push(`    closed: &[`);
+  L.push(...numArr(s.closed, "u32", 16));
+  L.push("],");
+  L.push(`    gs_stamp: &[`);
+  L.push(...numArr(s.gsStamp, "u32", 16));
+  L.push("],");
+  L.push(`    g_score: &[`);
+  L.push(...numArr(s.gScore, "u32", 16));
+  L.push("],");
+  L.push(`    came_from: &[`);
+  L.push(...numArr(s.cameFrom, "i32", 16));
+  L.push("],");
+  L.push("};");
+  L.push("");
+}
+L.push("pub const WATERBOUNDED_SCENARIOS: &[WaterBoundedScenario] = &[");
+for (const s of structures.waterbounded) L.push(`    ${s.name.toUpperCase()},`);
 L.push("];");
 L.push("");
 

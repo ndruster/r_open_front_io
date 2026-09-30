@@ -286,6 +286,24 @@ function prepare(rel) {
       "Water PQ import",
     );
   }
+  if (rel.endsWith("algorithms/AStar.WaterBounded.ts")) {
+    // Same shape as AStar.Water.ts: GameMap/TileRef/PathFinder are type-only
+    // (the `implements PathFinder<number>` clause is erased by strip mode),
+    // the two exported interfaces are type declarations (erased), and the
+    // MinHeap value import is redirected to the prepared PriorityQueue copy.
+    // The constructor uses plain params + field assignments, no parameter
+    // properties.
+    out = must(out, 'import { GameMap, TileRef } from "../../game/GameMap";\n', "", "WaterBounded GameMap import");
+    out = must(out, 'import { PathFinder } from "../types";\n', "", "WaterBounded types import");
+    const pqRel = "src/core/pathfinding/algorithms/PriorityQueue.ts";
+    if (!prepared.has(pqRel)) prepare(pqRel);
+    out = must(
+      out,
+      'import { MinHeap } from "./PriorityQueue";',
+      `import { MinHeap } from "./${prepared.get(pqRel)}";`,
+      "WaterBounded PQ import",
+    );
+  }
   if (rel.endsWith("algorithms/ConnectedComponents.ts")) {
     // GameMap/TileRef are type-only (interface + branded type) -> dropped; the
     // DebugSpan value import is redirected to its prepared copy. The ctor's two

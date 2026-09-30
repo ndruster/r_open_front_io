@@ -771,3 +771,55 @@ fn replay_team_scenarios() {
         }
     }
 }
+
+// ---------------------------------------------------------------- Bezier
+#[test]
+fn replay_bezier_scenarios() {
+    use openfront_core::line::{DistanceBasedBezierCurve, Point};
+
+    for s in vectors::BEZIER_SCENARIOS {
+        let cp = s.cp;
+        let pts = |i: usize| Point { x: cp[i * 2], y: cp[i * 2 + 1] };
+        if s.kind == 0 {
+            let got = DistanceBasedBezierCurve::get_length(&pts(0), &pts(1), &pts(2), &pts(3));
+            assert!(obj_is(got, s.len), "{} len: got {got} want {}", s.name, s.len);
+            continue;
+        }
+        let mut curve =
+            DistanceBasedBezierCurve::new(&pts(0), &pts(1), &pts(2), &pts(3), s.spacing);
+        let points = curve.all_points();
+        assert_eq!(points.len() * 2, s.points.len(), "{} points len", s.name);
+        for (i, p) in points.iter().enumerate() {
+            assert!(
+                obj_is(p.x, s.points[i * 2]) && obj_is(p.y, s.points[i * 2 + 1]),
+                "{} point#{i}: got ({}, {}) want ({}, {})",
+                s.name,
+                p.x,
+                p.y,
+                s.points[i * 2],
+                s.points[i * 2 + 1]
+            );
+        }
+        assert_eq!(s.walk.len() % 3, 0, "{} walk shape", s.name);
+        let n = s.walk.len() / 3;
+        for i in 0..n {
+            let got = curve.increment(s.incs[i]);
+            let (wi, wx, wy) = (s.walk[i * 3], s.walk[i * 3 + 1], s.walk[i * 3 + 2]);
+            match got {
+                None => assert!(wi == -1.0, "{} walk#{i}: got None want ({wi}, {wx}, {wy})", s.name),
+                Some(p) => {
+                    assert!(wi >= 0.0, "{} walk#{i}: got ({}, {}) want null", s.name, p.x, p.y);
+                    assert_eq!(curve.current_index() as f64, wi, "{} walk#{i} index", s.name);
+                    assert!(
+                        obj_is(p.x, wx) && obj_is(p.y, wy),
+                        "{} walk#{i}: got ({}, {}) want ({wx}, {wy})",
+                        s.name,
+                        p.x,
+                        p.y
+                    );
+                }
+            }
+        }
+        assert_eq!(curve.current_index() as u64, s.final_index, "{} final index", s.name);
+    }
+}

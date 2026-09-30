@@ -41,6 +41,26 @@ pub fn to_uint16(v: f64) -> u16 {
     n.rem_euclid(65_536.0) as u16
 }
 
+/// JS `Math.round`: round half **up** (toward +Infinity), so `round(-0.5)`
+/// is `-0` and `round(-1.5)` is `-1` — unlike Rust's `f64::round` which
+/// rounds half away from zero. Implemented as `floor(x) + (x - floor(x) >=
+/// 0.5)` so the classic `floor(x + 0.5)` failure at `0.49999999999999994`
+/// does not occur. Per spec, any `x` in `[-0.5, 0)` yields `-0` (V8:
+/// `1 / Math.round(-0.4)` is `-Infinity`); `NaN`, `±0` and `±Infinity`
+/// pass through unchanged.
+#[inline]
+pub fn js_round(v: f64) -> f64 {
+    if !v.is_finite() || v == 0.0 {
+        return v;
+    }
+    let f = v.floor();
+    let r = if v - f >= 0.5 { f + 1.0 } else { f };
+    if r == 0.0 && v < 0.0 {
+        return -0.0;
+    }
+    r
+}
+
 /// JS float32 storage: nearest-even rounding, NaN and ±Infinity preserved.
 /// Rust's `as f32` already matches IEEE-754 round-to-nearest for finite
 /// values, so this is a named passthrough documenting the contract.

@@ -1253,3 +1253,70 @@ pub extern "C" fn probe_team_out_len() -> usize {
 pub extern "C" fn probe_team_out_at(i: usize) -> f64 {
     TEAM_OUT.with(|o| o.borrow()[i])
 }
+
+// ---------------------------------------------------------------- Bezier
+//
+// Kind 0 (getLength): 8 control-point scalars. Kind 1 (walk): 8 scalars +
+// spacing + the increment script. The out buffer for a walk is
+// [np, points(flat x/y), nw, walk(flat index/x/y triples, -1 = null),
+// final_index]; getLength returns [len] directly.
+
+use crate::line::{DistanceBasedBezierCurve, Point};
+
+thread_local! {
+    static BEZIER_ARGS: std::cell::RefCell<Vec<f64>> = const { std::cell::RefCell::new(Vec::new()) };
+    static BEZIER_OUT: std::cell::RefCell<Vec<f64>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
+#[no_mangle]
+pub extern "C" fn probe_bezier_arg(v: f64) {
+    BEZIER_ARGS.with(|t| t.borrow_mut().push(v));
+}
+
+#[no_mangle]
+pub extern "C" fn probe_bezier_op(kind: u32) -> f64 {
+    let a = BEZIER_ARGS.with(|t| std::mem::take(&mut *t.borrow_mut()));
+    let pt = |i: usize| Point { x: a[i * 2], y: a[i * 2 + 1] };
+    let out: Vec<f64> = match kind {
+        0 => vec![DistanceBasedBezierCurve::get_length(&pt(0), &pt(1), &pt(2), &pt(3))],
+        1 => {
+            let spacing = a[8];
+            let mut curve = DistanceBasedBezierCurve::new(&pt(0), &pt(1), &pt(2), &pt(3), spacing);
+            let mut out = Vec::new();
+            let points: Vec<Point> = curve.all_points().to_vec();
+            out.push(points.len() as f64);
+            for p in &points {
+                out.push(p.x);
+                out.push(p.y);
+            }
+            let incs = &a[9..];
+            out.push(incs.len() as f64);
+            for &d in incs {
+                match curve.increment(d) {
+                    None => out.extend([f64::from(-1), 0.0, 0.0]),
+                    Some(p) => {
+                        out.push(curve.current_index() as f64);
+                        out.push(p.x);
+                        out.push(p.y);
+                    }
+                }
+            }
+            out.push(curve.current_index() as f64);
+            out
+        }
+        k => panic!("unexpected bezier op kind {k}"),
+    };
+    let first = out.first().copied().unwrap_or(f64::NAN);
+    BEZIER_OUT.with(|o| *o.borrow_mut() = out);
+    first
+}
+
+#[no_mangle]
+pub extern "C" fn probe_bezier_out_len() -> usize {
+    BEZIER_OUT.with(|o| o.borrow().len())
+}
+
+#[no_mangle]
+pub extern "C" fn probe_bezier_out_at(i: usize) -> f64 {
+    BEZIER_OUT.with(|o| o.borrow()[i])
+}

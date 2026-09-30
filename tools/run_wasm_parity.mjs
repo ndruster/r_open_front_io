@@ -627,6 +627,59 @@ for (const s of S.team) {
   }
 }
 
+// --- Bezier --- (out layout mirrors the Rust probe: kind 0 -> [len];
+// kind 1 -> [np, points x/y, nw, walk index/x/y triples, final_index]).
+for (const s of S.bezier) {
+  const push = (v) => ex.probe_bezier_arg(v);
+  for (const v of s.cp) push(numTok(v));
+  if (s.kind === 1) {
+    push(numTok(s.spacing));
+    for (const v of s.incs) push(numTok(v));
+  }
+  ex.probe_bezier_op(s.kind);
+  checks++;
+  const n = ex.probe_bezier_out_len();
+  if (s.kind === 0) {
+    if (n !== 1) fail(`${s.name} len shape`, 0, n, 1);
+    else {
+      checks++;
+      const got = ex.probe_bezier_out_at(0);
+      if (!Object.is(got, numTok(s.len))) fail(`${s.name} len`, 0, fmt(got), s.len);
+    }
+    continue;
+  }
+  // out = [np, ...points, nw, ...walk, final_index]
+  const np = n > 0 ? ex.probe_bezier_out_at(0) : -1;
+  checks++;
+  if (!Object.is(np, s.points.length / 2)) {
+    fail(`${s.name} np`, 0, np, s.points.length / 2);
+    continue;
+  }
+  for (let i = 0; i < s.points.length; i++) {
+    checks++;
+    const got = ex.probe_bezier_out_at(1 + i);
+    if (!Object.is(got, numTok(s.points[i])))
+      fail(`${s.name} point[${i}]`, i, fmt(got), s.points[i]);
+  }
+  const nwAt = 1 + s.points.length;
+  const nw = ex.probe_bezier_out_at(nwAt);
+  checks++;
+  const walkFlat = s.walk.flat();
+  if (!Object.is(nw, s.walk.length)) {
+    fail(`${s.name} nw`, 0, nw, s.walk.length);
+    continue;
+  }
+  for (let i = 0; i < walkFlat.length; i++) {
+    checks++;
+    const got = ex.probe_bezier_out_at(nwAt + 1 + i);
+    if (!Object.is(got, numTok(walkFlat[i])))
+      fail(`${s.name} walk[${i}]`, i, fmt(got), walkFlat[i]);
+  }
+  checks++;
+  const fi = ex.probe_bezier_out_at(nwAt + 1 + walkFlat.length);
+  if (!Object.is(fi, s.finalIndex)) fail(`${s.name} finalIndex`, 0, fi, s.finalIndex);
+}
+
 console.log(`${checks} vector comparisons executed against wasm build`);
 if (failures.length) {
   console.error(`FAIL (${failures.length}+ mismatches, first 20):`);

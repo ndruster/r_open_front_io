@@ -21,6 +21,8 @@ rust/
 │   │   ├── tile_set.rs            port of game/TileSet.ts
 │   │   ├── util.rs                port of Util.ts (deterministic core only)
 │   │   ├── team_assignment.rs     port of game/TeamAssignment.ts
+│   │   ├── line.rs                port of utilities/Line.ts
+│   │   │                          (DistanceBasedBezierCurve)
 │   │   ├── wasm_probe.rs          `extern "C"` surface, feature-gated
 │   │   └── pathfinding/
 │   │       ├── mod.rs
@@ -171,7 +173,7 @@ node rust/tools/run_wasm_parity.mjs
 
 `wasm-probe` exposes the ported functions through `extern "C"` scalar
 entrypoints (`src/wasm_probe.rs`); the runner imports `data/vectors.json` and
-compares every value. Last run: **23,058 comparisons, all bit-identical**.
+compares every value. Last run: **24,912 comparisons, all bit-identical**.
 
 ### Windows: the linker environment
 

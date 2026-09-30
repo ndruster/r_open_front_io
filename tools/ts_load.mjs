@@ -155,6 +155,37 @@ function prepare(rel) {
       "Util TribeNames import",
     );
   }
+  if (rel.endsWith("utilities/Line.ts")) {
+    // The ctor's four control points are parameter properties, which strip
+    // mode rejects; expand them to plain fields + assignments (same rewrite
+    // MinHeap's ctor gets).
+    out = must(
+      out,
+      "  constructor(\n" +
+        "    private p0: Point,\n" +
+        "    private p1: Point,\n" +
+        "    private p2: Point,\n" +
+        "    private p3: Point,\n" +
+        "    distanceIncrement: number,\n" +
+        "  ) {",
+      "  private p0: Point;\n" +
+        "  private p1: Point;\n" +
+        "  private p2: Point;\n" +
+        "  private p3: Point;\n\n" +
+        "  constructor(\n" +
+        "    p0: Point,\n" +
+        "    p1: Point,\n" +
+        "    p2: Point,\n" +
+        "    p3: Point,\n" +
+        "    distanceIncrement: number,\n" +
+        "  ) {\n" +
+        "    this.p0 = p0;\n" +
+        "    this.p1 = p1;\n" +
+        "    this.p2 = p2;\n" +
+        "    this.p3 = p3;",
+      "Line ctor",
+    );
+  }
   if (rel.endsWith("game/TeamAssignment.ts")) {
     // ClientID / TeamCountConfig / PlayerInfo / Team are type-only (branded
     // types + interfaces) -> dropped. PseudoRandom and simpleHash are *value*

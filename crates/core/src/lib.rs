@@ -27,6 +27,8 @@
 //! * [`team_assignment`] — `src/core/game/TeamAssignment.ts` (lobby team
 //!   balancing: pins, strict clans, soft friend preference, nation shuffle,
 //!   and `resolveTeamsList`)
+//! * [`line`] — `src/core/utilities/Line.ts` (`DistanceBasedBezierCurve`:
+//!   fixed-point De Casteljau subdivision for MIRV trajectories)
 //!
 //! Two rules govern every future port into this crate:
 //!
@@ -45,6 +47,7 @@
 pub mod detmath;
 pub mod game_map;
 pub mod jsnum;
+pub mod line;
 pub mod pathfinding;
 pub mod pseudo_random;
 pub mod team_assignment;

@@ -157,6 +157,7 @@ const { GameMapImpl } = await loadTs("src/core/game/GameMap.ts");
 const { TileSet } = await loadTs("src/core/game/TileSet.ts");
 const Util = await loadTs("src/core/Util.ts");
 const TeamAssignment = await loadTs("src/core/game/TeamAssignment.ts");
+const { DistanceBasedBezierCurve } = await loadTs("src/core/utilities/Line.ts");
 
 // enc() maps JS-only values JSON cannot carry: undefined -> "u", NaN -> "n",
 // booleans -> 1/0, and -0 -> "-0" (JSON collapses -0 to 0, yet the f32 bit
@@ -1396,6 +1397,77 @@ function pushResolveTeams(name, config, totalPlayers) {
   pushResolveTeams("t_res_emptystr", "", 10);
 }
 
+// --- Bezier (Line.ts) scenario runner ----------------------------------------
+// Exercises the real DistanceBasedBezierCurve: getLength (pure static), and
+// the constructor's computeAllPoints followed by a scripted increment walk.
+// Every observable is recorded: the full cached-point list (order included),
+// each increment's returned point (or -1 sentinel for null), and the final
+// currentIndex. The Rust twin is `line::DistanceBasedBezierCurve`.
+const bezierScenarios = [];
+const P = (x, y) => ({ x, y });
+
+function pushBezierLength(name, cp) {
+  const [a, b, c, d] = cp;
+  const len = DistanceBasedBezierCurve.getLength(a, b, c, d);
+  bezierScenarios.push({
+    name, kind: 0, cp: cp.map((p) => [uenc(p.x), uenc(p.y)]).flat(),
+    spacing: 0, incs: [], len: uenc(len), points: [], walk: [], finalIndex: 0,
+  });
+}
+
+function pushBezierWalk(name, cp, spacing, incs) {
+  const [a, b, c, d] = cp;
+  const curve = new DistanceBasedBezierCurve(a, b, c, d, spacing);
+  const points = curve.getAllPoints().map((p) => [p.x, p.y]).flat();
+  const walk = [];
+  for (const dist of incs) {
+    const p = curve.increment(dist);
+    walk.push(p === null ? [-1, 0, 0] : [curve.getCurrentIndex(), p.x, p.y]);
+  }
+  bezierScenarios.push({
+    name, kind: 1, cp: cp.map((p) => [uenc(p.x), uenc(p.y)]).flat(),
+    spacing: uenc(spacing), incs: incs.map(uenc), len: 0,
+    points: points.map(uenc), walk: walk.map((w) => w.map(uenc)),
+    finalIndex: curve.getCurrentIndex(),
+  });
+}
+
+{
+  // Straight degenerate curves and collinear shots.
+  pushBezierLength("b_len_point", [P(0, 0), P(0, 0), P(0, 0), P(0, 0)]);
+  pushBezierLength("b_len_straight", [P(0, 0), P(33, 0), P(66, 0), P(100, 0)]);
+  pushBezierLength("b_len_diag", [P(0, 0), P(20, 20), P(60, 60), P(100, 100)]);
+  pushBezierLength("b_len_curve", [P(0, 0), P(100, 0), P(100, 100), P(0, 100)]);
+  pushBezierLength("b_len_neg", [P(-50.5, -20.5), P(-10.5, -40.25), P(5.5, -5.5), P(30.5, 15.75)]);
+  // Half-up rounding edges: .5 rounds toward +Infinity, so -0.5 -> -0 and
+  // 0.5 -> 1 (the -0 survives the * 256 scale as -0).
+  pushBezierLength("b_len_halfs", [P(-0.5, 0.5), P(1.5, -1.5), P(2.5, -2.5), P(3.5, 4.5)]);
+  // 32-bit overflow edges: 8388608 * 256 = 2^31 wraps ToInt32 to -2^31, so
+  // the >> 8 emission lands on negative pixel coordinates.
+  pushBezierLength("b_len_wrap", [P(8388608, 0), P(8388608, 1), P(8388607, 0), P(0, 0)]);
+  // NaN / Infinity control points: dist comparisons go false, the recursion
+  // runs to the depth cap, and the accumulator poisons exactly like JS.
+  pushBezierLength("b_len_nan", [P(Number.NaN, 0), P(50, 50), P(50, 0), P(100, 0)]);
+  pushBezierLength("b_len_inf", [P(0, 0), P(Number.POSITIVE_INFINITY, 50), P(50, 50), P(100, 100)]);
+
+  // Walk scenarios: the cached-point list plus an increment script.
+  pushBezierWalk("b_walk_straight", [P(0, 0), P(33, 0), P(66, 0), P(100, 0)], 1, [1, 1, 2, 5, 100, 1]);
+  pushBezierWalk("b_walk_curve", [P(0, 0), P(100, 0), P(100, 100), P(0, 100)], 2, [1, 1, 1, 3, 3, 10, 10, 1000]);
+  pushBezierWalk("b_walk_spacing0", [P(0, 0), P(20, 40), P(80, 60), P(100, 100)], 0, [1, 1, 1]);
+  pushBezierWalk("b_walk_spacing_nan", [P(0, 0), P(20, 40), P(80, 60), P(100, 100)], Number.NaN, [1, 1]);
+  pushBezierWalk("b_walk_inc_nan", [P(0, 0), P(30, 0), P(60, 0), P(90, 0)], 1, [Number.NaN, 1, 1]);
+  pushBezierWalk("b_walk_inc_neg", [P(0, 0), P(30, 0), P(60, 0), P(90, 0)], 1, [-5, 0.2, 0.6, 0.5, -0.5]);
+  pushBezierWalk("b_walk_fractional", [P(0, 0), P(10.5, 20.25), P(70.75, 30.5), P(90, 60)], 0.5, [0.001, 0.004, 1.5, 2.5, -1.5, 0.49999999999999994]);
+  pushBezierWalk("b_walk_point", [P(5, 5), P(5, 5), P(5, 5), P(5, 5)], 1, [1, 1]);
+  pushBezierWalk("b_walk_neg_coords", [P(-40.5, -30.5), P(-20.5, -10.25), P(0.5, 10.5), P(20.5, 30.75)], 1, [1, 2, 4, 8]);
+  // Negative spacing clamps to SUB_SCALE via Math.max; the 2^31 ToInt32 wrap
+  // of the midpoint shifts is pinned by b_len_wrap (getLength only — a walk
+  // over wrapped midpoints accumulates ~2^31 distance per leaf and emits
+  // millions of points).
+  pushBezierWalk("b_walk_wrap", [P(10, 0), P(10, 20), P(20, 20), P(20, 0)], -5, [1, 2, 3]);
+  pushBezierWalk("b_walk_big", [P(0, 0), P(500, 0), P(500, 500), P(0, 500)], 16, [16, 16, 16, 48, 16, 1e9]);
+}
+
 const structures = {
   minheap: mhScenarios,
   bucket: bqScenarios,
@@ -1408,6 +1480,7 @@ const structures = {
   tileset: tsScenarios,
   util: utilScenarios,
   team: teamScenarios,
+  bezier: bezierScenarios,
 };
 
 // ================================================================ JSON
@@ -2166,6 +2239,43 @@ for (const s of structures.team) {
 }
 L.push("pub const TEAM_SCENARIOS: &[TeamScenario] = &[");
 for (const s of structures.team) L.push(`    ${s.name.toUpperCase()},`);
+L.push("];");
+L.push("");
+
+L.push("/// Bezier scenario over `Line.ts`'s DistanceBasedBezierCurve. `kind`");
+L.push("/// 0 = getLength (result in `len`); 1 = construct with `spacing`,");
+L.push("/// capture the cached-point list (`points`, flat x/y) and replay the");
+L.push("/// `incs` increment script (`walk`, flat (index, x, y) triples where");
+L.push("/// index -1 marks the null end-of-curve), then `final_index`.");
+L.push("pub struct BezierScenario {");
+L.push("    pub name: &'static str,");
+L.push("    pub kind: u8,");
+L.push("    pub cp: &'static [f64],");
+L.push("    pub spacing: f64,");
+L.push("    pub incs: &'static [f64],");
+L.push("    pub len: f64,");
+L.push("    pub points: &'static [f64],");
+L.push("    pub walk: &'static [f64],");
+L.push("    pub final_index: u64,");
+L.push("}");
+L.push("");
+for (const s of structures.bezier) {
+  const id = s.name.toUpperCase();
+  L.push(`pub const ${id}: BezierScenario = BezierScenario {`);
+  L.push(`    name: "${s.name}",`);
+  L.push(`    kind: ${s.kind}u8,`);
+  L.push(`    cp: &[${s.cp.map(utilResLit).join(", ")}],`);
+  L.push(`    spacing: ${utilResLit(s.spacing)},`);
+  L.push(`    incs: &[${s.incs.map(utilResLit).join(", ")}],`);
+  L.push(`    len: ${utilResLit(s.len)},`);
+  L.push(`    points: &[${s.points.map(utilResLit).join(", ")}],`);
+  L.push(`    walk: &[${s.walk.flat().map(utilResLit).join(", ")}],`);
+  L.push(`    final_index: ${s.finalIndex}u64,`);
+  L.push("};");
+  L.push("");
+}
+L.push("pub const BEZIER_SCENARIOS: &[BezierScenario] = &[");
+for (const s of structures.bezier) L.push(`    ${s.name.toUpperCase()},`);
 L.push("];");
 L.push("");
 

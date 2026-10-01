@@ -3443,6 +3443,34 @@ pub extern "C" fn probe_sl_out_at(i: usize) -> f64 {
     SL_OUT.with(|o| o.borrow()[i])
 }
 
+// ========================= P35: AssetUrls (AssetUrls.ts) ======================
+
+thread_local! {
+    static AU_ARGS: std::cell::RefCell<Vec<f64>> = const { std::cell::RefCell::new(Vec::new()) };
+    static AU_OUT: std::cell::RefCell<Vec<f64>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
+/// Push one flat token (string length, code unit, manifest entry count…).
+#[no_mangle]
+pub extern "C" fn probe_au_arg(v: f64) {
+    AU_ARGS.with(|t| t.borrow_mut().push(v));
+}
+
+/// Run `asset_urls::run_op(kind, args)`; returns the result-stream length.
+#[no_mangle]
+pub extern "C" fn probe_au_op(kind: u32) -> usize {
+    let a = AU_ARGS.with(|t| std::mem::take(&mut *t.borrow_mut()));
+    let out = crate::asset_urls::run_op(kind as u8, &a);
+    let len = out.len();
+    AU_OUT.with(|o| *o.borrow_mut() = out);
+    len
+}
+
+#[no_mangle]
+pub extern "C" fn probe_au_out_at(i: usize) -> f64 {
+    AU_OUT.with(|o| o.borrow()[i])
+}
+
 // ====================== P26: PatternDecoder (PatternDecoder.ts) ===============
 
 thread_local! {

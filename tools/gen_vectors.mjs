@@ -164,6 +164,7 @@ const RR = await loadTs("src/core/game/Railroad.ts");
 const RSG = await loadTs("src/core/game/RailroadSpatialGrid.ts");
 const TTS = await loadTs("src/core/game/TileTraversalScratch.ts");
 const EB = await loadTs("src/core/EventBus.ts");
+const AU = await loadTs("src/core/AssetUrls.ts");
 const { AStar } = await loadTs("src/core/pathfinding/algorithms/AStar.ts");
 const { AStarRail } = await loadTs("src/core/pathfinding/algorithms/AStar.Rail.ts");
 const { AStarWater } = await loadTs("src/core/pathfinding/algorithms/AStar.Water.ts");
@@ -1693,6 +1694,143 @@ runEB("eb_multi_ctor", [
   [2, 2, 200], // emit ctor2 -> [1,(20,200)]
   [3], // dump -> [2, (1,[10]), (2,[20])]
 ]);
+
+// --- AssetUrls scenario runner ------------------------------------------------
+// Exercises the real AssetUrls.ts pure path helpers through the shared
+// run_op runner. Strings cross as `[len, u0, ..]` (UTF-16 code units); the
+// manifest is `[n, (key, value) * n]`; a result is `[0, len, u0, ..]` or
+// `[1]` when the TS function throws. kind 0 = normalizeAssetPath,
+// 1 = encodeAssetPath, 2 = buildAssetUrl(path, manifest, baseUrl).
+// The Rust twin is `asset_urls::*`.
+const auScenarios = [];
+function captureAU(name, kind, args, res) {
+  auScenarios.push({ name, kind, args: args.flat().map(uenc), res: res.flat().map(uenc) });
+}
+const auCall = (fn, ...a) => {
+  try {
+    return [0, ...encS(fn(...a))];
+  } catch {
+    return [1];
+  }
+};
+
+// kind 0: normalizeAssetPath — leading-slash strip, empty-segment drop,
+// percent-decode fallbacks, and the . / .. guards (raw and encoded forms).
+{
+  const cases = [
+    "/flags/US.svg",
+    "///a//b/",
+    "",
+    "/",
+    "a",
+    "a/../b",
+    ".",
+    "..",
+    "%2e%2e/x",
+    "%2E/x",
+    "%2e/x",
+    "a/%2Fb",
+    "a/%2e%2fb",
+    "a/%2E%2Fb",
+    "caf%C3%A9",
+    "a%20b",
+    "%zz",
+    "%",
+    "%c",
+    "%c3%28",
+    "%ed%a0%80",
+    "%f0%9f%98%80",
+    "app://openfront/x",
+    "a%26b",
+    "a+b",
+    "a~b!c(d)e*f'g",
+    "/%2d",
+    "%E2%84%AA",
+    "a/%2E%2E/b",
+    "a/%2f%2e/b",
+  ];
+  for (const [i, p] of cases.entries()) {
+    captureAU(`au_norm_${i}`, 0, [encS(p)], auCall(AU.normalizeAssetPath, p));
+  }
+}
+
+// kind 1: encodeAssetPath — re-split of the normalised path (decoded slashes
+// become empty segments and vanish), unreserved passthrough, UTF-8 escapes.
+{
+  const cases = [
+    "/a b/c",
+    "a/%2Fb",
+    "café",
+    "a%20b",
+    "😀x",
+    "a/..",
+    "a/%2E%2Fb",
+    "a!'()*~-_.b ",
+    "a%26b",
+    "",
+    "app://openfront/x",
+    "a/%2Fb/%2Fc",
+    "%",
+    "%zz",
+    "a\u00e9\u4e2d\ud83d\ude00",
+  ];
+  for (const [i, p] of cases.entries()) {
+    captureAU(`au_enc_${i}`, 1, [encS(p)], auCall(AU.encodeAssetPath, p));
+  }
+}
+
+// kind 2: buildAssetUrl — the absolute-URL fast path (any scheme, the i-flag
+// edges), the manifest hit / miss / empty-value branches, the baseUrl
+// trailing-slash strip, and the encode fallback (which can throw where
+// normalizeAssetPath alone did not).
+{
+  const M1 = [["a/b", "https://cdn/z.svg"]];
+  const M2 = [["a/b", "z.svg"]];
+  const M3 = [["a/b", ""]];
+  const M4 = [["a/./b", "hit"]];
+  const M5 = [["a//b", "dbl"]];
+  const tok = (m) => [
+    m.length,
+    ...m.flatMap(([k, v]) => [...encS(k), ...encS(v)]),
+  ];
+  const cases = [
+    ["app://openfront/_assets/flags/US.svg", [], "https://cdn/"],
+    ["HTTP://x/y", [], ""],
+    ["a+b://x", [], ""],
+    ["a.-+://x", [], ""],
+    ["1a://x", [], ""],
+    ["a:x//y", [], ""],
+    ["://x", [], ""],
+    ["", [], ""],
+    ["a/b", M1, "https://cdn/"],
+    ["a/b", M1, "https://cdn///"],
+    ["a/b", M1, ""],
+    ["a/b", M2, ""],
+    ["a/b", M2, "x"],
+    ["a/b", M3, ""],
+    ["a/b", [], ""],
+    ["a/b", [], "https://cdn/"],
+    ["/a/b", M2, ""],
+    ["a/%2E%2Fb", [], ""],
+    ["a/%2E%2Fb", M4, ""],
+    ["a/%2Fb", [], ""],
+    ["a/%2Fb", M5, ""],
+    ["a b/c", [], ""],
+    ["café", [], ""],
+    ["a\u00e9\u4e2d\ud83d\ude00", [], ""],
+    ["a%20b", [], ""],
+    ["%2e/x", [], ""],
+    ["a/./b", M4, "base/"],
+  ];
+  for (const [i, [p, m, base]] of cases.entries()) {
+    captureAU(
+      `au_build_${i}`,
+      2,
+      [encS(p), tok(m), encS(base)],
+      auCall(AU.buildAssetUrl, p, Object.fromEntries(m), base),
+    );
+  }
+}
 
 // --- PatternDecoder scenario runner -------------------------------------------
 // Exercises the real PatternDecoder.ts decode + isPrimary through the shared
@@ -4983,6 +5121,7 @@ const structures = {
   railgrid: rsgScenarios,
   tiletravscratch: ttsScenarios,
   eventbus: ebScenarios,
+  asseturls: auScenarios,
   astar: asScenarios,
   rail: railScenarios,
   water: waterScenarios,
@@ -7010,6 +7149,32 @@ for (const s of structures.eventbus) {
 }
 L.push("pub const EB_SCENARIOS: &[EbScenario] = &[");
 for (const s of structures.eventbus) L.push(`    ${s.name.toUpperCase()},`);
+L.push("];");
+L.push("");
+
+L.push("/// AssetUrls.ts scenario: one `asset_urls::run_op(kind, args)` call.");
+L.push("/// `args` is `[len, u0, ..]` (kind 0/1) or `[path, n, (key, value)*n,");
+L.push("/// baseUrl]` (kind 2); `res` is `[0, len, u0, ..]` on success or `[1]`");
+L.push("/// when the TS function throws.");
+L.push("pub struct AuScenario {");
+L.push("    pub name: &'static str,");
+L.push("    pub kind: u8,");
+L.push("    pub args: &'static [f64],");
+L.push("    pub res: &'static [f64],");
+L.push("}");
+L.push("");
+for (const s of structures.asseturls) {
+  const id = s.name.toUpperCase();
+  L.push(`pub const ${id}: AuScenario = AuScenario {`);
+  L.push(`    name: "${s.name}",`);
+  L.push(`    kind: ${s.kind}u8,`);
+  L.push(`    args: &[${s.args.map(utilResLit).join(", ")}],`);
+  L.push(`    res: &[${s.res.map(utilResLit).join(", ")}],`);
+  L.push("};");
+  L.push("");
+}
+L.push("pub const AU_SCENARIOS: &[AuScenario] = &[");
+for (const s of structures.asseturls) L.push(`    ${s.name.toUpperCase()},`);
 L.push("];");
 L.push("");
 

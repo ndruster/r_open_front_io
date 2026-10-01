@@ -84,6 +84,12 @@
 //!   `Map<EventConstructor, Array<callback>>`; ctors / callbacks / events ride
 //!   in as capture refids, `emit` is pinned as the ordered callback call trace
 //!   and the `Map`-insertion-order dump)
+//! * [`asset_urls`] — `src/core/AssetUrls.ts` (`normalizeAssetPath` /
+//!   `encodeAssetPath` / `buildAssetUrl`: percent-decode + `.`/`..` segment
+//!   guards, the any-scheme `isAbsoluteUrl` regex and the manifest / cdn-base
+//!   join; the `window`/`globalThis` readers and the HTML rewrite are out of
+//!   scope, and a JS-accurate `decodeURIComponent` / `encodeURIComponent`
+//!   pair backs the escapes)
 //! * [`line`] — `src/core/utilities/Line.ts` (`DistanceBasedBezierCurve`:
 //!   fixed-point De Casteljau subdivision for MIRV trajectories)
 //! * [`veterancy`] — `src/core/game/Veterancy.ts` (`maxHealthWithVeterancy`:
@@ -132,6 +138,7 @@
 //! file changes.
 
 pub mod anon_names;
+pub mod asset_urls;
 pub mod close_codes;
 pub mod detmath;
 pub mod doomsday_clock;

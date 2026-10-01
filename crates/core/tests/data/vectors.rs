@@ -32835,3 +32835,593 @@ pub const EB_SCENARIOS: &[EbScenario] = &[
     EB_MULTI_CTOR_4,
 ];
 
+/// AssetUrls.ts scenario: one `asset_urls::run_op(kind, args)` call.
+/// `args` is `[len, u0, ..]` (kind 0/1) or `[path, n, (key, value)*n,
+/// baseUrl]` (kind 2); `res` is `[0, len, u0, ..]` on success or `[1]`
+/// when the TS function throws.
+pub struct AuScenario {
+    pub name: &'static str,
+    pub kind: u8,
+    pub args: &'static [f64],
+    pub res: &'static [f64],
+}
+
+pub const AU_NORM_0: AuScenario = AuScenario {
+    name: "au_norm_0",
+    kind: 0u8,
+    args: &[13f64, 47f64, 102f64, 108f64, 97f64, 103f64, 115f64, 47f64, 85f64, 83f64, 46f64, 115f64, 118f64, 103f64],
+    res: &[0f64, 12f64, 102f64, 108f64, 97f64, 103f64, 115f64, 47f64, 85f64, 83f64, 46f64, 115f64, 118f64, 103f64],
+};
+
+pub const AU_NORM_1: AuScenario = AuScenario {
+    name: "au_norm_1",
+    kind: 0u8,
+    args: &[8f64, 47f64, 47f64, 47f64, 97f64, 47f64, 47f64, 98f64, 47f64],
+    res: &[0f64, 3f64, 97f64, 47f64, 98f64],
+};
+
+pub const AU_NORM_2: AuScenario = AuScenario {
+    name: "au_norm_2",
+    kind: 0u8,
+    args: &[0f64],
+    res: &[1f64],
+};
+
+pub const AU_NORM_3: AuScenario = AuScenario {
+    name: "au_norm_3",
+    kind: 0u8,
+    args: &[1f64, 47f64],
+    res: &[1f64],
+};
+
+pub const AU_NORM_4: AuScenario = AuScenario {
+    name: "au_norm_4",
+    kind: 0u8,
+    args: &[1f64, 97f64],
+    res: &[0f64, 1f64, 97f64],
+};
+
+pub const AU_NORM_5: AuScenario = AuScenario {
+    name: "au_norm_5",
+    kind: 0u8,
+    args: &[6f64, 97f64, 47f64, 46f64, 46f64, 47f64, 98f64],
+    res: &[1f64],
+};
+
+pub const AU_NORM_6: AuScenario = AuScenario {
+    name: "au_norm_6",
+    kind: 0u8,
+    args: &[1f64, 46f64],
+    res: &[1f64],
+};
+
+pub const AU_NORM_7: AuScenario = AuScenario {
+    name: "au_norm_7",
+    kind: 0u8,
+    args: &[2f64, 46f64, 46f64],
+    res: &[1f64],
+};
+
+pub const AU_NORM_8: AuScenario = AuScenario {
+    name: "au_norm_8",
+    kind: 0u8,
+    args: &[8f64, 37f64, 50f64, 101f64, 37f64, 50f64, 101f64, 47f64, 120f64],
+    res: &[1f64],
+};
+
+pub const AU_NORM_9: AuScenario = AuScenario {
+    name: "au_norm_9",
+    kind: 0u8,
+    args: &[5f64, 37f64, 50f64, 69f64, 47f64, 120f64],
+    res: &[1f64],
+};
+
+pub const AU_NORM_10: AuScenario = AuScenario {
+    name: "au_norm_10",
+    kind: 0u8,
+    args: &[5f64, 37f64, 50f64, 101f64, 47f64, 120f64],
+    res: &[1f64],
+};
+
+pub const AU_NORM_11: AuScenario = AuScenario {
+    name: "au_norm_11",
+    kind: 0u8,
+    args: &[6f64, 97f64, 47f64, 37f64, 50f64, 70f64, 98f64],
+    res: &[0f64, 4f64, 97f64, 47f64, 47f64, 98f64],
+};
+
+pub const AU_NORM_12: AuScenario = AuScenario {
+    name: "au_norm_12",
+    kind: 0u8,
+    args: &[9f64, 97f64, 47f64, 37f64, 50f64, 101f64, 37f64, 50f64, 102f64, 98f64],
+    res: &[0f64, 5f64, 97f64, 47f64, 46f64, 47f64, 98f64],
+};
+
+pub const AU_NORM_13: AuScenario = AuScenario {
+    name: "au_norm_13",
+    kind: 0u8,
+    args: &[9f64, 97f64, 47f64, 37f64, 50f64, 69f64, 37f64, 50f64, 70f64, 98f64],
+    res: &[0f64, 5f64, 97f64, 47f64, 46f64, 47f64, 98f64],
+};
+
+pub const AU_NORM_14: AuScenario = AuScenario {
+    name: "au_norm_14",
+    kind: 0u8,
+    args: &[9f64, 99f64, 97f64, 102f64, 37f64, 67f64, 51f64, 37f64, 65f64, 57f64],
+    res: &[0f64, 4f64, 99f64, 97f64, 102f64, 233f64],
+};
+
+pub const AU_NORM_15: AuScenario = AuScenario {
+    name: "au_norm_15",
+    kind: 0u8,
+    args: &[5f64, 97f64, 37f64, 50f64, 48f64, 98f64],
+    res: &[0f64, 3f64, 97f64, 32f64, 98f64],
+};
+
+pub const AU_NORM_16: AuScenario = AuScenario {
+    name: "au_norm_16",
+    kind: 0u8,
+    args: &[3f64, 37f64, 122f64, 122f64],
+    res: &[0f64, 3f64, 37f64, 122f64, 122f64],
+};
+
+pub const AU_NORM_17: AuScenario = AuScenario {
+    name: "au_norm_17",
+    kind: 0u8,
+    args: &[1f64, 37f64],
+    res: &[0f64, 1f64, 37f64],
+};
+
+pub const AU_NORM_18: AuScenario = AuScenario {
+    name: "au_norm_18",
+    kind: 0u8,
+    args: &[2f64, 37f64, 99f64],
+    res: &[0f64, 2f64, 37f64, 99f64],
+};
+
+pub const AU_NORM_19: AuScenario = AuScenario {
+    name: "au_norm_19",
+    kind: 0u8,
+    args: &[6f64, 37f64, 99f64, 51f64, 37f64, 50f64, 56f64],
+    res: &[0f64, 6f64, 37f64, 99f64, 51f64, 37f64, 50f64, 56f64],
+};
+
+pub const AU_NORM_20: AuScenario = AuScenario {
+    name: "au_norm_20",
+    kind: 0u8,
+    args: &[9f64, 37f64, 101f64, 100f64, 37f64, 97f64, 48f64, 37f64, 56f64, 48f64],
+    res: &[0f64, 9f64, 37f64, 101f64, 100f64, 37f64, 97f64, 48f64, 37f64, 56f64, 48f64],
+};
+
+pub const AU_NORM_21: AuScenario = AuScenario {
+    name: "au_norm_21",
+    kind: 0u8,
+    args: &[12f64, 37f64, 102f64, 48f64, 37f64, 57f64, 102f64, 37f64, 57f64, 56f64, 37f64, 56f64, 48f64],
+    res: &[0f64, 2f64, 55357f64, 56832f64],
+};
+
+pub const AU_NORM_22: AuScenario = AuScenario {
+    name: "au_norm_22",
+    kind: 0u8,
+    args: &[17f64, 97f64, 112f64, 112f64, 58f64, 47f64, 47f64, 111f64, 112f64, 101f64, 110f64, 102f64, 114f64, 111f64, 110f64, 116f64, 47f64, 120f64],
+    res: &[0f64, 16f64, 97f64, 112f64, 112f64, 58f64, 47f64, 111f64, 112f64, 101f64, 110f64, 102f64, 114f64, 111f64, 110f64, 116f64, 47f64, 120f64],
+};
+
+pub const AU_NORM_23: AuScenario = AuScenario {
+    name: "au_norm_23",
+    kind: 0u8,
+    args: &[5f64, 97f64, 37f64, 50f64, 54f64, 98f64],
+    res: &[0f64, 3f64, 97f64, 38f64, 98f64],
+};
+
+pub const AU_NORM_24: AuScenario = AuScenario {
+    name: "au_norm_24",
+    kind: 0u8,
+    args: &[3f64, 97f64, 43f64, 98f64],
+    res: &[0f64, 3f64, 97f64, 43f64, 98f64],
+};
+
+pub const AU_NORM_25: AuScenario = AuScenario {
+    name: "au_norm_25",
+    kind: 0u8,
+    args: &[13f64, 97f64, 126f64, 98f64, 33f64, 99f64, 40f64, 100f64, 41f64, 101f64, 42f64, 102f64, 39f64, 103f64],
+    res: &[0f64, 13f64, 97f64, 126f64, 98f64, 33f64, 99f64, 40f64, 100f64, 41f64, 101f64, 42f64, 102f64, 39f64, 103f64],
+};
+
+pub const AU_NORM_26: AuScenario = AuScenario {
+    name: "au_norm_26",
+    kind: 0u8,
+    args: &[4f64, 47f64, 37f64, 50f64, 100f64],
+    res: &[0f64, 1f64, 45f64],
+};
+
+pub const AU_NORM_27: AuScenario = AuScenario {
+    name: "au_norm_27",
+    kind: 0u8,
+    args: &[9f64, 37f64, 69f64, 50f64, 37f64, 56f64, 52f64, 37f64, 65f64, 65f64],
+    res: &[0f64, 1f64, 8490f64],
+};
+
+pub const AU_NORM_28: AuScenario = AuScenario {
+    name: "au_norm_28",
+    kind: 0u8,
+    args: &[10f64, 97f64, 47f64, 37f64, 50f64, 69f64, 37f64, 50f64, 69f64, 47f64, 98f64],
+    res: &[1f64],
+};
+
+pub const AU_NORM_29: AuScenario = AuScenario {
+    name: "au_norm_29",
+    kind: 0u8,
+    args: &[10f64, 97f64, 47f64, 37f64, 50f64, 102f64, 37f64, 50f64, 101f64, 47f64, 98f64],
+    res: &[0f64, 6f64, 97f64, 47f64, 47f64, 46f64, 47f64, 98f64],
+};
+
+pub const AU_ENC_0: AuScenario = AuScenario {
+    name: "au_enc_0",
+    kind: 1u8,
+    args: &[6f64, 47f64, 97f64, 32f64, 98f64, 47f64, 99f64],
+    res: &[0f64, 7f64, 97f64, 37f64, 50f64, 48f64, 98f64, 47f64, 99f64],
+};
+
+pub const AU_ENC_1: AuScenario = AuScenario {
+    name: "au_enc_1",
+    kind: 1u8,
+    args: &[6f64, 97f64, 47f64, 37f64, 50f64, 70f64, 98f64],
+    res: &[0f64, 3f64, 97f64, 47f64, 98f64],
+};
+
+pub const AU_ENC_2: AuScenario = AuScenario {
+    name: "au_enc_2",
+    kind: 1u8,
+    args: &[4f64, 99f64, 97f64, 102f64, 233f64],
+    res: &[0f64, 9f64, 99f64, 97f64, 102f64, 37f64, 67f64, 51f64, 37f64, 65f64, 57f64],
+};
+
+pub const AU_ENC_3: AuScenario = AuScenario {
+    name: "au_enc_3",
+    kind: 1u8,
+    args: &[5f64, 97f64, 37f64, 50f64, 48f64, 98f64],
+    res: &[0f64, 5f64, 97f64, 37f64, 50f64, 48f64, 98f64],
+};
+
+pub const AU_ENC_4: AuScenario = AuScenario {
+    name: "au_enc_4",
+    kind: 1u8,
+    args: &[3f64, 55357f64, 56832f64, 120f64],
+    res: &[0f64, 13f64, 37f64, 70f64, 48f64, 37f64, 57f64, 70f64, 37f64, 57f64, 56f64, 37f64, 56f64, 48f64, 120f64],
+};
+
+pub const AU_ENC_5: AuScenario = AuScenario {
+    name: "au_enc_5",
+    kind: 1u8,
+    args: &[4f64, 97f64, 47f64, 46f64, 46f64],
+    res: &[1f64],
+};
+
+pub const AU_ENC_6: AuScenario = AuScenario {
+    name: "au_enc_6",
+    kind: 1u8,
+    args: &[9f64, 97f64, 47f64, 37f64, 50f64, 69f64, 37f64, 50f64, 70f64, 98f64],
+    res: &[0f64, 5f64, 97f64, 47f64, 46f64, 47f64, 98f64],
+};
+
+pub const AU_ENC_7: AuScenario = AuScenario {
+    name: "au_enc_7",
+    kind: 1u8,
+    args: &[12f64, 97f64, 33f64, 39f64, 40f64, 41f64, 42f64, 126f64, 45f64, 95f64, 46f64, 98f64, 32f64],
+    res: &[0f64, 14f64, 97f64, 33f64, 39f64, 40f64, 41f64, 42f64, 126f64, 45f64, 95f64, 46f64, 98f64, 37f64, 50f64, 48f64],
+};
+
+pub const AU_ENC_8: AuScenario = AuScenario {
+    name: "au_enc_8",
+    kind: 1u8,
+    args: &[5f64, 97f64, 37f64, 50f64, 54f64, 98f64],
+    res: &[0f64, 5f64, 97f64, 37f64, 50f64, 54f64, 98f64],
+};
+
+pub const AU_ENC_9: AuScenario = AuScenario {
+    name: "au_enc_9",
+    kind: 1u8,
+    args: &[0f64],
+    res: &[1f64],
+};
+
+pub const AU_ENC_10: AuScenario = AuScenario {
+    name: "au_enc_10",
+    kind: 1u8,
+    args: &[17f64, 97f64, 112f64, 112f64, 58f64, 47f64, 47f64, 111f64, 112f64, 101f64, 110f64, 102f64, 114f64, 111f64, 110f64, 116f64, 47f64, 120f64],
+    res: &[0f64, 18f64, 97f64, 112f64, 112f64, 37f64, 51f64, 65f64, 47f64, 111f64, 112f64, 101f64, 110f64, 102f64, 114f64, 111f64, 110f64, 116f64, 47f64, 120f64],
+};
+
+pub const AU_ENC_11: AuScenario = AuScenario {
+    name: "au_enc_11",
+    kind: 1u8,
+    args: &[11f64, 97f64, 47f64, 37f64, 50f64, 70f64, 98f64, 47f64, 37f64, 50f64, 70f64, 99f64],
+    res: &[0f64, 5f64, 97f64, 47f64, 98f64, 47f64, 99f64],
+};
+
+pub const AU_ENC_12: AuScenario = AuScenario {
+    name: "au_enc_12",
+    kind: 1u8,
+    args: &[1f64, 37f64],
+    res: &[0f64, 3f64, 37f64, 50f64, 53f64],
+};
+
+pub const AU_ENC_13: AuScenario = AuScenario {
+    name: "au_enc_13",
+    kind: 1u8,
+    args: &[3f64, 37f64, 122f64, 122f64],
+    res: &[0f64, 5f64, 37f64, 50f64, 53f64, 122f64, 122f64],
+};
+
+pub const AU_ENC_14: AuScenario = AuScenario {
+    name: "au_enc_14",
+    kind: 1u8,
+    args: &[5f64, 97f64, 233f64, 20013f64, 55357f64, 56832f64],
+    res: &[0f64, 28f64, 97f64, 37f64, 67f64, 51f64, 37f64, 65f64, 57f64, 37f64, 69f64, 52f64, 37f64, 66f64, 56f64, 37f64, 65f64, 68f64, 37f64, 70f64, 48f64, 37f64, 57f64, 70f64, 37f64, 57f64, 56f64, 37f64, 56f64, 48f64],
+};
+
+pub const AU_BUILD_0: AuScenario = AuScenario {
+    name: "au_build_0",
+    kind: 2u8,
+    args: &[36f64, 97f64, 112f64, 112f64, 58f64, 47f64, 47f64, 111f64, 112f64, 101f64, 110f64, 102f64, 114f64, 111f64, 110f64, 116f64, 47f64, 95f64, 97f64, 115f64, 115f64, 101f64, 116f64, 115f64, 47f64, 102f64, 108f64, 97f64, 103f64, 115f64, 47f64, 85f64, 83f64, 46f64, 115f64, 118f64, 103f64, 0f64, 12f64, 104f64, 116f64, 116f64, 112f64, 115f64, 58f64, 47f64, 47f64, 99f64, 100f64, 110f64, 47f64],
+    res: &[0f64, 36f64, 97f64, 112f64, 112f64, 58f64, 47f64, 47f64, 111f64, 112f64, 101f64, 110f64, 102f64, 114f64, 111f64, 110f64, 116f64, 47f64, 95f64, 97f64, 115f64, 115f64, 101f64, 116f64, 115f64, 47f64, 102f64, 108f64, 97f64, 103f64, 115f64, 47f64, 85f64, 83f64, 46f64, 115f64, 118f64, 103f64],
+};
+
+pub const AU_BUILD_1: AuScenario = AuScenario {
+    name: "au_build_1",
+    kind: 2u8,
+    args: &[10f64, 72f64, 84f64, 84f64, 80f64, 58f64, 47f64, 47f64, 120f64, 47f64, 121f64, 0f64, 0f64],
+    res: &[0f64, 10f64, 72f64, 84f64, 84f64, 80f64, 58f64, 47f64, 47f64, 120f64, 47f64, 121f64],
+};
+
+pub const AU_BUILD_2: AuScenario = AuScenario {
+    name: "au_build_2",
+    kind: 2u8,
+    args: &[7f64, 97f64, 43f64, 98f64, 58f64, 47f64, 47f64, 120f64, 0f64, 0f64],
+    res: &[0f64, 7f64, 97f64, 43f64, 98f64, 58f64, 47f64, 47f64, 120f64],
+};
+
+pub const AU_BUILD_3: AuScenario = AuScenario {
+    name: "au_build_3",
+    kind: 2u8,
+    args: &[8f64, 97f64, 46f64, 45f64, 43f64, 58f64, 47f64, 47f64, 120f64, 0f64, 0f64],
+    res: &[0f64, 8f64, 97f64, 46f64, 45f64, 43f64, 58f64, 47f64, 47f64, 120f64],
+};
+
+pub const AU_BUILD_4: AuScenario = AuScenario {
+    name: "au_build_4",
+    kind: 2u8,
+    args: &[6f64, 49f64, 97f64, 58f64, 47f64, 47f64, 120f64, 0f64, 0f64],
+    res: &[0f64, 8f64, 47f64, 49f64, 97f64, 37f64, 51f64, 65f64, 47f64, 120f64],
+};
+
+pub const AU_BUILD_5: AuScenario = AuScenario {
+    name: "au_build_5",
+    kind: 2u8,
+    args: &[6f64, 97f64, 58f64, 120f64, 47f64, 47f64, 121f64, 0f64, 0f64],
+    res: &[0f64, 8f64, 47f64, 97f64, 37f64, 51f64, 65f64, 120f64, 47f64, 121f64],
+};
+
+pub const AU_BUILD_6: AuScenario = AuScenario {
+    name: "au_build_6",
+    kind: 2u8,
+    args: &[4f64, 58f64, 47f64, 47f64, 120f64, 0f64, 0f64],
+    res: &[0f64, 6f64, 47f64, 37f64, 51f64, 65f64, 47f64, 120f64],
+};
+
+pub const AU_BUILD_7: AuScenario = AuScenario {
+    name: "au_build_7",
+    kind: 2u8,
+    args: &[0f64, 0f64, 0f64],
+    res: &[1f64],
+};
+
+pub const AU_BUILD_8: AuScenario = AuScenario {
+    name: "au_build_8",
+    kind: 2u8,
+    args: &[3f64, 97f64, 47f64, 98f64, 1f64, 3f64, 97f64, 47f64, 98f64, 17f64, 104f64, 116f64, 116f64, 112f64, 115f64, 58f64, 47f64, 47f64, 99f64, 100f64, 110f64, 47f64, 122f64, 46f64, 115f64, 118f64, 103f64, 12f64, 104f64, 116f64, 116f64, 112f64, 115f64, 58f64, 47f64, 47f64, 99f64, 100f64, 110f64, 47f64],
+    res: &[0f64, 28f64, 104f64, 116f64, 116f64, 112f64, 115f64, 58f64, 47f64, 47f64, 99f64, 100f64, 110f64, 104f64, 116f64, 116f64, 112f64, 115f64, 58f64, 47f64, 47f64, 99f64, 100f64, 110f64, 47f64, 122f64, 46f64, 115f64, 118f64, 103f64],
+};
+
+pub const AU_BUILD_9: AuScenario = AuScenario {
+    name: "au_build_9",
+    kind: 2u8,
+    args: &[3f64, 97f64, 47f64, 98f64, 1f64, 3f64, 97f64, 47f64, 98f64, 17f64, 104f64, 116f64, 116f64, 112f64, 115f64, 58f64, 47f64, 47f64, 99f64, 100f64, 110f64, 47f64, 122f64, 46f64, 115f64, 118f64, 103f64, 14f64, 104f64, 116f64, 116f64, 112f64, 115f64, 58f64, 47f64, 47f64, 99f64, 100f64, 110f64, 47f64, 47f64, 47f64],
+    res: &[0f64, 28f64, 104f64, 116f64, 116f64, 112f64, 115f64, 58f64, 47f64, 47f64, 99f64, 100f64, 110f64, 104f64, 116f64, 116f64, 112f64, 115f64, 58f64, 47f64, 47f64, 99f64, 100f64, 110f64, 47f64, 122f64, 46f64, 115f64, 118f64, 103f64],
+};
+
+pub const AU_BUILD_10: AuScenario = AuScenario {
+    name: "au_build_10",
+    kind: 2u8,
+    args: &[3f64, 97f64, 47f64, 98f64, 1f64, 3f64, 97f64, 47f64, 98f64, 17f64, 104f64, 116f64, 116f64, 112f64, 115f64, 58f64, 47f64, 47f64, 99f64, 100f64, 110f64, 47f64, 122f64, 46f64, 115f64, 118f64, 103f64, 0f64],
+    res: &[0f64, 17f64, 104f64, 116f64, 116f64, 112f64, 115f64, 58f64, 47f64, 47f64, 99f64, 100f64, 110f64, 47f64, 122f64, 46f64, 115f64, 118f64, 103f64],
+};
+
+pub const AU_BUILD_11: AuScenario = AuScenario {
+    name: "au_build_11",
+    kind: 2u8,
+    args: &[3f64, 97f64, 47f64, 98f64, 1f64, 3f64, 97f64, 47f64, 98f64, 5f64, 122f64, 46f64, 115f64, 118f64, 103f64, 0f64],
+    res: &[0f64, 5f64, 122f64, 46f64, 115f64, 118f64, 103f64],
+};
+
+pub const AU_BUILD_12: AuScenario = AuScenario {
+    name: "au_build_12",
+    kind: 2u8,
+    args: &[3f64, 97f64, 47f64, 98f64, 1f64, 3f64, 97f64, 47f64, 98f64, 5f64, 122f64, 46f64, 115f64, 118f64, 103f64, 1f64, 120f64],
+    res: &[0f64, 6f64, 120f64, 122f64, 46f64, 115f64, 118f64, 103f64],
+};
+
+pub const AU_BUILD_13: AuScenario = AuScenario {
+    name: "au_build_13",
+    kind: 2u8,
+    args: &[3f64, 97f64, 47f64, 98f64, 1f64, 3f64, 97f64, 47f64, 98f64, 0f64, 0f64],
+    res: &[0f64, 4f64, 47f64, 97f64, 47f64, 98f64],
+};
+
+pub const AU_BUILD_14: AuScenario = AuScenario {
+    name: "au_build_14",
+    kind: 2u8,
+    args: &[3f64, 97f64, 47f64, 98f64, 0f64, 0f64],
+    res: &[0f64, 4f64, 47f64, 97f64, 47f64, 98f64],
+};
+
+pub const AU_BUILD_15: AuScenario = AuScenario {
+    name: "au_build_15",
+    kind: 2u8,
+    args: &[3f64, 97f64, 47f64, 98f64, 0f64, 12f64, 104f64, 116f64, 116f64, 112f64, 115f64, 58f64, 47f64, 47f64, 99f64, 100f64, 110f64, 47f64],
+    res: &[0f64, 4f64, 47f64, 97f64, 47f64, 98f64],
+};
+
+pub const AU_BUILD_16: AuScenario = AuScenario {
+    name: "au_build_16",
+    kind: 2u8,
+    args: &[4f64, 47f64, 97f64, 47f64, 98f64, 1f64, 3f64, 97f64, 47f64, 98f64, 5f64, 122f64, 46f64, 115f64, 118f64, 103f64, 0f64],
+    res: &[0f64, 5f64, 122f64, 46f64, 115f64, 118f64, 103f64],
+};
+
+pub const AU_BUILD_17: AuScenario = AuScenario {
+    name: "au_build_17",
+    kind: 2u8,
+    args: &[9f64, 97f64, 47f64, 37f64, 50f64, 69f64, 37f64, 50f64, 70f64, 98f64, 0f64, 0f64],
+    res: &[1f64],
+};
+
+pub const AU_BUILD_18: AuScenario = AuScenario {
+    name: "au_build_18",
+    kind: 2u8,
+    args: &[9f64, 97f64, 47f64, 37f64, 50f64, 69f64, 37f64, 50f64, 70f64, 98f64, 1f64, 5f64, 97f64, 47f64, 46f64, 47f64, 98f64, 3f64, 104f64, 105f64, 116f64, 0f64],
+    res: &[0f64, 3f64, 104f64, 105f64, 116f64],
+};
+
+pub const AU_BUILD_19: AuScenario = AuScenario {
+    name: "au_build_19",
+    kind: 2u8,
+    args: &[6f64, 97f64, 47f64, 37f64, 50f64, 70f64, 98f64, 0f64, 0f64],
+    res: &[0f64, 4f64, 47f64, 97f64, 47f64, 98f64],
+};
+
+pub const AU_BUILD_20: AuScenario = AuScenario {
+    name: "au_build_20",
+    kind: 2u8,
+    args: &[6f64, 97f64, 47f64, 37f64, 50f64, 70f64, 98f64, 1f64, 4f64, 97f64, 47f64, 47f64, 98f64, 3f64, 100f64, 98f64, 108f64, 0f64],
+    res: &[0f64, 3f64, 100f64, 98f64, 108f64],
+};
+
+pub const AU_BUILD_21: AuScenario = AuScenario {
+    name: "au_build_21",
+    kind: 2u8,
+    args: &[5f64, 97f64, 32f64, 98f64, 47f64, 99f64, 0f64, 0f64],
+    res: &[0f64, 8f64, 47f64, 97f64, 37f64, 50f64, 48f64, 98f64, 47f64, 99f64],
+};
+
+pub const AU_BUILD_22: AuScenario = AuScenario {
+    name: "au_build_22",
+    kind: 2u8,
+    args: &[4f64, 99f64, 97f64, 102f64, 233f64, 0f64, 0f64],
+    res: &[0f64, 10f64, 47f64, 99f64, 97f64, 102f64, 37f64, 67f64, 51f64, 37f64, 65f64, 57f64],
+};
+
+pub const AU_BUILD_23: AuScenario = AuScenario {
+    name: "au_build_23",
+    kind: 2u8,
+    args: &[5f64, 97f64, 233f64, 20013f64, 55357f64, 56832f64, 0f64, 0f64],
+    res: &[0f64, 29f64, 47f64, 97f64, 37f64, 67f64, 51f64, 37f64, 65f64, 57f64, 37f64, 69f64, 52f64, 37f64, 66f64, 56f64, 37f64, 65f64, 68f64, 37f64, 70f64, 48f64, 37f64, 57f64, 70f64, 37f64, 57f64, 56f64, 37f64, 56f64, 48f64],
+};
+
+pub const AU_BUILD_24: AuScenario = AuScenario {
+    name: "au_build_24",
+    kind: 2u8,
+    args: &[5f64, 97f64, 37f64, 50f64, 48f64, 98f64, 0f64, 0f64],
+    res: &[0f64, 6f64, 47f64, 97f64, 37f64, 50f64, 48f64, 98f64],
+};
+
+pub const AU_BUILD_25: AuScenario = AuScenario {
+    name: "au_build_25",
+    kind: 2u8,
+    args: &[5f64, 37f64, 50f64, 101f64, 47f64, 120f64, 0f64, 0f64],
+    res: &[1f64],
+};
+
+pub const AU_BUILD_26: AuScenario = AuScenario {
+    name: "au_build_26",
+    kind: 2u8,
+    args: &[5f64, 97f64, 47f64, 46f64, 47f64, 98f64, 1f64, 5f64, 97f64, 47f64, 46f64, 47f64, 98f64, 3f64, 104f64, 105f64, 116f64, 5f64, 98f64, 97f64, 115f64, 101f64, 47f64],
+    res: &[1f64],
+};
+
+pub const AU_SCENARIOS: &[AuScenario] = &[
+    AU_NORM_0,
+    AU_NORM_1,
+    AU_NORM_2,
+    AU_NORM_3,
+    AU_NORM_4,
+    AU_NORM_5,
+    AU_NORM_6,
+    AU_NORM_7,
+    AU_NORM_8,
+    AU_NORM_9,
+    AU_NORM_10,
+    AU_NORM_11,
+    AU_NORM_12,
+    AU_NORM_13,
+    AU_NORM_14,
+    AU_NORM_15,
+    AU_NORM_16,
+    AU_NORM_17,
+    AU_NORM_18,
+    AU_NORM_19,
+    AU_NORM_20,
+    AU_NORM_21,
+    AU_NORM_22,
+    AU_NORM_23,
+    AU_NORM_24,
+    AU_NORM_25,
+    AU_NORM_26,
+    AU_NORM_27,
+    AU_NORM_28,
+    AU_NORM_29,
+    AU_ENC_0,
+    AU_ENC_1,
+    AU_ENC_2,
+    AU_ENC_3,
+    AU_ENC_4,
+    AU_ENC_5,
+    AU_ENC_6,
+    AU_ENC_7,
+    AU_ENC_8,
+    AU_ENC_9,
+    AU_ENC_10,
+    AU_ENC_11,
+    AU_ENC_12,
+    AU_ENC_13,
+    AU_ENC_14,
+    AU_BUILD_0,
+    AU_BUILD_1,
+    AU_BUILD_2,
+    AU_BUILD_3,
+    AU_BUILD_4,
+    AU_BUILD_5,
+    AU_BUILD_6,
+    AU_BUILD_7,
+    AU_BUILD_8,
+    AU_BUILD_9,
+    AU_BUILD_10,
+    AU_BUILD_11,
+    AU_BUILD_12,
+    AU_BUILD_13,
+    AU_BUILD_14,
+    AU_BUILD_15,
+    AU_BUILD_16,
+    AU_BUILD_17,
+    AU_BUILD_18,
+    AU_BUILD_19,
+    AU_BUILD_20,
+    AU_BUILD_21,
+    AU_BUILD_22,
+    AU_BUILD_23,
+    AU_BUILD_24,
+    AU_BUILD_25,
+    AU_BUILD_26,
+];
+

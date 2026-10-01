@@ -243,8 +243,9 @@ pub fn versioned_path(commit: &str, pathname: &str, search: &str) -> Option<Stri
 }
 
 /// `decodeURIComponent` with JS semantics: `None` models the `URIError` a
-/// malformed escape raises (caller falls back to the raw segment).
-fn decode_uri_component(s: &str) -> Option<String> {
+/// malformed escape raises (caller falls back to the raw segment). Shared
+/// with `asset_urls` (same JS builtin).
+pub(crate) fn decode_uri_component(s: &str) -> Option<String> {
     fn hex_byte(b: &[u8], p: usize) -> Option<u8> {
         if p + 2 >= b.len() || b[p] != b'%' {
             return None;

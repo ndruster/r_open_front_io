@@ -68,6 +68,10 @@ rust/
 │   │   │                          on/off/emit + Map-order dump, ctors/cbs/events
 │   │   │                          cross by refid, emit pinned as the callback
 │   │   │                          call trace)
+│   │   ├── asset_urls.rs          port of AssetUrls.ts (normalizeAssetPath /
+│   │   │                          encodeAssetPath / buildAssetUrl; percent-decode
+│   │   │                          + `.`/`..` guards, any-scheme absolute-URL
+│   │   │                          regex, manifest/baseUrl join; throws as [1])
 │   │   ├── wasm_probe.rs          `extern "C"` surface, feature-gated
 │   │   └── pathfinding/
 │   │       ├── mod.rs
@@ -616,6 +620,27 @@ desync, not a rounding nit. Two things enforce that here:
     SameValueZero keys collapse `-0`/`+0` refids. 5 scenarios cover fan-out
     order, duplicate-callback `off`, unknown-ctor no-ops, cross-ctor insertion
     order, and interleaved multi-ctor emits.
+37. **`AssetUrls.ts`** (`asset_urls`) — `normalizeAssetPath` /
+    `encodeAssetPath` / `buildAssetUrl`: the pure asset-path surface (the
+    `window`/`globalThis` manifest readers and the `index.html` CDN rewrite are
+    out of scope). `normalizeAssetPath` strips a leading `/+` run, drops empty
+    segments, percent-decodes each survivor (`decodeURIComponent` with the raw
+    segment as the `URIError` fallback — the decoder is shared with
+    `server_list`) and rejects a segment when the raw or decoded form is `.` /
+    `..`; the joined result can still carry decoded `//` or `.` segments
+    (`a/%2E%2Fb` → `a/./b`), which is why `buildAssetUrl`'s encode fallback
+    re-normalises and throws where `normalizeAssetPath` alone succeeded.
+    `isAbsoluteUrl` is `/^[a-z][a-z0-9+.-]*:\/\//i` — the `i` flag folds only
+    ASCII in V8 (`K`/`ſ`/`ı` variants fail the class; probed), so an exact
+    byte-level prefix scan is equivalent. The manifest lookup is exact-key
+    (prototype-chain `toString` hits are outside the domain, same exclusion as
+    `server_list`), and a hit counts only when the value is truthy. A
+    hand-written `encodeURIComponent` (unreserved set passthrough, uppercase
+    `%XX` per UTF-8 byte; lone surrogates are unrepresentable in a Rust
+    `String`) backs the encode. 72 scenarios over the three `run_op` kinds pin
+    the decode fallbacks (`%zz`, `%`, `%c`, `%c3%28`, `%ed%a0%80`), the
+    raw-vs-decoded `.`/`..` guards, the scheme-regex edges, and every
+    manifest/baseUrl branch; throws cross as `[1]`.
 
 Regenerate whenever a ported source changes:
 
@@ -649,7 +674,7 @@ node rust/tools/run_wasm_parity.mjs
 
 `wasm-probe` exposes the ported functions through `extern "C"` scalar
 entrypoints (`src/wasm_probe.rs`); the runner imports `data/vectors.json` and
-compares every value. Last run: **39,780 comparisons, all bit-identical**.
+compares every value. Last run: **40,379 comparisons, all bit-identical**.
 
 ### Windows: the linker environment
 

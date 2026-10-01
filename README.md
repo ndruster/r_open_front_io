@@ -54,6 +54,10 @@ rust/
 │   │       ├── parabola.rs
 │   │       │                      port of PathFinder.Parabola.ts
 │   │       │                      (control points + curve-cached stepping)
+│   │       ├── mini_map_transformer.rs
+│   │       │                      port of transformers/MiniMapTransformer.ts
+│   │       │                      (downscale/upscale decorator + PathFinder
+│   │       │                       trait + PathStart union)
 │   │       └── connected_components.rs
 │   │                              port of algorithms/ConnectedComponents.ts
 │   └── tests/
@@ -282,6 +286,23 @@ desync, not a rounding nit. Two things enforce that here:
     jumping several indices). The array-`from` `findPath` throw is a
     signature-level guard the Rust API cannot express (single-ref parameter),
     so it is not captured.
+18. **`MiniMapTransformer.ts`** (`pathfinding::mini_map_transformer`) is the
+    minimap decorator: downscale `floor(map.x(f)/2)` to the mini map, delegate
+    to `inner`, upscale by 2 with `Math.round` interpolation between
+    consecutive mini tiles, then `fixExtremes` (unshift/slice the source,
+    push/truncate the destination). The TS `TileRef | TileRef[]` union is
+    modelled by `PathStart` because the distinction is *observable*: a
+    single-element start array collapses to a scalar for `inner` yet still runs
+    the multi-source closest-start branch (`Array.isArray`), and each engine
+    normalises the union differently (`AStar`/`AStarWater`/`AStarWaterBounded`
+    collapse `[s]` to `s`; `AStarWaterHierarchical` routes it to the
+    multi-source path). The scripted `ScriptedFinder` stub records what the
+    transformer passed `inner` so the collapse + downscale are pinned; the
+    six scenarios cover null/empty/path results, all four `fixExtremes`
+    branches, the Manhattan closest-start with strict `<` tie order, the empty
+    array start (`srcRef` stays undefined), and both `ref` throw classes —
+    downscale OOB (inner never called) and upscale OOB via an oversized mini
+    map — pinned as panics natively and would-throw markers under wasm.
 
 Regenerate whenever a ported source changes:
 
@@ -315,7 +336,7 @@ node rust/tools/run_wasm_parity.mjs
 
 `wasm-probe` exposes the ported functions through `extern "C"` scalar
 entrypoints (`src/wasm_probe.rs`); the runner imports `data/vectors.json` and
-compares every value. Last run: **30,494 comparisons, all bit-identical**.
+compares every value. Last run: **30,720 comparisons, all bit-identical**.
 
 ### Windows: the linker environment
 

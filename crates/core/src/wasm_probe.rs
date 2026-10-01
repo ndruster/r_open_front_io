@@ -2391,3 +2391,140 @@ pub extern "C" fn probe_pb_invalidate() {
 pub extern "C" fn probe_pb_index() -> u64 {
     PB.with(|p| p.borrow().as_ref().unwrap().current_index() as u64)
 }
+
+// --- MiniMapTransformer (transformers/MiniMapTransformer.ts) -----------------
+// One all-land main + mini GameMap pair per scenario (leaked). The host drives
+// the recorded query script: start/goal refs, the scripted inner result, and
+// observes both what the transformer passed the inner finder (the scalar/array
+// collapse + minimap downscale) and the upscaled, endpoint-repaired result.
+// The two `ref` throw classes (downscale / upscale out of bounds) are observed
+// via the would-throw convention; the panicking semantics are pinned by the
+// native replay test.
+
+use crate::pathfinding::mini_map_transformer::{MiniMapTransformer, ScriptedFinder};
+use crate::pathfinding::PathStart;
+
+thread_local! {
+    static MMT_MAIN: std::cell::RefCell<Option<&'static GameMap>> =
+        const { std::cell::RefCell::new(None) };
+    static MMT_MINI: std::cell::RefCell<Option<&'static GameMap>> =
+        const { std::cell::RefCell::new(None) };
+    static MMT_FROM: std::cell::RefCell<Vec<f64>> = const { std::cell::RefCell::new(Vec::new()) };
+    static MMT_INNER: std::cell::RefCell<Vec<f64>> = const { std::cell::RefCell::new(Vec::new()) };
+    static MMT_OUT: std::cell::RefCell<Vec<f64>> = const { std::cell::RefCell::new(Vec::new()) };
+    static MMT_SEEN: std::cell::RefCell<Option<(bool, Vec<f64>, f64)>> =
+        const { std::cell::RefCell::new(None) };
+}
+
+/// Leak a fresh all-land main + mini GameMap pair.
+#[no_mangle]
+pub extern "C" fn probe_mmt_new(mw: f64, mh: f64, mini_w: f64, mini_h: f64) {
+    let main: &'static GameMap = Box::leak(Box::new(GameMap::new(
+        mw,
+        mh,
+        vec![0x03; (mw * mh) as usize],
+        mw * mh,
+    )));
+    let mini: &'static GameMap = Box::leak(Box::new(GameMap::new(
+        mini_w,
+        mini_h,
+        vec![0x03; (mini_w * mini_h) as usize],
+        mini_w * mini_h,
+    )));
+    MMT_MAIN.with(|m| *m.borrow_mut() = Some(main));
+    MMT_MINI.with(|m| *m.borrow_mut() = Some(mini));
+}
+
+/// Clear the per-query start / inner / seen buffers.
+#[no_mangle]
+pub extern "C" fn probe_mmt_reset() {
+    MMT_FROM.with(|f| f.borrow_mut().clear());
+    MMT_INNER.with(|i| i.borrow_mut().clear());
+    MMT_SEEN.with(|s| *s.borrow_mut() = None);
+}
+
+/// Queue one main-map start ref.
+#[no_mangle]
+pub extern "C" fn probe_mmt_from(v: f64) {
+    MMT_FROM.with(|f| f.borrow_mut().push(v));
+}
+
+/// Queue one mini-map inner tile ref.
+#[no_mangle]
+pub extern "C" fn probe_mmt_inner(v: f64) {
+    MMT_INNER.with(|i| i.borrow_mut().push(v));
+}
+
+/// Run one query. `inner_mode` 0 = null, 1 = empty, 2 = queued tiles. Returns
+/// 0 = null, 1 = threw (downscale or upscale), 2 = path (readable via
+/// `probe_mmt_out_*`). The inner stub's observation is readable via
+/// `probe_mmt_seen_*`.
+#[no_mangle]
+pub extern "C" fn probe_mmt_run(to: f64, from_is_array: u32, inner_mode: u32) -> u8 {
+    let main = MMT_MAIN.with(|m| m.borrow().unwrap());
+    let mini = MMT_MINI.with(|m| m.borrow().unwrap());
+    let from = MMT_FROM.with(|f| f.borrow().clone());
+    let inner = MMT_INNER.with(|i| i.borrow().clone());
+    let mut stub = ScriptedFinder::default();
+    stub.push_path(match inner_mode {
+        0 => None,
+        1 => Some(vec![]),
+        _ => Some(inner),
+    });
+    let starts = if from_is_array == 1 {
+        PathStart::Multi(&from)
+    } else {
+        PathStart::Single(from[0])
+    };
+    let r = {
+        let mut tr = MiniMapTransformer::new(&mut stub, main, mini);
+        tr.debug_find_path(starts, to)
+    };
+    MMT_SEEN.with(|s| *s.borrow_mut() = stub.last_seen);
+    match r {
+        Err(_) => 1,
+        Ok(None) => {
+            MMT_OUT.with(|o| o.borrow_mut().clear());
+            0
+        }
+        Ok(Some(v)) => {
+            MMT_OUT.with(|o| *o.borrow_mut() = v);
+            2
+        }
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn probe_mmt_out_len() -> usize {
+    MMT_OUT.with(|o| o.borrow().len())
+}
+
+#[no_mangle]
+pub extern "C" fn probe_mmt_out_at(i: usize) -> f64 {
+    MMT_OUT.with(|o| o.borrow()[i])
+}
+
+#[no_mangle]
+pub extern "C" fn probe_mmt_seen_flag() -> u8 {
+    MMT_SEEN.with(|s| s.borrow().is_some() as u8)
+}
+
+#[no_mangle]
+pub extern "C" fn probe_mmt_seen_multi() -> u8 {
+    MMT_SEEN.with(|s| s.borrow().as_ref().map_or(0, |(m, _, _)| *m as u8))
+}
+
+#[no_mangle]
+pub extern "C" fn probe_mmt_seen_len() -> usize {
+    MMT_SEEN.with(|s| s.borrow().as_ref().map_or(0, |(_, t, _)| t.len()))
+}
+
+#[no_mangle]
+pub extern "C" fn probe_mmt_seen_at(i: usize) -> f64 {
+    MMT_SEEN.with(|s| s.borrow().as_ref().unwrap().1[i])
+}
+
+#[no_mangle]
+pub extern "C" fn probe_mmt_seen_goal() -> f64 {
+    MMT_SEEN.with(|s| s.borrow().as_ref().unwrap().2)
+}

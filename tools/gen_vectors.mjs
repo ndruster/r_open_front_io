@@ -2493,6 +2493,138 @@ capturePB(
   ],
 );
 
+// --- MiniMapTransformer (transformers/MiniMapTransformer.ts) runner ----------
+// Runs the real transformer over a real main + mini GameMapImpl pair with a
+// scripted inner PathFinder stub. The stub records what the transformer passed
+// it (scalar vs array + the minimap downscale), which is what makes the TS
+// `TileRef | TileRef[]` union semantics observable (single-element array
+// collapses to a scalar start yet still runs the multi-source branch).
+// Queries replay linearly over one transformer + stub.
+//
+// Query group (variable length):
+//   [from_is_array, from_len, from_tiles..., to,
+//    inner_mode, inner_len, inner_tiles...,
+//    seen_flag, [is_multi, seen_len, seen_tiles..., seen_goal],
+//    out_mode, [out_len, out_tiles...]]
+// from_tiles are main-map refs. inner_mode 0 = null, 1 = [], 2 = tile list
+// (inner tiles are mini refs). seen_flag 0 = stub never called (a downscale
+// `ref` threw). out_mode 0 = null, 1 = threw (upscale `ref` out of bounds),
+// 2 = path (main refs).
+const mmtScenarios = [];
+const { MiniMapTransformer } = await loadTs(
+  "src/core/pathfinding/transformers/MiniMapTransformer.ts",
+);
+
+function mmtLandMap(w, h) {
+  return new GameMapImpl(w, h, new Uint8Array(w * h).fill(0x03), w * h);
+}
+
+function captureMMT(name, mw, mh, miniW, miniH, queries) {
+  const main = mmtLandMap(mw, mh);
+  const mini = mmtLandMap(miniW, miniH);
+  const stub = {
+    next: null,
+    last: null,
+    findPath(from, to) {
+      this.last = { from, to };
+      return this.next;
+    },
+  };
+  const tr = new MiniMapTransformer(stub, main, mini);
+  const groups = [];
+  for (const q of queries) {
+    const innerMode = q.inner === null ? 0 : q.inner.length === 0 ? 1 : 2;
+    const innerTiles = (q.inner ?? []).map(([x, y]) => mini.ref(x, y));
+    const fromArg = q.scalar ? main.ref(q.from[0][0], q.from[0][1]) : q.from.map(([x, y]) => main.ref(x, y));
+    const toRef = main.ref(q.to[0], q.to[1]);
+    stub.next = innerMode === 0 ? null : innerMode === 1 ? [] : innerTiles;
+    stub.last = null;
+    let outMode;
+    let outTiles = [];
+    try {
+      const p = tr.findPath(fromArg, toRef);
+      if (p === null) outMode = 0;
+      else {
+        outMode = 2;
+        outTiles = p;
+      }
+    } catch {
+      outMode = 1;
+    }
+    const fs = Array.isArray(fromArg) ? fromArg : [fromArg];
+    const g = [Array.isArray(fromArg) ? 1 : 0, fs.length, ...fs, toRef];
+    g.push(innerMode, innerTiles.length, ...innerTiles);
+    if (stub.last === null) {
+      g.push(0);
+    } else {
+      const f = stub.last.from;
+      const isMulti = Array.isArray(f) ? 1 : 0;
+      const seenTiles = Array.isArray(f) ? f : [f];
+      g.push(1, isMulti, seenTiles.length, ...seenTiles, stub.last.to);
+    }
+    g.push(outMode);
+    if (outMode === 2) g.push(outTiles.length, ...outTiles);
+    groups.push(g);
+  }
+  mmtScenarios.push({ name, mw, mh, miniW, miniH, groups });
+}
+
+// 20x20 main / 10x10 mini: null / empty / path results, fixExtremes unshift,
+// and the single-element-array collapse (seen scalar, multi branch still run).
+captureMMT("mmt_basic", 20, 20, 10, 10, [
+  { from: [[2, 4]], scalar: true, to: [16, 10], inner: null },
+  { from: [[2, 4]], scalar: true, to: [16, 10], inner: [] },
+  { from: [[2, 4]], scalar: true, to: [16, 10], inner: [[1, 2], [2, 3], [3, 4], [8, 5]] },
+  { from: [[4, 4]], scalar: true, to: [16, 10], inner: [[1, 2], [2, 3], [3, 4], [8, 5]] },
+  { from: [[2, 4]], scalar: false, to: [16, 10], inner: [[1, 2], [2, 3], [3, 4], [8, 5]] },
+]);
+
+// Destination / source landing mid-path: dstIndex truncation, srcIndex slice,
+// and dst appended when absent.
+captureMMT("mmt_dst", 20, 20, 10, 10, [
+  { from: [[2, 4]], scalar: true, to: [4, 4], inner: [[1, 2], [2, 2], [3, 3]] },
+  { from: [[6, 6]], scalar: true, to: [4, 4], inner: [[1, 2], [2, 2], [3, 3]] },
+  { from: [[2, 4]], scalar: true, to: [16, 10], inner: [[1, 2], [2, 2], [3, 3]] },
+]);
+
+// Multi-source: closest start by Manhattan distance (strict < keeps the first
+// on ties), null/empty propagation, and the empty-array start where srcRef
+// stays undefined (no source to fix).
+captureMMT("mmt_multi", 20, 20, 10, 10, [
+  { from: [[2, 4], [10, 10]], to: [16, 10], inner: [[5, 5], [6, 5], [8, 5]] },
+  { from: [[2, 4], [10, 10]], to: [16, 10], inner: [[1, 2], [2, 2], [3, 3]] },
+  { from: [[2, 4], [14, 4]], to: [16, 10], inner: [[4, 4], [5, 4]] },
+  { from: [[2, 4], [10, 10]], to: [16, 10], inner: null },
+  { from: [], to: [16, 10], inner: null },
+  { from: [], to: [16, 10], inner: [[1, 2]] },
+]);
+
+// 10x10 main / 5x5 mini: the interpolated diagonal pins Math.round half-up at
+// every .5 step; the single-point inner path exercises the last-point push and
+// dst append.
+captureMMT("mmt_interp", 10, 10, 5, 5, [
+  { from: [[0, 0]], scalar: true, to: [4, 8], inner: [[0, 0], [2, 4]] },
+  { from: [[0, 0]], scalar: true, to: [4, 8], inner: [[0, 0]] },
+]);
+
+// 30x30 main / 10x10 mini: downscale `ref` throws (floor(coord/2) past the
+// mini edge) before the stub is ever called - for scalar, goal, and the second
+// element of a multi start.
+captureMMT("mmt_oob", 30, 30, 10, 10, [
+  { from: [[28, 28]], scalar: true, to: [2, 2], inner: null },
+  { from: [[2, 2]], scalar: true, to: [28, 28], inner: null },
+  { from: [[2, 2], [28, 28]], to: [2, 2], inner: null },
+]);
+
+// 20x20 main / 15x15 mini (mini larger than half): upscale `ref` throws on the
+// last point and mid-interpolation, after the stub ran; plus a valid upscale
+// through the oversized mini.
+captureMMT("mmt_bigmini", 20, 20, 15, 15, [
+  { from: [[2, 2]], scalar: true, to: [19, 19], inner: [[12, 12]] },
+  { from: [[2, 2]], scalar: true, to: [19, 19], inner: [[9, 9], [12, 12]] },
+  { from: [[10, 10]], scalar: true, to: [12, 12], inner: [[5, 5], [6, 6]] },
+]);
+
 const structures = {
   minheap: mhScenarios,
   bucket: bqScenarios,
@@ -2515,6 +2647,7 @@ const structures = {
   abstractgraphastar: agaScenarios,
   waterhierarchical: whScenarios,
   parabola: parabolaScenarios,
+  minimaptransformer: mmtScenarios,
 };
 
 // ================================================================ JSON
@@ -3848,6 +3981,42 @@ for (const s of structures.parabola) {
 }
 L.push("pub const PARABOLA_SCENARIOS: &[ParabolaScenario] = &[");
 for (const s of structures.parabola) L.push(`    ${s.name.toUpperCase()},`);
+L.push("];");
+L.push("");
+
+L.push("/// MiniMapTransformer scenario (transformers/MiniMapTransformer.ts).");
+L.push("/// `groups` is variable-length query groups: [from_is_array, from_len,");
+L.push("/// from_tiles..., to, inner_mode, inner_len, inner_tiles...,");
+L.push("/// seen_flag, [is_multi, seen_len, seen_tiles..., seen_goal],");
+L.push("/// out_mode, [out_len, out_tiles...]]. from/out tiles are main refs,");
+L.push("/// inner/seen tiles mini refs. inner_mode 0 = null, 1 = empty, 2 =");
+L.push("/// list. seen_flag 0 = inner never called (downscale threw). out_mode");
+L.push("/// 0 = null, 1 = threw (upscale out of bounds), 2 = path.");
+L.push("pub struct MiniMapTransformerScenario {");
+L.push("    pub name: &'static str,");
+L.push("    pub mw: f64,");
+L.push("    pub mh: f64,");
+L.push("    pub mini_w: f64,");
+L.push("    pub mini_h: f64,");
+L.push("    pub groups: &'static [f64],");
+L.push("}");
+L.push("");
+for (const s of structures.minimaptransformer) {
+  const id = s.name.toUpperCase();
+  L.push(`pub const ${id}: MiniMapTransformerScenario = MiniMapTransformerScenario {`);
+  L.push(`    name: "${s.name}",`);
+  L.push(`    mw: ${f64(s.mw)},`);
+  L.push(`    mh: ${f64(s.mh)},`);
+  L.push(`    mini_w: ${f64(s.miniW)},`);
+  L.push(`    mini_h: ${f64(s.miniH)},`);
+  L.push("    groups: &[");
+  L.push(...numArr(s.groups.flat(), "f64", 10));
+  L.push("],");
+  L.push("};");
+  L.push("");
+}
+L.push("pub const MMT_SCENARIOS: &[MiniMapTransformerScenario] = &[");
+for (const s of structures.minimaptransformer) L.push(`    ${s.name.toUpperCase()},`);
 L.push("];");
 L.push("");
 

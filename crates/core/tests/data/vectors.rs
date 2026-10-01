@@ -15271,3 +15271,131 @@ pub const PARABOLA_SCENARIOS: &[ParabolaScenario] = &[
     PB_REBUILD,
 ];
 
+/// MiniMapTransformer scenario (transformers/MiniMapTransformer.ts).
+/// `groups` is variable-length query groups: [from_is_array, from_len,
+/// from_tiles..., to, inner_mode, inner_len, inner_tiles...,
+/// seen_flag, [is_multi, seen_len, seen_tiles..., seen_goal],
+/// out_mode, [out_len, out_tiles...]]. from/out tiles are main refs,
+/// inner/seen tiles mini refs. inner_mode 0 = null, 1 = empty, 2 =
+/// list. seen_flag 0 = inner never called (downscale threw). out_mode
+/// 0 = null, 1 = threw (upscale out of bounds), 2 = path.
+pub struct MiniMapTransformerScenario {
+    pub name: &'static str,
+    pub mw: f64,
+    pub mh: f64,
+    pub mini_w: f64,
+    pub mini_h: f64,
+    pub groups: &'static [f64],
+}
+
+pub const MMT_BASIC: MiniMapTransformerScenario = MiniMapTransformerScenario {
+    name: "mmt_basic",
+    mw: 20f64,
+    mh: 20f64,
+    mini_w: 10f64,
+    mini_h: 10f64,
+    groups: &[
+    0f64, 1f64, 82f64, 216f64, 0f64, 0f64, 1f64, 0f64, 1f64, 21f64,
+    58f64, 0f64, 0f64, 1f64, 82f64, 216f64, 1f64, 0f64, 1f64, 0f64,
+    1f64, 21f64, 58f64, 0f64, 0f64, 1f64, 82f64, 216f64, 2f64, 4f64,
+    21f64, 32f64, 43f64, 58f64, 1f64, 0f64, 1f64, 21f64, 58f64, 2f64,
+    15f64, 82f64, 103f64, 124f64, 145f64, 166f64, 167f64, 168f64, 189f64, 190f64,
+    191f64, 192f64, 193f64, 214f64, 215f64, 216f64, 0f64, 1f64, 84f64, 216f64,
+    2f64, 4f64, 21f64, 32f64, 43f64, 58f64, 1f64, 0f64, 1f64, 22f64,
+    58f64, 2f64, 16f64, 84f64, 82f64, 103f64, 124f64, 145f64, 166f64, 167f64,
+    168f64, 189f64, 190f64, 191f64, 192f64, 193f64, 214f64, 215f64, 216f64, 1f64,
+    1f64, 82f64, 216f64, 2f64, 4f64, 21f64, 32f64, 43f64, 58f64, 1f64,
+    0f64, 1f64, 21f64, 58f64, 2f64, 15f64, 82f64, 103f64, 124f64, 145f64,
+    166f64, 167f64, 168f64, 189f64, 190f64, 191f64, 192f64, 193f64, 214f64, 215f64,
+    216f64,
+],
+};
+
+pub const MMT_DST: MiniMapTransformerScenario = MiniMapTransformerScenario {
+    name: "mmt_dst",
+    mw: 20f64,
+    mh: 20f64,
+    mini_w: 10f64,
+    mini_h: 10f64,
+    groups: &[
+    0f64, 1f64, 82f64, 84f64, 2f64, 3f64, 21f64, 22f64, 33f64, 1f64,
+    0f64, 1f64, 21f64, 22f64, 2f64, 3f64, 82f64, 83f64, 84f64, 0f64,
+    1f64, 126f64, 84f64, 2f64, 3f64, 21f64, 22f64, 33f64, 1f64, 0f64,
+    1f64, 33f64, 22f64, 2f64, 2f64, 126f64, 84f64, 0f64, 1f64, 82f64,
+    216f64, 2f64, 3f64, 21f64, 22f64, 33f64, 1f64, 0f64, 1f64, 21f64,
+    58f64, 2f64, 6f64, 82f64, 83f64, 84f64, 105f64, 126f64, 216f64,
+],
+};
+
+pub const MMT_MULTI: MiniMapTransformerScenario = MiniMapTransformerScenario {
+    name: "mmt_multi",
+    mw: 20f64,
+    mh: 20f64,
+    mini_w: 10f64,
+    mini_h: 10f64,
+    groups: &[
+    1f64, 2f64, 82f64, 210f64, 216f64, 2f64, 3f64, 55f64, 56f64, 58f64,
+    1f64, 1f64, 2f64, 21f64, 55f64, 58f64, 2f64, 7f64, 210f64, 211f64,
+    212f64, 213f64, 214f64, 215f64, 216f64, 1f64, 2f64, 82f64, 210f64, 216f64,
+    2f64, 3f64, 21f64, 22f64, 33f64, 1f64, 1f64, 2f64, 21f64, 55f64,
+    58f64, 2f64, 6f64, 82f64, 83f64, 84f64, 105f64, 126f64, 216f64, 1f64,
+    2f64, 82f64, 94f64, 216f64, 2f64, 2f64, 44f64, 45f64, 1f64, 1f64,
+    2f64, 21f64, 27f64, 58f64, 2f64, 5f64, 82f64, 168f64, 169f64, 170f64,
+    216f64, 1f64, 2f64, 82f64, 210f64, 216f64, 0f64, 0f64, 1f64, 1f64,
+    2f64, 21f64, 55f64, 58f64, 0f64, 1f64, 0f64, 216f64, 0f64, 0f64,
+    1f64, 1f64, 0f64, 58f64, 0f64, 1f64, 0f64, 216f64, 2f64, 1f64,
+    21f64, 1f64, 1f64, 0f64, 58f64, 2f64, 2f64, 82f64, 216f64,
+],
+};
+
+pub const MMT_INTERP: MiniMapTransformerScenario = MiniMapTransformerScenario {
+    name: "mmt_interp",
+    mw: 10f64,
+    mh: 10f64,
+    mini_w: 5f64,
+    mini_h: 5f64,
+    groups: &[
+    0f64, 1f64, 0f64, 84f64, 2f64, 2f64, 0f64, 22f64, 1f64, 0f64,
+    1f64, 0f64, 22f64, 2f64, 9f64, 0f64, 11f64, 21f64, 32f64, 42f64,
+    53f64, 63f64, 74f64, 84f64, 0f64, 1f64, 0f64, 84f64, 2f64, 1f64,
+    0f64, 1f64, 0f64, 1f64, 0f64, 22f64, 2f64, 2f64, 0f64, 84f64,
+],
+};
+
+pub const MMT_OOB: MiniMapTransformerScenario = MiniMapTransformerScenario {
+    name: "mmt_oob",
+    mw: 30f64,
+    mh: 30f64,
+    mini_w: 10f64,
+    mini_h: 10f64,
+    groups: &[
+    0f64, 1f64, 868f64, 62f64, 0f64, 0f64, 0f64, 1f64, 0f64, 1f64,
+    62f64, 868f64, 0f64, 0f64, 0f64, 1f64, 1f64, 2f64, 62f64, 868f64,
+    62f64, 0f64, 0f64, 0f64, 1f64,
+],
+};
+
+pub const MMT_BIGMINI: MiniMapTransformerScenario = MiniMapTransformerScenario {
+    name: "mmt_bigmini",
+    mw: 20f64,
+    mh: 20f64,
+    mini_w: 15f64,
+    mini_h: 15f64,
+    groups: &[
+    0f64, 1f64, 42f64, 399f64, 2f64, 1f64, 192f64, 1f64, 0f64, 1f64,
+    16f64, 144f64, 1f64, 0f64, 1f64, 42f64, 399f64, 2f64, 2f64, 144f64,
+    192f64, 1f64, 0f64, 1f64, 16f64, 144f64, 1f64, 0f64, 1f64, 210f64,
+    252f64, 2f64, 2f64, 80f64, 96f64, 1f64, 0f64, 1f64, 80f64, 96f64,
+    2f64, 3f64, 210f64, 231f64, 252f64,
+],
+};
+
+pub const MMT_SCENARIOS: &[MiniMapTransformerScenario] = &[
+    MMT_BASIC,
+    MMT_DST,
+    MMT_MULTI,
+    MMT_INTERP,
+    MMT_OOB,
+    MMT_BIGMINI,
+];
+

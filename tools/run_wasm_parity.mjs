@@ -53,6 +53,10 @@ for (const name of [
   "probe_pb_new", "probe_pb_cp", "probe_pb_cp_at", "probe_pb_find",
   "probe_pb_path_len", "probe_pb_path_at", "probe_pb_next", "probe_pb_node",
   "probe_pb_invalidate", "probe_pb_index",
+  "probe_mmt_new", "probe_mmt_reset", "probe_mmt_from", "probe_mmt_inner",
+  "probe_mmt_run", "probe_mmt_out_len", "probe_mmt_out_at",
+  "probe_mmt_seen_flag", "probe_mmt_seen_multi", "probe_mmt_seen_len",
+  "probe_mmt_seen_at", "probe_mmt_seen_goal",
 ]) {
   if (typeof ex[name] !== "function") {
     console.error(`missing wasm export ${name} - rebuild with --features wasm-probe`);
@@ -1047,6 +1051,61 @@ for (const s of S.parabola) {
       ex.probe_pb_invalidate();
     } else {
       cmpU32(`${s.name} idx read`, Number(ex.probe_pb_index()), index, 0);
+    }
+  }
+}
+
+// --- MiniMapTransformer (transformers/MiniMapTransformer.ts) -----------------
+// Replays each query: queue the start refs + inner tiles, run, and compare the
+// inner stub's observation (scalar/array + downscale tiles + goal) and the
+// upscaled result path bit-exactly. Throw modes (downscale/upscale OOB) are
+// compared as the would-throw marker.
+for (const s of S.minimaptransformer) {
+  ex.probe_mmt_new(s.mw, s.mh, s.miniW, s.miniH);
+  for (let qi = 0; qi < s.groups.length; qi++) {
+    const g = s.groups[qi];
+    let j = 0;
+    const fromIsArray = g[j++];
+    const fromLen = g[j++];
+    const fromTiles = g.slice(j, j + fromLen);
+    j += fromLen;
+    const to = g[j++];
+    const innerMode = g[j++];
+    const innerLen = g[j++];
+    const innerTiles = g.slice(j, j + innerLen);
+    j += innerLen;
+    const seenFlag = g[j++];
+    let seen = null;
+    if (seenFlag === 1) {
+      const m = g[j++];
+      const l = g[j++];
+      seen = { m, tiles: g.slice(j, j + l), goal: g[j + l] };
+      j += l + 1;
+    }
+    const outMode = g[j++];
+    const outTiles = outMode === 2 ? g.slice(j + 1, j + 1 + g[j]) : [];
+
+    ex.probe_mmt_reset();
+    for (const t of fromTiles) ex.probe_mmt_from(t);
+    for (const t of innerTiles) ex.probe_mmt_inner(t);
+    const got = ex.probe_mmt_run(to, fromIsArray, innerMode);
+    cmpU32(`${s.name} q${qi} out mode`, got, outMode, qi);
+    if (outMode === 2) {
+      checks++;
+      if (Number(ex.probe_mmt_out_len()) !== outTiles.length)
+        fail(`${s.name} q${qi} out length`, Number(ex.probe_mmt_out_len()), outTiles.length, qi);
+      for (let i = 0; i < outTiles.length; i++)
+        cmpBits(`${s.name} q${qi} out`, ex.probe_mmt_out_at(i), toBits(outTiles[i]), i);
+    }
+    cmpU32(`${s.name} q${qi} seen flag`, ex.probe_mmt_seen_flag(), seen ? 1 : 0, qi);
+    if (seen) {
+      cmpU32(`${s.name} q${qi} seen multi`, ex.probe_mmt_seen_multi(), seen.m, qi);
+      checks++;
+      if (Number(ex.probe_mmt_seen_len()) !== seen.tiles.length)
+        fail(`${s.name} q${qi} seen length`, Number(ex.probe_mmt_seen_len()), seen.tiles.length, qi);
+      for (let i = 0; i < seen.tiles.length; i++)
+        cmpBits(`${s.name} q${qi} seen`, ex.probe_mmt_seen_at(i), toBits(seen.tiles[i]), i);
+      cmpBits(`${s.name} q${qi} seen goal`, ex.probe_mmt_seen_goal(), toBits(seen.goal), qi);
     }
   }
 }

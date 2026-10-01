@@ -1483,3 +1483,123 @@ fn replay_parabola_scenarios() {
         }
     }
 }
+
+// --- MiniMapTransformer (transformers/MiniMapTransformer.ts) ------------------
+// Replays the query script against the Rust port with the scripted
+// `ScriptedFinder` inner stub. Each group pins: the start/goal refs the
+// transformer passed to `inner` (scalar vs array + the minimap downscale), the
+// upscaled/endpoint-repaired result path, and the two throw classes (downscale
+// and upscale `ref` out of bounds) asserted via catch_unwind.
+#[test]
+fn replay_minimap_transformer_scenarios() {
+    use openfront_core::pathfinding::mini_map_transformer::{
+        MiniMapTransformer, ScriptedFinder,
+    };
+    use openfront_core::pathfinding::PathStart;
+    for s in vectors::MMT_SCENARIOS {
+        let main = GameMap::new(
+            s.mw,
+            s.mh,
+            vec![0x03; (s.mw * s.mh) as usize],
+            s.mw * s.mh,
+        );
+        let mini = GameMap::new(
+            s.mini_w,
+            s.mini_h,
+            vec![0x03; (s.mini_w * s.mini_h) as usize],
+            s.mini_w * s.mini_h,
+        );
+        let g = s.groups;
+        let mut k = 0;
+        let mut qi = 0;
+        while k < g.len() {
+            // [from_is_array, from_len, from_tiles..., to]
+            let from_is_array = g[k] as i64;
+            let from_len = g[k + 1] as usize;
+            let from_tiles = &g[k + 2..k + 2 + from_len];
+            let to = g[k + 2 + from_len];
+            k += 3 + from_len;
+            // [inner_mode, inner_len, inner_tiles...]
+            let inner_mode = g[k] as i64;
+            let inner_len = g[k + 1] as usize;
+            let inner_tiles: Vec<f64> = g[k + 2..k + 2 + inner_len].to_vec();
+            k += 2 + inner_len;
+            // [seen_flag, [is_multi, seen_len, seen_tiles..., seen_goal]]
+            let seen_flag = g[k] as i64;
+            let mut seen: Option<(i64, Vec<f64>, f64)> = None;
+            if seen_flag == 1 {
+                let m = g[k + 1] as i64;
+                let l = g[k + 2] as usize;
+                let tiles = g[k + 3..k + 3 + l].to_vec();
+                let goal = g[k + 3 + l];
+                seen = Some((m, tiles, goal));
+                k += 3 + l + 1;
+            } else {
+                k += 1;
+            }
+            // [out_mode, [out_len, out_tiles...]]
+            let out_mode = g[k] as i64;
+            let out_tiles: Vec<f64> = if out_mode == 2 {
+                let l = g[k + 1] as usize;
+                let t = g[k + 2..k + 2 + l].to_vec();
+                k += 2 + l;
+                t
+            } else {
+                k += 1;
+                Vec::new()
+            };
+
+            let starts = if from_is_array == 1 {
+                PathStart::Multi(from_tiles)
+            } else {
+                PathStart::Single(from_tiles[0])
+            };
+
+            // Fresh stub + transformer per query (the transformer is stateless
+            // across calls in TS, so this is faithful); `tr` borrows `stub`
+            // mutably, so it is dropped before reading `last_seen`.
+            let mut stub = ScriptedFinder::default();
+            stub.push_path(match inner_mode {
+                0 => None,
+                1 => Some(vec![]),
+                _ => Some(inner_tiles),
+            });
+            let got = {
+                let mut tr = MiniMapTransformer::new(&mut stub, &main, &mini);
+                std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    tr.find_path(starts, to)
+                }))
+            };
+            match out_mode {
+                0 => {
+                    assert_eq!(got.expect("panic in null query"), None, "{} q{} null", s.name, qi);
+                }
+                1 => {
+                    assert!(got.is_err(), "{} q{} expected panic", s.name, qi);
+                }
+                2 => {
+                    let p = got.expect("panic in path query").expect("unexpected null");
+                    assert_eq!(p, out_tiles, "{} q{} path", s.name, qi);
+                }
+                other => panic!("{} unknown out_mode {other}", s.name),
+            }
+
+            match (&seen, stub.last_seen.as_ref()) {
+                (None, None) => {}
+                (Some((m, tiles, goal)), Some((im, itiles, igoal))) => {
+                    assert_eq!(*im as i64, *m, "{} q{} seen kind", s.name, qi);
+                    assert_eq!(itiles, tiles, "{} q{} seen tiles", s.name, qi);
+                    assert_eq!(igoal, goal, "{} q{} seen goal", s.name, qi);
+                }
+                (a, b) => panic!(
+                    "{} q{} seen mismatch: recorded {:?}, rust {:?}",
+                    s.name,
+                    qi,
+                    a.is_some(),
+                    b.is_some()
+                ),
+            }
+            qi += 1;
+        }
+    }
+}

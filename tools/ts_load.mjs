@@ -592,6 +592,39 @@ function prepare(rel) {
       "Parabola ctor",
     );
   }
+  if (rel.endsWith("pathfinding/transformers/MiniMapTransformer.ts")) {
+    // GameMap/TileRef/PathFinder are all type-only (interface + branded type +
+    // interface) and the extensionless specifiers are unloadable -> dropped.
+    // The ctor's three parameter properties are expanded.
+    out = must(
+      out,
+      'import { GameMap, TileRef } from "../../game/GameMap";\n' +
+        'import { PathFinder } from "../types";\n',
+      "",
+      "MMT imports",
+    );
+    out = must(
+      out,
+      "  constructor(\n" +
+        "    private inner: PathFinder<number>,\n" +
+        "    private map: GameMap,\n" +
+        "    private miniMap: GameMap,\n" +
+        "  ) {}",
+      "  private inner: PathFinder<number>;\n" +
+        "  private map: GameMap;\n" +
+        "  private miniMap: GameMap;\n\n" +
+        "  constructor(\n" +
+        "    inner: PathFinder<number>,\n" +
+        "    map: GameMap,\n" +
+        "    miniMap: GameMap,\n" +
+        "  ) {\n" +
+        "    this.inner = inner;\n" +
+        "    this.map = map;\n" +
+        "    this.miniMap = miniMap;\n" +
+        "  }",
+      "MMT ctor",
+    );
+  }
 
   mkdirSync(cacheDir, { recursive: true });
   const hash = createHash("sha1").update(out).digest("hex").slice(0, 10);

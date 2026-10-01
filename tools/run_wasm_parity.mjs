@@ -84,6 +84,7 @@ for (const name of [
   "probe_bfs_visits_len", "probe_bfs_visit_node", "probe_bfs_visit_dist",
   "probe_bfs_result_flag", "probe_bfs_result",
   "probe_air_new", "probe_air_run", "probe_air_path_len", "probe_air_path_at",
+  "probe_anon_run", "probe_anon_out_at",
 ]) {
   if (typeof ex[name] !== "function") {
     console.error(`missing wasm export ${name} - rebuild with --features wasm-probe`);
@@ -1468,6 +1469,29 @@ for (const s of S.air) {
       cmpBits(`${s.name} path[${i}] y`, ex.probe_air_path_at(2 * i + 1), toBits(s.path[i][1]), i);
     }
   }
+}
+
+// --- AnonNames (AnonNames.ts) -------------------------------------------------
+// Replays anonWordName and compares the handle's UTF-16 code-unit stream
+// (length + each unit); a -1 length is the JS `undefined` a missed word lookup
+// returns when round === 0.
+for (const s of S.anon) {
+  const len = Number(ex.probe_anon_run(numTok(s.slot), numTok(s.offset), s.has));
+  checks++;
+  if (s.res === "u") {
+    if (len !== -1) fail(`${s.name} undefined`, 0, len, -1);
+    continue;
+  }
+  if (len !== s.res.length) {
+    fail(`${s.name} len`, 0, len, s.res.length);
+    continue;
+  }
+  let got = "";
+  for (let i = 0; i < len; i++) {
+    checks++;
+    got += String.fromCharCode(ex.probe_anon_out_at(i));
+  }
+  if (got !== s.res) fail(`${s.name} handle`, 0, got, s.res);
 }
 
 console.log(`${checks} vector comparisons executed against wasm build`);

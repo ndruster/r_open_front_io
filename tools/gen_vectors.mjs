@@ -152,6 +152,7 @@ const { FlatBinaryHeap } = await loadTs("src/core/execution/utils/FlatBinaryHeap
 const { BFSGrid } = await loadTs("src/core/pathfinding/algorithms/BFS.Grid.ts");
 const { BFS } = await loadTs("src/core/pathfinding/algorithms/BFS.ts");
 const { AirPathFinder } = await loadTs("src/core/pathfinding/PathFinder.Air.ts");
+const { anonWordName } = await loadTs("src/core/AnonNames.ts");
 const { AStar } = await loadTs("src/core/pathfinding/algorithms/AStar.ts");
 const { AStarRail } = await loadTs("src/core/pathfinding/algorithms/AStar.Rail.ts");
 const { AStarWater } = await loadTs("src/core/pathfinding/algorithms/AStar.Water.ts");
@@ -548,6 +549,75 @@ captureAir("air_multi", 10, 10, 0, gm_ref(10, 10, 1, 1), gm_ref(10, 10, 5, 5), t
 // Goal with an out-of-range y (tile 100 on a 10x10 map -> y=10): the vertical
 // walk steps into y=10 and game.ref throws.
 captureAir("air_oob", 10, 10, 0, gm_ref(10, 10, 0, 0), 100, false);
+
+// --- AnonNames scenario runner ----------------------------------------------
+// Exercises the real AnonNames.ts anonWordName(slot, offset) and records the
+// returned handle. `has`: 0 = offset defaulted (TS default param), 1 =
+// explicit. slot/offset carry the uenc tokens (n/-0/i/-i) so NaN/-0/±Inf
+// survive JSON. A word-lookup miss with round === 0 returns the JS `undefined`
+// *value*, recorded as "u". The Rust twin is `anon_names::anon_word_name`.
+const anonScenarios = [];
+function captureAnon(name, slot, offset) {
+  const has = offset === undefined ? 0 : 1;
+  const r = anonWordName(slot, offset);
+  anonScenarios.push({
+    name,
+    slot: uenc(slot),
+    has,
+    offset: has ? uenc(offset) : 0,
+    res: r === undefined ? "u" : r,
+  });
+}
+// Full first-round sweep: every bare word, in bank order.
+for (let i = 0; i < 125; i++) captureAnon(`anon_w${i}`, i, undefined);
+// Round suffixes past the bank.
+captureAnon("anon_r125", 125, undefined);
+captureAnon("anon_r250", 250, undefined);
+captureAnon("anon_r251", 251, undefined);
+captureAnon("anon_r374", 374, undefined);
+captureAnon("anon_r375", 375, undefined);
+captureAnon("anon_r500", 500, undefined);
+captureAnon("anon_r1000", 1000, undefined);
+// Negatives (abs first) and -0.
+captureAnon("anon_neg1", -1, undefined);
+captureAnon("anon_neg125", -125, undefined);
+captureAnon("anon_neg126", -126, undefined);
+captureAnon("anon_neg0", -0, undefined);
+// Offsets: rotate, wrap, negative, huge, explicit zero/undefined.
+captureAnon("anon_off1", 0, 1);
+captureAnon("anon_off_wrap", 124, 1);
+captureAnon("anon_off_neg", 10, -3);
+captureAnon("anon_off_big", 120, 120);
+captureAnon("anon_off_round", 200, 100);
+captureAnon("anon_off_undef", 5, undefined);
+captureAnon("anon_off_zero", 5, 0);
+// Fractional inputs truncate toward zero.
+captureAnon("anon_frac_09", 0.9, undefined);
+captureAnon("anon_frac_neg05", -0.5, undefined);
+captureAnon("anon_frac_1257", 125.7, undefined);
+captureAnon("anon_frac_both", 2.5, 3.5);
+captureAnon("anon_frac_round", 125.9, 0.1);
+// Non-finite: the word lookup misses ("undefined") and the round suffix
+// stringifies NaN/Infinity.
+captureAnon("anon_nan", NaN, undefined);
+captureAnon("anon_inf", Infinity, undefined);
+captureAnon("anon_ninf", -Infinity, undefined);
+captureAnon("anon_off_nan", 0, NaN);
+captureAnon("anon_off_inf", 0, Infinity);
+captureAnon("anon_off_ninf", 0, -Infinity);
+captureAnon("anon_both_nan", NaN, NaN);
+captureAnon("anon_nan_off5", NaN, 5);
+captureAnon("anon_inf_off1", Infinity, 1);
+// Huge slots: exact-integer range up to 2^53, then beyond (still exact
+// integers for these magnitudes; the suffix must print plain digits).
+captureAnon("anon_1e16", 1e16, undefined);
+captureAnon("anon_1e17", 1e17, undefined);
+captureAnon("anon_1e18", 1e18, undefined);
+captureAnon("anon_1e18_128", 1e18 + 128, undefined);
+captureAnon("anon_1e20", 1e20, undefined);
+captureAnon("anon_5_1e18", 5, 1e18);
+captureAnon("anon_2p53m1", 9007199254740991, undefined);
+captureAnon("anon_2p53", 9007199254740992, undefined);
 
 // --- AStar scenario runner ---------------------------------------------------
 // The grid adapter below is the *twin* of `pathfinding::a_star::GridAdapter`
@@ -3255,6 +3325,7 @@ const structures = {
   bfsgrid: bgScenarios,
   bfs: bfsScenarios,
   air: airScenarios,
+  anon: anonScenarios,
   astar: asScenarios,
   rail: railScenarios,
   water: waterScenarios,
@@ -4885,6 +4956,43 @@ for (const s of structures.air) {
 }
 L.push("pub const AIR_SCENARIOS: &[AirScenario] = &[");
 for (const s of structures.air) L.push(`    ${s.name.toUpperCase()},`);
+L.push("];");
+L.push("");
+
+L.push("/// anonWordName scenario (AnonNames.ts). `slot`/`offset` decode the");
+L.push("/// uenc tokens; `has` 0 = offset defaulted (TS default param). `res`");
+L.push("/// is the returned handle, or `None` for the JS `undefined` a missed");
+L.push("/// word lookup returns when round === 0.");
+L.push("pub struct AnonScenario {");
+L.push("    pub name: &'static str,");
+L.push("    pub slot: f64,");
+L.push("    pub has: u8,");
+L.push("    pub offset: f64,");
+L.push("    pub res: Option<&'static str>,");
+L.push("}");
+L.push("");
+const anonTok = (v) => {
+  if (v === "n") return "f64::NAN";
+  if (v === "-0") return "-0.0f64";
+  if (v === "i") return "f64::INFINITY";
+  if (v === "-i") return "f64::NEG_INFINITY";
+  return f64(v);
+};
+for (const s of structures.anon) {
+  const id = s.name.toUpperCase();
+  L.push(`pub const ${id}: AnonScenario = AnonScenario {`);
+  L.push(`    name: "${s.name}",`);
+  L.push(`    slot: ${anonTok(s.slot)},`);
+  L.push(`    has: ${s.has}u8,`);
+  L.push(`    offset: ${s.has ? anonTok(s.offset) : "0.0f64"},`);
+  L.push(
+    `    res: ${s.res === "u" ? "None" : `Some(${JSON.stringify(s.res)})`},`,
+  );
+  L.push("};");
+  L.push("");
+}
+L.push("pub const ANON_SCENARIOS: &[AnonScenario] = &[");
+for (const s of structures.anon) L.push(`    ${s.name.toUpperCase()},`);
 L.push("];");
 L.push("");
 

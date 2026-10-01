@@ -16132,3 +16132,1503 @@ pub const AIR_SCENARIOS: &[AirScenario] = &[
     AIR_OOB,
 ];
 
+/// anonWordName scenario (AnonNames.ts). `slot`/`offset` decode the
+/// uenc tokens; `has` 0 = offset defaulted (TS default param). `res`
+/// is the returned handle, or `None` for the JS `undefined` a missed
+/// word lookup returns when round === 0.
+pub struct AnonScenario {
+    pub name: &'static str,
+    pub slot: f64,
+    pub has: u8,
+    pub offset: f64,
+    pub res: Option<&'static str>,
+}
+
+pub const ANON_W0: AnonScenario = AnonScenario {
+    name: "anon_w0",
+    slot: 0f64,
+    has: 0u8,
+    offset: 0.0f64,
+    res: Some("Amethyst"),
+};
+
+pub const ANON_W1: AnonScenario = AnonScenario {
+    name: "anon_w1",
+    slot: 1f64,
+    has: 0u8,
+    offset: 0.0f64,
+    res: Some("Anchor"),
+};
+
+pub const ANON_W2: AnonScenario = AnonScenario {
+    name: "anon_w2",
+    slot: 2f64,
+    has: 0u8,
+    offset: 0.0f64,
+    res: Some("Anvil"),
+};
+
+pub const ANON_W3: AnonScenario = AnonScenario {
+    name: "anon_w3",
+    slot: 3f64,
+    has: 0u8,
+    offset: 0.0f64,
+    res: Some("Banner"),
+};
+
+pub const ANON_W4: AnonScenario = AnonScenario {
+    name: "anon_w4",
+    slot: 4f64,
+    has: 0u8,
+    offset: 0.0f64,
+    res: Some("Bicycle"),
+};
+
+pub const ANON_W5: AnonScenario = AnonScenario {
+    name: "anon_w5",
+    slot: 5f64,
+    has: 0u8,
+    offset: 0.0f64,
+    res: Some("Blizzard"),
+};
+
+pub const ANON_W6: AnonScenario = AnonScenario {
+    name: "anon_w6",
+    slot: 6f64,
+    has: 0u8,
+    offset: 0.0f64,
+    res: Some("Bonfire"),
+};
+
+pub const ANON_W7: AnonScenario = AnonScenario {
+    name: "anon_w7",
+    slot: 7f64,
+    has: 0u8,
+    offset: 0.0f64,
+    res: Some("Bridge"),
+};
+
+pub const ANON_W8: AnonScenario = AnonScenario {
+    name: "anon_w8",
+    slot: 8f64,
+    has: 0u8,
+    offset: 0.0f64,
+    res: Some("Bronze"),
+};
+
+pub const ANON_W9: AnonScenario = AnonScenario {
+    name: "anon_w9",
+    slot: 9f64,
+    has: 0u8,
+    offset: 0.0f64,
+    res: Some("Cactus"),
+};
+
+pub const ANON_W10: AnonScenario = AnonScenario {
+    name: "anon_w10",
+    slot: 10f64,
+    has: 0u8,
+    offset: 0.0f64,
+    res: Some("Castle"),
+};
+
+pub const ANON_W11: AnonScenario = AnonScenario {
+    name: "anon_w11",
+    slot: 11f64,
+    has: 0u8,
+    offset: 0.0f64,
+    res: Some("Chariot"),
+};
+
+pub const ANON_W12: AnonScenario = AnonScenario {
+    name: "anon_w12",
+    slot: 12f64,
+    has: 0u8,
+    offset: 0.0f64,
+    res: Some("Cipher"),
+};
+
+pub const ANON_W13: AnonScenario = AnonScenario {
+    name: "anon_w13",
+    slot: 13f64,
+    has: 0u8,
+    offset: 0.0f64,
+    res: Some("Citadel"),
+};
+
+pub const ANON_W14: AnonScenario = AnonScenario {
+    name: "anon_w14",
+    slot: 14f64,
+    has: 0u8,
+    offset: 0.0f64,
+    res: Some("Clay"),
+};
+
+pub const ANON_W15: AnonScenario = AnonScenario {
+    name: "anon_w15",
+    slot: 15f64,
+    has: 0u8,
+    offset: 0.0f64,
+    res: Some("Cobalt"),
+};
+
+pub const ANON_W16: AnonScenario = AnonScenario {
+    name: "anon_w16",
+    slot: 16f64,
+    has: 0u8,
+    offset: 0.0f64,
+    res: Some("Comet"),
+};
+
+pub const ANON_W17: AnonScenario = AnonScenario {
+    name: "anon_w17",
+    slot: 17f64,
+    has: 0u8,
+    offset: 0.0f64,
+    res: Some("Compass"),
+};
+
+pub const ANON_W18: AnonScenario = AnonScenario {
+    name: "anon_w18",
+    slot: 18f64,
+    has: 0u8,
+    offset: 0.0f64,
+    res: Some("Crimson"),
+};
+
+pub const ANON_W19: AnonScenario = AnonScenario {
+    name: "anon_w19",
+    slot: 19f64,
+    has: 0u8,
+    offset: 0.0f64,
+    res: Some("Dusk"),
+};
+
+pub const ANON_W20: AnonScenario = AnonScenario {
+    name: "anon_w20",
+    slot: 20f64,
+    has: 0u8,
+    offset: 0.0f64,
+    res: Some("Eclipse"),
+};
+
+pub const ANON_W21: AnonScenario = AnonScenario {
+    name: "anon_w21",
+    slot: 21f64,
+    has: 0u8,
+    offset: 0.0f64,
+    res: Some("Ember"),
+};
+
+pub const ANON_W22: AnonScenario = AnonScenario {
+    name: "anon_w22",
+    slot: 22f64,
+    has: 0u8,
+    offset: 0.0f64,
+    res: Some("Fern"),
+};
+
+pub const ANON_W23: AnonScenario = AnonScenario {
+    name: "anon_w23",
+    slot: 23f64,
+    has: 0u8,
+    offset: 0.0f64,
+    res: Some("Fjord"),
+};
+
+pub const ANON_W24: AnonScenario = AnonScenario {
+    name: "anon_w24",
+    slot: 24f64,
+    has: 0u8,
+    offset: 0.0f64,
+    res: Some("Flame"),
+};
+
+pub const ANON_W25: AnonScenario = AnonScenario {
+    name: "anon_w25",
+    slot: 25f64,
+    has: 0u8,
+    offset: 0.0f64,
+    res: Some("Frost"),
+};
+
+pub const ANON_W26: AnonScenario = AnonScenario {
+    name: "anon_w26",
+    slot: 26f64,
+    has: 0u8,
+    offset: 0.0f64,
+    res: Some("Garnet"),
+};
+
+pub const ANON_W27: AnonScenario = AnonScenario {
+    name: "anon_w27",
+    slot: 27f64,
+    has: 0u8,
+    offset: 0.0f64,
+    res: Some("Geyser"),
+};
+
+pub const ANON_W28: AnonScenario = AnonScenario {
+    name: "anon_w28",
+    slot: 28f64,
+    has: 0u8,
+    offset: 0.0f64,
+    res: Some("Ginger"),
+};
+
+pub const ANON_W29: AnonScenario = AnonScenario {
+    name: "anon_w29",
+    slot: 29f64,
+    has: 0u8,
+    offset: 0.0f64,
+    res: Some("Glacier"),
+};
+
+pub const ANON_W30: AnonScenario = AnonScenario {
+    name: "anon_w30",
+    slot: 30f64,
+    has: 0u8,
+    offset: 0.0f64,
+    res: Some("Goblin"),
+};
+
+pub const ANON_W31: AnonScenario = AnonScenario {
+    name: "anon_w31",
+    slot: 31f64,
+    has: 0u8,
+    offset: 0.0f64,
+    res: Some("Gong"),
+};
+
+pub const ANON_W32: AnonScenario = AnonScenario {
+    name: "anon_w32",
+    slot: 32f64,
+    has: 0u8,
+    offset: 0.0f64,
+    res: Some("Harbor"),
+};
+
+pub const ANON_W33: AnonScenario = AnonScenario {
+    name: "anon_w33",
+    slot: 33f64,
+    has: 0u8,
+    offset: 0.0f64,
+    res: Some("Harp"),
+};
+
+pub const ANON_W34: AnonScenario = AnonScenario {
+    name: "anon_w34",
+    slot: 34f64,
+    has: 0u8,
+    offset: 0.0f64,
+    res: Some("Helmet"),
+};
+
+pub const ANON_W35: AnonScenario = AnonScenario {
+    name: "anon_w35",
+    slot: 35f64,
+    has: 0u8,
+    offset: 0.0f64,
+    res: Some("Indigo"),
+};
+
+pub const ANON_W36: AnonScenario = AnonScenario {
+    name: "anon_w36",
+    slot: 36f64,
+    has: 0u8,
+    offset: 0.0f64,
+    res: Some("Ivory"),
+};
+
+pub const ANON_W37: AnonScenario = AnonScenario {
+    name: "anon_w37",
+    slot: 37f64,
+    has: 0u8,
+    offset: 0.0f64,
+    res: Some("Jellyfish"),
+};
+
+pub const ANON_W38: AnonScenario = AnonScenario {
+    name: "anon_w38",
+    slot: 38f64,
+    has: 0u8,
+    offset: 0.0f64,
+    res: Some("Jungle"),
+};
+
+pub const ANON_W39: AnonScenario = AnonScenario {
+    name: "anon_w39",
+    slot: 39f64,
+    has: 0u8,
+    offset: 0.0f64,
+    res: Some("Ladder"),
+};
+
+pub const ANON_W40: AnonScenario = AnonScenario {
+    name: "anon_w40",
+    slot: 40f64,
+    has: 0u8,
+    offset: 0.0f64,
+    res: Some("Lagoon"),
+};
+
+pub const ANON_W41: AnonScenario = AnonScenario {
+    name: "anon_w41",
+    slot: 41f64,
+    has: 0u8,
+    offset: 0.0f64,
+    res: Some("Lake"),
+};
+
+pub const ANON_W42: AnonScenario = AnonScenario {
+    name: "anon_w42",
+    slot: 42f64,
+    has: 0u8,
+    offset: 0.0f64,
+    res: Some("Lantern"),
+};
+
+pub const ANON_W43: AnonScenario = AnonScenario {
+    name: "anon_w43",
+    slot: 43f64,
+    has: 0u8,
+    offset: 0.0f64,
+    res: Some("Leather"),
+};
+
+pub const ANON_W44: AnonScenario = AnonScenario {
+    name: "anon_w44",
+    slot: 44f64,
+    has: 0u8,
+    offset: 0.0f64,
+    res: Some("Lighthouse"),
+};
+
+pub const ANON_W45: AnonScenario = AnonScenario {
+    name: "anon_w45",
+    slot: 45f64,
+    has: 0u8,
+    offset: 0.0f64,
+    res: Some("Linen"),
+};
+
+pub const ANON_W46: AnonScenario = AnonScenario {
+    name: "anon_w46",
+    slot: 46f64,
+    has: 0u8,
+    offset: 0.0f64,
+    res: Some("Locket"),
+};
+
+pub const ANON_W47: AnonScenario = AnonScenario {
+    name: "anon_w47",
+    slot: 47f64,
+    has: 0u8,
+    offset: 0.0f64,
+    res: Some("Lotus"),
+};
+
+pub const ANON_W48: AnonScenario = AnonScenario {
+    name: "anon_w48",
+    slot: 48f64,
+    has: 0u8,
+    offset: 0.0f64,
+    res: Some("Magenta"),
+};
+
+pub const ANON_W49: AnonScenario = AnonScenario {
+    name: "anon_w49",
+    slot: 49f64,
+    has: 0u8,
+    offset: 0.0f64,
+    res: Some("Mango"),
+};
+
+pub const ANON_W50: AnonScenario = AnonScenario {
+    name: "anon_w50",
+    slot: 50f64,
+    has: 0u8,
+    offset: 0.0f64,
+    res: Some("Medallion"),
+};
+
+pub const ANON_W51: AnonScenario = AnonScenario {
+    name: "anon_w51",
+    slot: 51f64,
+    has: 0u8,
+    offset: 0.0f64,
+    res: Some("Mermaid"),
+};
+
+pub const ANON_W52: AnonScenario = AnonScenario {
+    name: "anon_w52",
+    slot: 52f64,
+    has: 0u8,
+    offset: 0.0f64,
+    res: Some("Meteor"),
+};
+
+pub const ANON_W53: AnonScenario = AnonScenario {
+    name: "anon_w53",
+    slot: 53f64,
+    has: 0u8,
+    offset: 0.0f64,
+    res: Some("Mirage"),
+};
+
+pub const ANON_W54: AnonScenario = AnonScenario {
+    name: "anon_w54",
+    slot: 54f64,
+    has: 0u8,
+    offset: 0.0f64,
+    res: Some("Mist"),
+};
+
+pub const ANON_W55: AnonScenario = AnonScenario {
+    name: "anon_w55",
+    slot: 55f64,
+    has: 0u8,
+    offset: 0.0f64,
+    res: Some("Monsoon"),
+};
+
+pub const ANON_W56: AnonScenario = AnonScenario {
+    name: "anon_w56",
+    slot: 56f64,
+    has: 0u8,
+    offset: 0.0f64,
+    res: Some("Moss"),
+};
+
+pub const ANON_W57: AnonScenario = AnonScenario {
+    name: "anon_w57",
+    slot: 57f64,
+    has: 0u8,
+    offset: 0.0f64,
+    res: Some("Nebula"),
+};
+
+pub const ANON_W58: AnonScenario = AnonScenario {
+    name: "anon_w58",
+    slot: 58f64,
+    has: 0u8,
+    offset: 0.0f64,
+    res: Some("Obelisk"),
+};
+
+pub const ANON_W59: AnonScenario = AnonScenario {
+    name: "anon_w59",
+    slot: 59f64,
+    has: 0u8,
+    offset: 0.0f64,
+    res: Some("Obsidian"),
+};
+
+pub const ANON_W60: AnonScenario = AnonScenario {
+    name: "anon_w60",
+    slot: 60f64,
+    has: 0u8,
+    offset: 0.0f64,
+    res: Some("Ocean"),
+};
+
+pub const ANON_W61: AnonScenario = AnonScenario {
+    name: "anon_w61",
+    slot: 61f64,
+    has: 0u8,
+    offset: 0.0f64,
+    res: Some("Omen"),
+};
+
+pub const ANON_W62: AnonScenario = AnonScenario {
+    name: "anon_w62",
+    slot: 62f64,
+    has: 0u8,
+    offset: 0.0f64,
+    res: Some("Onyx"),
+};
+
+pub const ANON_W63: AnonScenario = AnonScenario {
+    name: "anon_w63",
+    slot: 63f64,
+    has: 0u8,
+    offset: 0.0f64,
+    res: Some("Opal"),
+};
+
+pub const ANON_W64: AnonScenario = AnonScenario {
+    name: "anon_w64",
+    slot: 64f64,
+    has: 0u8,
+    offset: 0.0f64,
+    res: Some("Oracle"),
+};
+
+pub const ANON_W65: AnonScenario = AnonScenario {
+    name: "anon_w65",
+    slot: 65f64,
+    has: 0u8,
+    offset: 0.0f64,
+    res: Some("Pearl"),
+};
+
+pub const ANON_W66: AnonScenario = AnonScenario {
+    name: "anon_w66",
+    slot: 66f64,
+    has: 0u8,
+    offset: 0.0f64,
+    res: Some("Plow"),
+};
+
+pub const ANON_W67: AnonScenario = AnonScenario {
+    name: "anon_w67",
+    slot: 67f64,
+    has: 0u8,
+    offset: 0.0f64,
+    res: Some("Prairie"),
+};
+
+pub const ANON_W68: AnonScenario = AnonScenario {
+    name: "anon_w68",
+    slot: 68f64,
+    has: 0u8,
+    offset: 0.0f64,
+    res: Some("Pulley"),
+};
+
+pub const ANON_W69: AnonScenario = AnonScenario {
+    name: "anon_w69",
+    slot: 69f64,
+    has: 0u8,
+    offset: 0.0f64,
+    res: Some("Pumpkin"),
+};
+
+pub const ANON_W70: AnonScenario = AnonScenario {
+    name: "anon_w70",
+    slot: 70f64,
+    has: 0u8,
+    offset: 0.0f64,
+    res: Some("Pyramid"),
+};
+
+pub const ANON_W71: AnonScenario = AnonScenario {
+    name: "anon_w71",
+    slot: 71f64,
+    has: 0u8,
+    offset: 0.0f64,
+    res: Some("Quartz"),
+};
+
+pub const ANON_W72: AnonScenario = AnonScenario {
+    name: "anon_w72",
+    slot: 72f64,
+    has: 0u8,
+    offset: 0.0f64,
+    res: Some("Quasar"),
+};
+
+pub const ANON_W73: AnonScenario = AnonScenario {
+    name: "anon_w73",
+    slot: 73f64,
+    has: 0u8,
+    offset: 0.0f64,
+    res: Some("Rainbow"),
+};
+
+pub const ANON_W74: AnonScenario = AnonScenario {
+    name: "anon_w74",
+    slot: 74f64,
+    has: 0u8,
+    offset: 0.0f64,
+    res: Some("Relic"),
+};
+
+pub const ANON_W75: AnonScenario = AnonScenario {
+    name: "anon_w75",
+    slot: 75f64,
+    has: 0u8,
+    offset: 0.0f64,
+    res: Some("Riddle"),
+};
+
+pub const ANON_W76: AnonScenario = AnonScenario {
+    name: "anon_w76",
+    slot: 76f64,
+    has: 0u8,
+    offset: 0.0f64,
+    res: Some("River"),
+};
+
+pub const ANON_W77: AnonScenario = AnonScenario {
+    name: "anon_w77",
+    slot: 77f64,
+    has: 0u8,
+    offset: 0.0f64,
+    res: Some("Ruby"),
+};
+
+pub const ANON_W78: AnonScenario = AnonScenario {
+    name: "anon_w78",
+    slot: 78f64,
+    has: 0u8,
+    offset: 0.0f64,
+    res: Some("Sapphire"),
+};
+
+pub const ANON_W79: AnonScenario = AnonScenario {
+    name: "anon_w79",
+    slot: 79f64,
+    has: 0u8,
+    offset: 0.0f64,
+    res: Some("Scarlet"),
+};
+
+pub const ANON_W80: AnonScenario = AnonScenario {
+    name: "anon_w80",
+    slot: 80f64,
+    has: 0u8,
+    offset: 0.0f64,
+    res: Some("Scepter"),
+};
+
+pub const ANON_W81: AnonScenario = AnonScenario {
+    name: "anon_w81",
+    slot: 81f64,
+    has: 0u8,
+    offset: 0.0f64,
+    res: Some("Shadow"),
+};
+
+pub const ANON_W82: AnonScenario = AnonScenario {
+    name: "anon_w82",
+    slot: 82f64,
+    has: 0u8,
+    offset: 0.0f64,
+    res: Some("Shark"),
+};
+
+pub const ANON_W83: AnonScenario = AnonScenario {
+    name: "anon_w83",
+    slot: 83f64,
+    has: 0u8,
+    offset: 0.0f64,
+    res: Some("Shield"),
+};
+
+pub const ANON_W84: AnonScenario = AnonScenario {
+    name: "anon_w84",
+    slot: 84f64,
+    has: 0u8,
+    offset: 0.0f64,
+    res: Some("Shovel"),
+};
+
+pub const ANON_W85: AnonScenario = AnonScenario {
+    name: "anon_w85",
+    slot: 85f64,
+    has: 0u8,
+    offset: 0.0f64,
+    res: Some("Silence"),
+};
+
+pub const ANON_W86: AnonScenario = AnonScenario {
+    name: "anon_w86",
+    slot: 86f64,
+    has: 0u8,
+    offset: 0.0f64,
+    res: Some("Slate"),
+};
+
+pub const ANON_W87: AnonScenario = AnonScenario {
+    name: "anon_w87",
+    slot: 87f64,
+    has: 0u8,
+    offset: 0.0f64,
+    res: Some("Sled"),
+};
+
+pub const ANON_W88: AnonScenario = AnonScenario {
+    name: "anon_w88",
+    slot: 88f64,
+    has: 0u8,
+    offset: 0.0f64,
+    res: Some("Snail"),
+};
+
+pub const ANON_W89: AnonScenario = AnonScenario {
+    name: "anon_w89",
+    slot: 89f64,
+    has: 0u8,
+    offset: 0.0f64,
+    res: Some("Sphinx"),
+};
+
+pub const ANON_W90: AnonScenario = AnonScenario {
+    name: "anon_w90",
+    slot: 90f64,
+    has: 0u8,
+    offset: 0.0f64,
+    res: Some("Spider"),
+};
+
+pub const ANON_W91: AnonScenario = AnonScenario {
+    name: "anon_w91",
+    slot: 91f64,
+    has: 0u8,
+    offset: 0.0f64,
+    res: Some("Steam"),
+};
+
+pub const ANON_W92: AnonScenario = AnonScenario {
+    name: "anon_w92",
+    slot: 92f64,
+    has: 0u8,
+    offset: 0.0f64,
+    res: Some("Steel"),
+};
+
+pub const ANON_W93: AnonScenario = AnonScenario {
+    name: "anon_w93",
+    slot: 93f64,
+    has: 0u8,
+    offset: 0.0f64,
+    res: Some("Sugar"),
+};
+
+pub const ANON_W94: AnonScenario = AnonScenario {
+    name: "anon_w94",
+    slot: 94f64,
+    has: 0u8,
+    offset: 0.0f64,
+    res: Some("Talisman"),
+};
+
+pub const ANON_W95: AnonScenario = AnonScenario {
+    name: "anon_w95",
+    slot: 95f64,
+    has: 0u8,
+    offset: 0.0f64,
+    res: Some("Temple"),
+};
+
+pub const ANON_W96: AnonScenario = AnonScenario {
+    name: "anon_w96",
+    slot: 96f64,
+    has: 0u8,
+    offset: 0.0f64,
+    res: Some("Thistle"),
+};
+
+pub const ANON_W97: AnonScenario = AnonScenario {
+    name: "anon_w97",
+    slot: 97f64,
+    has: 0u8,
+    offset: 0.0f64,
+    res: Some("Thunder"),
+};
+
+pub const ANON_W98: AnonScenario = AnonScenario {
+    name: "anon_w98",
+    slot: 98f64,
+    has: 0u8,
+    offset: 0.0f64,
+    res: Some("Timber"),
+};
+
+pub const ANON_W99: AnonScenario = AnonScenario {
+    name: "anon_w99",
+    slot: 99f64,
+    has: 0u8,
+    offset: 0.0f64,
+    res: Some("Titan"),
+};
+
+pub const ANON_W100: AnonScenario = AnonScenario {
+    name: "anon_w100",
+    slot: 100f64,
+    has: 0u8,
+    offset: 0.0f64,
+    res: Some("Topaz"),
+};
+
+pub const ANON_W101: AnonScenario = AnonScenario {
+    name: "anon_w101",
+    slot: 101f64,
+    has: 0u8,
+    offset: 0.0f64,
+    res: Some("Torch"),
+};
+
+pub const ANON_W102: AnonScenario = AnonScenario {
+    name: "anon_w102",
+    slot: 102f64,
+    has: 0u8,
+    offset: 0.0f64,
+    res: Some("Tornado"),
+};
+
+pub const ANON_W103: AnonScenario = AnonScenario {
+    name: "anon_w103",
+    slot: 103f64,
+    has: 0u8,
+    offset: 0.0f64,
+    res: Some("Toucan"),
+};
+
+pub const ANON_W104: AnonScenario = AnonScenario {
+    name: "anon_w104",
+    slot: 104f64,
+    has: 0u8,
+    offset: 0.0f64,
+    res: Some("Truffle"),
+};
+
+pub const ANON_W105: AnonScenario = AnonScenario {
+    name: "anon_w105",
+    slot: 105f64,
+    has: 0u8,
+    offset: 0.0f64,
+    res: Some("Tuba"),
+};
+
+pub const ANON_W106: AnonScenario = AnonScenario {
+    name: "anon_w106",
+    slot: 106f64,
+    has: 0u8,
+    offset: 0.0f64,
+    res: Some("Tulip"),
+};
+
+pub const ANON_W107: AnonScenario = AnonScenario {
+    name: "anon_w107",
+    slot: 107f64,
+    has: 0u8,
+    offset: 0.0f64,
+    res: Some("Tundra"),
+};
+
+pub const ANON_W108: AnonScenario = AnonScenario {
+    name: "anon_w108",
+    slot: 108f64,
+    has: 0u8,
+    offset: 0.0f64,
+    res: Some("Turquoise"),
+};
+
+pub const ANON_W109: AnonScenario = AnonScenario {
+    name: "anon_w109",
+    slot: 109f64,
+    has: 0u8,
+    offset: 0.0f64,
+    res: Some("Unicorn"),
+};
+
+pub const ANON_W110: AnonScenario = AnonScenario {
+    name: "anon_w110",
+    slot: 110f64,
+    has: 0u8,
+    offset: 0.0f64,
+    res: Some("Urchin"),
+};
+
+pub const ANON_W111: AnonScenario = AnonScenario {
+    name: "anon_w111",
+    slot: 111f64,
+    has: 0u8,
+    offset: 0.0f64,
+    res: Some("Valley"),
+};
+
+pub const ANON_W112: AnonScenario = AnonScenario {
+    name: "anon_w112",
+    slot: 112f64,
+    has: 0u8,
+    offset: 0.0f64,
+    res: Some("Vanilla"),
+};
+
+pub const ANON_W113: AnonScenario = AnonScenario {
+    name: "anon_w113",
+    slot: 113f64,
+    has: 0u8,
+    offset: 0.0f64,
+    res: Some("Velvet"),
+};
+
+pub const ANON_W114: AnonScenario = AnonScenario {
+    name: "anon_w114",
+    slot: 114f64,
+    has: 0u8,
+    offset: 0.0f64,
+    res: Some("Violin"),
+};
+
+pub const ANON_W115: AnonScenario = AnonScenario {
+    name: "anon_w115",
+    slot: 115f64,
+    has: 0u8,
+    offset: 0.0f64,
+    res: Some("Volcano"),
+};
+
+pub const ANON_W116: AnonScenario = AnonScenario {
+    name: "anon_w116",
+    slot: 116f64,
+    has: 0u8,
+    offset: 0.0f64,
+    res: Some("Vortex"),
+};
+
+pub const ANON_W117: AnonScenario = AnonScenario {
+    name: "anon_w117",
+    slot: 117f64,
+    has: 0u8,
+    offset: 0.0f64,
+    res: Some("Waterfall"),
+};
+
+pub const ANON_W118: AnonScenario = AnonScenario {
+    name: "anon_w118",
+    slot: 118f64,
+    has: 0u8,
+    offset: 0.0f64,
+    res: Some("Whisper"),
+};
+
+pub const ANON_W119: AnonScenario = AnonScenario {
+    name: "anon_w119",
+    slot: 119f64,
+    has: 0u8,
+    offset: 0.0f64,
+    res: Some("Windmill"),
+};
+
+pub const ANON_W120: AnonScenario = AnonScenario {
+    name: "anon_w120",
+    slot: 120f64,
+    has: 0u8,
+    offset: 0.0f64,
+    res: Some("Wrench"),
+};
+
+pub const ANON_W121: AnonScenario = AnonScenario {
+    name: "anon_w121",
+    slot: 121f64,
+    has: 0u8,
+    offset: 0.0f64,
+    res: Some("Yacht"),
+};
+
+pub const ANON_W122: AnonScenario = AnonScenario {
+    name: "anon_w122",
+    slot: 122f64,
+    has: 0u8,
+    offset: 0.0f64,
+    res: Some("Zebra"),
+};
+
+pub const ANON_W123: AnonScenario = AnonScenario {
+    name: "anon_w123",
+    slot: 123f64,
+    has: 0u8,
+    offset: 0.0f64,
+    res: Some("Zenith"),
+};
+
+pub const ANON_W124: AnonScenario = AnonScenario {
+    name: "anon_w124",
+    slot: 124f64,
+    has: 0u8,
+    offset: 0.0f64,
+    res: Some("Zeppelin"),
+};
+
+pub const ANON_R125: AnonScenario = AnonScenario {
+    name: "anon_r125",
+    slot: 125f64,
+    has: 0u8,
+    offset: 0.0f64,
+    res: Some("Amethyst1"),
+};
+
+pub const ANON_R250: AnonScenario = AnonScenario {
+    name: "anon_r250",
+    slot: 250f64,
+    has: 0u8,
+    offset: 0.0f64,
+    res: Some("Amethyst2"),
+};
+
+pub const ANON_R251: AnonScenario = AnonScenario {
+    name: "anon_r251",
+    slot: 251f64,
+    has: 0u8,
+    offset: 0.0f64,
+    res: Some("Anchor2"),
+};
+
+pub const ANON_R374: AnonScenario = AnonScenario {
+    name: "anon_r374",
+    slot: 374f64,
+    has: 0u8,
+    offset: 0.0f64,
+    res: Some("Zeppelin2"),
+};
+
+pub const ANON_R375: AnonScenario = AnonScenario {
+    name: "anon_r375",
+    slot: 375f64,
+    has: 0u8,
+    offset: 0.0f64,
+    res: Some("Amethyst3"),
+};
+
+pub const ANON_R500: AnonScenario = AnonScenario {
+    name: "anon_r500",
+    slot: 500f64,
+    has: 0u8,
+    offset: 0.0f64,
+    res: Some("Amethyst4"),
+};
+
+pub const ANON_R1000: AnonScenario = AnonScenario {
+    name: "anon_r1000",
+    slot: 1000f64,
+    has: 0u8,
+    offset: 0.0f64,
+    res: Some("Amethyst8"),
+};
+
+pub const ANON_NEG1: AnonScenario = AnonScenario {
+    name: "anon_neg1",
+    slot: -1f64,
+    has: 0u8,
+    offset: 0.0f64,
+    res: Some("Anchor"),
+};
+
+pub const ANON_NEG125: AnonScenario = AnonScenario {
+    name: "anon_neg125",
+    slot: -125f64,
+    has: 0u8,
+    offset: 0.0f64,
+    res: Some("Amethyst1"),
+};
+
+pub const ANON_NEG126: AnonScenario = AnonScenario {
+    name: "anon_neg126",
+    slot: -126f64,
+    has: 0u8,
+    offset: 0.0f64,
+    res: Some("Anchor1"),
+};
+
+pub const ANON_NEG0: AnonScenario = AnonScenario {
+    name: "anon_neg0",
+    slot: -0.0f64,
+    has: 0u8,
+    offset: 0.0f64,
+    res: Some("Amethyst"),
+};
+
+pub const ANON_OFF1: AnonScenario = AnonScenario {
+    name: "anon_off1",
+    slot: 0f64,
+    has: 1u8,
+    offset: 1f64,
+    res: Some("Anchor"),
+};
+
+pub const ANON_OFF_WRAP: AnonScenario = AnonScenario {
+    name: "anon_off_wrap",
+    slot: 124f64,
+    has: 1u8,
+    offset: 1f64,
+    res: Some("Amethyst"),
+};
+
+pub const ANON_OFF_NEG: AnonScenario = AnonScenario {
+    name: "anon_off_neg",
+    slot: 10f64,
+    has: 1u8,
+    offset: -3f64,
+    res: Some("Citadel"),
+};
+
+pub const ANON_OFF_BIG: AnonScenario = AnonScenario {
+    name: "anon_off_big",
+    slot: 120f64,
+    has: 1u8,
+    offset: 120f64,
+    res: Some("Volcano"),
+};
+
+pub const ANON_OFF_ROUND: AnonScenario = AnonScenario {
+    name: "anon_off_round",
+    slot: 200f64,
+    has: 1u8,
+    offset: 100f64,
+    res: Some("Medallion1"),
+};
+
+pub const ANON_OFF_UNDEF: AnonScenario = AnonScenario {
+    name: "anon_off_undef",
+    slot: 5f64,
+    has: 0u8,
+    offset: 0.0f64,
+    res: Some("Blizzard"),
+};
+
+pub const ANON_OFF_ZERO: AnonScenario = AnonScenario {
+    name: "anon_off_zero",
+    slot: 5f64,
+    has: 1u8,
+    offset: 0f64,
+    res: Some("Blizzard"),
+};
+
+pub const ANON_FRAC_09: AnonScenario = AnonScenario {
+    name: "anon_frac_09",
+    slot: 0.9f64,
+    has: 0u8,
+    offset: 0.0f64,
+    res: Some("Amethyst"),
+};
+
+pub const ANON_FRAC_NEG05: AnonScenario = AnonScenario {
+    name: "anon_frac_neg05",
+    slot: -0.5f64,
+    has: 0u8,
+    offset: 0.0f64,
+    res: Some("Amethyst"),
+};
+
+pub const ANON_FRAC_1257: AnonScenario = AnonScenario {
+    name: "anon_frac_1257",
+    slot: 125.7f64,
+    has: 0u8,
+    offset: 0.0f64,
+    res: Some("Amethyst1"),
+};
+
+pub const ANON_FRAC_BOTH: AnonScenario = AnonScenario {
+    name: "anon_frac_both",
+    slot: 2.5f64,
+    has: 1u8,
+    offset: 3.5f64,
+    res: Some("Blizzard"),
+};
+
+pub const ANON_FRAC_ROUND: AnonScenario = AnonScenario {
+    name: "anon_frac_round",
+    slot: 125.9f64,
+    has: 1u8,
+    offset: 0.1f64,
+    res: Some("Amethyst1"),
+};
+
+pub const ANON_NAN: AnonScenario = AnonScenario {
+    name: "anon_nan",
+    slot: f64::NAN,
+    has: 0u8,
+    offset: 0.0f64,
+    res: Some("undefinedNaN"),
+};
+
+pub const ANON_INF: AnonScenario = AnonScenario {
+    name: "anon_inf",
+    slot: f64::INFINITY,
+    has: 0u8,
+    offset: 0.0f64,
+    res: Some("undefinedInfinity"),
+};
+
+pub const ANON_NINF: AnonScenario = AnonScenario {
+    name: "anon_ninf",
+    slot: f64::NEG_INFINITY,
+    has: 0u8,
+    offset: 0.0f64,
+    res: Some("undefinedInfinity"),
+};
+
+pub const ANON_OFF_NAN: AnonScenario = AnonScenario {
+    name: "anon_off_nan",
+    slot: 0f64,
+    has: 1u8,
+    offset: f64::NAN,
+    res: None,
+};
+
+pub const ANON_OFF_INF: AnonScenario = AnonScenario {
+    name: "anon_off_inf",
+    slot: 0f64,
+    has: 1u8,
+    offset: f64::INFINITY,
+    res: None,
+};
+
+pub const ANON_OFF_NINF: AnonScenario = AnonScenario {
+    name: "anon_off_ninf",
+    slot: 0f64,
+    has: 1u8,
+    offset: f64::NEG_INFINITY,
+    res: None,
+};
+
+pub const ANON_BOTH_NAN: AnonScenario = AnonScenario {
+    name: "anon_both_nan",
+    slot: f64::NAN,
+    has: 1u8,
+    offset: f64::NAN,
+    res: Some("undefinedNaN"),
+};
+
+pub const ANON_NAN_OFF5: AnonScenario = AnonScenario {
+    name: "anon_nan_off5",
+    slot: f64::NAN,
+    has: 1u8,
+    offset: 5f64,
+    res: Some("undefinedNaN"),
+};
+
+pub const ANON_INF_OFF1: AnonScenario = AnonScenario {
+    name: "anon_inf_off1",
+    slot: f64::INFINITY,
+    has: 1u8,
+    offset: 1f64,
+    res: Some("undefinedInfinity"),
+};
+
+pub const ANON_1E16: AnonScenario = AnonScenario {
+    name: "anon_1e16",
+    slot: 10000000000000000f64,
+    has: 0u8,
+    offset: 0.0f64,
+    res: Some("Amethyst80000000000000"),
+};
+
+pub const ANON_1E17: AnonScenario = AnonScenario {
+    name: "anon_1e17",
+    slot: 100000000000000000f64,
+    has: 0u8,
+    offset: 0.0f64,
+    res: Some("Amethyst800000000000000"),
+};
+
+pub const ANON_1E18: AnonScenario = AnonScenario {
+    name: "anon_1e18",
+    slot: 1000000000000000000f64,
+    has: 0u8,
+    offset: 0.0f64,
+    res: Some("Amethyst8000000000000000"),
+};
+
+pub const ANON_1E18_128: AnonScenario = AnonScenario {
+    name: "anon_1e18_128",
+    slot: 1000000000000000100f64,
+    has: 0u8,
+    offset: 0.0f64,
+    res: Some("Banner8000000000000001"),
+};
+
+pub const ANON_1E20: AnonScenario = AnonScenario {
+    name: "anon_1e20",
+    slot: 100000000000000000000f64,
+    has: 0u8,
+    offset: 0.0f64,
+    res: Some("Amethyst800000000000000000"),
+};
+
+pub const ANON_5_1E18: AnonScenario = AnonScenario {
+    name: "anon_5_1e18",
+    slot: 5f64,
+    has: 1u8,
+    offset: 1000000000000000000f64,
+    res: Some("Amethyst"),
+};
+
+pub const ANON_2P53M1: AnonScenario = AnonScenario {
+    name: "anon_2p53m1",
+    slot: 9007199254740991f64,
+    has: 0u8,
+    offset: 0.0f64,
+    res: Some("Vortex72057594037927"),
+};
+
+pub const ANON_2P53: AnonScenario = AnonScenario {
+    name: "anon_2p53",
+    slot: 9007199254740992f64,
+    has: 0u8,
+    offset: 0.0f64,
+    res: Some("Waterfall72057594037927"),
+};
+
+pub const ANON_SCENARIOS: &[AnonScenario] = &[
+    ANON_W0,
+    ANON_W1,
+    ANON_W2,
+    ANON_W3,
+    ANON_W4,
+    ANON_W5,
+    ANON_W6,
+    ANON_W7,
+    ANON_W8,
+    ANON_W9,
+    ANON_W10,
+    ANON_W11,
+    ANON_W12,
+    ANON_W13,
+    ANON_W14,
+    ANON_W15,
+    ANON_W16,
+    ANON_W17,
+    ANON_W18,
+    ANON_W19,
+    ANON_W20,
+    ANON_W21,
+    ANON_W22,
+    ANON_W23,
+    ANON_W24,
+    ANON_W25,
+    ANON_W26,
+    ANON_W27,
+    ANON_W28,
+    ANON_W29,
+    ANON_W30,
+    ANON_W31,
+    ANON_W32,
+    ANON_W33,
+    ANON_W34,
+    ANON_W35,
+    ANON_W36,
+    ANON_W37,
+    ANON_W38,
+    ANON_W39,
+    ANON_W40,
+    ANON_W41,
+    ANON_W42,
+    ANON_W43,
+    ANON_W44,
+    ANON_W45,
+    ANON_W46,
+    ANON_W47,
+    ANON_W48,
+    ANON_W49,
+    ANON_W50,
+    ANON_W51,
+    ANON_W52,
+    ANON_W53,
+    ANON_W54,
+    ANON_W55,
+    ANON_W56,
+    ANON_W57,
+    ANON_W58,
+    ANON_W59,
+    ANON_W60,
+    ANON_W61,
+    ANON_W62,
+    ANON_W63,
+    ANON_W64,
+    ANON_W65,
+    ANON_W66,
+    ANON_W67,
+    ANON_W68,
+    ANON_W69,
+    ANON_W70,
+    ANON_W71,
+    ANON_W72,
+    ANON_W73,
+    ANON_W74,
+    ANON_W75,
+    ANON_W76,
+    ANON_W77,
+    ANON_W78,
+    ANON_W79,
+    ANON_W80,
+    ANON_W81,
+    ANON_W82,
+    ANON_W83,
+    ANON_W84,
+    ANON_W85,
+    ANON_W86,
+    ANON_W87,
+    ANON_W88,
+    ANON_W89,
+    ANON_W90,
+    ANON_W91,
+    ANON_W92,
+    ANON_W93,
+    ANON_W94,
+    ANON_W95,
+    ANON_W96,
+    ANON_W97,
+    ANON_W98,
+    ANON_W99,
+    ANON_W100,
+    ANON_W101,
+    ANON_W102,
+    ANON_W103,
+    ANON_W104,
+    ANON_W105,
+    ANON_W106,
+    ANON_W107,
+    ANON_W108,
+    ANON_W109,
+    ANON_W110,
+    ANON_W111,
+    ANON_W112,
+    ANON_W113,
+    ANON_W114,
+    ANON_W115,
+    ANON_W116,
+    ANON_W117,
+    ANON_W118,
+    ANON_W119,
+    ANON_W120,
+    ANON_W121,
+    ANON_W122,
+    ANON_W123,
+    ANON_W124,
+    ANON_R125,
+    ANON_R250,
+    ANON_R251,
+    ANON_R374,
+    ANON_R375,
+    ANON_R500,
+    ANON_R1000,
+    ANON_NEG1,
+    ANON_NEG125,
+    ANON_NEG126,
+    ANON_NEG0,
+    ANON_OFF1,
+    ANON_OFF_WRAP,
+    ANON_OFF_NEG,
+    ANON_OFF_BIG,
+    ANON_OFF_ROUND,
+    ANON_OFF_UNDEF,
+    ANON_OFF_ZERO,
+    ANON_FRAC_09,
+    ANON_FRAC_NEG05,
+    ANON_FRAC_1257,
+    ANON_FRAC_BOTH,
+    ANON_FRAC_ROUND,
+    ANON_NAN,
+    ANON_INF,
+    ANON_NINF,
+    ANON_OFF_NAN,
+    ANON_OFF_INF,
+    ANON_OFF_NINF,
+    ANON_BOTH_NAN,
+    ANON_NAN_OFF5,
+    ANON_INF_OFF1,
+    ANON_1E16,
+    ANON_1E17,
+    ANON_1E18,
+    ANON_1E18_128,
+    ANON_1E20,
+    ANON_5_1E18,
+    ANON_2P53M1,
+    ANON_2P53,
+];
+

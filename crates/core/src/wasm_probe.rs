@@ -3355,3 +3355,32 @@ pub extern "C" fn probe_air_path_len() -> usize {
 pub extern "C" fn probe_air_path_at(i: usize) -> f64 {
     AIR_PATH.with(|p| p.borrow()[i])
 }
+
+// ========================= P23: AnonNames (AnonNames.ts) ======================
+
+thread_local! {
+    /// Last handle as UTF-16 code units (JS `charCodeAt` stream).
+    static ANON_OUT: std::cell::RefCell<Vec<u16>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
+/// Run `anonWordName(slot, offset)`. `has` 0 = offset defaulted (TS default
+/// param). Returns -1 for the JS `undefined` a missed lookup yields when
+/// round === 0, else the handle's UTF-16 length (`probe_anon_out_at`).
+#[no_mangle]
+pub extern "C" fn probe_anon_run(slot: f64, offset: f64, has: u32) -> i32 {
+    let s = crate::anon_names::anon_word_name(slot, if has == 1 { Some(offset) } else { None });
+    match s {
+        None => -1,
+        Some(handle) => {
+            let units: Vec<u16> = handle.encode_utf16().collect();
+            let len = units.len() as i32;
+            ANON_OUT.with(|o| *o.borrow_mut() = units);
+            len
+        }
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn probe_anon_out_at(i: usize) -> f64 {
+    ANON_OUT.with(|o| o.borrow()[i] as f64)
+}

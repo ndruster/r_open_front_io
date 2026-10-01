@@ -27,6 +27,10 @@
 //! * [`team_assignment`] — `src/core/game/TeamAssignment.ts` (lobby team
 //!   balancing: pins, strict clans, soft friend preference, nation shuffle,
 //!   and `resolveTeamsList`)
+//! * [`anon_names`] — `src/core/AnonNames.ts` (`ANON_WORDS` bank +
+//!   `anonWordName`: trunc/abs/floor JS-isms, property-access word lookup
+//!   that spells out-of-range indices as `"undefined"`, and `String(round)`
+//!   for the suffix)
 //! * [`line`] — `src/core/utilities/Line.ts` (`DistanceBasedBezierCurve`:
 //!   fixed-point De Casteljau subdivision for MIRV trajectories)
 //! * [`veterancy`] — `src/core/game/Veterancy.ts` (`maxHealthWithVeterancy`:
@@ -74,6 +78,7 @@
 //! `rust/tools/gen_vectors.mjs`; rerun that script whenever a ported source
 //! file changes.
 
+pub mod anon_names;
 pub mod detmath;
 pub mod game_map;
 pub mod jsnum;

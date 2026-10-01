@@ -29,6 +29,8 @@ rust/
 │   │   │                          (packMotionPlans / unpackMotionPlans)
 │   │   ├── terrain_search_map.rs  port of game/TerrainSearchMap.ts
 │   │   │                          (SearchMapTileType + node / neighbors)
+│   │   ├── anon_names.rs          port of AnonNames.ts (ANON_WORDS +
+│   │   │                          anonWordName)
 │   │   ├── wasm_probe.rs          `extern "C"` surface, feature-gated
 │   │   └── pathfinding/
 │   │       ├── mod.rs
@@ -401,6 +403,21 @@ desync, not a rounding nit. Two things enforce that here:
     pin the same-tile single path, the pure-axis walks (no random draw), four
     seed-varied diagonal interleavings, the multi-start throw, and the
     out-of-range `game.ref` throw.
+25. **`AnonNames.ts`** (`anon_names`) is the anonymous-handle generator:
+    `anonWordName(slot, offset = 0)` truncates both inputs toward zero
+    (`Math.trunc`), takes their absolute values, indexes the 125-word bank by
+    `(s + o) % 125` (JS sign-of-dividend remainder; IEEE `fmod` twin) and
+    suffixes `floor(s / 125)` once the bank wraps. JS-isms pinned: the bank
+    lookup is a **property access**, so `NaN` / `±Infinity` indices read
+    `undefined` — with `round === 0` the TS returns that `undefined` *value*
+    (modelled as `Option::None`, the `: string` annotation is a runtime lie),
+    while `round !== 0` the template literal spells `"undefined"` into the
+    handle; `-0` hits index 0 (key stringifies to `"0"`) and `floor(-0 / 125)`
+    is `-0`, which strict-equals `0` so the bare-name branch wins; `${round}`
+    prints plain decimal digits below `1e21`, `NaN` / `Infinity` otherwise.
+    The 165 scenarios sweep the full bank, round suffixes, negative/fractional
+    slots and offsets, every non-finite combination, and huge slots up to
+    `2^53`.
 
 Regenerate whenever a ported source changes:
 
@@ -434,7 +451,7 @@ node rust/tools/run_wasm_parity.mjs
 
 `wasm-probe` exposes the ported functions through `extern "C"` scalar
 entrypoints (`src/wasm_probe.rs`); the runner imports `data/vectors.json` and
-compares every value. Last run: **31,584 comparisons, all bit-identical**.
+compares every value. Last run: **32,944 comparisons, all bit-identical**.
 
 ### Windows: the linker environment
 

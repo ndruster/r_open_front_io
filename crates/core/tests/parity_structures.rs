@@ -2169,3 +2169,17 @@ fn replay_air_scenarios() {
         }
     }
 }
+
+// anonWordName (AnonNames.ts): replay every scenario and compare the returned
+// handle exactly (the bank order, trunc/abs/floor JS-isms, the "undefined"
+// property-miss spelling and the round === 0 undefined return are all
+// observable).
+#[test]
+fn replay_anon_scenarios() {
+    use openfront_core::anon_names::anon_word_name;
+    for s in vectors::ANON_SCENARIOS {
+        let offset = if s.has == 1 { Some(s.offset) } else { None };
+        let got = anon_word_name(s.slot, offset);
+        assert_eq!(got.as_deref(), s.res, "{} handle", s.name);
+    }
+}

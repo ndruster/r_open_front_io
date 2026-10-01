@@ -159,6 +159,7 @@ const PD = await loadTs("src/core/PatternDecoder.ts");
 const DC = await loadTs("src/core/game/DoomsdayClock.ts");
 const EU = await loadTs("src/core/execution/Util.ts");
 const WM = await loadTs("src/core/game/WaterManager.ts");
+const GUU = await loadTs("src/core/game/GameUpdateUtils.ts");
 const { AStar } = await loadTs("src/core/pathfinding/algorithms/AStar.ts");
 const { AStarRail } = await loadTs("src/core/pathfinding/algorithms/AStar.Rail.ts");
 const { AStarWater } = await loadTs("src/core/pathfinding/algorithms/AStar.Water.ts");
@@ -845,6 +846,284 @@ const slTsList = () => ({
       ...encS(pathname), ...encS(search), spec ? 1 : 0],
       [encOut(SL.versionedPathForGame(own, gv, gid, vfp, pathname, search, spec))]);
 }
+
+// --- GameUpdateUtils scenario runner ------------------------------------------
+// Exercises the real GameUpdateUtils.ts diff / apply / pack through the shared
+// run_op runner. A PlayerUpdate crosses as its interface-order token stream:
+// the required id string, then per field a three-state primitive `[0]`
+// (undefined) / `[1]` (null) / `[2, v]` (bool 0/1, string `[len,u..]`), or an
+// array `[0]` / `[2, refid, len, elems…]`. `refid` models JS reference
+// identity — arrays sharing one object share one refid, which is the
+// comparators' `a === b` fast path (NaN inside a shared array stays "equal").
+// Attack `[attackerID, targetID, troops, id, retreating]`, alliance
+// `[id, other, createdAt, expiresAt, hasExtensionRequest]`, emoji
+// `[message, senderID, recipient, createdAt]` with recipient `[0]`
+// ("AllPlayers") / `[1, n]`. kind 0 = diff(prev,next) → `[0]` (null) or
+// `[1, id, (fieldIdx, valueEnc)…]` in setIfDifferent order; kind 1 =
+// applyStateUpdate(target,pu) → post-merge PlayerState stream (arrays without
+// refid); kind 2 = packAttackTroopDeltas(prev,next,owner,dir) → `[len, …]`.
+const guScenarios = [];
+function captureGU(name, kind, args, res) {
+  guScenarios.push({ name, kind, args: args.flat().map(uenc), res: res.flat().map(uenc) });
+}
+const GUA = (ref, items) => ({ __ref: ref, items });
+
+const GU_PU_FIELDS = [
+  ["id", "sid"],
+  ["clientID", "s"], ["name", "s"], ["displayName", "s"], ["clanTag", "s"],
+  ["nationFlag", "s"], ["team", "s"], ["smallID", "n"], ["playerType", "s"],
+  ["isAlive", "b"], ["isDisconnected", "b"], ["killedBy", "s"],
+  ["deathPosition", "n"], ["tilesOwned", "n"], ["gold", "n"], ["tradeGold", "n"],
+  ["trainGold", "n"], ["piracyGold", "n"], ["goldEarned", "n"], ["troops", "n"],
+  ["allies", "numarr"], ["embargoes", "setarr"], ["isTraitor", "b"],
+  ["traitorRemainingTicks", "n"], ["inDoomsdayClock", "b"], ["isDecaying", "b"],
+  ["markedDoomsdayClockTick", "n"], ["targets", "numarr"],
+  ["outgoingEmojis", "emojarr"], ["outgoingAttacks", "atkarr"],
+  ["incomingAttacks", "atkarr"], ["outgoingAllianceRequests", "strarr"],
+  ["alliances", "allarr"], ["hasSpawned", "b"], ["spawnTile", "n"],
+  ["betrayals", "n"], ["lastDeleteUnitTick", "n"], ["isLobbyCreator", "b"],
+];
+const GU_DIFF_ORDER = [
+  ["clientID", 0, "s"], ["name", 1, "s"], ["displayName", 2, "s"],
+  ["clanTag", 3, "s"], ["nationFlag", 4, "s"], ["team", 5, "s"],
+  ["smallID", 6, "n"], ["playerType", 7, "s"], ["isAlive", 8, "b"],
+  ["isDisconnected", 9, "b"], ["killedBy", 10, "s"], ["deathPosition", 11, "n"],
+  ["tradeGold", 12, "n"], ["trainGold", 13, "n"], ["piracyGold", 14, "n"],
+  ["isTraitor", 15, "b"], ["traitorRemainingTicks", 16, "n"],
+  ["inDoomsdayClock", 17, "b"], ["markedDoomsdayClockTick", 18, "n"],
+  ["isDecaying", 19, "b"], ["hasSpawned", 20, "b"], ["spawnTile", 21, "n"],
+  ["betrayals", 22, "n"], ["lastDeleteUnitTick", 23, "n"],
+  ["isLobbyCreator", 24, "b"], ["allies", 25, "numarr"], ["targets", 26, "numarr"],
+  ["outgoingAllianceRequests", 27, "strarr"], ["embargoes", 28, "setarr"],
+  ["outgoingEmojis", 29, "emojarr"], ["outgoingAttacks", 30, "atkarr"],
+  ["incomingAttacks", 31, "atkarr"], ["alliances", 32, "allarr"],
+];
+const GU_STATE_ORDER = [
+  ["isAlive", "b"], ["isDisconnected", "b"], ["killedBy", "s"],
+  ["deathPosition", "n"], ["tilesOwned", "n"], ["gold", "n"], ["tradeGold", "n"],
+  ["trainGold", "n"], ["piracyGold", "n"], ["goldEarned", "n"], ["troops", "n"],
+  ["isTraitor", "b"], ["traitorRemainingTicks", "n"], ["inDoomsdayClock", "b"],
+  ["markedDoomsdayClockTick", "n"], ["isDecaying", "b"], ["betrayals", "n"],
+  ["hasSpawned", "b"], ["spawnTile", "n"], ["lastDeleteUnitTick", "n"],
+  ["allies", "numarr"], ["targets", "numarr"],
+  ["outgoingAllianceRequests", "strarr"], ["outgoingAttacks", "atkarr"],
+  ["incomingAttacks", "atkarr"], ["alliances", "allarr"], ["outgoingEmojis", "emojarr"],
+];
+
+const guTokPrim = (kind, v) =>
+  v === undefined ? [0] : v === null ? [1]
+    : kind === "b" ? [2, v ? 1 : 0]
+    : kind === "s" ? [2, ...encS(v)]
+    : [2, v];
+
+const guElKey = (kind) => (kind === "setarr" ? "str" : kind.slice(0, -3));
+
+const guTokEl = (key, e) =>
+  key === "num" ? [e]
+    : key === "str" ? encS(e)
+    : key === "atk" ? [e.attackerID, e.targetID, e.troops, ...encS(e.id), e.retreating ? 1 : 0]
+    : key === "all" ? [e.id, ...encS(e.other), e.createdAt, e.expiresAt, e.hasExtensionRequest ? 1 : 0]
+    : [...encS(e.message), e.senderID, ...(e.recipientID === "AllPlayers" ? [0] : [1, e.recipientID]), e.createdAt];
+
+const guItems = (kind, v) => (v instanceof Set ? [...v] : v);
+
+function guBuildPU(spec, shared) {
+  const js = { type: 2, id: spec.id };
+  for (const [k, kind] of GU_PU_FIELDS) {
+    if (k === "id" || !(k in spec)) continue;
+    const v = spec[k];
+    if (!kind.endsWith("arr")) {
+      js[k] = v;
+    } else if (v !== undefined) {
+      if (!shared.has(v.__ref)) {
+        shared.set(v.__ref, kind === "setarr" ? new Set(v.items) : v.items);
+      }
+      js[k] = shared.get(v.__ref);
+    }
+  }
+  return js;
+}
+
+function guTokPU(spec) {
+  const t = [...encS(spec.id)];
+  for (const [k, kind] of GU_PU_FIELDS) {
+    if (k === "id") continue;
+    const v = spec[k];
+    if (!kind.endsWith("arr")) {
+      t.push(...guTokPrim(kind, v));
+    } else if (v === undefined) {
+      t.push(0);
+    } else {
+      const items = kind === "setarr" ? [...new Set(v.items)] : v.items;
+      const key = guElKey(kind);
+      t.push(2, v.__ref, items.length, ...items.flatMap((e) => guTokEl(key, e)));
+    }
+  }
+  return t;
+}
+
+function guRefOf(shared, arr) {
+  for (const [r, a] of shared) if (a === arr) return r;
+  throw new Error("gu: unknown array ref");
+}
+
+function guTokDiff(d, shared) {
+  if (d === null) return [0];
+  const t = [1, ...encS(d.id)];
+  for (const [k, idx, kind] of GU_DIFF_ORDER) {
+    if (!(k in d)) continue;
+    const v = d[k];
+    if (!kind.endsWith("arr")) t.push(idx, ...guTokPrim(kind, v));
+    else if (v === undefined) t.push(idx, 0);
+    else {
+      const items = guItems(kind, v);
+      const key = guElKey(kind);
+      t.push(idx, 2, guRefOf(shared, v), items.length, ...items.flatMap((e) => guTokEl(key, e)));
+    }
+  }
+  return t;
+}
+
+function guTokState(st) {
+  const t = [];
+  for (const [k, kind] of GU_STATE_ORDER) {
+    const v = st[k];
+    if (!kind.endsWith("arr")) t.push(...guTokPrim(kind, v));
+    else if (v === undefined) t.push(0);
+    else {
+      const items = guItems(kind, v);
+      const key = guElKey(kind);
+      t.push(1, items.length, ...items.flatMap((e) => guTokEl(key, e)));
+    }
+  }
+  return t;
+}
+
+function guDiff(name, prevSpec, nextSpec) {
+  const shared = new Map();
+  const prev = guBuildPU(prevSpec, shared);
+  const next = guBuildPU(nextSpec, shared);
+  const d = GUU.diffPlayerUpdate(prev, next);
+  captureGU(name, 0, [...guTokPU(prevSpec), ...guTokPU(nextSpec)], guTokDiff(d, shared));
+}
+
+function guApply(name, stateSpec, puSpec) {
+  const shared = new Map();
+  const target = { ...stateSpec };
+  const pu = guBuildPU(puSpec, shared);
+  GUU.applyStateUpdate(target, pu);
+  captureGU(name, 1, [...guTokState(stateSpec), ...guTokPU(puSpec)], guTokState(target));
+}
+
+function guPack(name, prevA, nextA, owner, dir) {
+  const shared = new Map();
+  const mk = (a) => {
+    if (a === undefined) return undefined;
+    if (!shared.has(a.__ref)) shared.set(a.__ref, a.items);
+    return shared.get(a.__ref);
+  };
+  const prev = mk(prevA);
+  const next = mk(nextA);
+  const out = [];
+  GUU.packAttackTroopDeltas(prev, next, owner, dir, out);
+  const tokArr = (a) =>
+    a === undefined ? [0] : [2, a.__ref, a.items.length, ...a.items.flatMap((e) => guTokEl("atk", e))];
+  captureGU(name, 2, [...tokArr(prevA), ...tokArr(nextA), owner, dir], [out.length, ...out]);
+}
+
+const guAtk = (troops, id = "a", ret = false, at = 1, tg = 2) => ({
+  attackerID: at, targetID: tg, troops, id, retreating: ret,
+});
+const guAll = (id = 1, other = "p2", ca = 10, ex = 20, ext = false) => ({
+  id, other, createdAt: ca, expiresAt: ex, hasExtensionRequest: ext,
+});
+const guEmo = (msg = "hi", snd = 1, rcv = 2, ca = 5) => ({
+  message: msg, senderID: snd, recipientID: rcv, createdAt: ca,
+});
+
+// A fully-populated spec. `off` shifts every array refid so two builds with
+// different offsets hold structurally-equal but *distinct* JS arrays; equal
+// offsets share one object per refid (the `a === b` fast path).
+const GU_FULL = (over = {}, off = 0) => ({
+  id: "p1", clientID: "c1", name: "Alice", displayName: "ali", clanTag: "CT",
+  nationFlag: "en", team: "Red", smallID: 7, playerType: "HUMAN", isAlive: true,
+  isDisconnected: false, killedBy: null, deathPosition: null, tilesOwned: 100,
+  gold: 50, tradeGold: 3, trainGold: 2, piracyGold: 1, goldEarned: 60, troops: 25,
+  allies: GUA(1 + off, [2, 3]), embargoes: GUA(2 + off, ["e1"]), isTraitor: false,
+  traitorRemainingTicks: 0, inDoomsdayClock: false, isDecaying: false,
+  markedDoomsdayClockTick: 0, targets: GUA(3 + off, [9]),
+  outgoingEmojis: GUA(4 + off, [guEmo()]),
+  outgoingAttacks: GUA(5 + off, [guAtk(10, "a1")]),
+  incomingAttacks: GUA(6 + off, [guAtk(7, "a2", true, 3, 1)]),
+  outgoingAllianceRequests: GUA(7 + off, ["r1"]),
+  alliances: GUA(8 + off, [guAll()]),
+  hasSpawned: true, spawnTile: 42, betrayals: 0, lastDeleteUnitTick: 1,
+  isLobbyCreator: true,
+  ...over,
+});
+
+// --- diff (kind 0) ---
+guDiff("gu_diff_identical", GU_FULL(), GU_FULL());
+guDiff("gu_diff_struct_equal", GU_FULL(), GU_FULL({}, 100));
+guDiff("gu_diff_nan_shared", GU_FULL({ allies: GUA(1, [NaN]) }), GU_FULL({ allies: GUA(1, [NaN]) }));
+guDiff("gu_diff_nan_refs", GU_FULL({ allies: GUA(1, [NaN]) }), GU_FULL({ allies: GUA(101, [NaN]) }));
+guDiff("gu_diff_id_only", GU_FULL(), GU_FULL({ id: "p2" }));
+guDiff("gu_diff_multi", GU_FULL(), GU_FULL({ name: "Bob", tradeGold: 4, isAlive: false }, 100));
+guDiff("gu_diff_embargoes_order", GU_FULL({ embargoes: GUA(2, ["e1", "e2"]) }), GU_FULL({ embargoes: GUA(102, ["e2", "e1"]) }, 100));
+guDiff("gu_diff_embargoes_add", GU_FULL({ embargoes: GUA(2, ["e1"]) }), GU_FULL({ embargoes: GUA(102, ["e1", "e2"]) }, 100));
+guDiff("gu_diff_troops_only", GU_FULL(), GU_FULL({ outgoingAttacks: GUA(105, [guAtk(11, "a1")]) }, 100));
+guDiff("gu_diff_attack_id", GU_FULL(), GU_FULL({ outgoingAttacks: GUA(105, [guAtk(10, "a1x")]) }, 100));
+guDiff("gu_diff_incoming_retreat", GU_FULL(), GU_FULL({ incomingAttacks: GUA(106, [guAtk(7, "a2", false, 3, 1)]) }, 100));
+guDiff("gu_diff_alliance_expiry", GU_FULL(), GU_FULL({ alliances: GUA(108, [guAll(1, "p2", 10, 21)]) }, 100));
+guDiff("gu_diff_emoji_recipient", GU_FULL(), GU_FULL({ outgoingEmojis: GUA(104, [guEmo("hi", 1, "AllPlayers")]) }, 100));
+guDiff("gu_diff_emoji_nan", GU_FULL({ outgoingEmojis: GUA(4, [guEmo("hi", 1, NaN)]) }), GU_FULL({ outgoingEmojis: GUA(104, [guEmo("hi", 1, NaN)]) }, 100));
+guDiff("gu_diff_smallid_nan", GU_FULL({ smallID: NaN }), GU_FULL({ smallID: NaN }));
+guDiff("gu_diff_negzero", GU_FULL({ smallID: -0 }), GU_FULL({ smallID: 0 }));
+guDiff("gu_diff_killed_null_undef", GU_FULL({ killedBy: null }), { ...GU_FULL({}, 100), killedBy: undefined });
+for (const [k, v, v2] of [
+  ["clientID", "c1", "c2"], ["name", "Alice", "Bob"], ["displayName", "ali", "bob"],
+  ["clanTag", "CT", null], ["nationFlag", "en", "fr"], ["team", "Red", "Blue"],
+  ["smallID", 7, 8], ["playerType", "HUMAN", "BOT"], ["isAlive", true, false],
+  ["isDisconnected", false, true], ["killedBy", null, "c9"],
+  ["deathPosition", null, 12.5], ["tradeGold", 3, 4], ["trainGold", 2, 3],
+  ["piracyGold", 1, 2], ["isTraitor", false, true], ["traitorRemainingTicks", 0, 5],
+  ["inDoomsdayClock", false, true], ["markedDoomsdayClockTick", 0, 77],
+  ["isDecaying", false, true], ["hasSpawned", true, false], ["spawnTile", 42, 43],
+  ["betrayals", 0, 1], ["lastDeleteUnitTick", 1, 2], ["isLobbyCreator", true, false],
+]) guDiff(`gu_diff_one_${k}`, GU_FULL({ [k]: v }), GU_FULL({ [k]: v2 }));
+guDiff("gu_diff_allies_undef", GU_FULL(), { ...GU_FULL({}, 100), allies: undefined });
+guDiff("gu_diff_targets_len", GU_FULL({ targets: GUA(3, [9]) }), GU_FULL({ targets: GUA(103, [9, 10]) }, 100));
+guDiff("gu_diff_oar", GU_FULL({ outgoingAllianceRequests: GUA(7, ["r1"]) }), GU_FULL({ outgoingAllianceRequests: GUA(107, ["r2"]) }, 100));
+guDiff("gu_diff_empty", { id: "p" }, { id: "p" });
+
+// --- apply (kind 1) ---
+guApply("gu_apply_full", {}, GU_FULL());
+guApply("gu_apply_partial", { isAlive: true, gold: 9 }, { id: "p", gold: NaN, traitorRemainingTicks: -3 });
+guApply("gu_apply_nulls", {}, { id: "p", killedBy: null, deathPosition: null, gold: null, traitorRemainingTicks: null });
+guApply("gu_apply_undef", { isAlive: true }, { id: "p", isAlive: undefined });
+guApply("gu_apply_trt_nan", {}, { id: "p", traitorRemainingTicks: NaN });
+guApply("gu_apply_trt_negzero", {}, { id: "p", traitorRemainingTicks: -0 });
+guApply("gu_apply_trt_inf", {}, { id: "p", traitorRemainingTicks: Infinity });
+guApply("gu_apply_arrays", {}, { id: "p", allies: GUA(1, [1, NaN, -0]), targets: GUA(2, []), outgoingAllianceRequests: GUA(3, ["x"]) });
+guApply("gu_apply_arrays_over", { allies: [9], targets: [8], outgoingAllianceRequests: ["z"] }, { id: "p", allies: GUA(1, [1]), targets: GUA(2, []), outgoingAllianceRequests: GUA(3, []) });
+guApply("gu_apply_attacks", {}, { id: "p", outgoingAttacks: GUA(1, [guAtk(10, "a1")]), incomingAttacks: GUA(2, [guAtk(7, "a2", true, 3, 1)]), alliances: GUA(3, [guAll()]), outgoingEmojis: GUA(4, [guEmo("hi", 1, "AllPlayers")]) });
+guApply("gu_apply_noop", { isAlive: true, troops: 5 }, { id: "p" });
+guApply("gu_apply_tiles", { tilesOwned: 1 }, { id: "p", tilesOwned: 2, troops: 3, goldEarned: 7 });
+guApply("gu_apply_embargoes_absent", { allies: [1] }, { id: "p", embargoes: GUA(1, ["e1"]) });
+
+// --- pack (kind 2) ---
+guPack("gu_pack_same_ref", GUA(1, [guAtk(10)]), GUA(1, [guAtk(10)]), 5, 0);
+guPack("gu_pack_undef_prev", undefined, GUA(1, [guAtk(10)]), 5, 0);
+guPack("gu_pack_undef_next", GUA(1, [guAtk(10)]), undefined, 5, 0);
+guPack("gu_pack_changes", GUA(1, [guAtk(10, "a"), guAtk(20, "b"), guAtk(30, "c")]), GUA(2, [guAtk(11, "a"), guAtk(20, "b"), guAtk(31, "c")]), 5, 0);
+guPack("gu_pack_membership", GUA(1, [guAtk(10, "a")]), GUA(2, [guAtk(10, "b")]), 5, 0);
+guPack("gu_pack_nan_troops", GUA(1, [guAtk(NaN, "a")]), GUA(2, [guAtk(NaN, "a")]), 5, 0);
+guPack("gu_pack_negzero", GUA(1, [guAtk(-0, "a")]), GUA(2, [guAtk(0, "a")]), 5, 0);
+guPack("gu_pack_incoming", GUA(1, [guAtk(1, "a")]), GUA(2, [guAtk(2, "a")]), 9, 1);
+guPack("gu_pack_retreat", GUA(1, [guAtk(1, "a", false)]), GUA(2, [guAtk(1, "a", true)]), 5, 0);
+guPack("gu_pack_len", GUA(1, [guAtk(1, "a")]), GUA(2, [guAtk(1, "a"), guAtk(2, "b")]), 5, 0);
+guPack("gu_pack_empty", GUA(1, []), GUA(2, []), 5, 0);
+guPack("gu_pack_owner_nan", GUA(1, [guAtk(1, "a")]), GUA(2, [guAtk(2, "a")]), NaN, 0);
 
 // --- PatternDecoder scenario runner -------------------------------------------
 // Exercises the real PatternDecoder.ts decode + isPrimary through the shared
@@ -4130,6 +4409,7 @@ const structures = {
   doomsdayclock: dcScenarios,
   executil: euScenarios,
   watermanager: wmScenarios,
+  gameupdateutils: guScenarios,
   astar: asScenarios,
   rail: railScenarios,
   water: waterScenarios,
@@ -6003,6 +6283,30 @@ for (const s of structures.watermanager) {
 }
 L.push("pub const WM_SCENARIOS: &[WmScenario] = &[");
 for (const s of structures.watermanager) L.push(`    ${s.name.toUpperCase()},`);
+L.push("];");
+L.push("");
+
+L.push("/// GameUpdateUtils scenario: one `game_update_utils::run_op(kind, args)` call.");
+L.push("/// `args` / `res` are flat f64 token streams (see the Rust module docs).");
+L.push("pub struct GuScenario {");
+L.push("    pub name: &'static str,");
+L.push("    pub kind: u8,");
+L.push("    pub args: &'static [f64],");
+L.push("    pub res: &'static [f64],");
+L.push("}");
+L.push("");
+for (const s of structures.gameupdateutils) {
+  const id = s.name.toUpperCase();
+  L.push(`pub const ${id}: GuScenario = GuScenario {`);
+  L.push(`    name: "${s.name}",`);
+  L.push(`    kind: ${s.kind}u8,`);
+  L.push(`    args: &[${s.args.map(utilResLit).join(", ")}],`);
+  L.push(`    res: &[${s.res.map(utilResLit).join(", ")}],`);
+  L.push("};");
+  L.push("");
+}
+L.push("pub const GU_SCENARIOS: &[GuScenario] = &[");
+for (const s of structures.gameupdateutils) L.push(`    ${s.name.toUpperCase()},`);
 L.push("];");
 L.push("");
 

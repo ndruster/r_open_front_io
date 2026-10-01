@@ -47,6 +47,10 @@ rust/
 │   │   ├── water_manager.rs       port of game/WaterManager.ts (water-nuke
 │   │   │                          terrain fixup + throttled minimap water-graph
 │   │   │                          rebuild; graph/HPA bypass, persistent CC)
+│   │   ├── game_update_utils.rs   port of game/GameUpdateUtils.ts (per-player
+│   │   │                          PlayerUpdate diff / in-place state merge /
+│   │   │                          attack troop-delta packing; refid models the
+│   │   │                          `a === b` fast path)
 │   │   ├── wasm_probe.rs          `extern "C"` surface, feature-gated
 │   │   └── pathfinding/
 │   │       ├── mod.rs
@@ -526,6 +530,21 @@ desync, not a rounding nit. Two things enforce that here:
     folds, dense conversions, null-component queries, and a cross-tick CC
     merge; per-op result streams plus both maps' final terrain/state buffers
     and the version counter are compared.
+32. **`game/GameUpdateUtils.ts`** (`game_update_utils`) — `diffPlayerUpdate`
+    (field-by-field diff of the ~35 compared `PlayerUpdate` fields, emitted in
+    `setIfDifferent` call order; the fast path shares the same comparators),
+    `applyStateUpdate` (in-place merge where `undefined` = no-change, `null`
+    is assigned — or coerced by `Number(null)=0` / `Math.max(0,·)` — and the
+    three `.slice()`-detached arrays are copied), and `packAttackTroopDeltas`
+    (membership-equality-gated `[owner, dir, index, troops]` quads). JS
+    reference identity (`a === b`, true for a shared array even when it holds
+    `NaN`) is modelled by a capture-assigned `refid` per distinct array
+    object; three-state fields (`undefined` / `null` / value) are
+    `Option<Option<T>>` so `===` keeps its JS distinctions (`null !==
+    undefined`, `NaN !== NaN`, `-0 === 0`). 71 scenarios cover the shared-ref
+    NaN fast path, set-semantic embargoes, troops-only attack changes,
+    `null` vs `undefined` merges, `Math.max` NaN/negative/`-0`/Infinity edges,
+    and the pack gate's reference / membership / length branches.
 
 Regenerate whenever a ported source changes:
 
@@ -559,7 +578,7 @@ node rust/tools/run_wasm_parity.mjs
 
 `wasm-probe` exposes the ported functions through `extern "C"` scalar
 entrypoints (`src/wasm_probe.rs`); the runner imports `data/vectors.json` and
-compares every value. Last run: **38,562 comparisons, all bit-identical**.
+compares every value. Last run: **39,418 comparisons, all bit-identical**.
 
 ### Windows: the linker environment
 

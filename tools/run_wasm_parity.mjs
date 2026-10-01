@@ -94,6 +94,7 @@ for (const name of [
   "probe_wm_map_terrain_byte", "probe_wm_mini_terrain_byte", "probe_wm_new",
   "probe_wm_arg", "probe_wm_op", "probe_wm_out_at", "probe_wm_version",
   "probe_wm_map_terrain_at", "probe_wm_map_state_at", "probe_wm_mini_terrain_at",
+  "probe_gu_arg", "probe_gu_op", "probe_gu_out_at",
 ]) {
   if (typeof ex[name] !== "function") {
     console.error(`missing wasm export ${name} - rebuild with --features wasm-probe`);
@@ -1625,6 +1626,24 @@ for (const s of S.watermanager) {
     cmpU32(`${s.name} mapState`, ex.probe_wm_map_state_at(i), s.mapStateAfter[i], i);
   for (let i = 0; i < s.miniTerrainAfter.length; i++)
     cmpU32(`${s.name} miniTerrain`, ex.probe_wm_mini_terrain_at(i), s.miniTerrainAfter[i], i);
+}
+
+// --- game/GameUpdateUtils.ts (game_update_utils) ------------------------------
+// Replays diff / apply / pack through the shared run_op runner; args and res
+// are flat f64 token streams, compared element-by-element with Object.is.
+for (const s of S.gameupdateutils) {
+  for (const a of s.args) ex.probe_gu_arg(numTok(a));
+  const len = Number(ex.probe_gu_op(s.kind));
+  if (len !== s.res.length) {
+    fail(`${s.name} res len`, 0, len, s.res.length);
+    continue;
+  }
+  for (let i = 0; i < len; i++) {
+    checks++;
+    const g = ex.probe_gu_out_at(i);
+    const w = numTok(s.res[i]);
+    if (!Object.is(g, w)) fail(`${s.name} res[${i}]`, 0, g, w);
+  }
 }
 
 console.log(`${checks} vector comparisons executed against wasm build`);

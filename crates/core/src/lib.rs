@@ -59,6 +59,11 @@
 //!   `ConnectedComponents` incremental labeling, 20-tick throttled graph
 //!   rebuild as a version bump — the graph/HPA machinery never crosses the
 //!   WaterManager API surface)
+//! * [`game_update_utils`] — `src/core/game/GameUpdateUtils.ts`
+//!   (`diffPlayerUpdate` field-by-field diff with the `a === b` reference
+//!   fast path modelled as a capture `refid`, `applyStateUpdate` in-place
+//!   merge with the `Number()` / `Math.max(0,·)` / `.slice()` quirks, and
+//!   `packAttackTroopDeltas` membership-gated troop quads)
 //! * [`line`] — `src/core/utilities/Line.ts` (`DistanceBasedBezierCurve`:
 //!   fixed-point De Casteljau subdivision for MIRV trajectories)
 //! * [`veterancy`] — `src/core/game/Veterancy.ts` (`maxHealthWithVeterancy`:
@@ -112,6 +117,7 @@ pub mod detmath;
 pub mod doomsday_clock;
 pub mod exec_util;
 pub mod game_map;
+pub mod game_update_utils;
 pub mod jsnum;
 pub mod line;
 pub mod motion_plans;

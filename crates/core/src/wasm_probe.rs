@@ -3655,3 +3655,32 @@ pub extern "C" fn probe_wm_map_state_at(i: usize) -> u32 {
 pub extern "C" fn probe_wm_mini_terrain_at(i: usize) -> u32 {
     WM_GM.with(|g| g.borrow().as_ref().unwrap().debug_mini_terrain()[i] as u32)
 }
+
+// ================= P30: game/GameUpdateUtils.ts (game_update_utils) ==========
+
+thread_local! {
+    static GU_ARGS: std::cell::RefCell<Vec<f64>> = const { std::cell::RefCell::new(Vec::new()) };
+    static GU_OUT: std::cell::RefCell<Vec<f64>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
+/// Push one flat token of the PlayerUpdate / PlayerState token stream.
+#[no_mangle]
+pub extern "C" fn probe_gu_arg(v: f64) {
+    GU_ARGS.with(|t| t.borrow_mut().push(v));
+}
+
+/// Run `game_update_utils::run_op(kind, args)`; returns the result-stream
+/// length.
+#[no_mangle]
+pub extern "C" fn probe_gu_op(kind: u32) -> usize {
+    let a = GU_ARGS.with(|t| std::mem::take(&mut *t.borrow_mut()));
+    let out = crate::game_update_utils::run_op(kind as u8, &a);
+    let len = out.len();
+    GU_OUT.with(|o| *o.borrow_mut() = out);
+    len
+}
+
+#[no_mangle]
+pub extern "C" fn probe_gu_out_at(i: usize) -> f64 {
+    GU_OUT.with(|o| o.borrow()[i])
+}

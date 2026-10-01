@@ -912,6 +912,127 @@ function prepare(rel) {
     );
   }
 
+  if (rel.endsWith("game/GameUpdates.ts")) {
+    // Wire-shape module: every import is type-only (zod schema types, the
+    // Game.ts type surface, the branded TileRef) -> dropped; strip mode
+    // erases the annotations that referenced them. `export enum` is inlined
+    // as a plain object with the same numeric values (Tile=0 .. DonateEvent=23).
+    out = must(
+      out,
+      'import { AllPlayersStats, ClientID, Winner } from "../Schemas";\n',
+      "",
+      "GameUpdates Schemas import",
+    );
+    out = must(
+      out,
+      "import {\n" +
+        "  EmojiMessage,\n" +
+        "  GameUpdates,\n" +
+        "  Gold,\n" +
+        "  MessageType,\n" +
+        "  NameViewData,\n" +
+        "  NukeState,\n" +
+        "  PlayerID,\n" +
+        "  PlayerType,\n" +
+        "  SamLauncherState,\n" +
+        "  Team,\n" +
+        "  Tick,\n" +
+        "  TrainType,\n" +
+        "  TransportShipState,\n" +
+        "  UnitType,\n" +
+        "  WarshipState,\n" +
+        '} from "./Game";\n',
+      "",
+      "GameUpdates Game import",
+    );
+    out = must(out, 'import { TileRef } from "./GameMap";\n', "", "GameUpdates GameMap import");
+    out = must(
+      out,
+      "export enum GameUpdateType {\n" +
+        "  // Tile updates are delivered via `packedTileUpdates` on the outer GameUpdateViewData.\n" +
+        "  Tile,\n" +
+        "  Unit,\n" +
+        "  Player,\n" +
+        "  DisplayEvent,\n" +
+        "  DisplayChatEvent,\n" +
+        "  AllianceRequest,\n" +
+        "  AllianceRequestReply,\n" +
+        "  BrokeAlliance,\n" +
+        "  AllianceExpired,\n" +
+        "  AllianceExtension,\n" +
+        "  TargetPlayer,\n" +
+        "  Emoji,\n" +
+        "  Win,\n" +
+        "  Hash,\n" +
+        "  UnitIncoming,\n" +
+        "  BonusEvent,\n" +
+        "  RailroadDestructionEvent,\n" +
+        "  RailroadConstructionEvent,\n" +
+        "  RailroadSnapEvent,\n" +
+        "  ConquestEvent,\n" +
+        "  EmbargoEvent,\n" +
+        "  SpawnPhaseEnd,\n" +
+        "  GamePaused,\n" +
+        "  DonateEvent,\n" +
+        "}",
+      "export const GameUpdateType = {\n" +
+        "  Tile: 0,\n" +
+        "  Unit: 1,\n" +
+        "  Player: 2,\n" +
+        "  DisplayEvent: 3,\n" +
+        "  DisplayChatEvent: 4,\n" +
+        "  AllianceRequest: 5,\n" +
+        "  AllianceRequestReply: 6,\n" +
+        "  BrokeAlliance: 7,\n" +
+        "  AllianceExpired: 8,\n" +
+        "  AllianceExtension: 9,\n" +
+        "  TargetPlayer: 10,\n" +
+        "  Emoji: 11,\n" +
+        "  Win: 12,\n" +
+        "  Hash: 13,\n" +
+        "  UnitIncoming: 14,\n" +
+        "  BonusEvent: 15,\n" +
+        "  RailroadDestructionEvent: 16,\n" +
+        "  RailroadConstructionEvent: 17,\n" +
+        "  RailroadSnapEvent: 18,\n" +
+        "  ConquestEvent: 19,\n" +
+        "  EmbargoEvent: 20,\n" +
+        "  SpawnPhaseEnd: 21,\n" +
+        "  GamePaused: 22,\n" +
+        "  DonateEvent: 23,\n" +
+        "};",
+      "GameUpdates enum",
+    );
+  }
+
+  if (rel.endsWith("game/GameUpdateUtils.ts")) {
+    // PlayerState / EmojiMessage are `import type` (erased anyway; dropped
+    // explicitly so the shim asserts the shape). The GameUpdates import also
+    // names three interfaces — strip mode would keep them in the value import
+    // and the prepared copy no longer exports them, so only the
+    // GameUpdateType *value* is imported, redirected to the prepared copy.
+    out = must(
+      out,
+      'import type { PlayerState } from "../../client/render/types";\n',
+      "",
+      "GUU PlayerState import",
+    );
+    out = must(out, 'import type { EmojiMessage } from "./Game";\n', "", "GUU EmojiMessage import");
+    const guRel = "src/core/game/GameUpdates.ts";
+    if (!prepared.has(guRel)) prepare(guRel);
+    out = must(
+      out,
+      "import {\n" +
+        "  AllianceView,\n" +
+        "  AttackUpdate,\n" +
+        "  GameUpdateType,\n" +
+        "  PlayerUpdate,\n" +
+        '} from "./GameUpdates";',
+      `import { GameUpdateType } from "./${prepared.get(guRel)}";`,
+      "GUU GameUpdates import",
+    );
+  }
+
   if (rel.endsWith("PatternDecoder.ts")) {
     // PlayerPattern is a type-only import (a z.infer type from Schemas); strip
     // mode cannot tell and would pull in the whole zod schema graph -> drop.

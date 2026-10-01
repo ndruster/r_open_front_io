@@ -45,6 +45,13 @@
 //!   threshold math: required share / HUD wave state / troop floor / convex
 //!   drain curve / rot lattice + hashed noises / rot quota; integer-only,
 //!   `Math.imul`→`wrapping_mul`, `>>>0`→`to_uint32`)
+//! * [`exec_util`] — the pure-`GameMap` subset of `src/core/execution/Util.ts`
+//!   (`computeNukeBlastCounts` insertion-ordered owner weights, `getSpawnTiles`
+//!   over the centred radius-4 Euclidean stack-BFS, `closestTile` /
+//!   `nearestTileDist` first-minimum strict `<`, `nearestTileDistCapped` with
+//!   the `isTileSetLike` duck-test branch (Manhattan ring walk vs. clamped
+//!   linear scan) and `closestTwoTiles` stable-by-column sort + two-pointer
+//!   sweep; the three `Game`-facade functions are out of scope)
 //! * [`line`] — `src/core/utilities/Line.ts` (`DistanceBasedBezierCurve`:
 //!   fixed-point De Casteljau subdivision for MIRV trajectories)
 //! * [`veterancy`] — `src/core/game/Veterancy.ts` (`maxHealthWithVeterancy`:
@@ -96,6 +103,7 @@ pub mod anon_names;
 pub mod close_codes;
 pub mod detmath;
 pub mod doomsday_clock;
+pub mod exec_util;
 pub mod game_map;
 pub mod jsnum;
 pub mod line;

@@ -41,6 +41,9 @@ rust/
 │   │   │                          base64url layer not ported)
 │   │   ├── doomsday_clock.rs      port of game/DoomsdayClock.ts (wave
 │   │   │                          schedule math + rot noises + drain curves)
+│   │   ├── exec_util.rs           port of execution/Util.ts (pure-GameMap
+│   │   │                          subset: nuke blast counts, spawn tiles,
+│   │   │                          nearest-tile searches, closest-two sweep)
 │   │   ├── wasm_probe.rs          `extern "C"` surface, feature-gated
 │   │   └── pathfinding/
 │   │       ├── mod.rs
@@ -484,6 +487,22 @@ desync, not a rounding nit. Two things enforce that here:
     `normal` via `??`. The 1,270 scenarios sweep every ramp/pause boundary
     of all four speeds, both ladders, the int32 coercion edges of the
     noises, and the floor/drain clamp matrix.
+30. **`execution/Util.ts`** (`exec_util`) is the pure-`GameMap` subset:
+    `computeNukeBlastCounts` (insertion-ordered owner weights over
+    `circleSearch`, `d2 <= inner² ? 1 : 0.5`), `getSpawnTiles` (the centred
+    radius-4 Euclidean stack-BFS, strict vs. filtered overloads), `closestTile`
+    / `nearestTileDist` (first-minimum strict `<`, `Infinity` on empty),
+    `nearestTileDistCapped` (the `isTileSetLike` duck test picks the Manhattan
+    ring walk over a `TileSet` probe vs. the clamped linear scan) and
+    `closestTwoTiles` (stable sort by `a % w` — a `NaN` comparator counts as
+    equal, per V8 `SortCompare` — then the two-pointer sweep). The three
+    `Game`-facade functions in the same file (`wouldNukeBreakAlliance`,
+    `listNukeBreakAlliance`, `calculateTerritoryCenter`) are out of scope until
+    `Game.ts` lands. 80 scenarios pin the owner-weight insertion order, the
+    strict/loose spawn split over owned / impassable / water tiles, the NaN
+    distance edges, both capped branches (an `Infinity` cap would spin the ring
+    loop forever and hangs the TS side — not captured), and the tie / empty /
+    NaN-column sort cases of the sweep.
 
 Regenerate whenever a ported source changes:
 

@@ -3498,3 +3498,70 @@ pub extern "C" fn probe_dc_op(kind: u32) -> usize {
 pub extern "C" fn probe_dc_out_at(i: usize) -> f64 {
     DC_OUT.with(|o| o.borrow()[i])
 }
+
+// ================= P28: execution/Util.ts (exec_util) =========================
+// One packed-terrain GameMap + owner writes per scenario, then one
+// `exec_util::run_op(gm, kind, args)`. Terrain bytes are queued before
+// `probe_eu_new` (like the GM probe); owners are queued via `probe_eu_owner`
+// and applied inside `probe_eu_new` with the same `set_owner_id` the TS
+// runner used (scenario owners are all <= 4095, so no throw path).
+
+thread_local! {
+    static EU_ARGS: std::cell::RefCell<Vec<f64>> = const { std::cell::RefCell::new(Vec::new()) };
+    static EU_OUT: std::cell::RefCell<Vec<f64>> = const { std::cell::RefCell::new(Vec::new()) };
+    static EU_TERRAIN: std::cell::RefCell<Vec<u8>> = const { std::cell::RefCell::new(Vec::new()) };
+    static EU_OWNERS: std::cell::RefCell<Vec<(f64, f64)>> = const { std::cell::RefCell::new(Vec::new()) };
+    static EU_GM: std::cell::RefCell<Option<Box<GameMap>>> =
+        const { std::cell::RefCell::new(None) };
+}
+
+/// Queue one packed terrain byte for the next map (before `probe_eu_new`).
+#[no_mangle]
+pub extern "C" fn probe_eu_terrain_byte(v: u32) {
+    EU_TERRAIN.with(|t| t.borrow_mut().push(v as u8));
+}
+
+/// Queue one `(tile, playerId)` owner write for the next map.
+#[no_mangle]
+pub extern "C" fn probe_eu_owner(tile: f64, player_id: f64) {
+    EU_OWNERS.with(|o| o.borrow_mut().push((tile, player_id)));
+}
+
+/// Build the map from the queued terrain + owners.
+#[no_mangle]
+pub extern "C" fn probe_eu_new(w: f64, h: f64) {
+    let terrain = EU_TERRAIN.with(|t| std::mem::take(&mut *t.borrow_mut()));
+    let owners = EU_OWNERS.with(|o| std::mem::take(&mut *o.borrow_mut()));
+    let mut gm = GameMap::new(w, h, terrain, w * h);
+    for (t, id) in owners {
+        gm.set_owner_id(t, id);
+    }
+    EU_GM.with(|g| *g.borrow_mut() = Some(Box::new(gm)));
+}
+
+/// Push one flat token (tile, cap, mode, list elements…).
+#[no_mangle]
+pub extern "C" fn probe_eu_arg(v: f64) {
+    EU_ARGS.with(|t| t.borrow_mut().push(v));
+}
+
+/// Run `exec_util::run_op(gm, kind, args)`; returns the result-stream length.
+#[no_mangle]
+pub extern "C" fn probe_eu_op(kind: u32) -> usize {
+    let a = EU_ARGS.with(|t| std::mem::take(&mut *t.borrow_mut()));
+    let out = EU_GM.with(|g| {
+        crate::exec_util::run_op(
+            g.borrow().as_ref().expect("probe_eu_new must be called first").as_ref(),
+            kind as u8,
+            &a,
+        )
+    });
+    let len = out.len();
+    EU_OUT.with(|o| *o.borrow_mut() = out);
+    len
+}
+
+#[no_mangle]
+pub extern "C" fn probe_eu_out_at(i: usize) -> f64 {
+    EU_OUT.with(|o| o.borrow()[i])
+}

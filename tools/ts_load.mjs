@@ -437,6 +437,46 @@ function prepare(rel) {
       "AGA PQ import",
     );
   }
+  if (rel.endsWith("execution/Util.ts")) {
+    // Only the pure-GameMap functions are exercised. GameView / Game /
+    // Player / Structures / NukeMagnitude are type-only or used exclusively
+    // by the excluded Game-facade functions -> dropped. ReadonlyTileSet is an
+    // interface -> dropped. euclDistFN is a *value* import and GameMap is a
+    // type-only import in this file, so the pair is split: GameMap erased,
+    // euclDistFN redirected to the real (prepared) GameMap.ts module.
+    out = must(
+      out,
+      'import { GameView } from "../../client/view";\n',
+      "",
+      "EU view import",
+    );
+    out = must(
+      out,
+      'import { NukeMagnitude } from "../configuration/Config";\n',
+      "",
+      "EU Config import",
+    );
+    out = must(
+      out,
+      'import { Game, Player, Structures } from "../game/Game";\n',
+      "",
+      "EU Game import",
+    );
+    const gmRel = "src/core/game/GameMap.ts";
+    if (!prepared.has(gmRel)) prepare(gmRel);
+    out = must(
+      out,
+      'import { euclDistFN, GameMap, TileRef } from "../game/GameMap";\n',
+      `import { euclDistFN } from "./${prepared.get(gmRel)}";\n`,
+      "EU GameMap import",
+    );
+    out = must(
+      out,
+      'import { ReadonlyTileSet } from "../game/TileSet";\n',
+      "",
+      "EU TileSet import",
+    );
+  }
   if (rel.endsWith("algorithms/ConnectedComponents.ts")) {
     // GameMap/TileRef are type-only (interface + branded type) -> dropped; the
     // DebugSpan value import is redirected to its prepared copy. The ctor's two

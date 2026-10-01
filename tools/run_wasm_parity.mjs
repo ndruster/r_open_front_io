@@ -89,6 +89,8 @@ for (const name of [
   "probe_sl_arg", "probe_sl_op", "probe_sl_out_at",
   "probe_pd_arg", "probe_pd_op", "probe_pd_out_at",
   "probe_dc_arg", "probe_dc_op", "probe_dc_out_at",
+  "probe_eu_terrain_byte", "probe_eu_owner", "probe_eu_new",
+  "probe_eu_arg", "probe_eu_op", "probe_eu_out_at",
 ]) {
   if (typeof ex[name] !== "function") {
     console.error(`missing wasm export ${name} - rebuild with --features wasm-probe`);
@@ -1561,6 +1563,26 @@ for (const s of S.doomsdayclock) {
   for (let i = 0; i < len; i++) {
     checks++;
     const g = ex.probe_dc_out_at(i);
+    const w = numTok(s.res[i]);
+    if (!Object.is(g, w)) fail(`${s.name} res[${i}]`, 0, g, w);
+  }
+}
+
+// --- execution/Util.ts (exec_util) ---------------------------------------------
+// Rebuild the packed-terrain map + owner writes, then replay one run_op.
+for (const s of S.executil) {
+  for (const b of s.terrain) ex.probe_eu_terrain_byte(b);
+  for (const [t, id] of s.owners) ex.probe_eu_owner(numTok(t), numTok(id));
+  ex.probe_eu_new(s.w, s.h);
+  for (const a of s.args) ex.probe_eu_arg(numTok(a));
+  const len = Number(ex.probe_eu_op(s.kind));
+  if (len !== s.res.length) {
+    fail(`${s.name} res len`, 0, len, s.res.length);
+    continue;
+  }
+  for (let i = 0; i < len; i++) {
+    checks++;
+    const g = ex.probe_eu_out_at(i);
     const w = numTok(s.res[i]);
     if (!Object.is(g, w)) fail(`${s.name} res[${i}]`, 0, g, w);
   }

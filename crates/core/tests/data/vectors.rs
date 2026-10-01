@@ -29987,3 +29987,1201 @@ pub const DC_SCENARIOS: &[DcScenario] = &[
     DC_RQ_17,
 ];
 
+/// execution/Util.ts scenario: a packed-terrain GameMap, owner writes,
+/// then one `exec_util::run_op(gm, kind, args)` call. `owners` are
+/// `(tile, playerId)` pairs applied via `set_owner_id` before the op.
+pub struct EuScenario {
+    pub name: &'static str,
+    pub w: f64,
+    pub h: f64,
+    pub terrain: &'static [u8],
+    pub owners: &'static [(f64, f64)],
+    pub kind: u8,
+    pub args: &'static [f64],
+    pub res: &'static [f64],
+}
+
+pub const EU_NB_0: EuScenario = EuScenario {
+    name: "eu_nb_0",
+    w: 5f64,
+    h: 5f64,
+    terrain: &[
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+],
+    owners: &[(0f64, 1f64), (1f64, 1f64), (2f64, 1f64), (3f64, 1f64), (4f64, 1f64), (5f64, 1f64), (6f64, 1f64), (7f64, 1f64), (8f64, 1f64), (9f64, 1f64), (10f64, 1f64), (11f64, 1f64), (12f64, 1f64), (13f64, 1f64), (14f64, 1f64), (15f64, 1f64), (16f64, 1f64), (17f64, 1f64), (18f64, 1f64), (19f64, 1f64), (20f64, 1f64), (21f64, 1f64), (22f64, 1f64), (23f64, 1f64), (24f64, 1f64)],
+    kind: 0u8,
+    args: &[12f64, 0f64, 1f64],
+    res: &[1f64, 3f64],
+};
+
+pub const EU_NB_1: EuScenario = EuScenario {
+    name: "eu_nb_1",
+    w: 5f64,
+    h: 5f64,
+    terrain: &[
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+],
+    owners: &[(0f64, 1f64), (1f64, 1f64), (2f64, 1f64), (3f64, 1f64), (4f64, 1f64), (5f64, 1f64), (6f64, 1f64), (7f64, 1f64), (8f64, 1f64), (9f64, 1f64), (10f64, 1f64), (11f64, 1f64), (12f64, 1f64), (13f64, 1f64), (14f64, 1f64), (15f64, 1f64), (16f64, 1f64), (17f64, 1f64), (18f64, 1f64), (19f64, 1f64), (20f64, 1f64), (21f64, 1f64), (22f64, 1f64), (23f64, 1f64), (24f64, 1f64)],
+    kind: 0u8,
+    args: &[12f64, 1f64, 1f64],
+    res: &[1f64, 5f64],
+};
+
+pub const EU_NB_2: EuScenario = EuScenario {
+    name: "eu_nb_2",
+    w: 5f64,
+    h: 5f64,
+    terrain: &[
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+],
+    owners: &[(0f64, 1f64), (1f64, 1f64), (2f64, 1f64), (3f64, 1f64), (4f64, 1f64), (5f64, 1f64), (6f64, 1f64), (7f64, 1f64), (8f64, 1f64), (9f64, 1f64), (10f64, 1f64), (11f64, 1f64), (12f64, 1f64), (13f64, 1f64), (14f64, 1f64), (15f64, 1f64), (16f64, 1f64), (17f64, 1f64), (18f64, 1f64), (19f64, 1f64), (20f64, 1f64), (21f64, 1f64), (22f64, 1f64), (23f64, 1f64), (24f64, 1f64)],
+    kind: 0u8,
+    args: &[12f64, 2f64, 2f64],
+    res: &[1f64, 13f64],
+};
+
+pub const EU_NB_3: EuScenario = EuScenario {
+    name: "eu_nb_3",
+    w: 5f64,
+    h: 5f64,
+    terrain: &[
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+],
+    owners: &[(0f64, 1f64), (1f64, 1f64), (2f64, 1f64), (3f64, 1f64), (4f64, 1f64), (5f64, 1f64), (6f64, 1f64), (7f64, 1f64), (8f64, 1f64), (9f64, 1f64), (10f64, 1f64), (11f64, 1f64), (12f64, 1f64), (13f64, 1f64), (14f64, 1f64), (15f64, 1f64), (16f64, 1f64), (17f64, 1f64), (18f64, 1f64), (19f64, 1f64), (20f64, 1f64), (21f64, 1f64), (22f64, 1f64), (23f64, 1f64), (24f64, 1f64)],
+    kind: 0u8,
+    args: &[0f64, 1f64, 1f64],
+    res: &[1f64, 3f64],
+};
+
+pub const EU_NB_4: EuScenario = EuScenario {
+    name: "eu_nb_4",
+    w: 5f64,
+    h: 5f64,
+    terrain: &[
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+],
+    owners: &[(0f64, 1f64), (1f64, 1f64), (2f64, 1f64), (3f64, 1f64), (4f64, 1f64), (5f64, 1f64), (6f64, 1f64), (7f64, 1f64), (8f64, 1f64), (9f64, 1f64), (10f64, 1f64), (11f64, 1f64), (12f64, 1f64), (13f64, 1f64), (14f64, 1f64), (15f64, 1f64), (16f64, 1f64), (17f64, 1f64), (18f64, 1f64), (19f64, 1f64), (20f64, 1f64), (21f64, 1f64), (22f64, 1f64), (23f64, 1f64), (24f64, 1f64)],
+    kind: 0u8,
+    args: &[12f64, 0f64, 0f64],
+    res: &[1f64, 1f64],
+};
+
+pub const EU_NB_5: EuScenario = EuScenario {
+    name: "eu_nb_5",
+    w: 5f64,
+    h: 5f64,
+    terrain: &[
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+],
+    owners: &[(0f64, 1f64), (1f64, 1f64), (2f64, 1f64), (3f64, 1f64), (4f64, 1f64), (5f64, 1f64), (6f64, 1f64), (7f64, 1f64), (8f64, 1f64), (9f64, 1f64), (10f64, 1f64), (11f64, 1f64), (12f64, 1f64), (13f64, 1f64), (14f64, 1f64), (15f64, 1f64), (16f64, 1f64), (17f64, 1f64), (18f64, 1f64), (19f64, 1f64), (20f64, 1f64), (21f64, 1f64), (22f64, 1f64), (23f64, 1f64), (24f64, 1f64)],
+    kind: 0u8,
+    args: &[12f64, f64::NAN, 1f64],
+    res: &[1f64, 2.5f64],
+};
+
+pub const EU_NB_6: EuScenario = EuScenario {
+    name: "eu_nb_6",
+    w: 5f64,
+    h: 5f64,
+    terrain: &[
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+],
+    owners: &[(0f64, 1f64), (1f64, 1f64), (2f64, 1f64), (3f64, 1f64), (4f64, 1f64), (5f64, 1f64), (6f64, 1f64), (7f64, 1f64), (8f64, 1f64), (9f64, 1f64), (10f64, 1f64), (11f64, 1f64), (12f64, 1f64), (13f64, 1f64), (14f64, 1f64), (15f64, 1f64), (16f64, 1f64), (17f64, 1f64), (18f64, 1f64), (19f64, 1f64), (20f64, 1f64), (21f64, 1f64), (22f64, 1f64), (23f64, 1f64), (24f64, 1f64)],
+    kind: 0u8,
+    args: &[12f64, 1f64, f64::NAN],
+    res: &[],
+};
+
+pub const EU_NB_7: EuScenario = EuScenario {
+    name: "eu_nb_7",
+    w: 5f64,
+    h: 5f64,
+    terrain: &[
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+],
+    owners: &[(0f64, 1f64), (1f64, 1f64), (2f64, 1f64), (3f64, 1f64), (4f64, 1f64), (5f64, 1f64), (6f64, 1f64), (7f64, 1f64), (8f64, 1f64), (9f64, 1f64), (10f64, 1f64), (11f64, 1f64), (12f64, 1f64), (13f64, 1f64), (14f64, 1f64), (15f64, 1f64), (16f64, 1f64), (17f64, 1f64), (18f64, 1f64), (19f64, 1f64), (20f64, 1f64), (21f64, 1f64), (22f64, 1f64), (23f64, 1f64), (24f64, 1f64)],
+    kind: 0u8,
+    args: &[f64::NAN, 1f64, 1f64],
+    res: &[],
+};
+
+pub const EU_NB_8: EuScenario = EuScenario {
+    name: "eu_nb_8",
+    w: 5f64,
+    h: 5f64,
+    terrain: &[
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+],
+    owners: &[(0f64, 1f64), (1f64, 1f64), (2f64, 1f64), (3f64, 1f64), (4f64, 1f64), (5f64, 1f64), (6f64, 1f64), (7f64, 1f64), (8f64, 1f64), (9f64, 1f64), (10f64, 1f64), (11f64, 1f64), (12f64, 1f64), (13f64, 1f64), (14f64, 1f64), (15f64, 1f64), (16f64, 1f64), (17f64, 1f64), (18f64, 1f64), (19f64, 1f64), (20f64, 1f64), (21f64, 1f64), (22f64, 1f64), (23f64, 1f64), (24f64, 1f64)],
+    kind: 0u8,
+    args: &[12f64, 0.5f64, 1.5f64],
+    res: &[],
+};
+
+pub const EU_NB_9: EuScenario = EuScenario {
+    name: "eu_nb_9",
+    w: 5f64,
+    h: 5f64,
+    terrain: &[
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+],
+    owners: &[(0f64, 1f64), (1f64, 1f64), (2f64, 1f64), (3f64, 1f64), (4f64, 1f64), (5f64, 1f64), (6f64, 1f64), (7f64, 1f64), (8f64, 1f64), (9f64, 1f64), (10f64, 1f64), (11f64, 1f64), (12f64, 1f64), (13f64, 1f64), (14f64, 1f64), (15f64, 1f64), (16f64, 1f64), (17f64, 1f64), (18f64, 1f64), (19f64, 1f64), (20f64, 1f64), (21f64, 1f64), (22f64, 1f64), (23f64, 1f64), (24f64, 1f64)],
+    kind: 0u8,
+    args: &[12f64, 3f64, 3f64],
+    res: &[1f64, 25f64],
+};
+
+pub const EU_NB_MIXED_10: EuScenario = EuScenario {
+    name: "eu_nb_mixed_10",
+    w: 5f64,
+    h: 5f64,
+    terrain: &[
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+],
+    owners: &[(12f64, 3f64), (11f64, 7f64), (13f64, 3f64), (17f64, 5f64)],
+    kind: 0u8,
+    args: &[12f64, 0f64, 2f64],
+    res: &[7f64, 0.5f64, 3f64, 1.5f64, 5f64, 0.5f64],
+};
+
+pub const EU_NB_MIXED_11: EuScenario = EuScenario {
+    name: "eu_nb_mixed_11",
+    w: 5f64,
+    h: 5f64,
+    terrain: &[
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+],
+    owners: &[(12f64, 3f64), (11f64, 7f64), (13f64, 3f64), (17f64, 5f64)],
+    kind: 0u8,
+    args: &[12f64, 1f64, 2f64],
+    res: &[7f64, 1f64, 3f64, 2f64, 5f64, 1f64],
+};
+
+pub const EU_NB_MIXED_12: EuScenario = EuScenario {
+    name: "eu_nb_mixed_12",
+    w: 5f64,
+    h: 5f64,
+    terrain: &[
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+],
+    owners: &[(12f64, 3f64), (11f64, 7f64), (13f64, 3f64), (17f64, 5f64)],
+    kind: 0u8,
+    args: &[11f64, 0f64, 3f64],
+    res: &[7f64, 1f64, 3f64, 1f64, 5f64, 0.5f64],
+};
+
+pub const EU_NB_EMPTY_13: EuScenario = EuScenario {
+    name: "eu_nb_empty_13",
+    w: 3f64,
+    h: 3f64,
+    terrain: &[
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+],
+    owners: &[],
+    kind: 0u8,
+    args: &[4f64, 1f64, 1f64],
+    res: &[],
+};
+
+pub const EU_SP_LOOSE_14: EuScenario = EuScenario {
+    name: "eu_sp_loose_14",
+    w: 5f64,
+    h: 5f64,
+    terrain: &[
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+],
+    owners: &[],
+    kind: 1u8,
+    args: &[12f64, 0f64],
+    res: &[0f64, 25f64, 12f64, 7f64, 17f64, 11f64, 13f64, 8f64, 18f64, 14f64, 9f64, 19f64, 24f64, 23f64, 22f64, 21f64, 16f64, 20f64, 15f64, 10f64, 5f64, 0f64, 6f64, 1f64, 2f64, 3f64, 4f64],
+};
+
+pub const EU_SP_STRICT_15: EuScenario = EuScenario {
+    name: "eu_sp_strict_15",
+    w: 5f64,
+    h: 5f64,
+    terrain: &[
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+],
+    owners: &[],
+    kind: 1u8,
+    args: &[12f64, 1f64],
+    res: &[0f64, 25f64, 12f64, 7f64, 17f64, 11f64, 13f64, 8f64, 18f64, 14f64, 9f64, 19f64, 24f64, 23f64, 22f64, 21f64, 16f64, 20f64, 15f64, 10f64, 5f64, 0f64, 6f64, 1f64, 2f64, 3f64, 4f64],
+};
+
+pub const EU_SP_OWNED_LOOSE_16: EuScenario = EuScenario {
+    name: "eu_sp_owned_loose_16",
+    w: 5f64,
+    h: 5f64,
+    terrain: &[
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+],
+    owners: &[(12f64, 1f64)],
+    kind: 1u8,
+    args: &[12f64, 0f64],
+    res: &[0f64, 24f64, 7f64, 17f64, 11f64, 13f64, 8f64, 18f64, 14f64, 9f64, 19f64, 24f64, 23f64, 22f64, 21f64, 16f64, 20f64, 15f64, 10f64, 5f64, 0f64, 6f64, 1f64, 2f64, 3f64, 4f64],
+};
+
+pub const EU_SP_OWNED_STRICT_17: EuScenario = EuScenario {
+    name: "eu_sp_owned_strict_17",
+    w: 5f64,
+    h: 5f64,
+    terrain: &[
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+],
+    owners: &[(12f64, 1f64)],
+    kind: 1u8,
+    args: &[12f64, 1f64],
+    res: &[1f64],
+};
+
+pub const EU_SP_IMPASS_STRICT_18: EuScenario = EuScenario {
+    name: "eu_sp_impass_strict_18",
+    w: 5f64,
+    h: 5f64,
+    terrain: &[
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 159u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+],
+    owners: &[],
+    kind: 1u8,
+    args: &[12f64, 1f64],
+    res: &[1f64],
+};
+
+pub const EU_SP_IMPASS_LOOSE_19: EuScenario = EuScenario {
+    name: "eu_sp_impass_loose_19",
+    w: 5f64,
+    h: 5f64,
+    terrain: &[
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 159u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+],
+    owners: &[],
+    kind: 1u8,
+    args: &[12f64, 0f64],
+    res: &[0f64, 24f64, 12f64, 17f64, 11f64, 13f64, 8f64, 18f64, 14f64, 9f64, 19f64, 24f64, 23f64, 22f64, 21f64, 16f64, 20f64, 15f64, 10f64, 5f64, 0f64, 6f64, 1f64, 2f64, 3f64, 4f64],
+};
+
+pub const EU_SP_WATER_STRICT_20: EuScenario = EuScenario {
+    name: "eu_sp_water_strict_20",
+    w: 5f64,
+    h: 5f64,
+    terrain: &[
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 32u8, 133u8, 133u8, 133u8, 133u8,
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+],
+    owners: &[],
+    kind: 1u8,
+    args: &[12f64, 1f64],
+    res: &[1f64],
+};
+
+pub const EU_SP_EDGE_21: EuScenario = EuScenario {
+    name: "eu_sp_edge_21",
+    w: 5f64,
+    h: 5f64,
+    terrain: &[
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+],
+    owners: &[],
+    kind: 1u8,
+    args: &[0f64, 0f64],
+    res: &[0f64, 13f64, 0f64, 5f64, 1f64, 6f64, 2f64, 7f64, 3f64, 8f64, 12f64, 11f64, 16f64, 10f64, 15f64],
+};
+
+pub const EU_SP_EDGE_22: EuScenario = EuScenario {
+    name: "eu_sp_edge_22",
+    w: 5f64,
+    h: 5f64,
+    terrain: &[
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+],
+    owners: &[],
+    kind: 1u8,
+    args: &[0f64, 1f64],
+    res: &[0f64, 13f64, 0f64, 5f64, 1f64, 6f64, 2f64, 7f64, 3f64, 8f64, 12f64, 11f64, 16f64, 10f64, 15f64],
+};
+
+pub const EU_SP_EDGE_23: EuScenario = EuScenario {
+    name: "eu_sp_edge_23",
+    w: 5f64,
+    h: 5f64,
+    terrain: &[
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+],
+    owners: &[],
+    kind: 1u8,
+    args: &[24f64, 1f64],
+    res: &[0f64, 22f64, 24f64, 19f64, 23f64, 18f64, 22f64, 17f64, 21f64, 16f64, 20f64, 15f64, 10f64, 11f64, 6f64, 12f64, 7f64, 13f64, 8f64, 14f64, 9f64, 4f64, 3f64, 2f64],
+};
+
+pub const EU_SP_EDGE_24: EuScenario = EuScenario {
+    name: "eu_sp_edge_24",
+    w: 5f64,
+    h: 5f64,
+    terrain: &[
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+],
+    owners: &[],
+    kind: 1u8,
+    args: &[f64::NAN, 0f64],
+    res: &[0f64, 0f64],
+};
+
+pub const EU_SP_EDGE_25: EuScenario = EuScenario {
+    name: "eu_sp_edge_25",
+    w: 5f64,
+    h: 5f64,
+    terrain: &[
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+],
+    owners: &[],
+    kind: 1u8,
+    args: &[-1f64, 0f64],
+    res: &[0f64, 9f64, 0f64, 5f64, 1f64, 6f64, 2f64, 7f64, 11f64, 10f64, 15f64],
+};
+
+pub const EU_CT_26: EuScenario = EuScenario {
+    name: "eu_ct_26",
+    w: 10f64,
+    h: 1f64,
+    terrain: &[
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+],
+    owners: &[],
+    kind: 2u8,
+    args: &[3f64, 2f64, 5f64],
+    res: &[2f64, 1f64],
+};
+
+pub const EU_CT_27: EuScenario = EuScenario {
+    name: "eu_ct_27",
+    w: 10f64,
+    h: 1f64,
+    terrain: &[
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+],
+    owners: &[],
+    kind: 2u8,
+    args: &[2f64, 1f64, 3f64],
+    res: &[1f64, 1f64],
+};
+
+pub const EU_CT_28: EuScenario = EuScenario {
+    name: "eu_ct_28",
+    w: 10f64,
+    h: 1f64,
+    terrain: &[
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+],
+    owners: &[],
+    kind: 2u8,
+    args: &[3f64],
+    res: &[f64::NAN, f64::INFINITY],
+};
+
+pub const EU_CT_29: EuScenario = EuScenario {
+    name: "eu_ct_29",
+    w: 10f64,
+    h: 1f64,
+    terrain: &[
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+],
+    owners: &[],
+    kind: 2u8,
+    args: &[3f64, f64::NAN, 5f64],
+    res: &[5f64, 2f64],
+};
+
+pub const EU_CT_30: EuScenario = EuScenario {
+    name: "eu_ct_30",
+    w: 10f64,
+    h: 1f64,
+    terrain: &[
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+],
+    owners: &[],
+    kind: 2u8,
+    args: &[3f64, 5f64, f64::NAN],
+    res: &[5f64, 2f64],
+};
+
+pub const EU_CT_31: EuScenario = EuScenario {
+    name: "eu_ct_31",
+    w: 10f64,
+    h: 1f64,
+    terrain: &[
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+],
+    owners: &[],
+    kind: 2u8,
+    args: &[f64::NAN, 1f64, 2f64],
+    res: &[f64::NAN, f64::INFINITY],
+};
+
+pub const EU_CT_32: EuScenario = EuScenario {
+    name: "eu_ct_32",
+    w: 10f64,
+    h: 1f64,
+    terrain: &[
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+],
+    owners: &[],
+    kind: 2u8,
+    args: &[3f64, 3f64],
+    res: &[3f64, 0f64],
+};
+
+pub const EU_CT_33: EuScenario = EuScenario {
+    name: "eu_ct_33",
+    w: 10f64,
+    h: 1f64,
+    terrain: &[
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+],
+    owners: &[],
+    kind: 2u8,
+    args: &[0f64, 9f64],
+    res: &[9f64, 9f64],
+};
+
+pub const EU_CT_34: EuScenario = EuScenario {
+    name: "eu_ct_34",
+    w: 10f64,
+    h: 1f64,
+    terrain: &[
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+],
+    owners: &[],
+    kind: 2u8,
+    args: &[9f64, 0f64],
+    res: &[0f64, 9f64],
+};
+
+pub const EU_CT_35: EuScenario = EuScenario {
+    name: "eu_ct_35",
+    w: 10f64,
+    h: 1f64,
+    terrain: &[
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+],
+    owners: &[],
+    kind: 2u8,
+    args: &[3f64, -1f64, 7f64],
+    res: &[-1f64, 4f64],
+};
+
+pub const EU_CT_36: EuScenario = EuScenario {
+    name: "eu_ct_36",
+    w: 10f64,
+    h: 1f64,
+    terrain: &[
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+],
+    owners: &[],
+    kind: 2u8,
+    args: &[3f64, 1.5f64, 4f64],
+    res: &[4f64, 1f64],
+};
+
+pub const EU_CT_37: EuScenario = EuScenario {
+    name: "eu_ct_37",
+    w: 10f64,
+    h: 1f64,
+    terrain: &[
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+],
+    owners: &[],
+    kind: 2u8,
+    args: &[5f64, 5f64, 5f64, 5f64],
+    res: &[5f64, 0f64],
+};
+
+pub const EU_ND_38: EuScenario = EuScenario {
+    name: "eu_nd_38",
+    w: 10f64,
+    h: 1f64,
+    terrain: &[
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+],
+    owners: &[],
+    kind: 3u8,
+    args: &[3f64, 2f64, 5f64],
+    res: &[1f64],
+};
+
+pub const EU_ND_39: EuScenario = EuScenario {
+    name: "eu_nd_39",
+    w: 10f64,
+    h: 1f64,
+    terrain: &[
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+],
+    owners: &[],
+    kind: 3u8,
+    args: &[3f64],
+    res: &[f64::INFINITY],
+};
+
+pub const EU_ND_40: EuScenario = EuScenario {
+    name: "eu_nd_40",
+    w: 10f64,
+    h: 1f64,
+    terrain: &[
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+],
+    owners: &[],
+    kind: 3u8,
+    args: &[3f64, f64::NAN, 5f64],
+    res: &[2f64],
+};
+
+pub const EU_ND_41: EuScenario = EuScenario {
+    name: "eu_nd_41",
+    w: 10f64,
+    h: 1f64,
+    terrain: &[
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+],
+    owners: &[],
+    kind: 3u8,
+    args: &[f64::NAN, 1f64, 2f64],
+    res: &[f64::INFINITY],
+};
+
+pub const EU_ND_42: EuScenario = EuScenario {
+    name: "eu_nd_42",
+    w: 10f64,
+    h: 1f64,
+    terrain: &[
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+],
+    owners: &[],
+    kind: 3u8,
+    args: &[3f64, 3f64],
+    res: &[0f64],
+};
+
+pub const EU_ND_43: EuScenario = EuScenario {
+    name: "eu_nd_43",
+    w: 10f64,
+    h: 1f64,
+    terrain: &[
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+],
+    owners: &[],
+    kind: 3u8,
+    args: &[0f64, 9f64],
+    res: &[9f64],
+};
+
+pub const EU_NC_LIN_44: EuScenario = EuScenario {
+    name: "eu_nc_lin_44",
+    w: 5f64,
+    h: 5f64,
+    terrain: &[
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+],
+    owners: &[],
+    kind: 4u8,
+    args: &[12f64, 1f64, 0f64, 14f64],
+    res: &[f64::INFINITY],
+};
+
+pub const EU_NC_LIN_45: EuScenario = EuScenario {
+    name: "eu_nc_lin_45",
+    w: 5f64,
+    h: 5f64,
+    terrain: &[
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+],
+    owners: &[],
+    kind: 4u8,
+    args: &[12f64, 2f64, 0f64, 14f64],
+    res: &[2f64],
+};
+
+pub const EU_NC_LIN_46: EuScenario = EuScenario {
+    name: "eu_nc_lin_46",
+    w: 5f64,
+    h: 5f64,
+    terrain: &[
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+],
+    owners: &[],
+    kind: 4u8,
+    args: &[12f64, 3f64, 0f64, 14f64],
+    res: &[2f64],
+};
+
+pub const EU_NC_LIN_47: EuScenario = EuScenario {
+    name: "eu_nc_lin_47",
+    w: 5f64,
+    h: 5f64,
+    terrain: &[
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+],
+    owners: &[],
+    kind: 4u8,
+    args: &[12f64, 5f64, 0f64],
+    res: &[f64::INFINITY],
+};
+
+pub const EU_NC_LIN_48: EuScenario = EuScenario {
+    name: "eu_nc_lin_48",
+    w: 5f64,
+    h: 5f64,
+    terrain: &[
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+],
+    owners: &[],
+    kind: 4u8,
+    args: &[12f64, 0f64, 0f64, 12f64],
+    res: &[0f64],
+};
+
+pub const EU_NC_LIN_49: EuScenario = EuScenario {
+    name: "eu_nc_lin_49",
+    w: 5f64,
+    h: 5f64,
+    terrain: &[
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+],
+    owners: &[],
+    kind: 4u8,
+    args: &[12f64, 5f64, 0f64, f64::NAN],
+    res: &[f64::INFINITY],
+};
+
+pub const EU_NC_LIN_50: EuScenario = EuScenario {
+    name: "eu_nc_lin_50",
+    w: 5f64,
+    h: 5f64,
+    terrain: &[
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+],
+    owners: &[],
+    kind: 4u8,
+    args: &[f64::NAN, 5f64, 0f64, 14f64],
+    res: &[f64::INFINITY],
+};
+
+pub const EU_NC_LIN_51: EuScenario = EuScenario {
+    name: "eu_nc_lin_51",
+    w: 5f64,
+    h: 5f64,
+    terrain: &[
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+],
+    owners: &[],
+    kind: 4u8,
+    args: &[12f64, 4f64, 0f64, 0f64, 24f64],
+    res: &[4f64],
+};
+
+pub const EU_NC_LIN_52: EuScenario = EuScenario {
+    name: "eu_nc_lin_52",
+    w: 5f64,
+    h: 5f64,
+    terrain: &[
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+],
+    owners: &[],
+    kind: 4u8,
+    args: &[12f64, f64::INFINITY, 0f64, 14f64],
+    res: &[2f64],
+};
+
+pub const EU_NC_LIN_53: EuScenario = EuScenario {
+    name: "eu_nc_lin_53",
+    w: 5f64,
+    h: 5f64,
+    terrain: &[
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+],
+    owners: &[],
+    kind: 4u8,
+    args: &[12f64, f64::NAN, 0f64, 14f64],
+    res: &[f64::INFINITY],
+};
+
+pub const EU_NC_LIN_54: EuScenario = EuScenario {
+    name: "eu_nc_lin_54",
+    w: 5f64,
+    h: 5f64,
+    terrain: &[
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+],
+    owners: &[],
+    kind: 4u8,
+    args: &[12f64, -1f64, 0f64, 14f64],
+    res: &[f64::INFINITY],
+};
+
+pub const EU_NC_SET_55: EuScenario = EuScenario {
+    name: "eu_nc_set_55",
+    w: 5f64,
+    h: 5f64,
+    terrain: &[
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+],
+    owners: &[],
+    kind: 4u8,
+    args: &[12f64, 2f64, 1f64, 14f64],
+    res: &[2f64],
+};
+
+pub const EU_NC_SET_56: EuScenario = EuScenario {
+    name: "eu_nc_set_56",
+    w: 5f64,
+    h: 5f64,
+    terrain: &[
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+],
+    owners: &[],
+    kind: 4u8,
+    args: &[12f64, 1f64, 1f64, 14f64],
+    res: &[f64::INFINITY],
+};
+
+pub const EU_NC_SET_57: EuScenario = EuScenario {
+    name: "eu_nc_set_57",
+    w: 5f64,
+    h: 5f64,
+    terrain: &[
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+],
+    owners: &[],
+    kind: 4u8,
+    args: &[12f64, 0f64, 1f64, 12f64],
+    res: &[0f64],
+};
+
+pub const EU_NC_SET_58: EuScenario = EuScenario {
+    name: "eu_nc_set_58",
+    w: 5f64,
+    h: 5f64,
+    terrain: &[
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+],
+    owners: &[],
+    kind: 4u8,
+    args: &[12f64, 5f64, 1f64],
+    res: &[f64::INFINITY],
+};
+
+pub const EU_NC_SET_59: EuScenario = EuScenario {
+    name: "eu_nc_set_59",
+    w: 5f64,
+    h: 5f64,
+    terrain: &[
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+],
+    owners: &[],
+    kind: 4u8,
+    args: &[12f64, 4f64, 1f64, 0f64],
+    res: &[4f64],
+};
+
+pub const EU_NC_SET_60: EuScenario = EuScenario {
+    name: "eu_nc_set_60",
+    w: 5f64,
+    h: 5f64,
+    terrain: &[
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+],
+    owners: &[],
+    kind: 4u8,
+    args: &[12f64, 4f64, 1f64, 24f64],
+    res: &[4f64],
+};
+
+pub const EU_NC_SET_61: EuScenario = EuScenario {
+    name: "eu_nc_set_61",
+    w: 5f64,
+    h: 5f64,
+    terrain: &[
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+],
+    owners: &[],
+    kind: 4u8,
+    args: &[12f64, 2f64, 1f64, 14f64, 0f64],
+    res: &[2f64],
+};
+
+pub const EU_NC_SET_62: EuScenario = EuScenario {
+    name: "eu_nc_set_62",
+    w: 5f64,
+    h: 5f64,
+    terrain: &[
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+],
+    owners: &[],
+    kind: 4u8,
+    args: &[f64::NAN, 5f64, 1f64, 14f64],
+    res: &[f64::INFINITY],
+};
+
+pub const EU_NC_SET_63: EuScenario = EuScenario {
+    name: "eu_nc_set_63",
+    w: 5f64,
+    h: 5f64,
+    terrain: &[
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+],
+    owners: &[],
+    kind: 4u8,
+    args: &[12f64, f64::NAN, 1f64, 14f64],
+    res: &[f64::INFINITY],
+};
+
+pub const EU_NC_SET_64: EuScenario = EuScenario {
+    name: "eu_nc_set_64",
+    w: 5f64,
+    h: 5f64,
+    terrain: &[
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+],
+    owners: &[],
+    kind: 4u8,
+    args: &[12f64, -1f64, 1f64, 14f64],
+    res: &[f64::INFINITY],
+};
+
+pub const EU_NC_SET_65: EuScenario = EuScenario {
+    name: "eu_nc_set_65",
+    w: 5f64,
+    h: 5f64,
+    terrain: &[
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+],
+    owners: &[],
+    kind: 4u8,
+    args: &[2f64, 4f64, 1f64, 22f64],
+    res: &[4f64],
+};
+
+pub const EU_NC_SET_66: EuScenario = EuScenario {
+    name: "eu_nc_set_66",
+    w: 5f64,
+    h: 5f64,
+    terrain: &[
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+],
+    owners: &[],
+    kind: 4u8,
+    args: &[6f64, 4f64, 1f64, 8f64],
+    res: &[2f64],
+};
+
+pub const EU_NC_SET_67: EuScenario = EuScenario {
+    name: "eu_nc_set_67",
+    w: 5f64,
+    h: 5f64,
+    terrain: &[
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+],
+    owners: &[],
+    kind: 4u8,
+    args: &[12f64, 0f64, 1f64, 14f64],
+    res: &[f64::INFINITY],
+};
+
+pub const EU_C2_68: EuScenario = EuScenario {
+    name: "eu_c2_68",
+    w: 10f64,
+    h: 2f64,
+    terrain: &[
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+    133u8, 133u8, 133u8, 133u8,
+],
+    owners: &[],
+    kind: 5u8,
+    args: &[1f64, 2f64, 5f64],
+    res: &[0f64, 2f64, 5f64],
+};
+
+pub const EU_C2_69: EuScenario = EuScenario {
+    name: "eu_c2_69",
+    w: 10f64,
+    h: 2f64,
+    terrain: &[
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+    133u8, 133u8, 133u8, 133u8,
+],
+    owners: &[],
+    kind: 5u8,
+    args: &[0f64, 5f64],
+    res: &[1f64],
+};
+
+pub const EU_C2_70: EuScenario = EuScenario {
+    name: "eu_c2_70",
+    w: 10f64,
+    h: 2f64,
+    terrain: &[
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+    133u8, 133u8, 133u8, 133u8,
+],
+    owners: &[],
+    kind: 5u8,
+    args: &[1f64, 2f64],
+    res: &[1f64],
+};
+
+pub const EU_C2_71: EuScenario = EuScenario {
+    name: "eu_c2_71",
+    w: 10f64,
+    h: 2f64,
+    terrain: &[
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+    133u8, 133u8, 133u8, 133u8,
+],
+    owners: &[],
+    kind: 5u8,
+    args: &[2f64, 1f64, 8f64, 3f64],
+    res: &[0f64, 1f64, 3f64],
+};
+
+pub const EU_C2_72: EuScenario = EuScenario {
+    name: "eu_c2_72",
+    w: 10f64,
+    h: 2f64,
+    terrain: &[
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+    133u8, 133u8, 133u8, 133u8,
+],
+    owners: &[],
+    kind: 5u8,
+    args: &[2f64, 8f64, 1f64, 3f64],
+    res: &[0f64, 1f64, 3f64],
+};
+
+pub const EU_C2_73: EuScenario = EuScenario {
+    name: "eu_c2_73",
+    w: 10f64,
+    h: 2f64,
+    terrain: &[
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+    133u8, 133u8, 133u8, 133u8,
+],
+    owners: &[],
+    kind: 5u8,
+    args: &[2f64, 0f64, 9f64, 4f64, 5f64],
+    res: &[0f64, 0f64, 4f64],
+};
+
+pub const EU_C2_74: EuScenario = EuScenario {
+    name: "eu_c2_74",
+    w: 10f64,
+    h: 2f64,
+    terrain: &[
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+    133u8, 133u8, 133u8, 133u8,
+],
+    owners: &[],
+    kind: 5u8,
+    args: &[2f64, 3f64, 3f64, 3f64],
+    res: &[0f64, 3f64, 3f64],
+};
+
+pub const EU_C2_75: EuScenario = EuScenario {
+    name: "eu_c2_75",
+    w: 10f64,
+    h: 2f64,
+    terrain: &[
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+    133u8, 133u8, 133u8, 133u8,
+],
+    owners: &[],
+    kind: 5u8,
+    args: &[1f64, f64::NAN, 5f64],
+    res: &[0f64, f64::NAN, 5f64],
+};
+
+pub const EU_C2_76: EuScenario = EuScenario {
+    name: "eu_c2_76",
+    w: 10f64,
+    h: 2f64,
+    terrain: &[
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+    133u8, 133u8, 133u8, 133u8,
+],
+    owners: &[],
+    kind: 5u8,
+    args: &[1f64, 2f64, f64::NAN],
+    res: &[0f64, 2f64, f64::NAN],
+};
+
+pub const EU_C2_77: EuScenario = EuScenario {
+    name: "eu_c2_77",
+    w: 10f64,
+    h: 2f64,
+    terrain: &[
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+    133u8, 133u8, 133u8, 133u8,
+],
+    owners: &[],
+    kind: 5u8,
+    args: &[3f64, 1f64, 1f64, 1f64, 1f64, 1f64],
+    res: &[0f64, 1f64, 1f64],
+};
+
+pub const EU_C2_78: EuScenario = EuScenario {
+    name: "eu_c2_78",
+    w: 10f64,
+    h: 2f64,
+    terrain: &[
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+    133u8, 133u8, 133u8, 133u8,
+],
+    owners: &[],
+    kind: 5u8,
+    args: &[2f64, 5f64, 15f64, 9f64, 19f64],
+    res: &[0f64, 5f64, 9f64],
+};
+
+pub const EU_C2_79: EuScenario = EuScenario {
+    name: "eu_c2_79",
+    w: 10f64,
+    h: 2f64,
+    terrain: &[
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+    133u8, 133u8, 133u8, 133u8,
+],
+    owners: &[],
+    kind: 5u8,
+    args: &[1f64, 12f64, 17f64],
+    res: &[0f64, 12f64, 17f64],
+};
+
+pub const EU_SCENARIOS: &[EuScenario] = &[
+    EU_NB_0,
+    EU_NB_1,
+    EU_NB_2,
+    EU_NB_3,
+    EU_NB_4,
+    EU_NB_5,
+    EU_NB_6,
+    EU_NB_7,
+    EU_NB_8,
+    EU_NB_9,
+    EU_NB_MIXED_10,
+    EU_NB_MIXED_11,
+    EU_NB_MIXED_12,
+    EU_NB_EMPTY_13,
+    EU_SP_LOOSE_14,
+    EU_SP_STRICT_15,
+    EU_SP_OWNED_LOOSE_16,
+    EU_SP_OWNED_STRICT_17,
+    EU_SP_IMPASS_STRICT_18,
+    EU_SP_IMPASS_LOOSE_19,
+    EU_SP_WATER_STRICT_20,
+    EU_SP_EDGE_21,
+    EU_SP_EDGE_22,
+    EU_SP_EDGE_23,
+    EU_SP_EDGE_24,
+    EU_SP_EDGE_25,
+    EU_CT_26,
+    EU_CT_27,
+    EU_CT_28,
+    EU_CT_29,
+    EU_CT_30,
+    EU_CT_31,
+    EU_CT_32,
+    EU_CT_33,
+    EU_CT_34,
+    EU_CT_35,
+    EU_CT_36,
+    EU_CT_37,
+    EU_ND_38,
+    EU_ND_39,
+    EU_ND_40,
+    EU_ND_41,
+    EU_ND_42,
+    EU_ND_43,
+    EU_NC_LIN_44,
+    EU_NC_LIN_45,
+    EU_NC_LIN_46,
+    EU_NC_LIN_47,
+    EU_NC_LIN_48,
+    EU_NC_LIN_49,
+    EU_NC_LIN_50,
+    EU_NC_LIN_51,
+    EU_NC_LIN_52,
+    EU_NC_LIN_53,
+    EU_NC_LIN_54,
+    EU_NC_SET_55,
+    EU_NC_SET_56,
+    EU_NC_SET_57,
+    EU_NC_SET_58,
+    EU_NC_SET_59,
+    EU_NC_SET_60,
+    EU_NC_SET_61,
+    EU_NC_SET_62,
+    EU_NC_SET_63,
+    EU_NC_SET_64,
+    EU_NC_SET_65,
+    EU_NC_SET_66,
+    EU_NC_SET_67,
+    EU_C2_68,
+    EU_C2_69,
+    EU_C2_70,
+    EU_C2_71,
+    EU_C2_72,
+    EU_C2_73,
+    EU_C2_74,
+    EU_C2_75,
+    EU_C2_76,
+    EU_C2_77,
+    EU_C2_78,
+    EU_C2_79,
+];
+

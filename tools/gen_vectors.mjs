@@ -157,6 +157,7 @@ const CloseCodes = await loadTs("src/core/CloseCodes.ts");
 const SL = await loadTs("src/core/ServerList.ts");
 const PD = await loadTs("src/core/PatternDecoder.ts");
 const DC = await loadTs("src/core/game/DoomsdayClock.ts");
+const EU = await loadTs("src/core/execution/Util.ts");
 const { AStar } = await loadTs("src/core/pathfinding/algorithms/AStar.ts");
 const { AStarRail } = await loadTs("src/core/pathfinding/algorithms/AStar.Rail.ts");
 const { AStarWater } = await loadTs("src/core/pathfinding/algorithms/AStar.Water.ts");
@@ -1061,6 +1062,187 @@ const dcProfile = (sc, team) => ({
   ])
     captureDC(`dc_rq_${i++}`, 6, [left, under, death],
       [DC.doomsdayClockRotQuota(left, under, { rotDeathSeconds: death })]);
+}
+
+// --- execution/Util.ts scenario runner ----------------------------------------
+// Exercises the pure-GameMap subset of `execution/Util.ts` against the real TS
+// functions over a `GameMapImpl` built from packed terrain bytes plus a list of
+// `setOwnerID` writes. The Rust twin is `exec_util::run_op(gm, kind, args)`;
+// the map is reconstructed identically on both sides. Result tokens are flat
+// numbers (uenc: NaN->"n", -0->"-0", +Inf->"i", -Inf->"-i").
+//
+// kind / arg / result table (mirrors exec_util.rs):
+//   0 computeNukeBlastCounts [target,inner,outer] -> [owner,weight]*n
+//   1 getSpawnTiles          [tile,requireAll]     -> [1] | [0,len,tiles...]
+//   2 closestTile            [tile,refs...]        -> [refOrNaN,dist]
+//   3 nearestTileDist        [tile,tiles...]       -> [best]
+//   4 nearestTileDistCapped  [tile,cap,mode,tiles] -> [dist] (mode 1 = TileSet)
+//   5 closestTwoTiles        [nx,x...,y...]        -> [1] | [0,x,y]
+const euScenarios = [];
+const EU_LAND = 0x85;
+const EU_OCEAN = 0x20;
+const EU_IMPASS = 0x9f;
+function euMap(w, h, cells, owners) {
+  // cells: flat array of glyphs (numbers) length w*h, or a single glyph.
+  const terrain = Uint8Array.from(
+    typeof cells === "number" ? new Array(w * h).fill(cells) : cells,
+  );
+  const gm = new GameMapImpl(w, h, terrain, w * h);
+  for (const [t, id] of owners || []) gm.setOwnerID(t, id);
+  return gm;
+}
+let euIdx = 0;
+function captureEU(name, w, h, cells, owners, kind, args, res) {
+  euScenarios.push({
+    name: `${name}_${euIdx++}`,
+    w,
+    h,
+    terrain: (typeof cells === "number" ? new Array(w * h).fill(cells) : cells).slice(),
+    owners: (owners || []).map(([t, id]) => [uenc(t), uenc(id)]),
+    kind,
+    args: args.map(uenc),
+    res: res.map(uenc),
+  });
+}
+{
+  // kind 0: nuke blast counts. 5x5 all-land, owner 1 across the map.
+  const m0 = euMap(5, 5, EU_LAND, Array.from({ length: 25 }, (_, i) => [i, 1]));
+  for (const [target, inner, outer] of [
+    [12, 0, 1], [12, 1, 1], [12, 2, 2], [0, 1, 1], [12, 0, 0],
+    [12, NaN, 1], [12, 1, NaN], [NaN, 1, 1], [12, 0.5, 1.5], [12, 3, 3],
+  ]) {
+    const r = EU.computeNukeBlastCounts({
+      gm: m0,
+      targetTile: target,
+      magnitude: { inner, outer },
+    });
+    captureEU("eu_nb", 5, 5, EU_LAND,
+      Array.from({ length: 25 }, (_, i) => [i, 1]),
+      0, [target, inner, outer], [...r.entries()].flat());
+  }
+  // Mixed owners + ownerless tiles: insertion order of first-seen owners.
+  const m0b = euMap(5, 5, EU_LAND, [[12, 3], [11, 7], [13, 3], [17, 5]]);
+  for (const [target, inner, outer] of [[12, 0, 2], [12, 1, 2], [11, 0, 3]]) {
+    const r = EU.computeNukeBlastCounts({
+      gm: m0b,
+      targetTile: target,
+      magnitude: { inner, outer },
+    });
+    captureEU("eu_nb_mixed", 5, 5, EU_LAND,
+      [[12, 3], [11, 7], [13, 3], [17, 5]],
+      0, [target, inner, outer], [...r.entries()].flat());
+  }
+  // Ownerless map -> empty.
+  {
+    const r = EU.computeNukeBlastCounts({
+      gm: euMap(3, 3, EU_LAND, []),
+      targetTile: 4,
+      magnitude: { inner: 1, outer: 1 },
+    });
+    captureEU("eu_nb_empty", 3, 3, EU_LAND, [], 0, [4, 1, 1], []);
+  }
+
+  // kind 1: getSpawnTiles over the centred radius-4 Euclidean stack-BFS.
+  // All-land unowned: strict and loose both return the full bfs list.
+  {
+    const gm = euMap(5, 5, EU_LAND, []);
+    const loose = EU.getSpawnTiles(gm, 12, false);
+    const strict = EU.getSpawnTiles(gm, 12, true);
+    captureEU("eu_sp_loose", 5, 5, EU_LAND, [], 1, [12, 0], [0, loose.length, ...loose]);
+    captureEU("eu_sp_strict", 5, 5, EU_LAND, [], 1, [12, 1], [0, strict.length, ...strict]);
+  }
+  // Centre owned -> strict null, loose filters it.
+  {
+    const gm = euMap(5, 5, EU_LAND, [[12, 1]]);
+    const loose = EU.getSpawnTiles(gm, 12, false);
+    const strict = EU.getSpawnTiles(gm, 12, true);
+    captureEU("eu_sp_owned_loose", 5, 5, EU_LAND, [[12, 1]], 1, [12, 0], [0, loose.length, ...loose]);
+    captureEU("eu_sp_owned_strict", 5, 5, EU_LAND, [[12, 1]], 1, [12, 1], strict === null ? [1] : [0, strict.length, ...strict]);
+  }
+  // Impassable tile inside the ball -> strict null.
+  {
+    const cells = new Array(25).fill(EU_LAND);
+    cells[7] = EU_IMPASS; // (x2,y1) neighbour of centre 12
+    const gm = euMap(5, 5, cells, []);
+    const strict = EU.getSpawnTiles(gm, 12, true);
+    const loose = EU.getSpawnTiles(gm, 12, false);
+    captureEU("eu_sp_impass_strict", 5, 5, cells, [], 1, [12, 1], strict === null ? [1] : [0, strict.length, ...strict]);
+    captureEU("eu_sp_impass_loose", 5, 5, cells, [], 1, [12, 0], [0, loose.length, ...loose]);
+  }
+  // Water tile inside the ball -> strict null (not land).
+  {
+    const cells = new Array(25).fill(EU_LAND);
+    cells[11] = EU_OCEAN;
+    const gm = euMap(5, 5, cells, []);
+    const strict = EU.getSpawnTiles(gm, 12, true);
+    captureEU("eu_sp_water_strict", 5, 5, cells, [], 1, [12, 1], strict === null ? [1] : [0, strict.length, ...strict]);
+  }
+  // Corner / edge / NaN targets.
+  for (const [tile, req, gm] of [
+    [0, 0, euMap(5, 5, EU_LAND, [])],
+    [0, 1, euMap(5, 5, EU_LAND, [])],
+    [24, 1, euMap(5, 5, EU_LAND, [])],
+    [NaN, 0, euMap(5, 5, EU_LAND, [])],
+    [-1, 0, euMap(5, 5, EU_LAND, [])],
+  ]) {
+    const r = EU.getSpawnTiles(gm, tile, !!req);
+    captureEU(`eu_sp_edge`, 5, 5, EU_LAND, [], 1, [tile, req],
+      r === null ? [1] : [0, r.length, ...r]);
+  }
+
+  // kind 2: closestTile.
+  const gm2 = euMap(10, 1, EU_LAND, []);
+  for (const [tile, refs] of [
+    [3, [2, 5]], [2, [1, 3]], [3, []], [3, [NaN, 5]], [3, [5, NaN]],
+    [NaN, [1, 2]], [3, [3]], [0, [9]], [9, [0]], [3, [-1, 7]],
+    [3, [1.5, 4]], [5, [5, 5, 5]],
+  ]) {
+    const [r, d] = EU.closestTile(gm2, refs, tile);
+    captureEU("eu_ct", 10, 1, EU_LAND, [], 2, [tile, ...refs], [r === null ? NaN : r, d]);
+  }
+
+  // kind 3: nearestTileDist.
+  for (const [tile, tiles] of [
+    [3, [2, 5]], [3, []], [3, [NaN, 5]], [NaN, [1, 2]], [3, [3]], [0, [9]],
+  ]) {
+    captureEU("eu_nd", 10, 1, EU_LAND, [], 3, [tile, ...tiles], [EU.nearestTileDist(gm2, tiles, tile)]);
+  }
+
+  // kind 4: nearestTileDistCapped.
+  const gm4 = euMap(5, 5, EU_LAND, []);
+  // Linear (array) branch: mode 0.
+  for (const [tile, tiles, cap] of [
+    [12, [14], 1], [12, [14], 2], [12, [14], 3], [12, [], 5], [12, [12], 0],
+    [12, [NaN], 5], [NaN, [14], 5], [12, [0, 24], 4], [12, [14], Infinity],
+    [12, [14], NaN], [12, [14], -1],
+  ]) {
+    captureEU("eu_nc_lin", 5, 5, EU_LAND, [], 4, [tile, cap, 0, ...tiles],
+      [EU.nearestTileDistCapped(gm4, tiles, tile, cap)]);
+  }
+  // TileSet branch: mode 1. An `Infinity` cap would spin the ring loop
+  // forever (`d <= Infinity` never fails) — it hangs the TS side and is
+  // not captured.
+  for (const [tile, tiles, cap] of [
+    [12, [14], 2], [12, [14], 1], [12, [12], 0], [12, [], 5], [12, [0], 4],
+    [12, [24], 4], [12, [14, 0], 2], [NaN, [14], 5],
+    [12, [14], NaN], [12, [14], -1], [2, [22], 4], [6, [8], 4], [12, [14], 0],
+  ]) {
+    const ts = new TileSet(tiles);
+    captureEU("eu_nc_set", 5, 5, EU_LAND, [], 4, [tile, cap, 1, ...tiles],
+      [EU.nearestTileDistCapped(gm4, ts, tile, cap)]);
+  }
+
+  // kind 5: closestTwoTiles.
+  const gm5 = euMap(10, 2, EU_LAND, []);
+  for (const [xs, ys] of [
+    [[2], [5]], [[], [5]], [[2], []], [[1, 8], [3]], [[8, 1], [3]],
+    [[0, 9], [4, 5]], [[3, 3], [3]], [[NaN], [5]], [[2], [NaN]],
+    [[1, 1, 1], [1, 1]], [[5, 15], [9, 19]], [[12], [17]],
+  ]) {
+    const r = EU.closestTwoTiles(gm5, xs, ys);
+    captureEU("eu_c2", 10, 2, EU_LAND, [], 5, [xs.length, ...xs, ...ys],
+      r === null ? [1] : [0, r.x, r.y]);
+  }
 }
 
 // --- AStar scenario runner ---------------------------------------------------
@@ -3774,6 +3956,7 @@ const structures = {
   serverlist: slScenarios,
   patterndecoder: pdScenarios,
   doomsdayclock: dcScenarios,
+  executil: euScenarios,
   astar: asScenarios,
   rail: railScenarios,
   water: waterScenarios,
@@ -5547,6 +5730,41 @@ for (const s of structures.doomsdayclock) {
 }
 L.push("pub const DC_SCENARIOS: &[DcScenario] = &[");
 for (const s of structures.doomsdayclock) L.push(`    ${s.name.toUpperCase()},`);
+L.push("];");
+L.push("");
+
+L.push("/// execution/Util.ts scenario: a packed-terrain GameMap, owner writes,");
+L.push("/// then one `exec_util::run_op(gm, kind, args)` call. `owners` are");
+L.push("/// `(tile, playerId)` pairs applied via `set_owner_id` before the op.");
+L.push("pub struct EuScenario {");
+L.push("    pub name: &'static str,");
+L.push("    pub w: f64,");
+L.push("    pub h: f64,");
+L.push("    pub terrain: &'static [u8],");
+L.push("    pub owners: &'static [(f64, f64)],");
+L.push("    pub kind: u8,");
+L.push("    pub args: &'static [f64],");
+L.push("    pub res: &'static [f64],");
+L.push("}");
+L.push("");
+for (const s of structures.executil) {
+  const id = s.name.toUpperCase();
+  L.push(`pub const ${id}: EuScenario = EuScenario {`);
+  L.push(`    name: "${s.name}",`);
+  L.push(`    w: ${f64(s.w)},`);
+  L.push(`    h: ${f64(s.h)},`);
+  L.push(`    terrain: &[`);
+  L.push(...numArr(s.terrain, "u8", 16));
+  L.push("],");
+  L.push(`    owners: &[${s.owners.map(([t, i]) => `(${utilResLit(t)}, ${utilResLit(i)})`).join(", ")}],`);
+  L.push(`    kind: ${s.kind}u8,`);
+  L.push(`    args: &[${s.args.map(utilResLit).join(", ")}],`);
+  L.push(`    res: &[${s.res.map(utilResLit).join(", ")}],`);
+  L.push("};");
+  L.push("");
+}
+L.push("pub const EU_SCENARIOS: &[EuScenario] = &[");
+for (const s of structures.executil) L.push(`    ${s.name.toUpperCase()},`);
 L.push("];");
 L.push("");
 

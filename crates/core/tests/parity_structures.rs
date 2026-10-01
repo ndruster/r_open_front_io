@@ -2239,3 +2239,21 @@ fn replay_doomsdayclock_scenarios() {
         }
     }
 }
+
+// execution/Util.ts: rebuild the packed-terrain GameMap + owner writes, run
+// one `exec_util::run_op` per scenario and compare the flat token streams.
+#[test]
+fn replay_executil_scenarios() {
+    use openfront_core::exec_util::run_op;
+    for s in vectors::EU_SCENARIOS {
+        let mut gm = GameMap::new(s.w, s.h, s.terrain.to_vec(), s.w * s.h);
+        for &(t, id) in s.owners {
+            gm.set_owner_id(t, id);
+        }
+        let got = run_op(&gm, s.kind, s.args);
+        assert_eq!(got.len(), s.res.len(), "{} res len: got {got:?} want {:?}", s.name, s.res);
+        for (j, (g, w)) in got.iter().zip(s.res.iter()).enumerate() {
+            assert!(obj_is(*g, *w), "{} res[{j}]: got {g} want {w}", s.name);
+        }
+    }
+}

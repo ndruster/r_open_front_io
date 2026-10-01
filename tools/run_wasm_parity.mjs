@@ -57,6 +57,14 @@ for (const name of [
   "probe_mmt_run", "probe_mmt_out_len", "probe_mmt_out_at",
   "probe_mmt_seen_flag", "probe_mmt_seen_multi", "probe_mmt_seen_len",
   "probe_mmt_seen_at", "probe_mmt_seen_goal",
+  "probe_sp_new", "probe_sp_reset", "probe_sp_inv", "probe_sp_push_null",
+  "probe_sp_push_start", "probe_sp_push_tile", "probe_sp_push_end",
+  "probe_sp_next", "probe_sp_node", "probe_sp_pan_null", "probe_sp_pan_len",
+  "probe_sp_pan_at", "probe_sp_idx", "probe_sp_has_path", "probe_sp_calls",
+  "probe_sp_from_reset", "probe_sp_from_push", "probe_sp_find_path",
+  "probe_sp_out_len", "probe_sp_out_at", "probe_sp_seen_flag",
+  "probe_sp_seen_multi", "probe_sp_seen_len", "probe_sp_seen_at",
+  "probe_sp_seen_goal",
 ]) {
   if (typeof ex[name] !== "function") {
     console.error(`missing wasm export ${name} - rebuild with --features wasm-probe`);
@@ -1107,6 +1115,127 @@ for (const s of S.minimaptransformer) {
         cmpBits(`${s.name} q${qi} seen`, ex.probe_mmt_seen_at(i), toBits(seen.tiles[i]), i);
       cmpBits(`${s.name} q${qi} seen goal`, ex.probe_mmt_seen_goal(), toBits(seen.goal), qi);
     }
+  }
+}
+
+// --- PathFinderStepper (PathFinderStepper.ts) --------------------------------
+// Replays the flat op trace against the wasm stepper + shared stub, comparing
+// every observable of the native replay: next() status/node/pathAfterNext/
+// pathIndex/hasPath/calls and findPath() out/seen/calls.
+for (const s of S.stepper) {
+  ex.probe_sp_new(s.prod ? 1 : 0);
+  const o = s.ops;
+  let i = 0;
+  let oi = 0;
+  while (i < o.length) {
+    const kind = o[i];
+    if (kind === 2) {
+      ex.probe_sp_reset();
+      i += 1;
+    } else if (kind === 1) {
+      ex.probe_sp_inv();
+      i += 1;
+    } else if (kind === 4) {
+      const count = o[i + 1];
+      let j = i + 2;
+      for (let q = 0; q < count; q++) {
+        if (o[j] === 0) {
+          ex.probe_sp_push_null();
+          j += 1;
+        } else {
+          const l = o[j + 1];
+          ex.probe_sp_push_start();
+          for (let t = 0; t < l; t++) ex.probe_sp_push_tile(o[j + 2 + t]);
+          ex.probe_sp_push_end();
+          j += 2 + l;
+        }
+      }
+      i = j;
+    } else if (kind === 0) {
+      const from = o[i + 1];
+      const to = o[i + 2];
+      const dist = o[i + 3];
+      const status = o[i + 4];
+      const node = o[i + 5];
+      let j = i + 6;
+      const panLen = o[j];
+      let pan = null;
+      if (panLen < 0) {
+        j += 1;
+      } else {
+        pan = o.slice(j + 1, j + 1 + panLen);
+        j += 1 + panLen;
+      }
+      const idx = o[j];
+      const hasPath = o[j + 1];
+      const calls = o[j + 2];
+      j += 3;
+
+      const got = Number(ex.probe_sp_next(from, to, dist));
+      cmpU32(`${s.name} o${oi} status`, got, status, oi);
+      if (status === 0 || status === 2)
+        cmpBits(`${s.name} o${oi} node`, ex.probe_sp_node(), toBits(node), oi);
+      cmpU32(`${s.name} o${oi} pan null`, ex.probe_sp_pan_null(), pan === null ? 1 : 0, oi);
+      if (pan !== null) {
+        checks++;
+        if (Number(ex.probe_sp_pan_len()) !== pan.length)
+          fail(`${s.name} o${oi} pan length`, Number(ex.probe_sp_pan_len()), pan.length, oi);
+        for (let t = 0; t < pan.length; t++)
+          cmpBits(`${s.name} o${oi} pan`, ex.probe_sp_pan_at(t), toBits(pan[t]), t);
+      }
+      cmpU32(`${s.name} o${oi} pathIndex`, Number(ex.probe_sp_idx()), idx, oi);
+      cmpU32(`${s.name} o${oi} hasPath`, ex.probe_sp_has_path(), hasPath, oi);
+      cmpBits(`${s.name} o${oi} calls`, ex.probe_sp_calls(), toBits(calls), oi);
+      i = j;
+    } else {
+      const isMulti = o[i + 1];
+      const fl = o[i + 2];
+      const fs = o.slice(i + 3, i + 3 + fl);
+      let j = i + 3 + fl;
+      const to = o[j];
+      j += 1;
+      const outMode = o[j];
+      j += 1;
+      const outLen = o[j];
+      const out = outMode === 2 ? o.slice(j + 1, j + 1 + outLen) : null;
+      j += 1 + outLen;
+      const seenFlag = o[j];
+      j += 1;
+      let seen = null;
+      if (seenFlag === 1) {
+        const m = o[j];
+        const l = o[j + 1];
+        seen = { m, tiles: o.slice(j + 2, j + 2 + l), goal: o[j + 2 + l] };
+        j += 2 + l + 1;
+      }
+      const calls = o[j];
+      j += 1;
+
+      ex.probe_sp_from_reset();
+      for (const t of fs) ex.probe_sp_from_push(t);
+      const got = Number(ex.probe_sp_find_path(to, isMulti));
+      cmpU32(`${s.name} o${oi} fp out mode`, got, outMode, oi);
+      if (outMode === 2) {
+        checks++;
+        if (Number(ex.probe_sp_out_len()) !== out.length)
+          fail(`${s.name} o${oi} fp out length`, Number(ex.probe_sp_out_len()), out.length, oi);
+        for (let t = 0; t < out.length; t++)
+          cmpBits(`${s.name} o${oi} fp out`, ex.probe_sp_out_at(t), toBits(out[t]), t);
+      }
+      cmpU32(`${s.name} o${oi} fp seen flag`, ex.probe_sp_seen_flag(), seen ? 1 : 0, oi);
+      if (seen) {
+        cmpU32(`${s.name} o${oi} fp seen multi`, ex.probe_sp_seen_multi(), seen.m, oi);
+        checks++;
+        if (Number(ex.probe_sp_seen_len()) !== seen.tiles.length)
+          fail(`${s.name} o${oi} fp seen length`, Number(ex.probe_sp_seen_len()), seen.tiles.length, oi);
+        for (let t = 0; t < seen.tiles.length; t++)
+          cmpBits(`${s.name} o${oi} fp seen`, ex.probe_sp_seen_at(t), toBits(seen.tiles[t]), t);
+        cmpBits(`${s.name} o${oi} fp seen goal`, ex.probe_sp_seen_goal(), toBits(seen.goal), oi);
+      }
+      cmpBits(`${s.name} o${oi} fp calls`, ex.probe_sp_calls(), toBits(calls), oi);
+      i = j;
+    }
+    oi += 1;
   }
 }
 

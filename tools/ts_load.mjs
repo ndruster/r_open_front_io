@@ -625,6 +625,41 @@ function prepare(rel) {
       "MMT ctor",
     );
   }
+  if (rel.endsWith("pathfinding/PathFinderStepper.ts")) {
+    // The `./types` import mixes the PathStatus enum (a runtime value) with
+    // PathFinder / PathResult / SteppingPathFinder (types, erased); Node's
+    // strip loader rejects `export enum` and the extensionless specifier is
+    // unloadable, so inline the numeric enum as a plain object. The ctor's two
+    // parameter properties (finder/config) are expanded.
+    out = must(
+      out,
+      "import {\n" +
+        "  PathFinder,\n" +
+        "  PathResult,\n" +
+        "  PathStatus,\n" +
+        "  SteppingPathFinder,\n" +
+        "} from \"./types\";\n",
+      "const PathStatus = { NEXT: 0, COMPLETE: 2, NOT_FOUND: 3 };\n",
+      "Stepper types import",
+    );
+    out = must(
+      out,
+      "  constructor(\n" +
+        "    private finder: PathFinder<T>,\n" +
+        "    private config: StepperConfig<T> = { equals: (a, b) => a === b },\n" +
+        "  ) {}",
+      "  private finder: PathFinder<T>;\n" +
+        "  private config: StepperConfig<T>;\n\n" +
+        "  constructor(\n" +
+        "    finder: PathFinder<T>,\n" +
+        "    config: StepperConfig<T> = { equals: (a, b) => a === b },\n" +
+        "  ) {\n" +
+        "    this.finder = finder;\n" +
+        "    this.config = config;\n" +
+        "  }",
+      "Stepper ctor",
+    );
+  }
 
   mkdirSync(cacheDir, { recursive: true });
   const hash = createHash("sha1").update(out).digest("hex").slice(0, 10);

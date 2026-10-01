@@ -1603,3 +1603,157 @@ fn replay_minimap_transformer_scenarios() {
         }
     }
 }
+
+// --- PathFinderStepper (PathFinderStepper.ts) ---------------------------------
+// Replays the op script against the Rust stepper with the shared `SharedStub`
+// inner finder. Each `next` pins the PathResult, the `pathAfterNext` slice,
+// the internal `pathIndex`/`path !== null` cache state and the cumulative
+// inner call count (so cache hits, pre-check short-circuits and the vacuous
+// `every` on an empty start array are all observable without calling inner).
+#[test]
+fn replay_stepper_scenarios() {
+    use openfront_core::pathfinding::parabola::PathResult;
+    use openfront_core::pathfinding::stepper::{PathFinderStepper, SharedStub};
+    use openfront_core::pathfinding::PathStart;
+    for s in vectors::STEPPER_SCENARIOS {
+        let gm = GameMap::new(10.0, 10.0, vec![0x03; 100], 100.0);
+        let stub = SharedStub::default();
+        let mut st = PathFinderStepper::new(stub.clone(), if s.prod { Some(&gm) } else { None });
+
+        let o = s.ops;
+        let mut i = 0;
+        let mut oi = 0;
+        while i < o.len() {
+            let kind = o[i] as i64;
+            match kind {
+                2 => {
+                    stub.reset();
+                    i += 1;
+                }
+                1 => {
+                    st.invalidate();
+                    i += 1;
+                }
+                4 => {
+                    let count = o[i + 1] as usize;
+                    let mut j = i + 2;
+                    for _ in 0..count {
+                        if o[j] as i64 == 0 {
+                            stub.push_null();
+                            j += 1;
+                        } else {
+                            let l = o[j + 1] as usize;
+                            stub.push_list(o[j + 2..j + 2 + l].to_vec());
+                            j += 2 + l;
+                        }
+                    }
+                    i = j;
+                }
+                0 => {
+                    let (from, to, dist, status, node) = (o[i + 1], o[i + 2], o[i + 3], o[i + 4] as i64, o[i + 5]);
+                    let mut j = i + 6;
+                    let pan_len = o[j];
+                    let pan: Option<Vec<f64>> = if pan_len < 0.0 {
+                        j += 1;
+                        None
+                    } else {
+                        let l = pan_len as usize;
+                        let t = o[j + 1..j + 1 + l].to_vec();
+                        j += 1 + l;
+                        Some(t)
+                    };
+                    let idx = o[j] as usize;
+                    let has_path = o[j + 1] as i64;
+                    let calls = o[j + 2];
+                    j += 3;
+
+                    let got = st.next(from, to, if dist < 0.0 { None } else { Some(dist) });
+                    match (&got, status) {
+                        (PathResult::Next { node: n, .. }, 0) => {
+                            assert_eq!(*n, node, "{} o{} next node", s.name, oi)
+                        }
+                        (PathResult::Complete { node: n, .. }, 2) => {
+                            assert_eq!(*n, node, "{} o{} complete node", s.name, oi)
+                        }
+                        (PathResult::NotFound { .. }, 3) => {}
+                        (r, want) => panic!("{} o{} status: got {r:?} want {want}", s.name, oi),
+                    }
+                    assert_eq!(
+                        st.path_after_next(),
+                        pan,
+                        "{} o{} pathAfterNext",
+                        s.name,
+                        oi
+                    );
+                    assert_eq!(st.debug_path_index(), idx, "{} o{} pathIndex", s.name, oi);
+                    assert_eq!(
+                        st.debug_has_path() as i64,
+                        has_path,
+                        "{} o{} hasPath",
+                        s.name,
+                        oi
+                    );
+                    assert_eq!(stub.calls() as f64, calls, "{} o{} calls", s.name, oi);
+                    i = j;
+                }
+                3 => {
+                    let is_multi = o[i + 1] as i64;
+                    let fl = o[i + 2] as usize;
+                    let fs = &o[i + 3..i + 3 + fl];
+                    let mut j = i + 3 + fl;
+                    let to = o[j];
+                    j += 1;
+                    let out_mode = o[j] as i64;
+                    j += 1;
+                    let out_len = o[j] as usize;
+                    let out: Option<Vec<f64>> = if out_mode == 2 {
+                        Some(o[j + 1..j + 1 + out_len].to_vec())
+                    } else {
+                        None
+                    };
+                    j += 1 + out_len;
+                    let seen_flag = o[j] as i64;
+                    j += 1;
+                    let mut seen: Option<(i64, Vec<f64>, f64)> = None;
+                    if seen_flag == 1 {
+                        let m = o[j] as i64;
+                        let l = o[j + 1] as usize;
+                        let tiles = o[j + 2..j + 2 + l].to_vec();
+                        let goal = o[j + 2 + l];
+                        seen = Some((m, tiles, goal));
+                        j += 2 + l + 1;
+                    }
+                    let calls = o[j];
+                    j += 1;
+
+                    let starts = if is_multi == 1 {
+                        PathStart::Multi(fs)
+                    } else {
+                        PathStart::Single(fs[0])
+                    };
+                    let got = st.find_path(starts, to);
+                    assert_eq!(got, out, "{} o{} findPath out", s.name, oi);
+                    match (&seen, stub.last_seen()) {
+                        (None, None) => {}
+                        (Some((m, tiles, goal)), Some((im, itiles, igoal))) => {
+                            assert_eq!(im as i64, *m, "{} o{} seen kind", s.name, oi);
+                            assert_eq!(itiles, *tiles, "{} o{} seen tiles", s.name, oi);
+                            assert_eq!(igoal, *goal, "{} o{} seen goal", s.name, oi);
+                        }
+                        (a, b) => panic!(
+                            "{} o{} seen mismatch: recorded {:?}, rust {:?}",
+                            s.name,
+                            oi,
+                            a.is_some(),
+                            b.is_some()
+                        ),
+                    }
+                    assert_eq!(stub.calls() as f64, calls, "{} o{} calls", s.name, oi);
+                    i = j;
+                }
+                other => panic!("{} unknown op kind {other}", s.name),
+            }
+            oi += 1;
+        }
+    }
+}

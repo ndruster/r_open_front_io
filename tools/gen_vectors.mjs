@@ -2625,6 +2625,182 @@ captureMMT("mmt_bigmini", 20, 20, 15, 15, [
   { from: [[10, 10]], scalar: true, to: [12, 12], inner: [[5, 5], [6, 6]] },
 ]);
 
+// --- PathFinderStepper (PathFinderStepper.ts) runner --------------------------
+// Runs the real stepper over a real 10x10 all-land GameMap with a queue-backed
+// inner stub (records calls + last seen start/goal). Two config shapes:
+// `prod` = tileStepperConfig (equals ===, distance = manhattanDist, preCheck
+// invalid-ref -> NOT_FOUND); bare = default config (equals only, no distance,
+// no preCheck). Ops replay linearly over ONE stepper instance so the path /
+// pathIndex / lastTo cache evolves exactly as in production.
+//
+// Flat op encodings:
+//   [0, from, to, dist, status, node, panLen, tiles..., idx, hasPath, calls]
+//     next (dist -1 = undefined; node -1 = NotFound; panLen -1 = null
+//     pathAfterNext; status 1 = threw; hasPath = path !== null)
+//   [1] invalidate
+//   [2] reset (stub queue + observation only; call count persists)
+//   [3, isMulti, fromLen, fromTiles..., to, outMode, outLen, outTiles...,
+//       seenFlag, [seenMulti, seenLen, seenTiles..., seenGoal], calls] findPath
+//     (outMode 0 = null, 1 = threw, 2 = list; seenFlag 0 = inner not called)
+//   [4, count, (nullFlag | 1, len, tiles...)...] queue inner results
+const stepperScenarios = [];
+const { PathFinderStepper } = await loadTs("src/core/pathfinding/PathFinderStepper.ts");
+const PATH_STATUS = { NEXT: 0, COMPLETE: 2, NOT_FOUND: 3 };
+
+function captureStepper(name, prod, ops) {
+  const gm = pbLandMap(10, 10);
+  const refOf = (v) => (Array.isArray(v) ? gm.ref(v[0], v[1]) : v);
+  const stub = {
+    queue: [],
+    last: null,
+    calls: 0,
+    findPath(from, to) {
+      this.calls++;
+      this.last = { from, to };
+      return this.queue.length ? this.queue.shift() : null;
+    },
+  };
+  const config = prod
+    ? {
+        equals: (a, b) => a === b,
+        distance: (a, b) => gm.manhattanDist(a, b),
+        preCheck: (from, to) =>
+          typeof from !== "number" ||
+          typeof to !== "number" ||
+          !gm.isValidRef(from) ||
+          !gm.isValidRef(to)
+            ? { status: PATH_STATUS.NOT_FOUND }
+            : null,
+      }
+    : undefined;
+  const st = new PathFinderStepper(stub, config);
+  const flat = [];
+  for (const op of ops) {
+    if (op[0] === "reset") {
+      stub.queue = [];
+      stub.last = null;
+      flat.push(2);
+    } else if (op[0] === "inv") {
+      st.invalidate();
+      flat.push(1);
+    } else if (op[0] === "queue") {
+      const g = [4, op[1].length];
+      for (const p of op[1]) {
+        if (p === null) {
+          g.push(0);
+          stub.queue.push(null);
+        } else {
+          const tiles = p.map(refOf);
+          g.push(1, tiles.length, ...tiles);
+          stub.queue.push(tiles);
+        }
+      }
+      flat.push(...g);
+    } else if (op[0] === "next") {
+      const [, f, t, d] = op;
+      const from = refOf(f);
+      const to = refOf(t);
+      const dist = d === undefined ? -1 : d;
+      let status;
+      let node;
+      try {
+        const r = st.next(from, to, dist === -1 ? undefined : dist);
+        status = r.status;
+        node = r.node === undefined ? -1 : r.node;
+      } catch {
+        status = 1;
+        node = -1;
+      }
+      const pan = st.pathAfterNext();
+      const g = [0, from, to, dist, status, node];
+      if (pan === null) g.push(-1);
+      else g.push(pan.length, ...pan);
+      g.push(st.pathIndex, st.path !== null ? 1 : 0, stub.calls);
+      flat.push(...g);
+    } else {
+      const [, fs, t, isMulti] = op;
+      const fromTiles = fs.map(refOf);
+      const fromArg = isMulti ? fromTiles : fromTiles[0];
+      const to = refOf(t);
+      let outMode;
+      let out = [];
+      try {
+        const p = st.findPath(fromArg, to);
+        outMode = p === null ? 0 : 2;
+        out = p ?? [];
+      } catch {
+        outMode = 1;
+      }
+      const g = [3, isMulti, fromTiles.length, ...fromTiles, to, outMode, out.length, ...out];
+      if (stub.last === null) {
+        g.push(0);
+      } else {
+        const f = stub.last.from;
+        const m = Array.isArray(f) ? 1 : 0;
+        const tiles = Array.isArray(f) ? f : [f];
+        g.push(1, m, tiles.length, ...tiles, stub.last.to);
+      }
+      g.push(stub.calls);
+      flat.push(...g);
+    }
+  }
+  stepperScenarios.push({ name, prod, ops: flat });
+}
+
+// Production config: pre-check NOT_FOUND on invalid refs (inner untouched),
+// from === to COMPLETE, distance-based early exit, path[0] === from skipping
+// the start node, the stray-from-cached-route invalidate + recompute (queue
+// exhausted -> NOT_FOUND), a 3-step drain to COMPLETE, multi/scalar findPath
+// passthrough, and the three allFailed short-circuits (invalid starts, empty
+// array, invalid goal).
+captureStepper("sp_prod", true, [
+  ["reset"],
+  ["next", 105, [0, 5]],
+  ["reset"],
+  ["next", [0, 0], [0, 0]],
+  ["reset"],
+  ["next", [0, 0], [9, 9], 5],
+  ["reset"],
+  ["queue", [[[0, 0], [1, 1], [2, 2], [3, 3]]]],
+  ["next", [0, 0], [3, 3]],
+  ["next", [1, 1], [3, 3]],
+  ["reset"],
+  ["queue", [[[0, 0], [1, 1], [2, 2]]]],
+  ["next", [0, 0], [2, 2]],
+  ["next", [1, 1], [2, 2]],
+  ["next", [2, 2], [2, 2]],
+  ["next", [0, 0], [9, 9]],
+  ["reset"],
+  ["queue", [[[0, 0], [1, 1]]]],
+  ["next", [0, 0], [1, 1], 18],
+  ["reset"],
+  ["queue", [[[0, 0], [5, 5]]]],
+  ["fp", [[0, 0], [9, 9]], [5, 5], 1],
+  ["reset"],
+  ["fp", [105, 106], [0, 5], 1],
+  ["reset"],
+  ["fp", [], [0, 5], 1],
+  ["reset"],
+  ["fp", [[0, 0]], 105, 0],
+]);
+
+// Bare config: no pre-check (invalid refs pass through), no distance early
+// exit; two cache-hit steps with `from` frozen at the start node, then the
+// stray recompute, and a multi findPath passthrough.
+captureStepper("sp_bare", false, [
+  ["reset"],
+  ["queue", [[[0, 0], [1, 1], [2, 2], [3, 3]]]],
+  ["next", [0, 0], [3, 3]],
+  ["next", [0, 0], [3, 3]],
+  ["next", [0, 0], [3, 3]],
+  ["reset"],
+  ["queue", [[[0, 0], [1, 1], [2, 2]]]],
+  ["fp", [[0, 0], [1, 1]], [2, 2], 1],
+  ["reset"],
+  ["queue", [[[0, 0]]]],
+  ["fp", [105], 105, 0],
+]);
+
 const structures = {
   minheap: mhScenarios,
   bucket: bqScenarios,
@@ -2648,6 +2824,7 @@ const structures = {
   waterhierarchical: whScenarios,
   parabola: parabolaScenarios,
   minimaptransformer: mmtScenarios,
+  stepper: stepperScenarios,
 };
 
 // ================================================================ JSON
@@ -4017,6 +4194,40 @@ for (const s of structures.minimaptransformer) {
 }
 L.push("pub const MMT_SCENARIOS: &[MiniMapTransformerScenario] = &[");
 for (const s of structures.minimaptransformer) L.push(`    ${s.name.toUpperCase()},`);
+L.push("];");
+L.push("");
+
+L.push("/// PathFinderStepper scenario (PathFinderStepper.ts). `prod` selects");
+L.push("/// the tileStepperConfig shape (preCheck + manhattan distance) vs the");
+L.push("/// default bare config. `ops` is a flat script:");
+L.push("/// [0, from, to, dist, status, node, pan_len, tiles..., idx,");
+L.push("/// has_path, calls] = next (dist -1 = undefined, node -1 = NotFound,");
+L.push("/// pan_len -1 = null pathAfterNext, status 1 = threw); [1] =");
+L.push("/// invalidate; [2] = stub reset (queue + observation, call count");
+L.push("/// persists); [3, is_multi, from_len, from_tiles..., to, out_mode,");
+L.push("/// out_len, out_tiles..., seen_flag, [seen_multi, seen_len,");
+L.push("/// seen_tiles..., seen_goal], calls] = findPath (out_mode 0 = null,");
+L.push("/// 1 = threw, 2 = list; seen_flag 0 = inner not called); [4, count,");
+L.push("/// (null_flag | 1, len, tiles...)...] = queue inner results.");
+L.push("pub struct StepperScenario {");
+L.push("    pub name: &'static str,");
+L.push("    pub prod: bool,");
+L.push("    pub ops: &'static [f64],");
+L.push("}");
+L.push("");
+for (const s of structures.stepper) {
+  const id = s.name.toUpperCase();
+  L.push(`pub const ${id}: StepperScenario = StepperScenario {`);
+  L.push(`    name: "${s.name}",`);
+  L.push(`    prod: ${s.prod},`);
+  L.push("    ops: &[");
+  L.push(...numArr(s.ops, "f64", 10));
+  L.push("],");
+  L.push("};");
+  L.push("");
+}
+L.push("pub const STEPPER_SCENARIOS: &[StepperScenario] = &[");
+for (const s of structures.stepper) L.push(`    ${s.name.toUpperCase()},`);
 L.push("];");
 L.push("");
 

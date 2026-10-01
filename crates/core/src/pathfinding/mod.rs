@@ -16,6 +16,7 @@ pub mod mini_map_transformer;
 pub mod parabola;
 pub mod priority_queue;
 pub mod rail;
+pub mod stepper;
 pub mod water;
 pub mod water_bounded;
 pub mod water_hierarchical;

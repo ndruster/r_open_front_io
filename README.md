@@ -58,6 +58,9 @@ rust/
 │   │       │                      port of transformers/MiniMapTransformer.ts
 │   │       │                      (downscale/upscale decorator + PathFinder
 │   │       │                       trait + PathStart union)
+│   │       ├── stepper.rs
+│   │       │                      port of PathFinderStepper.ts
+│   │       │                      (path cache + stepping wrapper)
 │   │       └── connected_components.rs
 │   │                              port of algorithms/ConnectedComponents.ts
 │   └── tests/
@@ -303,6 +306,22 @@ desync, not a rounding nit. Two things enforce that here:
     array start (`srcRef` stays undefined), and both `ref` throw classes —
     downscale OOB (inner never called) and upscale OOB via an oversized mini
     map — pinned as panics natively and would-throw markers under wasm.
+19. **`PathFinderStepper.ts`** (`pathfinding::stepper`) is the generic
+    stepping wrapper: path cache + `pathIndex` advance, `lastTo` invalidation
+    on goal change, stray-from-route recompute, and the `path[0] === from`
+    start-skip. The port pins `T = TileRef` and the two production config
+    shapes (`tileStepperConfig` vs the default bare `{equals: ===}`) via an
+    `Option<&GameMap>` selector. JS-isms pinned: numeric paths stored through
+    `to_uint32` (`new Uint32Array`), the `pathIndex > 0` short-circuit that
+    hides the `path[-1]` → `undefined` comparison, the recursive `next`
+    re-entry after `invalidate()` (modelled as a loop), `pathAfterNext()`
+    null-while-idle, and the `findPath` vacuous-`every` short-circuit (empty
+    start array → `null`, inner never called). The `SharedStub` inner finder
+    counts calls so "inner untouched" (pre-check hit, cache hit, vacuous
+    `every`) is observable; the two scenarios cover the pre-check NOT_FOUND,
+    `from === to`, distance early exit, the full drain to COMPLETE, the stray
+    recompute to NOT_FOUND, multi/scalar passthrough and the three allFailed
+    short-circuits.
 
 Regenerate whenever a ported source changes:
 
@@ -336,7 +355,7 @@ node rust/tools/run_wasm_parity.mjs
 
 `wasm-probe` exposes the ported functions through `extern "C"` scalar
 entrypoints (`src/wasm_probe.rs`); the runner imports `data/vectors.json` and
-compares every value. Last run: **30,720 comparisons, all bit-identical**.
+compares every value. Last run: **30,852 comparisons, all bit-identical**.
 
 ### Windows: the linker environment
 

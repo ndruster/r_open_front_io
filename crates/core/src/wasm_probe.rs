@@ -2528,3 +2528,230 @@ pub extern "C" fn probe_mmt_seen_at(i: usize) -> f64 {
 pub extern "C" fn probe_mmt_seen_goal() -> f64 {
     MMT_SEEN.with(|s| s.borrow().as_ref().unwrap().2)
 }
+
+// ============================ P18: PathFinderStepper ============================
+// The stepper never throws here (the stub finder cannot), so no would-throw
+// convention is needed; every observable of the TS trace (status, node,
+// pathAfterNext, pathIndex, hasPath, calls, findPath out/seen) is exposed.
+
+use crate::pathfinding::parabola::PathResult;
+use crate::pathfinding::stepper::{PathFinderStepper, SharedStub};
+
+thread_local! {
+    static SP: std::cell::RefCell<Option<PathFinderStepper<'static, SharedStub>>> =
+        const { std::cell::RefCell::new(None) };
+    static SP_STUB: std::cell::RefCell<SharedStub> =
+        std::cell::RefCell::new(SharedStub::default());
+    static SP_PEND: std::cell::RefCell<Vec<f64>> = const { std::cell::RefCell::new(Vec::new()) };
+    static SP_FROM: std::cell::RefCell<Vec<f64>> = const { std::cell::RefCell::new(Vec::new()) };
+    static SP_PAN: std::cell::RefCell<Vec<f64>> = const { std::cell::RefCell::new(Vec::new()) };
+    static SP_PAN_NULL: std::cell::RefCell<bool> = const { std::cell::RefCell::new(true) };
+    static SP_OUT: std::cell::RefCell<Vec<f64>> = const { std::cell::RefCell::new(Vec::new()) };
+    static SP_SEEN: std::cell::RefCell<Option<(bool, Vec<f64>, f64)>> =
+        const { std::cell::RefCell::new(None) };
+    static SP_NODE: std::cell::RefCell<f64> = const { std::cell::RefCell::new(-1.0) };
+}
+
+/// Build the stepper over a fresh shared stub; `prod != 0` selects the
+/// production `tileStepperConfig` shape (leaks a 10x10 all-land map).
+#[no_mangle]
+pub extern "C" fn probe_sp_new(prod: u32) {
+    let gm: &'static GameMap =
+        Box::leak(Box::new(GameMap::new(10.0, 10.0, vec![0x03; 100], 100.0)));
+    let stub = SharedStub::default();
+    SP_STUB.with(|s| *s.borrow_mut() = stub.clone());
+    let st = PathFinderStepper::new(stub, if prod == 0 { None } else { Some(gm) });
+    SP.with(|c| *c.borrow_mut() = Some(st));
+}
+
+/// `stub.reset()` — clear queue + observation (calls persists).
+#[no_mangle]
+pub extern "C" fn probe_sp_reset() {
+    SP_STUB.with(|s| s.borrow().reset());
+}
+
+/// `stepper.invalidate()`.
+#[no_mangle]
+pub extern "C" fn probe_sp_inv() {
+    SP.with(|c| c.borrow_mut().as_mut().unwrap().invalidate());
+}
+
+/// Queue a `null` inner result.
+#[no_mangle]
+pub extern "C" fn probe_sp_push_null() {
+    SP_STUB.with(|s| s.borrow().push_null());
+}
+
+/// Begin a queued tile-list result.
+#[no_mangle]
+pub extern "C" fn probe_sp_push_start() {
+    SP_PEND.with(|p| p.borrow_mut().clear());
+}
+
+/// Append one tile to the pending list.
+#[no_mangle]
+pub extern "C" fn probe_sp_push_tile(v: f64) {
+    SP_PEND.with(|p| p.borrow_mut().push(v));
+}
+
+/// Finish + queue the pending list.
+#[no_mangle]
+pub extern "C" fn probe_sp_push_end() {
+    let tiles = SP_PEND.with(|p| p.borrow_mut().clone());
+    SP_STUB.with(|s| s.borrow().push_list(tiles));
+}
+
+/// `next(from, to, dist)`; `dist < 0` means `undefined`. Returns the status
+/// code (0 NEXT, 2 COMPLETE, 3 NOT_FOUND). Side observables: `probe_sp_node`,
+/// `probe_sp_pan_*`, `probe_sp_idx`, `probe_sp_has_path`, `probe_sp_calls`.
+#[no_mangle]
+pub extern "C" fn probe_sp_next(from: f64, to: f64, dist: f64) -> u8 {
+    let r = SP.with(|c| {
+        let mut cell = c.borrow_mut();
+        let st = cell.as_mut().unwrap();
+        let r = st.next(from, to, if dist < 0.0 { None } else { Some(dist) });
+        let pan = st.path_after_next();
+        let idx = st.debug_path_index();
+        let has = st.debug_has_path();
+        (r, pan, idx, has)
+    });
+    let status = match r.0 {
+        PathResult::Next { node, .. } => {
+            SP_NODE.with(|n| *n.borrow_mut() = node);
+            0
+        }
+        PathResult::Complete { node, .. } => {
+            SP_NODE.with(|n| *n.borrow_mut() = node);
+            2
+        }
+        PathResult::NotFound { .. } => {
+            SP_NODE.with(|n| *n.borrow_mut() = -1.0);
+            3
+        }
+    };
+    match r.1 {
+        None => {
+            SP_PAN.with(|p| p.borrow_mut().clear());
+            SP_PAN_NULL.with(|p| *p.borrow_mut() = true);
+        }
+        Some(v) => {
+            SP_PAN.with(|p| *p.borrow_mut() = v);
+            SP_PAN_NULL.with(|p| *p.borrow_mut() = false);
+        }
+    }
+    SP_IDX.with(|v| *v.borrow_mut() = r.2);
+    SP_HAS.with(|v| *v.borrow_mut() = r.3 as u8);
+    status
+}
+
+thread_local! {
+    static SP_IDX: std::cell::RefCell<usize> = const { std::cell::RefCell::new(0) };
+    static SP_HAS: std::cell::RefCell<u8> = const { std::cell::RefCell::new(0) };
+}
+
+#[no_mangle]
+pub extern "C" fn probe_sp_node() -> f64 {
+    SP_NODE.with(|n| *n.borrow())
+}
+
+#[no_mangle]
+pub extern "C" fn probe_sp_pan_null() -> u8 {
+    SP_PAN_NULL.with(|p| *p.borrow() as u8)
+}
+
+#[no_mangle]
+pub extern "C" fn probe_sp_pan_len() -> usize {
+    SP_PAN.with(|p| p.borrow().len())
+}
+
+#[no_mangle]
+pub extern "C" fn probe_sp_pan_at(i: usize) -> f64 {
+    SP_PAN.with(|p| p.borrow()[i])
+}
+
+#[no_mangle]
+pub extern "C" fn probe_sp_idx() -> usize {
+    SP_IDX.with(|v| *v.borrow())
+}
+
+#[no_mangle]
+pub extern "C" fn probe_sp_has_path() -> u8 {
+    SP_HAS.with(|v| *v.borrow())
+}
+
+#[no_mangle]
+pub extern "C" fn probe_sp_calls() -> f64 {
+    SP_STUB.with(|s| s.borrow().calls() as f64)
+}
+
+/// Clear the findPath start buffer.
+#[no_mangle]
+pub extern "C" fn probe_sp_from_reset() {
+    SP_FROM.with(|f| f.borrow_mut().clear());
+}
+
+/// Append one start tile.
+#[no_mangle]
+pub extern "C" fn probe_sp_from_push(v: f64) {
+    SP_FROM.with(|f| f.borrow_mut().push(v));
+}
+
+/// `findPath(from, to)`; `is_multi != 0` passes the array, else the scalar
+/// first tile. Returns 0 = null, 2 = path (`probe_sp_out_*`). Inner
+/// observation via `probe_sp_seen_*`, call count via `probe_sp_calls`.
+#[no_mangle]
+pub extern "C" fn probe_sp_find_path(to: f64, is_multi: u32) -> u8 {
+    let from = SP_FROM.with(|f| f.borrow().clone());
+    let starts = if is_multi == 1 {
+        PathStart::Multi(&from)
+    } else {
+        PathStart::Single(from[0])
+    };
+    let out = SP.with(|c| c.borrow_mut().as_mut().unwrap().find_path(starts, to));
+    SP_SEEN.with(|s| *s.borrow_mut() = SP_STUB.with(|st| st.borrow().last_seen()));
+    match out {
+        None => {
+            SP_OUT.with(|o| o.borrow_mut().clear());
+            0
+        }
+        Some(v) => {
+            SP_OUT.with(|o| *o.borrow_mut() = v);
+            2
+        }
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn probe_sp_out_len() -> usize {
+    SP_OUT.with(|o| o.borrow().len())
+}
+
+#[no_mangle]
+pub extern "C" fn probe_sp_out_at(i: usize) -> f64 {
+    SP_OUT.with(|o| o.borrow()[i])
+}
+
+#[no_mangle]
+pub extern "C" fn probe_sp_seen_flag() -> u8 {
+    SP_SEEN.with(|s| s.borrow().is_some() as u8)
+}
+
+#[no_mangle]
+pub extern "C" fn probe_sp_seen_multi() -> u8 {
+    SP_SEEN.with(|s| s.borrow().as_ref().map_or(0, |(m, _, _)| *m as u8))
+}
+
+#[no_mangle]
+pub extern "C" fn probe_sp_seen_len() -> usize {
+    SP_SEEN.with(|s| s.borrow().as_ref().map_or(0, |(_, t, _)| t.len()))
+}
+
+#[no_mangle]
+pub extern "C" fn probe_sp_seen_at(i: usize) -> f64 {
+    SP_SEEN.with(|s| s.borrow().as_ref().unwrap().1[i])
+}
+
+#[no_mangle]
+pub extern "C" fn probe_sp_seen_goal() -> f64 {
+    SP_SEEN.with(|s| s.borrow().as_ref().unwrap().2)
+}

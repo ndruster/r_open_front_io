@@ -15399,3 +15399,68 @@ pub const MMT_SCENARIOS: &[MiniMapTransformerScenario] = &[
     MMT_BIGMINI,
 ];
 
+/// PathFinderStepper scenario (PathFinderStepper.ts). `prod` selects
+/// the tileStepperConfig shape (preCheck + manhattan distance) vs the
+/// default bare config. `ops` is a flat script:
+/// [0, from, to, dist, status, node, pan_len, tiles..., idx,
+/// has_path, calls] = next (dist -1 = undefined, node -1 = NotFound,
+/// pan_len -1 = null pathAfterNext, status 1 = threw); [1] =
+/// invalidate; [2] = stub reset (queue + observation, call count
+/// persists); [3, is_multi, from_len, from_tiles..., to, out_mode,
+/// out_len, out_tiles..., seen_flag, [seen_multi, seen_len,
+/// seen_tiles..., seen_goal], calls] = findPath (out_mode 0 = null,
+/// 1 = threw, 2 = list; seen_flag 0 = inner not called); [4, count,
+/// (null_flag | 1, len, tiles...)...] = queue inner results.
+pub struct StepperScenario {
+    pub name: &'static str,
+    pub prod: bool,
+    pub ops: &'static [f64],
+}
+
+pub const SP_PROD: StepperScenario = StepperScenario {
+    name: "sp_prod",
+    prod: true,
+    ops: &[
+    2f64, 0f64, 105f64, 50f64, -1f64, 3f64, -1f64, -1f64, 0f64, 0f64,
+    0f64, 2f64, 0f64, 0f64, 0f64, -1f64, 2f64, 0f64, -1f64, 0f64,
+    0f64, 0f64, 2f64, 0f64, 0f64, 99f64, 5f64, 3f64, -1f64, -1f64,
+    0f64, 0f64, 1f64, 2f64, 4f64, 1f64, 1f64, 4f64, 0f64, 11f64,
+    22f64, 33f64, 0f64, 0f64, 33f64, -1f64, 0f64, 11f64, 3f64, 11f64,
+    22f64, 33f64, 2f64, 1f64, 2f64, 0f64, 11f64, 33f64, -1f64, 0f64,
+    22f64, 2f64, 22f64, 33f64, 3f64, 1f64, 2f64, 2f64, 4f64, 1f64,
+    1f64, 3f64, 0f64, 11f64, 22f64, 0f64, 0f64, 22f64, -1f64, 0f64,
+    11f64, 2f64, 11f64, 22f64, 2f64, 1f64, 3f64, 0f64, 11f64, 22f64,
+    -1f64, 0f64, 22f64, 1f64, 22f64, 3f64, 1f64, 3f64, 0f64, 22f64,
+    22f64, -1f64, 2f64, 22f64, 1f64, 22f64, 3f64, 1f64, 3f64, 0f64,
+    0f64, 99f64, -1f64, 3f64, -1f64, -1f64, 0f64, 0f64, 4f64, 2f64,
+    4f64, 1f64, 1f64, 2f64, 0f64, 11f64, 0f64, 0f64, 11f64, 18f64,
+    2f64, 0f64, -1f64, 0f64, 0f64, 4f64, 2f64, 4f64, 1f64, 1f64,
+    2f64, 0f64, 55f64, 3f64, 1f64, 2f64, 0f64, 99f64, 55f64, 2f64,
+    2f64, 0f64, 55f64, 1f64, 1f64, 2f64, 0f64, 99f64, 55f64, 5f64,
+    2f64, 3f64, 1f64, 2f64, 105f64, 106f64, 50f64, 0f64, 0f64, 0f64,
+    5f64, 2f64, 3f64, 1f64, 0f64, 50f64, 0f64, 0f64, 0f64, 5f64,
+    2f64, 3f64, 0f64, 1f64, 0f64, 105f64, 0f64, 0f64, 0f64, 5f64,
+],
+};
+
+pub const SP_BARE: StepperScenario = StepperScenario {
+    name: "sp_bare",
+    prod: false,
+    ops: &[
+    2f64, 4f64, 1f64, 1f64, 4f64, 0f64, 11f64, 22f64, 33f64, 0f64,
+    0f64, 33f64, -1f64, 0f64, 11f64, 3f64, 11f64, 22f64, 33f64, 2f64,
+    1f64, 1f64, 0f64, 0f64, 33f64, -1f64, 3f64, -1f64, -1f64, 0f64,
+    0f64, 2f64, 0f64, 0f64, 33f64, -1f64, 3f64, -1f64, -1f64, 0f64,
+    0f64, 3f64, 2f64, 4f64, 1f64, 1f64, 3f64, 0f64, 11f64, 22f64,
+    3f64, 1f64, 2f64, 0f64, 11f64, 22f64, 2f64, 3f64, 0f64, 11f64,
+    22f64, 1f64, 1f64, 2f64, 0f64, 11f64, 22f64, 4f64, 2f64, 4f64,
+    1f64, 1f64, 1f64, 0f64, 3f64, 0f64, 1f64, 105f64, 105f64, 2f64,
+    1f64, 0f64, 1f64, 0f64, 1f64, 105f64, 105f64, 5f64,
+],
+};
+
+pub const STEPPER_SCENARIOS: &[StepperScenario] = &[
+    SP_PROD,
+    SP_BARE,
+];
+

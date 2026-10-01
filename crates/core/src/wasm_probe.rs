@@ -2755,3 +2755,272 @@ pub extern "C" fn probe_sp_seen_at(i: usize) -> f64 {
 pub extern "C" fn probe_sp_seen_goal() -> f64 {
     SP_SEEN.with(|s| s.borrow().as_ref().unwrap().2)
 }
+
+// ======================= P19: ComponentCheckTransformer =======================
+// The transformer never throws (no `ref` construction), so no would-throw
+// convention is needed. Output is the pass-through of inner's result, pinned
+// by (seen_flag, inner_mode); the observable of interest is what the
+// transformer handed to `inner` (the filtered PathStart) and whether `inner`
+// ran at all.
+
+use crate::pathfinding::component_check_transformer::{
+    ComponentCheckTransformer, TableGetter,
+};
+
+thread_local! {
+    static CCT_TABLE: std::cell::RefCell<Vec<(f64, i64)>> =
+        const { std::cell::RefCell::new(Vec::new()) };
+    static CCT_DEFAULT: std::cell::RefCell<i64> = const { std::cell::RefCell::new(0) };
+    static CCT_FROM: std::cell::RefCell<Vec<f64>> = const { std::cell::RefCell::new(Vec::new()) };
+    static CCT_INNER: std::cell::RefCell<Vec<f64>> = const { std::cell::RefCell::new(Vec::new()) };
+    static CCT_OUT: std::cell::RefCell<Vec<f64>> = const { std::cell::RefCell::new(Vec::new()) };
+    static CCT_SEEN: std::cell::RefCell<Option<(bool, Vec<f64>, f64)>> =
+        const { std::cell::RefCell::new(None) };
+}
+
+/// Clear the component table + set the default id.
+#[no_mangle]
+pub extern "C" fn probe_cct_new(default: f64) {
+    CCT_TABLE.with(|t| t.borrow_mut().clear());
+    CCT_DEFAULT.with(|d| *d.borrow_mut() = default as i64);
+}
+
+/// Append one `(ref, component_id)` pair to the table.
+#[no_mangle]
+pub extern "C" fn probe_cct_pair(v: f64, c: f64) {
+    CCT_TABLE.with(|t| t.borrow_mut().push((v, c as i64)));
+}
+
+/// Clear the per-query start / inner / seen buffers.
+#[no_mangle]
+pub extern "C" fn probe_cct_reset() {
+    CCT_FROM.with(|f| f.borrow_mut().clear());
+    CCT_INNER.with(|i| i.borrow_mut().clear());
+    CCT_SEEN.with(|s| *s.borrow_mut() = None);
+}
+
+/// Queue one start ref.
+#[no_mangle]
+pub extern "C" fn probe_cct_from(v: f64) {
+    CCT_FROM.with(|f| f.borrow_mut().push(v));
+}
+
+/// Queue one inner result tile ref.
+#[no_mangle]
+pub extern "C" fn probe_cct_inner(v: f64) {
+    CCT_INNER.with(|i| i.borrow_mut().push(v));
+}
+
+/// Run one query. `inner_mode` 0 = null, 2 = queued tiles. Returns 0 = null,
+/// 2 = path (`probe_cct_out_*`). Inner observation via `probe_cct_seen_*`.
+#[no_mangle]
+pub extern "C" fn probe_cct_run(to: f64, from_is_array: u32, inner_mode: u32) -> u8 {
+    let table = CCT_TABLE.with(|t| t.borrow().clone());
+    let default = CCT_DEFAULT.with(|d| *d.borrow());
+    let from = CCT_FROM.with(|f| f.borrow().clone());
+    let inner = CCT_INNER.with(|i| i.borrow().clone());
+    let mut getter = TableGetter::default();
+    getter.set_table(table, default);
+    let mut stub = ScriptedFinder::default();
+    stub.push_path(match inner_mode {
+        0 => None,
+        _ => Some(inner),
+    });
+    let starts = if from_is_array == 1 {
+        PathStart::Multi(&from)
+    } else {
+        PathStart::Single(from[0])
+    };
+    let r = {
+        let mut tr = ComponentCheckTransformer::new(&mut stub, getter);
+        tr.find_path(starts, to)
+    };
+    CCT_SEEN.with(|s| *s.borrow_mut() = stub.last_seen);
+    match r {
+        None => {
+            CCT_OUT.with(|o| o.borrow_mut().clear());
+            0
+        }
+        Some(v) => {
+            CCT_OUT.with(|o| *o.borrow_mut() = v);
+            2
+        }
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn probe_cct_out_len() -> usize {
+    CCT_OUT.with(|o| o.borrow().len())
+}
+
+#[no_mangle]
+pub extern "C" fn probe_cct_out_at(i: usize) -> f64 {
+    CCT_OUT.with(|o| o.borrow()[i])
+}
+
+#[no_mangle]
+pub extern "C" fn probe_cct_seen_flag() -> u8 {
+    CCT_SEEN.with(|s| s.borrow().is_some() as u8)
+}
+
+#[no_mangle]
+pub extern "C" fn probe_cct_seen_multi() -> u8 {
+    CCT_SEEN.with(|s| s.borrow().as_ref().map_or(0, |(m, _, _)| *m as u8))
+}
+
+#[no_mangle]
+pub extern "C" fn probe_cct_seen_len() -> usize {
+    CCT_SEEN.with(|s| s.borrow().as_ref().map_or(0, |(_, t, _)| t.len()))
+}
+
+#[no_mangle]
+pub extern "C" fn probe_cct_seen_at(i: usize) -> f64 {
+    CCT_SEEN.with(|s| s.borrow().as_ref().unwrap().1[i])
+}
+
+#[no_mangle]
+pub extern "C" fn probe_cct_seen_goal() -> f64 {
+    CCT_SEEN.with(|s| s.borrow().as_ref().unwrap().2)
+}
+
+// ========================= P19: ShoreCoercingTransformer ======================
+// No throws here either (the stub cannot); terrain reads are in-bounds for the
+// scripted maps. Every observable is the coerced PathStart `inner` received
+// (scalar collapse + duplicate starts) and the restored/extended output path.
+
+use crate::pathfinding::shore_coercing_transformer::ShoreCoercingTransformer;
+
+thread_local! {
+    static SCT_MAP: std::cell::RefCell<Option<&'static GameMap>> =
+        const { std::cell::RefCell::new(None) };
+    static SCT_WATER: std::cell::RefCell<Vec<f64>> = const { std::cell::RefCell::new(Vec::new()) };
+    static SCT_FROM: std::cell::RefCell<Vec<f64>> = const { std::cell::RefCell::new(Vec::new()) };
+    static SCT_INNER: std::cell::RefCell<Vec<f64>> = const { std::cell::RefCell::new(Vec::new()) };
+    static SCT_OUT: std::cell::RefCell<Vec<f64>> = const { std::cell::RefCell::new(Vec::new()) };
+    static SCT_SEEN: std::cell::RefCell<Option<(bool, Vec<f64>, f64)>> =
+        const { std::cell::RefCell::new(None) };
+}
+
+/// Clear the pending water-coord buffer.
+#[no_mangle]
+pub extern "C" fn probe_sct_water_reset() {
+    SCT_WATER.with(|w| w.borrow_mut().clear());
+}
+
+/// Append one water `(x, y)` coord (consumed by `probe_sct_new`).
+#[no_mangle]
+pub extern "C" fn probe_sct_water(x: f64, y: f64) {
+    SCT_WATER.with(|w| {
+        w.borrow_mut().push(x);
+        w.borrow_mut().push(y);
+    });
+}
+
+/// Build the land/water map (default 0x83 land, queued coords -> 0x03 water)
+/// and leak it.
+#[no_mangle]
+pub extern "C" fn probe_sct_new(w: f64, h: f64) {
+    let water = SCT_WATER.with(|x| x.borrow().clone());
+    let mut data = vec![0x83u8; (w * h) as usize];
+    for pair in water.chunks(2) {
+        data[pair[1] as usize * w as usize + pair[0] as usize] = 0x03;
+    }
+    let gm: &'static GameMap = Box::leak(Box::new(GameMap::new(
+        w,
+        h,
+        data,
+        (w * h - water.len() as f64 / 2.0).max(0.0),
+    )));
+    SCT_MAP.with(|m| *m.borrow_mut() = Some(gm));
+}
+
+/// Clear the per-query start / inner / seen buffers.
+#[no_mangle]
+pub extern "C" fn probe_sct_reset() {
+    SCT_FROM.with(|f| f.borrow_mut().clear());
+    SCT_INNER.with(|i| i.borrow_mut().clear());
+    SCT_SEEN.with(|s| *s.borrow_mut() = None);
+}
+
+/// Queue one start ref.
+#[no_mangle]
+pub extern "C" fn probe_sct_from(v: f64) {
+    SCT_FROM.with(|f| f.borrow_mut().push(v));
+}
+
+/// Queue one inner result tile ref.
+#[no_mangle]
+pub extern "C" fn probe_sct_inner(v: f64) {
+    SCT_INNER.with(|i| i.borrow_mut().push(v));
+}
+
+/// Run one query. `inner_mode` 0 = null, 1 = empty, 2 = queued tiles. Returns
+/// 0 = null, 2 = path (`probe_sct_out_*`). Inner observation via
+/// `probe_sct_seen_*`.
+#[no_mangle]
+pub extern "C" fn probe_sct_run(to: f64, from_is_array: u32, inner_mode: u32) -> u8 {
+    let gm = SCT_MAP.with(|m| m.borrow().unwrap());
+    let from = SCT_FROM.with(|f| f.borrow().clone());
+    let inner = SCT_INNER.with(|i| i.borrow().clone());
+    let mut stub = ScriptedFinder::default();
+    stub.push_path(match inner_mode {
+        0 => None,
+        1 => Some(vec![]),
+        _ => Some(inner),
+    });
+    let starts = if from_is_array == 1 {
+        PathStart::Multi(&from)
+    } else {
+        PathStart::Single(from[0])
+    };
+    let r = {
+        let mut tr = ShoreCoercingTransformer::new(&mut stub, gm);
+        tr.find_path(starts, to)
+    };
+    SCT_SEEN.with(|s| *s.borrow_mut() = stub.last_seen);
+    match r {
+        None => {
+            SCT_OUT.with(|o| o.borrow_mut().clear());
+            0
+        }
+        Some(v) => {
+            SCT_OUT.with(|o| *o.borrow_mut() = v);
+            2
+        }
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn probe_sct_out_len() -> usize {
+    SCT_OUT.with(|o| o.borrow().len())
+}
+
+#[no_mangle]
+pub extern "C" fn probe_sct_out_at(i: usize) -> f64 {
+    SCT_OUT.with(|o| o.borrow()[i])
+}
+
+#[no_mangle]
+pub extern "C" fn probe_sct_seen_flag() -> u8 {
+    SCT_SEEN.with(|s| s.borrow().is_some() as u8)
+}
+
+#[no_mangle]
+pub extern "C" fn probe_sct_seen_multi() -> u8 {
+    SCT_SEEN.with(|s| s.borrow().as_ref().map_or(0, |(m, _, _)| *m as u8))
+}
+
+#[no_mangle]
+pub extern "C" fn probe_sct_seen_len() -> usize {
+    SCT_SEEN.with(|s| s.borrow().as_ref().map_or(0, |(_, t, _)| t.len()))
+}
+
+#[no_mangle]
+pub extern "C" fn probe_sct_seen_at(i: usize) -> f64 {
+    SCT_SEEN.with(|s| s.borrow().as_ref().unwrap().1[i])
+}
+
+#[no_mangle]
+pub extern "C" fn probe_sct_seen_goal() -> f64 {
+    SCT_SEEN.with(|s| s.borrow().as_ref().unwrap().2)
+}

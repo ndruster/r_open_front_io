@@ -2801,6 +2801,175 @@ captureStepper("sp_bare", false, [
   ["fp", [105], 105, 0],
 ]);
 
+// --- ComponentCheckTransformer (ComponentCheckTransformer.ts) runner ---------
+// Runs the real transformer over a queue-backed inner stub (records the
+// PathStart kind/tiles/goal) with a table component getter. The transformer
+// passes inner's result through unchanged, so the output is fully derived
+// from (seen_flag, inner_mode) and need not be recorded separately. Group
+// encoding:
+// [is_multi, from_len, from_refs..., to, inner_mode, inner_len, inner_refs...,
+//  seen_flag, [seen_multi, seen_len, seen_refs..., seen_goal]]
+// inner_mode 0 = null, 2 = list; seen_flag 0 = inner never called (=> output
+// null), 1 = inner called (=> output = inner result).
+const ccTScenarios = [];
+const { ComponentCheckTransformer } = await loadTs(
+  "src/core/pathfinding/transformers/ComponentCheckTransformer.ts",
+);
+
+function captureCCT(name, table, def, queries) {
+  const gm = pbLandMap(10, 10);
+  const R = (xy) => gm.ref(xy[0], xy[1]);
+  const comp = (t) => (table[t] === undefined ? def : table[t]);
+  const stub = {
+    next: null,
+    last: null,
+    findPath(from, to) {
+      this.last = { from, to };
+      return this.next;
+    },
+  };
+  const tr = new ComponentCheckTransformer(stub, comp);
+  const groups = [];
+  for (const q of queries) {
+    const fromRefs = q.from.map(R);
+    const fromArg = q.scalar ? fromRefs[0] : fromRefs;
+    const toRef = R(q.to);
+    const innerMode = q.inner === null ? 0 : 2;
+    const innerRefs = (q.inner ?? []).map(R);
+    stub.next = q.inner === null ? null : innerRefs;
+    stub.last = null;
+    const p = tr.findPath(fromArg, toRef);
+    const g = [q.scalar ? 0 : 1, fromRefs.length, ...fromRefs, toRef];
+    g.push(innerMode, innerRefs.length, ...innerRefs);
+    if (stub.last === null) {
+      g.push(0);
+    } else {
+      const f = stub.last.from;
+      const m = Array.isArray(f) ? 1 : 0;
+      const tiles = Array.isArray(f) ? f : [f];
+      g.push(1, m, tiles.length, ...tiles, stub.last.to);
+    }
+    // Cross-check: the pass-through invariant must hold in TS too.
+    const expectNull = stub.last === null || innerMode === 0;
+    if (expectNull ? p !== null : !(p && sameList(p, innerRefs))) {
+      throw new Error(`${name} q${groups.length}: pass-through violated`);
+    }
+    groups.push(g);
+  }
+  ccTScenarios.push({ name, table, default: def, groups });
+}
+
+const sameList = (a, b) => a.length === b.length && a.every((v, i) => v === b[i]);
+
+// 10x10 all-water map (refs = y*10+x). Table pins a few component ids,
+// everything else falls to the default. Covers: same-component scalar
+// passthrough, mismatch -> null (inner untouched), multi filtering with the
+// single-survivor collapse, order preservation with multiple survivors, the
+// vacuous empty-array null, null propagation from inner, and all-default
+// equality (scalar and multi).
+captureCCT("cct_basic", { 0: 10, 11: 10, 22: 20, 33: 30 }, 0, [
+  { from: [[0, 0]], scalar: true, to: [1, 1], inner: [[0, 0], [1, 1]] },
+  { from: [[0, 0]], scalar: true, to: [2, 2], inner: [[0, 0]] },
+  { from: [[0, 0], [2, 2], [3, 3]], to: [1, 1], inner: [[0, 0], [1, 1]] },
+  { from: [[0, 0], [2, 2], [3, 3]], to: [3, 3], inner: [[3, 3]] },
+  { from: [[0, 0], [2, 2], [1, 1]], to: [1, 1], inner: [[0, 0], [1, 1]] },
+  { from: [], to: [1, 1], inner: [[0, 0]] },
+  { from: [[0, 0]], scalar: true, to: [1, 1], inner: null },
+  { from: [[0, 0], [2, 2]], to: [4, 4], inner: [[0, 0]] },
+]);
+
+captureCCT("cct_default", {}, 7, [
+  { from: [[5, 5]], scalar: true, to: [6, 6], inner: [[5, 5], [6, 6]] },
+  { from: [[5, 5], [6, 6], [7, 7]], to: [5, 5], inner: [[7, 7]] },
+]);
+
+// --- ShoreCoercingTransformer (ShoreCoercingTransformer.ts) runner -----------
+// Runs the real transformer over a hand-built land/water map with a
+// queue-backed inner stub. Map is `w x h`, default land (0x83), `water`
+// coords flipped to 0x03. Group encoding:
+// [is_multi, from_len, from_refs..., to, inner_mode, inner_len, inner_refs...,
+//  seen_flag, [seen_multi, seen_len, seen_refs..., seen_goal], out_mode,
+//  [out_len, out_refs...]]
+// inner_mode 0 = null, 1 = [], 2 = list; seen_flag 0 = inner never called;
+// out_mode 0 = null, 2 = path.
+const sctScenarios = [];
+const { ShoreCoercingTransformer } = await loadTs(
+  "src/core/pathfinding/transformers/ShoreCoercingTransformer.ts",
+);
+
+function captureSCT(name, w, h, water, queries) {
+  const data = new Uint8Array(w * h).fill(0x83);
+  for (const [x, y] of water) data[y * w + x] = 0x03;
+  const gm = new GameMapImpl(w, h, data, w * h - water.length);
+  const R = (xy) => gm.ref(xy[0], xy[1]);
+  const stub = {
+    next: null,
+    last: null,
+    findPath(from, to) {
+      this.last = { from, to };
+      return this.next;
+    },
+  };
+  const tr = new ShoreCoercingTransformer(stub, gm);
+  const groups = [];
+  for (const q of queries) {
+    const fromRefs = q.from.map(R);
+    const fromArg = q.scalar ? fromRefs[0] : fromRefs;
+    const toRef = R(q.to);
+    const innerMode = q.inner === null ? 0 : q.inner.length === 0 ? 1 : 2;
+    const innerRefs = (q.inner ?? []).map(R);
+    stub.next = innerMode === 0 ? null : innerMode === 1 ? [] : innerRefs;
+    stub.last = null;
+    const p = tr.findPath(fromArg, toRef);
+    const g = [q.scalar ? 0 : 1, fromRefs.length, ...fromRefs, toRef];
+    g.push(innerMode, innerRefs.length, ...innerRefs);
+    if (stub.last === null) {
+      g.push(0);
+    } else {
+      const f = stub.last.from;
+      const m = Array.isArray(f) ? 1 : 0;
+      const tiles = Array.isArray(f) ? f : [f];
+      g.push(1, m, tiles.length, ...tiles, stub.last.to);
+    }
+    if (p === null) g.push(0);
+    else g.push(2, p.length, ...p);
+    groups.push(g);
+  }
+  sctScenarios.push({ name, w, h, water, groups });
+}
+
+// Blob of water (2,2)-(4,3) plus (3,4); isolated (8,8); a (6,2)/(7,2) and
+// (6,4)/(7,4) pair creating a score tie for (6,3). Covers: water passthrough
+// scalar, shore coercion + start restore, multi shore + goal coercion + end
+// append, deep-land start / goal nulls, null / empty inner, the raw-water
+// delete overriding an earlier coercion (duplicate starts observable), last-
+// write-wins on two shores coercing to the same water, and the strict->
+// first-wins tie in bestWaterNeighbor.
+const SCT_WATER = [
+  [2, 2], [3, 2], [4, 2], [2, 3], [3, 3], [4, 3], [3, 4],
+  [8, 8], [6, 2], [7, 2], [6, 4], [7, 4],
+];
+captureSCT("sct_blob", 10, 10, SCT_WATER, [
+  { from: [[3, 3]], scalar: true, to: [4, 2], inner: [[3, 3], [4, 3], [4, 2]] },
+  { from: [[1, 2]], scalar: true, to: [4, 2], inner: [[2, 2], [3, 2], [4, 2]] },
+  { from: [[1, 2], [5, 2]], to: [3, 4], inner: [[2, 2], [3, 2], [3, 3]] },
+  { from: [[0, 0]], scalar: true, to: [4, 2], inner: [[4, 2]] },
+  { from: [[3, 3]], scalar: true, to: [0, 0], inner: [[3, 3]] },
+  { from: [[1, 2], [5, 2]], to: [4, 2], inner: null },
+  { from: [[1, 2], [5, 2]], to: [4, 2], inner: [] },
+  { from: [[1, 2], [2, 2]], to: [4, 2], inner: [[2, 2], [4, 2]] },
+  { from: [[1, 2], [2, 1]], to: [4, 2], inner: [[2, 2], [4, 2]] },
+  { from: [[6, 3]], scalar: true, to: [6, 2], inner: [[6, 2]] },
+]);
+
+// Goal already equals the coerced original's path end: the `path[last] !==
+// originalTo` guard skips the duplicate append. Single-water-source collapse
+// to scalar start.
+captureSCT("sct_goal", 10, 10, SCT_WATER, [
+  { from: [[8, 8]], scalar: true, to: [8, 8], inner: [[8, 8]] },
+  { from: [[7, 3]], scalar: true, to: [7, 2], inner: [[7, 2]] },
+]);
+
 const structures = {
   minheap: mhScenarios,
   bucket: bqScenarios,
@@ -2825,6 +2994,8 @@ const structures = {
   parabola: parabolaScenarios,
   minimaptransformer: mmtScenarios,
   stepper: stepperScenarios,
+  componentcheck: ccTScenarios,
+  shorecoercing: sctScenarios,
 };
 
 // ================================================================ JSON
@@ -4228,6 +4399,78 @@ for (const s of structures.stepper) {
 }
 L.push("pub const STEPPER_SCENARIOS: &[StepperScenario] = &[");
 for (const s of structures.stepper) L.push(`    ${s.name.toUpperCase()},`);
+L.push("];");
+L.push("");
+
+L.push("/// ComponentCheckTransformer scenario (ComponentCheckTransformer.ts).");
+L.push("/// `table` is a flat [ref, component_id] pair list; `default` is the");
+L.push("/// component id for unlisted tiles. The transformer passes inner's");
+L.push("/// result through unchanged, so output is derived from (seen_flag,");
+L.push("/// inner_mode). `groups` is a flat script: [is_multi, from_len,");
+L.push("/// from_refs..., to, inner_mode, inner_len, inner_refs..., seen_flag,");
+L.push("/// [seen_multi, seen_len, seen_refs..., seen_goal]] (inner_mode 0 =");
+L.push("/// null, 2 = list; seen_flag 0 = inner never called => output null,");
+L.push("/// 1 = inner called => output = inner result).");
+L.push("pub struct ComponentCheckScenario {");
+L.push("    pub name: &'static str,");
+L.push("    pub table: &'static [f64],");
+L.push("    pub default: f64,");
+L.push("    pub groups: &'static [f64],");
+L.push("}");
+L.push("");
+for (const s of structures.componentcheck) {
+  const id = s.name.toUpperCase();
+  const pairs = Object.entries(s.table).flatMap(([k, v]) => [Number(k), v]);
+  L.push(`pub const ${id}: ComponentCheckScenario = ComponentCheckScenario {`);
+  L.push(`    name: "${s.name}",`);
+  L.push("    table: &[");
+  L.push(...numArr(pairs, "f64", 10));
+  L.push("],");
+  L.push(`    default: ${s.default}f64,`);
+  L.push("    groups: &[");
+  L.push(...numArr(s.groups.flat(), "f64", 10));
+  L.push("],");
+  L.push("};");
+  L.push("");
+}
+L.push("pub const COMPONENT_CHECK_SCENARIOS: &[ComponentCheckScenario] = &[");
+for (const s of structures.componentcheck) L.push(`    ${s.name.toUpperCase()},`);
+L.push("];");
+L.push("");
+
+L.push("/// ShoreCoercingTransformer scenario (ShoreCoercingTransformer.ts).");
+L.push("/// Map is `w x h`, default land (0x83), `water` is a flat [x, y] list");
+L.push("/// flipped to 0x03. `groups` is a flat script: [is_multi, from_len,");
+L.push("/// from_refs..., to, inner_mode, inner_len, inner_refs...,");
+L.push("/// seen_flag, [seen_multi, seen_len, seen_refs..., seen_goal],");
+L.push("/// out_mode, [out_len, out_refs...]] (inner_mode 0 = null, 1 = [],");
+L.push("/// 2 = list; seen_flag 0 = inner never called; out_mode 0 = null,");
+L.push("/// 2 = path).");
+L.push("pub struct ShoreCoercingScenario {");
+L.push("    pub name: &'static str,");
+L.push("    pub w: f64,");
+L.push("    pub h: f64,");
+L.push("    pub water: &'static [f64],");
+L.push("    pub groups: &'static [f64],");
+L.push("}");
+L.push("");
+for (const s of structures.shorecoercing) {
+  const id = s.name.toUpperCase();
+  L.push(`pub const ${id}: ShoreCoercingScenario = ShoreCoercingScenario {`);
+  L.push(`    name: "${s.name}",`);
+  L.push(`    w: ${s.w}f64,`);
+  L.push(`    h: ${s.h}f64,`);
+  L.push("    water: &[");
+  L.push(...numArr(s.water.flat(), "f64", 10));
+  L.push("],");
+  L.push("    groups: &[");
+  L.push(...numArr(s.groups.flat(), "f64", 10));
+  L.push("],");
+  L.push("};");
+  L.push("");
+}
+L.push("pub const SHORE_COERCING_SCENARIOS: &[ShoreCoercingScenario] = &[");
+for (const s of structures.shorecoercing) L.push(`    ${s.name.toUpperCase()},`);
 L.push("];");
 L.push("");
 

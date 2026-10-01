@@ -61,6 +61,12 @@ rust/
 │   │       ├── stepper.rs
 │   │       │                      port of PathFinderStepper.ts
 │   │       │                      (path cache + stepping wrapper)
+│   │       ├── component_check_transformer.rs
+│   │       │                      port of transformers/ComponentCheckTransformer.ts
+│   │       │                      (same-component filtering decorator)
+│   │       ├── shore_coercing_transformer.rs
+│   │       │                      port of transformers/ShoreCoercingTransformer.ts
+│   │       │                      (shore->water coercion + endpoint restore)
 │   │       └── connected_components.rs
 │   │                              port of algorithms/ConnectedComponents.ts
 │   └── tests/
@@ -322,6 +328,26 @@ desync, not a rounding nit. Two things enforce that here:
     `from === to`, distance early exit, the full drain to COMPLETE, the stray
     recompute to NOT_FOUND, multi/scalar passthrough and the three allFailed
     short-circuits.
+20. **`ComponentCheckTransformer.ts`** (`pathfinding::component_check_transformer`)
+    is the fail-fast decorator: it keeps only the starts whose component id
+    matches the goal's and delegates those (single survivor collapses to a
+    scalar start), returning `null` when none match — including the vacuous
+    empty-array case — without ever calling `inner`. The injected
+    `(t) => number` getter is a trait so the production
+    `graph.getComponentId` shape and a table stub both fit; the pass-through of
+    `inner`'s result is pinned via the recorded `PathStart` (kind + filtered
+    tiles + goal) and "inner never called" via the seen flag.
+21. **`ShoreCoercingTransformer.ts`** (`pathfinding::shore_coercing_transformer`)
+    is the water decorator: shore starts/goals are coerced to their best
+    adjacent water tile (scored by water-4-neighbour count, strict `>` so ties
+    keep the first in `neighbors4` order), the inner finder runs on water
+    tiles, then the original shore start is unshifted back and the original
+    goal appended (unless already the last tile). JS-isms pinned: the
+    `waterToOriginal` `Map` semantics — a raw water source `delete`s an earlier
+    coercion to the same tile (no restore) and two shores coercing to the same
+    water tile overwrite (last write wins) — both leaving duplicate starts
+    visible to `inner`; the single-water-source scalar collapse; and the
+    `!path || path.length === 0` → `null` short-circuit.
 
 Regenerate whenever a ported source changes:
 
@@ -355,7 +381,7 @@ node rust/tools/run_wasm_parity.mjs
 
 `wasm-probe` exposes the ported functions through `extern "C"` scalar
 entrypoints (`src/wasm_probe.rs`); the runner imports `data/vectors.json` and
-compares every value. Last run: **30,852 comparisons, all bit-identical**.
+compares every value. Last run: **31,017 comparisons, all bit-identical**.
 
 ### Windows: the linker environment
 

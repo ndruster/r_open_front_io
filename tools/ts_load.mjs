@@ -660,6 +660,62 @@ function prepare(rel) {
       "Stepper ctor",
     );
   }
+  if (rel.endsWith("pathfinding/transformers/ComponentCheckTransformer.ts")) {
+    // PathFinder is type-only (interface) and the extensionless specifier is
+    // unloadable -> dropped. The ctor's two parameter properties are expanded.
+    out = must(
+      out,
+      'import { PathFinder } from "../types";\n',
+      "",
+      "CCT import",
+    );
+    out = must(
+      out,
+      "  constructor(\n" +
+        "    private inner: PathFinder<T>,\n" +
+        "    private getComponent: (t: T) => number,\n" +
+        "  ) {}",
+      "  private inner: PathFinder<T>;\n" +
+        "  private getComponent: (t: T) => number;\n\n" +
+        "  constructor(\n" +
+        "    inner: PathFinder<T>,\n" +
+        "    getComponent: (t: T) => number,\n" +
+        "  ) {\n" +
+        "    this.inner = inner;\n" +
+        "    this.getComponent = getComponent;\n" +
+        "  }",
+      "CCT ctor",
+    );
+  }
+  if (rel.endsWith("pathfinding/transformers/ShoreCoercingTransformer.ts")) {
+    // GameMap/TileRef/PathFinder are all type-only and the extensionless
+    // specifiers are unloadable -> dropped. The ctor's two parameter
+    // properties are expanded.
+    out = must(
+      out,
+      'import { GameMap, TileRef } from "../../game/GameMap";\n' +
+        'import { PathFinder } from "../types";\n',
+      "",
+      "SCT imports",
+    );
+    out = must(
+      out,
+      "  constructor(\n" +
+        "    private inner: PathFinder<number>,\n" +
+        "    private map: GameMap,\n" +
+        "  ) {}",
+      "  private inner: PathFinder<number>;\n" +
+        "  private map: GameMap;\n\n" +
+        "  constructor(\n" +
+        "    inner: PathFinder<number>,\n" +
+        "    map: GameMap,\n" +
+        "  ) {\n" +
+        "    this.inner = inner;\n" +
+        "    this.map = map;\n" +
+        "  }",
+      "SCT ctor",
+    );
+  }
 
   mkdirSync(cacheDir, { recursive: true });
   const hash = createHash("sha1").update(out).digest("hex").slice(0, 10);

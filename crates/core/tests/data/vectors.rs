@@ -15464,3 +15464,124 @@ pub const STEPPER_SCENARIOS: &[StepperScenario] = &[
     SP_BARE,
 ];
 
+/// ComponentCheckTransformer scenario (ComponentCheckTransformer.ts).
+/// `table` is a flat [ref, component_id] pair list; `default` is the
+/// component id for unlisted tiles. The transformer passes inner's
+/// result through unchanged, so output is derived from (seen_flag,
+/// inner_mode). `groups` is a flat script: [is_multi, from_len,
+/// from_refs..., to, inner_mode, inner_len, inner_refs..., seen_flag,
+/// [seen_multi, seen_len, seen_refs..., seen_goal]] (inner_mode 0 =
+/// null, 2 = list; seen_flag 0 = inner never called => output null,
+/// 1 = inner called => output = inner result).
+pub struct ComponentCheckScenario {
+    pub name: &'static str,
+    pub table: &'static [f64],
+    pub default: f64,
+    pub groups: &'static [f64],
+}
+
+pub const CCT_BASIC: ComponentCheckScenario = ComponentCheckScenario {
+    name: "cct_basic",
+    table: &[
+    0f64, 10f64, 11f64, 10f64, 22f64, 20f64, 33f64, 30f64,
+],
+    default: 0f64,
+    groups: &[
+    0f64, 1f64, 0f64, 11f64, 2f64, 2f64, 0f64, 11f64, 1f64, 0f64,
+    1f64, 0f64, 11f64, 0f64, 1f64, 0f64, 22f64, 2f64, 1f64, 0f64,
+    0f64, 1f64, 3f64, 0f64, 22f64, 33f64, 11f64, 2f64, 2f64, 0f64,
+    11f64, 1f64, 0f64, 1f64, 0f64, 11f64, 1f64, 3f64, 0f64, 22f64,
+    33f64, 33f64, 2f64, 1f64, 33f64, 1f64, 0f64, 1f64, 33f64, 33f64,
+    1f64, 3f64, 0f64, 22f64, 11f64, 11f64, 2f64, 2f64, 0f64, 11f64,
+    1f64, 1f64, 2f64, 0f64, 11f64, 11f64, 1f64, 0f64, 11f64, 2f64,
+    1f64, 0f64, 0f64, 0f64, 1f64, 0f64, 11f64, 0f64, 0f64, 1f64,
+    0f64, 1f64, 0f64, 11f64, 1f64, 2f64, 0f64, 22f64, 44f64, 2f64,
+    1f64, 0f64, 0f64,
+],
+};
+
+pub const CCT_DEFAULT: ComponentCheckScenario = ComponentCheckScenario {
+    name: "cct_default",
+    table: &[
+],
+    default: 7f64,
+    groups: &[
+    0f64, 1f64, 55f64, 66f64, 2f64, 2f64, 55f64, 66f64, 1f64, 0f64,
+    1f64, 55f64, 66f64, 1f64, 3f64, 55f64, 66f64, 77f64, 55f64, 2f64,
+    1f64, 77f64, 1f64, 1f64, 3f64, 55f64, 66f64, 77f64, 55f64,
+],
+};
+
+pub const COMPONENT_CHECK_SCENARIOS: &[ComponentCheckScenario] = &[
+    CCT_BASIC,
+    CCT_DEFAULT,
+];
+
+/// ShoreCoercingTransformer scenario (ShoreCoercingTransformer.ts).
+/// Map is `w x h`, default land (0x83), `water` is a flat [x, y] list
+/// flipped to 0x03. `groups` is a flat script: [is_multi, from_len,
+/// from_refs..., to, inner_mode, inner_len, inner_refs...,
+/// seen_flag, [seen_multi, seen_len, seen_refs..., seen_goal],
+/// out_mode, [out_len, out_refs...]] (inner_mode 0 = null, 1 = [],
+/// 2 = list; seen_flag 0 = inner never called; out_mode 0 = null,
+/// 2 = path).
+pub struct ShoreCoercingScenario {
+    pub name: &'static str,
+    pub w: f64,
+    pub h: f64,
+    pub water: &'static [f64],
+    pub groups: &'static [f64],
+}
+
+pub const SCT_BLOB: ShoreCoercingScenario = ShoreCoercingScenario {
+    name: "sct_blob",
+    w: 10f64,
+    h: 10f64,
+    water: &[
+    2f64, 2f64, 3f64, 2f64, 4f64, 2f64, 2f64, 3f64, 3f64, 3f64,
+    4f64, 3f64, 3f64, 4f64, 8f64, 8f64, 6f64, 2f64, 7f64, 2f64,
+    6f64, 4f64, 7f64, 4f64,
+],
+    groups: &[
+    0f64, 1f64, 33f64, 24f64, 2f64, 3f64, 33f64, 34f64, 24f64, 1f64,
+    0f64, 1f64, 33f64, 24f64, 2f64, 3f64, 33f64, 34f64, 24f64, 0f64,
+    1f64, 21f64, 24f64, 2f64, 4f64, 21f64, 22f64, 23f64, 24f64, 1f64,
+    0f64, 1f64, 22f64, 24f64, 2f64, 4f64, 21f64, 22f64, 23f64, 24f64,
+    1f64, 2f64, 21f64, 25f64, 43f64, 2f64, 4f64, 21f64, 22f64, 23f64,
+    33f64, 1f64, 1f64, 2f64, 22f64, 24f64, 43f64, 2f64, 4f64, 21f64,
+    22f64, 23f64, 33f64, 0f64, 1f64, 0f64, 24f64, 2f64, 1f64, 24f64,
+    0f64, 0f64, 0f64, 1f64, 33f64, 0f64, 2f64, 1f64, 33f64, 0f64,
+    0f64, 1f64, 2f64, 21f64, 25f64, 24f64, 0f64, 0f64, 1f64, 1f64,
+    2f64, 22f64, 24f64, 24f64, 0f64, 1f64, 2f64, 21f64, 25f64, 24f64,
+    1f64, 0f64, 1f64, 1f64, 2f64, 22f64, 24f64, 24f64, 0f64, 1f64,
+    2f64, 21f64, 22f64, 24f64, 2f64, 2f64, 22f64, 24f64, 1f64, 1f64,
+    2f64, 22f64, 22f64, 24f64, 2f64, 2f64, 22f64, 24f64, 1f64, 2f64,
+    21f64, 12f64, 24f64, 2f64, 3f64, 12f64, 22f64, 24f64, 1f64, 1f64,
+    2f64, 22f64, 22f64, 24f64, 2f64, 3f64, 12f64, 22f64, 24f64, 0f64,
+    1f64, 36f64, 26f64, 2f64, 2f64, 36f64, 26f64, 1f64, 0f64, 1f64,
+    26f64, 26f64, 2f64, 2f64, 36f64, 26f64,
+],
+};
+
+pub const SCT_GOAL: ShoreCoercingScenario = ShoreCoercingScenario {
+    name: "sct_goal",
+    w: 10f64,
+    h: 10f64,
+    water: &[
+    2f64, 2f64, 3f64, 2f64, 4f64, 2f64, 2f64, 3f64, 3f64, 3f64,
+    4f64, 3f64, 3f64, 4f64, 8f64, 8f64, 6f64, 2f64, 7f64, 2f64,
+    6f64, 4f64, 7f64, 4f64,
+],
+    groups: &[
+    0f64, 1f64, 88f64, 88f64, 2f64, 1f64, 88f64, 1f64, 0f64, 1f64,
+    88f64, 88f64, 2f64, 1f64, 88f64, 0f64, 1f64, 37f64, 27f64, 2f64,
+    2f64, 37f64, 27f64, 1f64, 0f64, 1f64, 27f64, 27f64, 2f64, 2f64,
+    37f64, 27f64,
+],
+};
+
+pub const SHORE_COERCING_SCENARIOS: &[ShoreCoercingScenario] = &[
+    SCT_BLOB,
+    SCT_GOAL,
+];
+

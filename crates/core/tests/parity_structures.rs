@@ -1757,3 +1757,198 @@ fn replay_stepper_scenarios() {
         }
     }
 }
+
+// --- ComponentCheckTransformer (ComponentCheckTransformer.ts) -----------------
+// Replays each query group against the Rust transformer over the shared
+// `ScriptedFinder` inner stub + a `TableGetter` component table. Pins: the
+// `PathStart` kind/tiles/goal `inner` received (filtering, order, and the
+// single-survivor scalar collapse), the delegated result, and "inner never
+// called" (seen_flag 0: component mismatch or vacuous empty start).
+#[test]
+fn replay_component_check_transformer_scenarios() {
+    use openfront_core::pathfinding::component_check_transformer::{
+        ComponentCheckTransformer, TableGetter,
+    };
+    use openfront_core::pathfinding::mini_map_transformer::ScriptedFinder;
+    use openfront_core::pathfinding::PathStart;
+    for s in vectors::COMPONENT_CHECK_SCENARIOS {
+        let table: Vec<(f64, i64)> = s
+            .table
+            .chunks(2)
+            .map(|c| (c[0], c[1] as i64))
+            .collect();
+        let g = s.groups;
+        let mut k = 0;
+        let mut qi = 0;
+        while k < g.len() {
+            // [is_multi, from_len, from_refs..., to]
+            let is_multi = g[k] as i64;
+            let from_len = g[k + 1] as usize;
+            let from_refs = &g[k + 2..k + 2 + from_len];
+            let to = g[k + 2 + from_len];
+            k += 3 + from_len;
+            // [inner_mode, inner_len, inner_refs...]
+            let inner_mode = g[k] as i64;
+            let inner_len = g[k + 1] as usize;
+            let inner_refs: Vec<f64> = g[k + 2..k + 2 + inner_len].to_vec();
+            k += 2 + inner_len;
+            // [seen_flag, [seen_multi, seen_len, seen_refs..., seen_goal]]
+            let seen_flag = g[k] as i64;
+            let mut seen: Option<(i64, Vec<f64>, f64)> = None;
+            if seen_flag == 1 {
+                let m = g[k + 1] as i64;
+                let l = g[k + 2] as usize;
+                let tiles = g[k + 3..k + 3 + l].to_vec();
+                let goal = g[k + 3 + l];
+                seen = Some((m, tiles, goal));
+                k += 3 + l + 1;
+            } else {
+                k += 1;
+            }
+
+            let mut getter = TableGetter::default();
+            getter.set_table(table.clone(), s.default as i64);
+            let mut stub = ScriptedFinder::default();
+            stub.push_path(match inner_mode {
+                0 => None,
+                _ => Some(inner_refs.clone()),
+            });
+            let starts = if is_multi == 1 {
+                PathStart::Multi(from_refs)
+            } else {
+                PathStart::Single(from_refs[0])
+            };
+            let got = {
+                let mut tr = ComponentCheckTransformer::new(&mut stub, getter);
+                tr.find_path(starts, to)
+            };
+            // Output is the pass-through of inner's result: null when inner
+            // was never called or returned null, else the inner list.
+            let want: Option<Vec<f64>> = if seen_flag == 0 || inner_mode == 0 {
+                None
+            } else {
+                Some(inner_refs.clone())
+            };
+            assert_eq!(got, want, "{} q{} output", s.name, qi);
+            match (&seen, stub.last_seen.as_ref()) {
+                (None, None) => {}
+                (Some((m, tiles, goal)), Some((im, itiles, igoal))) => {
+                    assert_eq!(*im as i64, *m, "{} q{} seen kind", s.name, qi);
+                    assert_eq!(itiles, tiles, "{} q{} seen tiles", s.name, qi);
+                    assert_eq!(igoal, goal, "{} q{} seen goal", s.name, qi);
+                }
+                (a, b) => panic!(
+                    "{} q{} seen mismatch: recorded {:?}, rust {:?}",
+                    s.name,
+                    qi,
+                    a.is_some(),
+                    b.is_some()
+                ),
+            }
+            qi += 1;
+        }
+    }
+}
+
+// --- ShoreCoercingTransformer (ShoreCoercingTransformer.ts) -------------------
+// Replays each query group against the Rust transformer over a hand-built
+// land/water map + `ScriptedFinder`. Pins: the coerced water starts/goal
+// passed to `inner` (scalar collapse, duplicate starts from the raw-water
+// delete), the restored/extended output path (start unshift, goal append,
+// the `!== originalTo` guard), and every `null` short-circuit (no water
+// starts, goal with no water neighbor, inner null/empty).
+#[test]
+fn replay_shore_coercing_transformer_scenarios() {
+    use openfront_core::pathfinding::mini_map_transformer::ScriptedFinder;
+    use openfront_core::pathfinding::shore_coercing_transformer::ShoreCoercingTransformer;
+    use openfront_core::pathfinding::PathStart;
+    for s in vectors::SHORE_COERCING_SCENARIOS {
+        let w = s.w as usize;
+        let h = s.h as usize;
+        let mut data = vec![0x83u8; w * h];
+        for pair in s.water.chunks(2) {
+            data[pair[1] as usize * w + pair[0] as usize] = 0x03;
+        }
+        let gm = GameMap::new(s.w, s.h, data, (w * h - s.water.len() / 2) as f64);
+        let g = s.groups;
+        let mut k = 0;
+        let mut qi = 0;
+        while k < g.len() {
+            // [is_multi, from_len, from_refs..., to]
+            let is_multi = g[k] as i64;
+            let from_len = g[k + 1] as usize;
+            let from_refs = &g[k + 2..k + 2 + from_len];
+            let to = g[k + 2 + from_len];
+            k += 3 + from_len;
+            // [inner_mode, inner_len, inner_refs...]
+            let inner_mode = g[k] as i64;
+            let inner_len = g[k + 1] as usize;
+            let inner_refs: Vec<f64> = g[k + 2..k + 2 + inner_len].to_vec();
+            k += 2 + inner_len;
+            // [seen_flag, [seen_multi, seen_len, seen_refs..., seen_goal]]
+            let seen_flag = g[k] as i64;
+            let mut seen: Option<(i64, Vec<f64>, f64)> = None;
+            if seen_flag == 1 {
+                let m = g[k + 1] as i64;
+                let l = g[k + 2] as usize;
+                let tiles = g[k + 3..k + 3 + l].to_vec();
+                let goal = g[k + 3 + l];
+                seen = Some((m, tiles, goal));
+                k += 3 + l + 1;
+            } else {
+                k += 1;
+            }
+            // [out_mode, [out_len, out_refs...]]
+            let out_mode = g[k] as i64;
+            k += 1;
+            let out_tiles: Vec<f64> = if out_mode == 2 {
+                let l = g[k] as usize;
+                let t = g[k + 1..k + 1 + l].to_vec();
+                k += 1 + l;
+                t
+            } else {
+                Vec::new()
+            };
+
+            let mut stub = ScriptedFinder::default();
+            stub.push_path(match inner_mode {
+                0 => None,
+                1 => Some(vec![]),
+                _ => Some(inner_refs),
+            });
+            let starts = if is_multi == 1 {
+                PathStart::Multi(from_refs)
+            } else {
+                PathStart::Single(from_refs[0])
+            };
+            let got = {
+                let mut tr = ShoreCoercingTransformer::new(&mut stub, &gm);
+                tr.find_path(starts, to)
+            };
+            match out_mode {
+                0 => assert_eq!(got, None, "{} q{} null", s.name, qi),
+                2 => {
+                    let p = got.expect("unexpected null");
+                    assert_eq!(p, out_tiles, "{} q{} path", s.name, qi);
+                }
+                other => panic!("{} unknown out_mode {other}", s.name),
+            }
+            match (&seen, stub.last_seen.as_ref()) {
+                (None, None) => {}
+                (Some((m, tiles, goal)), Some((im, itiles, igoal))) => {
+                    assert_eq!(*im as i64, *m, "{} q{} seen kind", s.name, qi);
+                    assert_eq!(itiles, tiles, "{} q{} seen tiles", s.name, qi);
+                    assert_eq!(igoal, goal, "{} q{} seen goal", s.name, qi);
+                }
+                (a, b) => panic!(
+                    "{} q{} seen mismatch: recorded {:?}, rust {:?}",
+                    s.name,
+                    qi,
+                    a.is_some(),
+                    b.is_some()
+                ),
+            }
+            qi += 1;
+        }
+    }
+}

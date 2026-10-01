@@ -41,6 +41,10 @@
 //! * [`pattern_decoder`] — `src/core/PatternDecoder.ts` (packed player-pattern
 //!   header decode and `isPrimary` bit lookup; the injected `base64urlDecode`
 //!   is not ported — the module takes the decoded bytes directly)
+//! * [`doomsday_clock`] — `src/core/game/DoomsdayClock.ts` (wave-schedule
+//!   threshold math: required share / HUD wave state / troop floor / convex
+//!   drain curve / rot lattice + hashed noises / rot quota; integer-only,
+//!   `Math.imul`→`wrapping_mul`, `>>>0`→`to_uint32`)
 //! * [`line`] — `src/core/utilities/Line.ts` (`DistanceBasedBezierCurve`:
 //!   fixed-point De Casteljau subdivision for MIRV trajectories)
 //! * [`veterancy`] — `src/core/game/Veterancy.ts` (`maxHealthWithVeterancy`:
@@ -91,6 +95,7 @@
 pub mod anon_names;
 pub mod close_codes;
 pub mod detmath;
+pub mod doomsday_clock;
 pub mod game_map;
 pub mod jsnum;
 pub mod line;

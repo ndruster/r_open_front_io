@@ -39,6 +39,8 @@ rust/
 │   │   ├── pattern_decoder.rs     port of PatternDecoder.ts (packed-pattern
 │   │   │                          header decode + isPrimary bit lookup;
 │   │   │                          base64url layer not ported)
+│   │   ├── doomsday_clock.rs      port of game/DoomsdayClock.ts (wave
+│   │   │                          schedule math + rot noises + drain curves)
 │   │   ├── wasm_probe.rs          `extern "C"` surface, feature-gated
 │   │   └── pathfinding/
 │   │       ├── mod.rs
@@ -468,6 +470,20 @@ desync, not a rounding nit. Two things enforce that here:
     scenarios sweep the guard order, every `scale` value, the width/height
     bit packing (incl. the 7-bit width high field), metadata-region negative
     reads, and the `ToInt32` coordinate wrap edges.
+29. **`DoomsdayClock.ts`** (`doomsday_clock`) is the wave-schedule threshold
+    math: `requiredBasisPoints` / `doomsdayClockRequiredTiles` (grace, linear
+    ramps, flat pauses, the team ladder swap), the HUD `waveState`, the troop
+    floor / convex drain curves, the R2-lattice `rotSpeckleNoise` and hashed
+    `rotFrontNoise`, and `rotQuota`. JS-isms pinned: `Math.imul` →
+    `i32::wrapping_mul` with `ToInt32` on the constants (`R2_X` / `R2_Y`
+    exceed `INT32_MAX` and wrap negative), the three int32 products sum in
+    `f64` before `>>> 0`, `Math.max` is the NaN-propagating [`js_max`], the
+    convex curve's loop counter stays `f64` so fractional exponents iterate
+    like the JS `for` loop (`NaN` exponent runs zero times, `Infinity` hangs
+    the TS side and is not captured), and unknown speed codes fall back to
+    `normal` via `??`. The 1,270 scenarios sweep every ramp/pause boundary
+    of all four speeds, both ladders, the int32 coercion edges of the
+    noises, and the floor/drain clamp matrix.
 
 Regenerate whenever a ported source changes:
 
@@ -501,7 +517,7 @@ node rust/tools/run_wasm_parity.mjs
 
 `wasm-probe` exposes the ported functions through `extern "C"` scalar
 entrypoints (`src/wasm_probe.rs`); the runner imports `data/vectors.json` and
-compares every value. Last run: **33,711 comparisons, all bit-identical**.
+compares every value. Last run: **37,141 comparisons, all bit-identical**.
 
 ### Windows: the linker environment
 

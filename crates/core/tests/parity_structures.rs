@@ -2225,3 +2225,17 @@ fn replay_patterndecoder_scenarios() {
         }
     }
 }
+
+// DoomsdayClock.ts: replay the wave math through the shared `run_op` runner
+// and compare the flat token streams.
+#[test]
+fn replay_doomsdayclock_scenarios() {
+    use openfront_core::doomsday_clock::run_op;
+    for s in vectors::DC_SCENARIOS {
+        let got = run_op(s.kind, s.args);
+        assert_eq!(got.len(), s.res.len(), "{} res len: got {got:?} want {:?}", s.name, s.res);
+        for (j, (g, w)) in got.iter().zip(s.res.iter()).enumerate() {
+            assert!(obj_is(*g, *w), "{} res[{j}]: got {g} want {w}", s.name);
+        }
+    }
+}

@@ -19816,3 +19816,10174 @@ pub const PD_SCENARIOS: &[PdScenario] = &[
     PD_IP_29,
 ];
 
+/// DoomsdayClock scenario: one `doomsday_clock::run_op(kind, args)` call.
+pub struct DcScenario {
+    pub name: &'static str,
+    pub kind: u8,
+    pub args: &'static [f64],
+    pub res: &'static [f64],
+}
+
+pub const DC_RT_0: DcScenario = DcScenario {
+    name: "dc_rt_0",
+    kind: 0u8,
+    args: &[0f64, 0f64, 10000f64, -1000000000f64],
+    res: &[0f64],
+};
+
+pub const DC_RT_1: DcScenario = DcScenario {
+    name: "dc_rt_1",
+    kind: 0u8,
+    args: &[0f64, 0f64, 10000f64, -1f64],
+    res: &[0f64],
+};
+
+pub const DC_RT_2: DcScenario = DcScenario {
+    name: "dc_rt_2",
+    kind: 0u8,
+    args: &[0f64, 0f64, 10000f64, 0f64],
+    res: &[0f64],
+};
+
+pub const DC_RT_3: DcScenario = DcScenario {
+    name: "dc_rt_3",
+    kind: 0u8,
+    args: &[0f64, 0f64, 10000f64, 0.5f64],
+    res: &[0f64],
+};
+
+pub const DC_RT_4: DcScenario = DcScenario {
+    name: "dc_rt_4",
+    kind: 0u8,
+    args: &[0f64, 0f64, 10000f64, 595f64],
+    res: &[0f64],
+};
+
+pub const DC_RT_5: DcScenario = DcScenario {
+    name: "dc_rt_5",
+    kind: 0u8,
+    args: &[0f64, 0f64, 10000f64, 596f64],
+    res: &[0f64],
+};
+
+pub const DC_RT_6: DcScenario = DcScenario {
+    name: "dc_rt_6",
+    kind: 0u8,
+    args: &[0f64, 0f64, 10000f64, 600f64],
+    res: &[0f64],
+};
+
+pub const DC_RT_7: DcScenario = DcScenario {
+    name: "dc_rt_7",
+    kind: 0u8,
+    args: &[0f64, 0f64, 10000f64, 600.5f64],
+    res: &[0f64],
+};
+
+pub const DC_RT_8: DcScenario = DcScenario {
+    name: "dc_rt_8",
+    kind: 0u8,
+    args: &[0f64, 0f64, 10000f64, 601f64],
+    res: &[0f64],
+};
+
+pub const DC_RT_9: DcScenario = DcScenario {
+    name: "dc_rt_9",
+    kind: 0u8,
+    args: &[0f64, 0f64, 10000f64, 618f64],
+    res: &[15f64],
+};
+
+pub const DC_RT_10: DcScenario = DcScenario {
+    name: "dc_rt_10",
+    kind: 0u8,
+    args: &[0f64, 0f64, 10000f64, 636f64],
+    res: &[30f64],
+};
+
+pub const DC_RT_11: DcScenario = DcScenario {
+    name: "dc_rt_11",
+    kind: 0u8,
+    args: &[0f64, 0f64, 10000f64, 640f64],
+    res: &[33f64],
+};
+
+pub const DC_RT_12: DcScenario = DcScenario {
+    name: "dc_rt_12",
+    kind: 0u8,
+    args: &[0f64, 0f64, 10000f64, 644f64],
+    res: &[36f64],
+};
+
+pub const DC_RT_13: DcScenario = DcScenario {
+    name: "dc_rt_13",
+    kind: 0u8,
+    args: &[0f64, 0f64, 10000f64, 768f64],
+    res: &[140f64],
+};
+
+pub const DC_RT_14: DcScenario = DcScenario {
+    name: "dc_rt_14",
+    kind: 0u8,
+    args: &[0f64, 0f64, 10000f64, 822f64],
+    res: &[185f64],
+};
+
+pub const DC_RT_15: DcScenario = DcScenario {
+    name: "dc_rt_15",
+    kind: 0u8,
+    args: &[0f64, 0f64, 10000f64, 858f64],
+    res: &[200f64],
+};
+
+pub const DC_RT_16: DcScenario = DcScenario {
+    name: "dc_rt_16",
+    kind: 0u8,
+    args: &[0f64, 0f64, 10000f64, 864f64],
+    res: &[200f64],
+};
+
+pub const DC_RT_17: DcScenario = DcScenario {
+    name: "dc_rt_17",
+    kind: 0u8,
+    args: &[0f64, 0f64, 10000f64, 896f64],
+    res: &[200f64],
+};
+
+pub const DC_RT_18: DcScenario = DcScenario {
+    name: "dc_rt_18",
+    kind: 0u8,
+    args: &[0f64, 0f64, 10000f64, 900f64],
+    res: &[200f64],
+};
+
+pub const DC_RT_19: DcScenario = DcScenario {
+    name: "dc_rt_19",
+    kind: 0u8,
+    args: &[0f64, 0f64, 10000f64, 1176f64],
+    res: &[400f64],
+};
+
+pub const DC_RT_20: DcScenario = DcScenario {
+    name: "dc_rt_20",
+    kind: 0u8,
+    args: &[0f64, 0f64, 10000f64, 1246f64],
+    res: &[432f64],
+};
+
+pub const DC_RT_21: DcScenario = DcScenario {
+    name: "dc_rt_21",
+    kind: 0u8,
+    args: &[0f64, 0f64, 10000f64, 1316f64],
+    res: &[520f64],
+};
+
+pub const DC_RT_22: DcScenario = DcScenario {
+    name: "dc_rt_22",
+    kind: 0u8,
+    args: &[0f64, 0f64, 10000f64, 1386f64],
+    res: &[607f64],
+};
+
+pub const DC_RT_23: DcScenario = DcScenario {
+    name: "dc_rt_23",
+    kind: 0u8,
+    args: &[0f64, 0f64, 10000f64, 1456f64],
+    res: &[695f64],
+};
+
+pub const DC_RT_24: DcScenario = DcScenario {
+    name: "dc_rt_24",
+    kind: 0u8,
+    args: &[0f64, 0f64, 10000f64, 1526f64],
+    res: &[700f64],
+};
+
+pub const DC_RT_25: DcScenario = DcScenario {
+    name: "dc_rt_25",
+    kind: 0u8,
+    args: &[0f64, 0f64, 10000f64, 1596f64],
+    res: &[810f64],
+};
+
+pub const DC_RT_26: DcScenario = DcScenario {
+    name: "dc_rt_26",
+    kind: 0u8,
+    args: &[0f64, 0f64, 10000f64, 1666f64],
+    res: &[926f64],
+};
+
+pub const DC_RT_27: DcScenario = DcScenario {
+    name: "dc_rt_27",
+    kind: 0u8,
+    args: &[0f64, 0f64, 10000f64, 1736f64],
+    res: &[1043f64],
+};
+
+pub const DC_RT_28: DcScenario = DcScenario {
+    name: "dc_rt_28",
+    kind: 0u8,
+    args: &[0f64, 0f64, 10000f64, 2100f64],
+    res: &[1700f64],
+};
+
+pub const DC_RT_29: DcScenario = DcScenario {
+    name: "dc_rt_29",
+    kind: 0u8,
+    args: &[0f64, 0f64, 10000f64, 2310f64],
+    res: &[2233f64],
+};
+
+pub const DC_RT_30: DcScenario = DcScenario {
+    name: "dc_rt_30",
+    kind: 0u8,
+    args: &[0f64, 0f64, 10000f64, 2520f64],
+    res: &[2750f64],
+};
+
+pub const DC_RT_31: DcScenario = DcScenario {
+    name: "dc_rt_31",
+    kind: 0u8,
+    args: &[0f64, 0f64, 10000f64, 2730f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_32: DcScenario = DcScenario {
+    name: "dc_rt_32",
+    kind: 0u8,
+    args: &[0f64, 0f64, 10000f64, 2940f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_33: DcScenario = DcScenario {
+    name: "dc_rt_33",
+    kind: 0u8,
+    args: &[0f64, 0f64, 10000f64, 3150f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_34: DcScenario = DcScenario {
+    name: "dc_rt_34",
+    kind: 0u8,
+    args: &[0f64, 0f64, 10000f64, 3360f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_35: DcScenario = DcScenario {
+    name: "dc_rt_35",
+    kind: 0u8,
+    args: &[0f64, 0f64, 10000f64, 3570f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_36: DcScenario = DcScenario {
+    name: "dc_rt_36",
+    kind: 0u8,
+    args: &[0f64, 0f64, 10000f64, 4500f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_37: DcScenario = DcScenario {
+    name: "dc_rt_37",
+    kind: 0u8,
+    args: &[0f64, 0f64, 10000f64, 1000000000f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_38: DcScenario = DcScenario {
+    name: "dc_rt_38",
+    kind: 0u8,
+    args: &[0f64, 0f64, 10000f64, f64::NAN],
+    res: &[3500f64],
+};
+
+pub const DC_RT_39: DcScenario = DcScenario {
+    name: "dc_rt_39",
+    kind: 0u8,
+    args: &[0f64, 0f64, 10000f64, f64::NEG_INFINITY],
+    res: &[0f64],
+};
+
+pub const DC_RT_40: DcScenario = DcScenario {
+    name: "dc_rt_40",
+    kind: 0u8,
+    args: &[0f64, 0f64, 10000f64, f64::INFINITY],
+    res: &[3500f64],
+};
+
+pub const DC_RT_41: DcScenario = DcScenario {
+    name: "dc_rt_41",
+    kind: 0u8,
+    args: &[0f64, 0f64, 10000f64, 600.9999999f64],
+    res: &[0f64],
+};
+
+pub const DC_RT_42: DcScenario = DcScenario {
+    name: "dc_rt_42",
+    kind: 0u8,
+    args: &[0f64, 1f64, 10000f64, -1000000000f64],
+    res: &[0f64],
+};
+
+pub const DC_RT_43: DcScenario = DcScenario {
+    name: "dc_rt_43",
+    kind: 0u8,
+    args: &[0f64, 1f64, 10000f64, -1f64],
+    res: &[0f64],
+};
+
+pub const DC_RT_44: DcScenario = DcScenario {
+    name: "dc_rt_44",
+    kind: 0u8,
+    args: &[0f64, 1f64, 10000f64, 0f64],
+    res: &[0f64],
+};
+
+pub const DC_RT_45: DcScenario = DcScenario {
+    name: "dc_rt_45",
+    kind: 0u8,
+    args: &[0f64, 1f64, 10000f64, 0.5f64],
+    res: &[0f64],
+};
+
+pub const DC_RT_46: DcScenario = DcScenario {
+    name: "dc_rt_46",
+    kind: 0u8,
+    args: &[0f64, 1f64, 10000f64, 595f64],
+    res: &[0f64],
+};
+
+pub const DC_RT_47: DcScenario = DcScenario {
+    name: "dc_rt_47",
+    kind: 0u8,
+    args: &[0f64, 1f64, 10000f64, 596f64],
+    res: &[0f64],
+};
+
+pub const DC_RT_48: DcScenario = DcScenario {
+    name: "dc_rt_48",
+    kind: 0u8,
+    args: &[0f64, 1f64, 10000f64, 600f64],
+    res: &[0f64],
+};
+
+pub const DC_RT_49: DcScenario = DcScenario {
+    name: "dc_rt_49",
+    kind: 0u8,
+    args: &[0f64, 1f64, 10000f64, 600.5f64],
+    res: &[0f64],
+};
+
+pub const DC_RT_50: DcScenario = DcScenario {
+    name: "dc_rt_50",
+    kind: 0u8,
+    args: &[0f64, 1f64, 10000f64, 601f64],
+    res: &[1f64],
+};
+
+pub const DC_RT_51: DcScenario = DcScenario {
+    name: "dc_rt_51",
+    kind: 0u8,
+    args: &[0f64, 1f64, 10000f64, 618f64],
+    res: &[22f64],
+};
+
+pub const DC_RT_52: DcScenario = DcScenario {
+    name: "dc_rt_52",
+    kind: 0u8,
+    args: &[0f64, 1f64, 10000f64, 636f64],
+    res: &[45f64],
+};
+
+pub const DC_RT_53: DcScenario = DcScenario {
+    name: "dc_rt_53",
+    kind: 0u8,
+    args: &[0f64, 1f64, 10000f64, 640f64],
+    res: &[50f64],
+};
+
+pub const DC_RT_54: DcScenario = DcScenario {
+    name: "dc_rt_54",
+    kind: 0u8,
+    args: &[0f64, 1f64, 10000f64, 644f64],
+    res: &[55f64],
+};
+
+pub const DC_RT_55: DcScenario = DcScenario {
+    name: "dc_rt_55",
+    kind: 0u8,
+    args: &[0f64, 1f64, 10000f64, 768f64],
+    res: &[210f64],
+};
+
+pub const DC_RT_56: DcScenario = DcScenario {
+    name: "dc_rt_56",
+    kind: 0u8,
+    args: &[0f64, 1f64, 10000f64, 822f64],
+    res: &[277f64],
+};
+
+pub const DC_RT_57: DcScenario = DcScenario {
+    name: "dc_rt_57",
+    kind: 0u8,
+    args: &[0f64, 1f64, 10000f64, 858f64],
+    res: &[300f64],
+};
+
+pub const DC_RT_58: DcScenario = DcScenario {
+    name: "dc_rt_58",
+    kind: 0u8,
+    args: &[0f64, 1f64, 10000f64, 864f64],
+    res: &[300f64],
+};
+
+pub const DC_RT_59: DcScenario = DcScenario {
+    name: "dc_rt_59",
+    kind: 0u8,
+    args: &[0f64, 1f64, 10000f64, 896f64],
+    res: &[300f64],
+};
+
+pub const DC_RT_60: DcScenario = DcScenario {
+    name: "dc_rt_60",
+    kind: 0u8,
+    args: &[0f64, 1f64, 10000f64, 900f64],
+    res: &[300f64],
+};
+
+pub const DC_RT_61: DcScenario = DcScenario {
+    name: "dc_rt_61",
+    kind: 0u8,
+    args: &[0f64, 1f64, 10000f64, 1176f64],
+    res: &[600f64],
+};
+
+pub const DC_RT_62: DcScenario = DcScenario {
+    name: "dc_rt_62",
+    kind: 0u8,
+    args: &[0f64, 1f64, 10000f64, 1246f64],
+    res: &[643f64],
+};
+
+pub const DC_RT_63: DcScenario = DcScenario {
+    name: "dc_rt_63",
+    kind: 0u8,
+    args: &[0f64, 1f64, 10000f64, 1316f64],
+    res: &[760f64],
+};
+
+pub const DC_RT_64: DcScenario = DcScenario {
+    name: "dc_rt_64",
+    kind: 0u8,
+    args: &[0f64, 1f64, 10000f64, 1386f64],
+    res: &[876f64],
+};
+
+pub const DC_RT_65: DcScenario = DcScenario {
+    name: "dc_rt_65",
+    kind: 0u8,
+    args: &[0f64, 1f64, 10000f64, 1456f64],
+    res: &[993f64],
+};
+
+pub const DC_RT_66: DcScenario = DcScenario {
+    name: "dc_rt_66",
+    kind: 0u8,
+    args: &[0f64, 1f64, 10000f64, 1526f64],
+    res: &[1000f64],
+};
+
+pub const DC_RT_67: DcScenario = DcScenario {
+    name: "dc_rt_67",
+    kind: 0u8,
+    args: &[0f64, 1f64, 10000f64, 1596f64],
+    res: &[1137f64],
+};
+
+pub const DC_RT_68: DcScenario = DcScenario {
+    name: "dc_rt_68",
+    kind: 0u8,
+    args: &[0f64, 1f64, 10000f64, 1666f64],
+    res: &[1283f64],
+};
+
+pub const DC_RT_69: DcScenario = DcScenario {
+    name: "dc_rt_69",
+    kind: 0u8,
+    args: &[0f64, 1f64, 10000f64, 1736f64],
+    res: &[1429f64],
+};
+
+pub const DC_RT_70: DcScenario = DcScenario {
+    name: "dc_rt_70",
+    kind: 0u8,
+    args: &[0f64, 1f64, 10000f64, 2100f64],
+    res: &[2100f64],
+};
+
+pub const DC_RT_71: DcScenario = DcScenario {
+    name: "dc_rt_71",
+    kind: 0u8,
+    args: &[0f64, 1f64, 10000f64, 2310f64],
+    res: &[2566f64],
+};
+
+pub const DC_RT_72: DcScenario = DcScenario {
+    name: "dc_rt_72",
+    kind: 0u8,
+    args: &[0f64, 1f64, 10000f64, 2520f64],
+    res: &[2975f64],
+};
+
+pub const DC_RT_73: DcScenario = DcScenario {
+    name: "dc_rt_73",
+    kind: 0u8,
+    args: &[0f64, 1f64, 10000f64, 2730f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_74: DcScenario = DcScenario {
+    name: "dc_rt_74",
+    kind: 0u8,
+    args: &[0f64, 1f64, 10000f64, 2940f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_75: DcScenario = DcScenario {
+    name: "dc_rt_75",
+    kind: 0u8,
+    args: &[0f64, 1f64, 10000f64, 3150f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_76: DcScenario = DcScenario {
+    name: "dc_rt_76",
+    kind: 0u8,
+    args: &[0f64, 1f64, 10000f64, 3360f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_77: DcScenario = DcScenario {
+    name: "dc_rt_77",
+    kind: 0u8,
+    args: &[0f64, 1f64, 10000f64, 3570f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_78: DcScenario = DcScenario {
+    name: "dc_rt_78",
+    kind: 0u8,
+    args: &[0f64, 1f64, 10000f64, 4500f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_79: DcScenario = DcScenario {
+    name: "dc_rt_79",
+    kind: 0u8,
+    args: &[0f64, 1f64, 10000f64, 1000000000f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_80: DcScenario = DcScenario {
+    name: "dc_rt_80",
+    kind: 0u8,
+    args: &[0f64, 1f64, 10000f64, f64::NAN],
+    res: &[3500f64],
+};
+
+pub const DC_RT_81: DcScenario = DcScenario {
+    name: "dc_rt_81",
+    kind: 0u8,
+    args: &[0f64, 1f64, 10000f64, f64::NEG_INFINITY],
+    res: &[0f64],
+};
+
+pub const DC_RT_82: DcScenario = DcScenario {
+    name: "dc_rt_82",
+    kind: 0u8,
+    args: &[0f64, 1f64, 10000f64, f64::INFINITY],
+    res: &[3500f64],
+};
+
+pub const DC_RT_83: DcScenario = DcScenario {
+    name: "dc_rt_83",
+    kind: 0u8,
+    args: &[0f64, 1f64, 10000f64, 600.9999999f64],
+    res: &[1f64],
+};
+
+pub const DC_RT_84: DcScenario = DcScenario {
+    name: "dc_rt_84",
+    kind: 0u8,
+    args: &[0f64, 2f64, 10000f64, -1000000000f64],
+    res: &[0f64],
+};
+
+pub const DC_RT_85: DcScenario = DcScenario {
+    name: "dc_rt_85",
+    kind: 0u8,
+    args: &[0f64, 2f64, 10000f64, -1f64],
+    res: &[0f64],
+};
+
+pub const DC_RT_86: DcScenario = DcScenario {
+    name: "dc_rt_86",
+    kind: 0u8,
+    args: &[0f64, 2f64, 10000f64, 0f64],
+    res: &[0f64],
+};
+
+pub const DC_RT_87: DcScenario = DcScenario {
+    name: "dc_rt_87",
+    kind: 0u8,
+    args: &[0f64, 2f64, 10000f64, 0.5f64],
+    res: &[0f64],
+};
+
+pub const DC_RT_88: DcScenario = DcScenario {
+    name: "dc_rt_88",
+    kind: 0u8,
+    args: &[0f64, 2f64, 10000f64, 595f64],
+    res: &[0f64],
+};
+
+pub const DC_RT_89: DcScenario = DcScenario {
+    name: "dc_rt_89",
+    kind: 0u8,
+    args: &[0f64, 2f64, 10000f64, 596f64],
+    res: &[0f64],
+};
+
+pub const DC_RT_90: DcScenario = DcScenario {
+    name: "dc_rt_90",
+    kind: 0u8,
+    args: &[0f64, 2f64, 10000f64, 600f64],
+    res: &[0f64],
+};
+
+pub const DC_RT_91: DcScenario = DcScenario {
+    name: "dc_rt_91",
+    kind: 0u8,
+    args: &[0f64, 2f64, 10000f64, 600.5f64],
+    res: &[0f64],
+};
+
+pub const DC_RT_92: DcScenario = DcScenario {
+    name: "dc_rt_92",
+    kind: 0u8,
+    args: &[0f64, 2f64, 10000f64, 601f64],
+    res: &[0f64],
+};
+
+pub const DC_RT_93: DcScenario = DcScenario {
+    name: "dc_rt_93",
+    kind: 0u8,
+    args: &[0f64, 2f64, 10000f64, 618f64],
+    res: &[15f64],
+};
+
+pub const DC_RT_94: DcScenario = DcScenario {
+    name: "dc_rt_94",
+    kind: 0u8,
+    args: &[0f64, 2f64, 10000f64, 636f64],
+    res: &[30f64],
+};
+
+pub const DC_RT_95: DcScenario = DcScenario {
+    name: "dc_rt_95",
+    kind: 0u8,
+    args: &[0f64, 2f64, 10000f64, 640f64],
+    res: &[33f64],
+};
+
+pub const DC_RT_96: DcScenario = DcScenario {
+    name: "dc_rt_96",
+    kind: 0u8,
+    args: &[0f64, 2f64, 10000f64, 644f64],
+    res: &[36f64],
+};
+
+pub const DC_RT_97: DcScenario = DcScenario {
+    name: "dc_rt_97",
+    kind: 0u8,
+    args: &[0f64, 2f64, 10000f64, 768f64],
+    res: &[140f64],
+};
+
+pub const DC_RT_98: DcScenario = DcScenario {
+    name: "dc_rt_98",
+    kind: 0u8,
+    args: &[0f64, 2f64, 10000f64, 822f64],
+    res: &[185f64],
+};
+
+pub const DC_RT_99: DcScenario = DcScenario {
+    name: "dc_rt_99",
+    kind: 0u8,
+    args: &[0f64, 2f64, 10000f64, 858f64],
+    res: &[200f64],
+};
+
+pub const DC_RT_100: DcScenario = DcScenario {
+    name: "dc_rt_100",
+    kind: 0u8,
+    args: &[0f64, 2f64, 10000f64, 864f64],
+    res: &[200f64],
+};
+
+pub const DC_RT_101: DcScenario = DcScenario {
+    name: "dc_rt_101",
+    kind: 0u8,
+    args: &[0f64, 2f64, 10000f64, 896f64],
+    res: &[200f64],
+};
+
+pub const DC_RT_102: DcScenario = DcScenario {
+    name: "dc_rt_102",
+    kind: 0u8,
+    args: &[0f64, 2f64, 10000f64, 900f64],
+    res: &[200f64],
+};
+
+pub const DC_RT_103: DcScenario = DcScenario {
+    name: "dc_rt_103",
+    kind: 0u8,
+    args: &[0f64, 2f64, 10000f64, 1176f64],
+    res: &[400f64],
+};
+
+pub const DC_RT_104: DcScenario = DcScenario {
+    name: "dc_rt_104",
+    kind: 0u8,
+    args: &[0f64, 2f64, 10000f64, 1246f64],
+    res: &[432f64],
+};
+
+pub const DC_RT_105: DcScenario = DcScenario {
+    name: "dc_rt_105",
+    kind: 0u8,
+    args: &[0f64, 2f64, 10000f64, 1316f64],
+    res: &[520f64],
+};
+
+pub const DC_RT_106: DcScenario = DcScenario {
+    name: "dc_rt_106",
+    kind: 0u8,
+    args: &[0f64, 2f64, 10000f64, 1386f64],
+    res: &[607f64],
+};
+
+pub const DC_RT_107: DcScenario = DcScenario {
+    name: "dc_rt_107",
+    kind: 0u8,
+    args: &[0f64, 2f64, 10000f64, 1456f64],
+    res: &[695f64],
+};
+
+pub const DC_RT_108: DcScenario = DcScenario {
+    name: "dc_rt_108",
+    kind: 0u8,
+    args: &[0f64, 2f64, 10000f64, 1526f64],
+    res: &[700f64],
+};
+
+pub const DC_RT_109: DcScenario = DcScenario {
+    name: "dc_rt_109",
+    kind: 0u8,
+    args: &[0f64, 2f64, 10000f64, 1596f64],
+    res: &[810f64],
+};
+
+pub const DC_RT_110: DcScenario = DcScenario {
+    name: "dc_rt_110",
+    kind: 0u8,
+    args: &[0f64, 2f64, 10000f64, 1666f64],
+    res: &[926f64],
+};
+
+pub const DC_RT_111: DcScenario = DcScenario {
+    name: "dc_rt_111",
+    kind: 0u8,
+    args: &[0f64, 2f64, 10000f64, 1736f64],
+    res: &[1043f64],
+};
+
+pub const DC_RT_112: DcScenario = DcScenario {
+    name: "dc_rt_112",
+    kind: 0u8,
+    args: &[0f64, 2f64, 10000f64, 2100f64],
+    res: &[1700f64],
+};
+
+pub const DC_RT_113: DcScenario = DcScenario {
+    name: "dc_rt_113",
+    kind: 0u8,
+    args: &[0f64, 2f64, 10000f64, 2310f64],
+    res: &[2233f64],
+};
+
+pub const DC_RT_114: DcScenario = DcScenario {
+    name: "dc_rt_114",
+    kind: 0u8,
+    args: &[0f64, 2f64, 10000f64, 2520f64],
+    res: &[2750f64],
+};
+
+pub const DC_RT_115: DcScenario = DcScenario {
+    name: "dc_rt_115",
+    kind: 0u8,
+    args: &[0f64, 2f64, 10000f64, 2730f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_116: DcScenario = DcScenario {
+    name: "dc_rt_116",
+    kind: 0u8,
+    args: &[0f64, 2f64, 10000f64, 2940f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_117: DcScenario = DcScenario {
+    name: "dc_rt_117",
+    kind: 0u8,
+    args: &[0f64, 2f64, 10000f64, 3150f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_118: DcScenario = DcScenario {
+    name: "dc_rt_118",
+    kind: 0u8,
+    args: &[0f64, 2f64, 10000f64, 3360f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_119: DcScenario = DcScenario {
+    name: "dc_rt_119",
+    kind: 0u8,
+    args: &[0f64, 2f64, 10000f64, 3570f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_120: DcScenario = DcScenario {
+    name: "dc_rt_120",
+    kind: 0u8,
+    args: &[0f64, 2f64, 10000f64, 4500f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_121: DcScenario = DcScenario {
+    name: "dc_rt_121",
+    kind: 0u8,
+    args: &[0f64, 2f64, 10000f64, 1000000000f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_122: DcScenario = DcScenario {
+    name: "dc_rt_122",
+    kind: 0u8,
+    args: &[0f64, 2f64, 10000f64, f64::NAN],
+    res: &[3500f64],
+};
+
+pub const DC_RT_123: DcScenario = DcScenario {
+    name: "dc_rt_123",
+    kind: 0u8,
+    args: &[0f64, 2f64, 10000f64, f64::NEG_INFINITY],
+    res: &[0f64],
+};
+
+pub const DC_RT_124: DcScenario = DcScenario {
+    name: "dc_rt_124",
+    kind: 0u8,
+    args: &[0f64, 2f64, 10000f64, f64::INFINITY],
+    res: &[3500f64],
+};
+
+pub const DC_RT_125: DcScenario = DcScenario {
+    name: "dc_rt_125",
+    kind: 0u8,
+    args: &[0f64, 2f64, 10000f64, 600.9999999f64],
+    res: &[0f64],
+};
+
+pub const DC_RT_126: DcScenario = DcScenario {
+    name: "dc_rt_126",
+    kind: 0u8,
+    args: &[1f64, 0f64, 10000f64, -1000000000f64],
+    res: &[0f64],
+};
+
+pub const DC_RT_127: DcScenario = DcScenario {
+    name: "dc_rt_127",
+    kind: 0u8,
+    args: &[1f64, 0f64, 10000f64, -1f64],
+    res: &[0f64],
+};
+
+pub const DC_RT_128: DcScenario = DcScenario {
+    name: "dc_rt_128",
+    kind: 0u8,
+    args: &[1f64, 0f64, 10000f64, 0f64],
+    res: &[0f64],
+};
+
+pub const DC_RT_129: DcScenario = DcScenario {
+    name: "dc_rt_129",
+    kind: 0u8,
+    args: &[1f64, 0f64, 10000f64, 0.5f64],
+    res: &[0f64],
+};
+
+pub const DC_RT_130: DcScenario = DcScenario {
+    name: "dc_rt_130",
+    kind: 0u8,
+    args: &[1f64, 0f64, 10000f64, 595f64],
+    res: &[0f64],
+};
+
+pub const DC_RT_131: DcScenario = DcScenario {
+    name: "dc_rt_131",
+    kind: 0u8,
+    args: &[1f64, 0f64, 10000f64, 596f64],
+    res: &[0f64],
+};
+
+pub const DC_RT_132: DcScenario = DcScenario {
+    name: "dc_rt_132",
+    kind: 0u8,
+    args: &[1f64, 0f64, 10000f64, 600f64],
+    res: &[0f64],
+};
+
+pub const DC_RT_133: DcScenario = DcScenario {
+    name: "dc_rt_133",
+    kind: 0u8,
+    args: &[1f64, 0f64, 10000f64, 600.5f64],
+    res: &[0f64],
+};
+
+pub const DC_RT_134: DcScenario = DcScenario {
+    name: "dc_rt_134",
+    kind: 0u8,
+    args: &[1f64, 0f64, 10000f64, 601f64],
+    res: &[1f64],
+};
+
+pub const DC_RT_135: DcScenario = DcScenario {
+    name: "dc_rt_135",
+    kind: 0u8,
+    args: &[1f64, 0f64, 10000f64, 618f64],
+    res: &[21f64],
+};
+
+pub const DC_RT_136: DcScenario = DcScenario {
+    name: "dc_rt_136",
+    kind: 0u8,
+    args: &[1f64, 0f64, 10000f64, 636f64],
+    res: &[42f64],
+};
+
+pub const DC_RT_137: DcScenario = DcScenario {
+    name: "dc_rt_137",
+    kind: 0u8,
+    args: &[1f64, 0f64, 10000f64, 640f64],
+    res: &[47f64],
+};
+
+pub const DC_RT_138: DcScenario = DcScenario {
+    name: "dc_rt_138",
+    kind: 0u8,
+    args: &[1f64, 0f64, 10000f64, 644f64],
+    res: &[52f64],
+};
+
+pub const DC_RT_139: DcScenario = DcScenario {
+    name: "dc_rt_139",
+    kind: 0u8,
+    args: &[1f64, 0f64, 10000f64, 768f64],
+    res: &[200f64],
+};
+
+pub const DC_RT_140: DcScenario = DcScenario {
+    name: "dc_rt_140",
+    kind: 0u8,
+    args: &[1f64, 0f64, 10000f64, 822f64],
+    res: &[200f64],
+};
+
+pub const DC_RT_141: DcScenario = DcScenario {
+    name: "dc_rt_141",
+    kind: 0u8,
+    args: &[1f64, 0f64, 10000f64, 858f64],
+    res: &[242f64],
+};
+
+pub const DC_RT_142: DcScenario = DcScenario {
+    name: "dc_rt_142",
+    kind: 0u8,
+    args: &[1f64, 0f64, 10000f64, 864f64],
+    res: &[250f64],
+};
+
+pub const DC_RT_143: DcScenario = DcScenario {
+    name: "dc_rt_143",
+    kind: 0u8,
+    args: &[1f64, 0f64, 10000f64, 896f64],
+    res: &[288f64],
+};
+
+pub const DC_RT_144: DcScenario = DcScenario {
+    name: "dc_rt_144",
+    kind: 0u8,
+    args: &[1f64, 0f64, 10000f64, 900f64],
+    res: &[292f64],
+};
+
+pub const DC_RT_145: DcScenario = DcScenario {
+    name: "dc_rt_145",
+    kind: 0u8,
+    args: &[1f64, 0f64, 10000f64, 1176f64],
+    res: &[635f64],
+};
+
+pub const DC_RT_146: DcScenario = DcScenario {
+    name: "dc_rt_146",
+    kind: 0u8,
+    args: &[1f64, 0f64, 10000f64, 1246f64],
+    res: &[700f64],
+};
+
+pub const DC_RT_147: DcScenario = DcScenario {
+    name: "dc_rt_147",
+    kind: 0u8,
+    args: &[1f64, 0f64, 10000f64, 1316f64],
+    res: &[819f64],
+};
+
+pub const DC_RT_148: DcScenario = DcScenario {
+    name: "dc_rt_148",
+    kind: 0u8,
+    args: &[1f64, 0f64, 10000f64, 1386f64],
+    res: &[985f64],
+};
+
+pub const DC_RT_149: DcScenario = DcScenario {
+    name: "dc_rt_149",
+    kind: 0u8,
+    args: &[1f64, 0f64, 10000f64, 1456f64],
+    res: &[1100f64],
+};
+
+pub const DC_RT_150: DcScenario = DcScenario {
+    name: "dc_rt_150",
+    kind: 0u8,
+    args: &[1f64, 0f64, 10000f64, 1526f64],
+    res: &[1235f64],
+};
+
+pub const DC_RT_151: DcScenario = DcScenario {
+    name: "dc_rt_151",
+    kind: 0u8,
+    args: &[1f64, 0f64, 10000f64, 1596f64],
+    res: &[1485f64],
+};
+
+pub const DC_RT_152: DcScenario = DcScenario {
+    name: "dc_rt_152",
+    kind: 0u8,
+    args: &[1f64, 0f64, 10000f64, 1666f64],
+    res: &[1700f64],
+};
+
+pub const DC_RT_153: DcScenario = DcScenario {
+    name: "dc_rt_153",
+    kind: 0u8,
+    args: &[1f64, 0f64, 10000f64, 1736f64],
+    res: &[1823f64],
+};
+
+pub const DC_RT_154: DcScenario = DcScenario {
+    name: "dc_rt_154",
+    kind: 0u8,
+    args: &[1f64, 0f64, 10000f64, 2100f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_155: DcScenario = DcScenario {
+    name: "dc_rt_155",
+    kind: 0u8,
+    args: &[1f64, 0f64, 10000f64, 2310f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_156: DcScenario = DcScenario {
+    name: "dc_rt_156",
+    kind: 0u8,
+    args: &[1f64, 0f64, 10000f64, 2520f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_157: DcScenario = DcScenario {
+    name: "dc_rt_157",
+    kind: 0u8,
+    args: &[1f64, 0f64, 10000f64, 2730f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_158: DcScenario = DcScenario {
+    name: "dc_rt_158",
+    kind: 0u8,
+    args: &[1f64, 0f64, 10000f64, 2940f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_159: DcScenario = DcScenario {
+    name: "dc_rt_159",
+    kind: 0u8,
+    args: &[1f64, 0f64, 10000f64, 3150f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_160: DcScenario = DcScenario {
+    name: "dc_rt_160",
+    kind: 0u8,
+    args: &[1f64, 0f64, 10000f64, 3360f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_161: DcScenario = DcScenario {
+    name: "dc_rt_161",
+    kind: 0u8,
+    args: &[1f64, 0f64, 10000f64, 3570f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_162: DcScenario = DcScenario {
+    name: "dc_rt_162",
+    kind: 0u8,
+    args: &[1f64, 0f64, 10000f64, 4500f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_163: DcScenario = DcScenario {
+    name: "dc_rt_163",
+    kind: 0u8,
+    args: &[1f64, 0f64, 10000f64, 1000000000f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_164: DcScenario = DcScenario {
+    name: "dc_rt_164",
+    kind: 0u8,
+    args: &[1f64, 0f64, 10000f64, f64::NAN],
+    res: &[3500f64],
+};
+
+pub const DC_RT_165: DcScenario = DcScenario {
+    name: "dc_rt_165",
+    kind: 0u8,
+    args: &[1f64, 0f64, 10000f64, f64::NEG_INFINITY],
+    res: &[0f64],
+};
+
+pub const DC_RT_166: DcScenario = DcScenario {
+    name: "dc_rt_166",
+    kind: 0u8,
+    args: &[1f64, 0f64, 10000f64, f64::INFINITY],
+    res: &[3500f64],
+};
+
+pub const DC_RT_167: DcScenario = DcScenario {
+    name: "dc_rt_167",
+    kind: 0u8,
+    args: &[1f64, 0f64, 10000f64, 600.9999999f64],
+    res: &[1f64],
+};
+
+pub const DC_RT_168: DcScenario = DcScenario {
+    name: "dc_rt_168",
+    kind: 0u8,
+    args: &[1f64, 1f64, 10000f64, -1000000000f64],
+    res: &[0f64],
+};
+
+pub const DC_RT_169: DcScenario = DcScenario {
+    name: "dc_rt_169",
+    kind: 0u8,
+    args: &[1f64, 1f64, 10000f64, -1f64],
+    res: &[0f64],
+};
+
+pub const DC_RT_170: DcScenario = DcScenario {
+    name: "dc_rt_170",
+    kind: 0u8,
+    args: &[1f64, 1f64, 10000f64, 0f64],
+    res: &[0f64],
+};
+
+pub const DC_RT_171: DcScenario = DcScenario {
+    name: "dc_rt_171",
+    kind: 0u8,
+    args: &[1f64, 1f64, 10000f64, 0.5f64],
+    res: &[0f64],
+};
+
+pub const DC_RT_172: DcScenario = DcScenario {
+    name: "dc_rt_172",
+    kind: 0u8,
+    args: &[1f64, 1f64, 10000f64, 595f64],
+    res: &[0f64],
+};
+
+pub const DC_RT_173: DcScenario = DcScenario {
+    name: "dc_rt_173",
+    kind: 0u8,
+    args: &[1f64, 1f64, 10000f64, 596f64],
+    res: &[0f64],
+};
+
+pub const DC_RT_174: DcScenario = DcScenario {
+    name: "dc_rt_174",
+    kind: 0u8,
+    args: &[1f64, 1f64, 10000f64, 600f64],
+    res: &[0f64],
+};
+
+pub const DC_RT_175: DcScenario = DcScenario {
+    name: "dc_rt_175",
+    kind: 0u8,
+    args: &[1f64, 1f64, 10000f64, 600.5f64],
+    res: &[0f64],
+};
+
+pub const DC_RT_176: DcScenario = DcScenario {
+    name: "dc_rt_176",
+    kind: 0u8,
+    args: &[1f64, 1f64, 10000f64, 601f64],
+    res: &[1f64],
+};
+
+pub const DC_RT_177: DcScenario = DcScenario {
+    name: "dc_rt_177",
+    kind: 0u8,
+    args: &[1f64, 1f64, 10000f64, 618f64],
+    res: &[32f64],
+};
+
+pub const DC_RT_178: DcScenario = DcScenario {
+    name: "dc_rt_178",
+    kind: 0u8,
+    args: &[1f64, 1f64, 10000f64, 636f64],
+    res: &[64f64],
+};
+
+pub const DC_RT_179: DcScenario = DcScenario {
+    name: "dc_rt_179",
+    kind: 0u8,
+    args: &[1f64, 1f64, 10000f64, 640f64],
+    res: &[71f64],
+};
+
+pub const DC_RT_180: DcScenario = DcScenario {
+    name: "dc_rt_180",
+    kind: 0u8,
+    args: &[1f64, 1f64, 10000f64, 644f64],
+    res: &[78f64],
+};
+
+pub const DC_RT_181: DcScenario = DcScenario {
+    name: "dc_rt_181",
+    kind: 0u8,
+    args: &[1f64, 1f64, 10000f64, 768f64],
+    res: &[300f64],
+};
+
+pub const DC_RT_182: DcScenario = DcScenario {
+    name: "dc_rt_182",
+    kind: 0u8,
+    args: &[1f64, 1f64, 10000f64, 822f64],
+    res: &[300f64],
+};
+
+pub const DC_RT_183: DcScenario = DcScenario {
+    name: "dc_rt_183",
+    kind: 0u8,
+    args: &[1f64, 1f64, 10000f64, 858f64],
+    res: &[364f64],
+};
+
+pub const DC_RT_184: DcScenario = DcScenario {
+    name: "dc_rt_184",
+    kind: 0u8,
+    args: &[1f64, 1f64, 10000f64, 864f64],
+    res: &[375f64],
+};
+
+pub const DC_RT_185: DcScenario = DcScenario {
+    name: "dc_rt_185",
+    kind: 0u8,
+    args: &[1f64, 1f64, 10000f64, 896f64],
+    res: &[432f64],
+};
+
+pub const DC_RT_186: DcScenario = DcScenario {
+    name: "dc_rt_186",
+    kind: 0u8,
+    args: &[1f64, 1f64, 10000f64, 900f64],
+    res: &[439f64],
+};
+
+pub const DC_RT_187: DcScenario = DcScenario {
+    name: "dc_rt_187",
+    kind: 0u8,
+    args: &[1f64, 1f64, 10000f64, 1176f64],
+    res: &[914f64],
+};
+
+pub const DC_RT_188: DcScenario = DcScenario {
+    name: "dc_rt_188",
+    kind: 0u8,
+    args: &[1f64, 1f64, 10000f64, 1246f64],
+    res: &[1000f64],
+};
+
+pub const DC_RT_189: DcScenario = DcScenario {
+    name: "dc_rt_189",
+    kind: 0u8,
+    args: &[1f64, 1f64, 10000f64, 1316f64],
+    res: &[1148f64],
+};
+
+pub const DC_RT_190: DcScenario = DcScenario {
+    name: "dc_rt_190",
+    kind: 0u8,
+    args: &[1f64, 1f64, 10000f64, 1386f64],
+    res: &[1357f64],
+};
+
+pub const DC_RT_191: DcScenario = DcScenario {
+    name: "dc_rt_191",
+    kind: 0u8,
+    args: &[1f64, 1f64, 10000f64, 1456f64],
+    res: &[1500f64],
+};
+
+pub const DC_RT_192: DcScenario = DcScenario {
+    name: "dc_rt_192",
+    kind: 0u8,
+    args: &[1f64, 1f64, 10000f64, 1526f64],
+    res: &[1635f64],
+};
+
+pub const DC_RT_193: DcScenario = DcScenario {
+    name: "dc_rt_193",
+    kind: 0u8,
+    args: &[1f64, 1f64, 10000f64, 1596f64],
+    res: &[1885f64],
+};
+
+pub const DC_RT_194: DcScenario = DcScenario {
+    name: "dc_rt_194",
+    kind: 0u8,
+    args: &[1f64, 1f64, 10000f64, 1666f64],
+    res: &[2100f64],
+};
+
+pub const DC_RT_195: DcScenario = DcScenario {
+    name: "dc_rt_195",
+    kind: 0u8,
+    args: &[1f64, 1f64, 10000f64, 1736f64],
+    res: &[2208f64],
+};
+
+pub const DC_RT_196: DcScenario = DcScenario {
+    name: "dc_rt_196",
+    kind: 0u8,
+    args: &[1f64, 1f64, 10000f64, 2100f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_197: DcScenario = DcScenario {
+    name: "dc_rt_197",
+    kind: 0u8,
+    args: &[1f64, 1f64, 10000f64, 2310f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_198: DcScenario = DcScenario {
+    name: "dc_rt_198",
+    kind: 0u8,
+    args: &[1f64, 1f64, 10000f64, 2520f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_199: DcScenario = DcScenario {
+    name: "dc_rt_199",
+    kind: 0u8,
+    args: &[1f64, 1f64, 10000f64, 2730f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_200: DcScenario = DcScenario {
+    name: "dc_rt_200",
+    kind: 0u8,
+    args: &[1f64, 1f64, 10000f64, 2940f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_201: DcScenario = DcScenario {
+    name: "dc_rt_201",
+    kind: 0u8,
+    args: &[1f64, 1f64, 10000f64, 3150f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_202: DcScenario = DcScenario {
+    name: "dc_rt_202",
+    kind: 0u8,
+    args: &[1f64, 1f64, 10000f64, 3360f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_203: DcScenario = DcScenario {
+    name: "dc_rt_203",
+    kind: 0u8,
+    args: &[1f64, 1f64, 10000f64, 3570f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_204: DcScenario = DcScenario {
+    name: "dc_rt_204",
+    kind: 0u8,
+    args: &[1f64, 1f64, 10000f64, 4500f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_205: DcScenario = DcScenario {
+    name: "dc_rt_205",
+    kind: 0u8,
+    args: &[1f64, 1f64, 10000f64, 1000000000f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_206: DcScenario = DcScenario {
+    name: "dc_rt_206",
+    kind: 0u8,
+    args: &[1f64, 1f64, 10000f64, f64::NAN],
+    res: &[3500f64],
+};
+
+pub const DC_RT_207: DcScenario = DcScenario {
+    name: "dc_rt_207",
+    kind: 0u8,
+    args: &[1f64, 1f64, 10000f64, f64::NEG_INFINITY],
+    res: &[0f64],
+};
+
+pub const DC_RT_208: DcScenario = DcScenario {
+    name: "dc_rt_208",
+    kind: 0u8,
+    args: &[1f64, 1f64, 10000f64, f64::INFINITY],
+    res: &[3500f64],
+};
+
+pub const DC_RT_209: DcScenario = DcScenario {
+    name: "dc_rt_209",
+    kind: 0u8,
+    args: &[1f64, 1f64, 10000f64, 600.9999999f64],
+    res: &[1f64],
+};
+
+pub const DC_RT_210: DcScenario = DcScenario {
+    name: "dc_rt_210",
+    kind: 0u8,
+    args: &[1f64, 2f64, 10000f64, -1000000000f64],
+    res: &[0f64],
+};
+
+pub const DC_RT_211: DcScenario = DcScenario {
+    name: "dc_rt_211",
+    kind: 0u8,
+    args: &[1f64, 2f64, 10000f64, -1f64],
+    res: &[0f64],
+};
+
+pub const DC_RT_212: DcScenario = DcScenario {
+    name: "dc_rt_212",
+    kind: 0u8,
+    args: &[1f64, 2f64, 10000f64, 0f64],
+    res: &[0f64],
+};
+
+pub const DC_RT_213: DcScenario = DcScenario {
+    name: "dc_rt_213",
+    kind: 0u8,
+    args: &[1f64, 2f64, 10000f64, 0.5f64],
+    res: &[0f64],
+};
+
+pub const DC_RT_214: DcScenario = DcScenario {
+    name: "dc_rt_214",
+    kind: 0u8,
+    args: &[1f64, 2f64, 10000f64, 595f64],
+    res: &[0f64],
+};
+
+pub const DC_RT_215: DcScenario = DcScenario {
+    name: "dc_rt_215",
+    kind: 0u8,
+    args: &[1f64, 2f64, 10000f64, 596f64],
+    res: &[0f64],
+};
+
+pub const DC_RT_216: DcScenario = DcScenario {
+    name: "dc_rt_216",
+    kind: 0u8,
+    args: &[1f64, 2f64, 10000f64, 600f64],
+    res: &[0f64],
+};
+
+pub const DC_RT_217: DcScenario = DcScenario {
+    name: "dc_rt_217",
+    kind: 0u8,
+    args: &[1f64, 2f64, 10000f64, 600.5f64],
+    res: &[0f64],
+};
+
+pub const DC_RT_218: DcScenario = DcScenario {
+    name: "dc_rt_218",
+    kind: 0u8,
+    args: &[1f64, 2f64, 10000f64, 601f64],
+    res: &[1f64],
+};
+
+pub const DC_RT_219: DcScenario = DcScenario {
+    name: "dc_rt_219",
+    kind: 0u8,
+    args: &[1f64, 2f64, 10000f64, 618f64],
+    res: &[21f64],
+};
+
+pub const DC_RT_220: DcScenario = DcScenario {
+    name: "dc_rt_220",
+    kind: 0u8,
+    args: &[1f64, 2f64, 10000f64, 636f64],
+    res: &[42f64],
+};
+
+pub const DC_RT_221: DcScenario = DcScenario {
+    name: "dc_rt_221",
+    kind: 0u8,
+    args: &[1f64, 2f64, 10000f64, 640f64],
+    res: &[47f64],
+};
+
+pub const DC_RT_222: DcScenario = DcScenario {
+    name: "dc_rt_222",
+    kind: 0u8,
+    args: &[1f64, 2f64, 10000f64, 644f64],
+    res: &[52f64],
+};
+
+pub const DC_RT_223: DcScenario = DcScenario {
+    name: "dc_rt_223",
+    kind: 0u8,
+    args: &[1f64, 2f64, 10000f64, 768f64],
+    res: &[200f64],
+};
+
+pub const DC_RT_224: DcScenario = DcScenario {
+    name: "dc_rt_224",
+    kind: 0u8,
+    args: &[1f64, 2f64, 10000f64, 822f64],
+    res: &[200f64],
+};
+
+pub const DC_RT_225: DcScenario = DcScenario {
+    name: "dc_rt_225",
+    kind: 0u8,
+    args: &[1f64, 2f64, 10000f64, 858f64],
+    res: &[242f64],
+};
+
+pub const DC_RT_226: DcScenario = DcScenario {
+    name: "dc_rt_226",
+    kind: 0u8,
+    args: &[1f64, 2f64, 10000f64, 864f64],
+    res: &[250f64],
+};
+
+pub const DC_RT_227: DcScenario = DcScenario {
+    name: "dc_rt_227",
+    kind: 0u8,
+    args: &[1f64, 2f64, 10000f64, 896f64],
+    res: &[288f64],
+};
+
+pub const DC_RT_228: DcScenario = DcScenario {
+    name: "dc_rt_228",
+    kind: 0u8,
+    args: &[1f64, 2f64, 10000f64, 900f64],
+    res: &[292f64],
+};
+
+pub const DC_RT_229: DcScenario = DcScenario {
+    name: "dc_rt_229",
+    kind: 0u8,
+    args: &[1f64, 2f64, 10000f64, 1176f64],
+    res: &[635f64],
+};
+
+pub const DC_RT_230: DcScenario = DcScenario {
+    name: "dc_rt_230",
+    kind: 0u8,
+    args: &[1f64, 2f64, 10000f64, 1246f64],
+    res: &[700f64],
+};
+
+pub const DC_RT_231: DcScenario = DcScenario {
+    name: "dc_rt_231",
+    kind: 0u8,
+    args: &[1f64, 2f64, 10000f64, 1316f64],
+    res: &[819f64],
+};
+
+pub const DC_RT_232: DcScenario = DcScenario {
+    name: "dc_rt_232",
+    kind: 0u8,
+    args: &[1f64, 2f64, 10000f64, 1386f64],
+    res: &[985f64],
+};
+
+pub const DC_RT_233: DcScenario = DcScenario {
+    name: "dc_rt_233",
+    kind: 0u8,
+    args: &[1f64, 2f64, 10000f64, 1456f64],
+    res: &[1100f64],
+};
+
+pub const DC_RT_234: DcScenario = DcScenario {
+    name: "dc_rt_234",
+    kind: 0u8,
+    args: &[1f64, 2f64, 10000f64, 1526f64],
+    res: &[1235f64],
+};
+
+pub const DC_RT_235: DcScenario = DcScenario {
+    name: "dc_rt_235",
+    kind: 0u8,
+    args: &[1f64, 2f64, 10000f64, 1596f64],
+    res: &[1485f64],
+};
+
+pub const DC_RT_236: DcScenario = DcScenario {
+    name: "dc_rt_236",
+    kind: 0u8,
+    args: &[1f64, 2f64, 10000f64, 1666f64],
+    res: &[1700f64],
+};
+
+pub const DC_RT_237: DcScenario = DcScenario {
+    name: "dc_rt_237",
+    kind: 0u8,
+    args: &[1f64, 2f64, 10000f64, 1736f64],
+    res: &[1823f64],
+};
+
+pub const DC_RT_238: DcScenario = DcScenario {
+    name: "dc_rt_238",
+    kind: 0u8,
+    args: &[1f64, 2f64, 10000f64, 2100f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_239: DcScenario = DcScenario {
+    name: "dc_rt_239",
+    kind: 0u8,
+    args: &[1f64, 2f64, 10000f64, 2310f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_240: DcScenario = DcScenario {
+    name: "dc_rt_240",
+    kind: 0u8,
+    args: &[1f64, 2f64, 10000f64, 2520f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_241: DcScenario = DcScenario {
+    name: "dc_rt_241",
+    kind: 0u8,
+    args: &[1f64, 2f64, 10000f64, 2730f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_242: DcScenario = DcScenario {
+    name: "dc_rt_242",
+    kind: 0u8,
+    args: &[1f64, 2f64, 10000f64, 2940f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_243: DcScenario = DcScenario {
+    name: "dc_rt_243",
+    kind: 0u8,
+    args: &[1f64, 2f64, 10000f64, 3150f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_244: DcScenario = DcScenario {
+    name: "dc_rt_244",
+    kind: 0u8,
+    args: &[1f64, 2f64, 10000f64, 3360f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_245: DcScenario = DcScenario {
+    name: "dc_rt_245",
+    kind: 0u8,
+    args: &[1f64, 2f64, 10000f64, 3570f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_246: DcScenario = DcScenario {
+    name: "dc_rt_246",
+    kind: 0u8,
+    args: &[1f64, 2f64, 10000f64, 4500f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_247: DcScenario = DcScenario {
+    name: "dc_rt_247",
+    kind: 0u8,
+    args: &[1f64, 2f64, 10000f64, 1000000000f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_248: DcScenario = DcScenario {
+    name: "dc_rt_248",
+    kind: 0u8,
+    args: &[1f64, 2f64, 10000f64, f64::NAN],
+    res: &[3500f64],
+};
+
+pub const DC_RT_249: DcScenario = DcScenario {
+    name: "dc_rt_249",
+    kind: 0u8,
+    args: &[1f64, 2f64, 10000f64, f64::NEG_INFINITY],
+    res: &[0f64],
+};
+
+pub const DC_RT_250: DcScenario = DcScenario {
+    name: "dc_rt_250",
+    kind: 0u8,
+    args: &[1f64, 2f64, 10000f64, f64::INFINITY],
+    res: &[3500f64],
+};
+
+pub const DC_RT_251: DcScenario = DcScenario {
+    name: "dc_rt_251",
+    kind: 0u8,
+    args: &[1f64, 2f64, 10000f64, 600.9999999f64],
+    res: &[1f64],
+};
+
+pub const DC_RT_252: DcScenario = DcScenario {
+    name: "dc_rt_252",
+    kind: 0u8,
+    args: &[2f64, 0f64, 10000f64, -1000000000f64],
+    res: &[0f64],
+};
+
+pub const DC_RT_253: DcScenario = DcScenario {
+    name: "dc_rt_253",
+    kind: 0u8,
+    args: &[2f64, 0f64, 10000f64, -1f64],
+    res: &[0f64],
+};
+
+pub const DC_RT_254: DcScenario = DcScenario {
+    name: "dc_rt_254",
+    kind: 0u8,
+    args: &[2f64, 0f64, 10000f64, 0f64],
+    res: &[0f64],
+};
+
+pub const DC_RT_255: DcScenario = DcScenario {
+    name: "dc_rt_255",
+    kind: 0u8,
+    args: &[2f64, 0f64, 10000f64, 0.5f64],
+    res: &[0f64],
+};
+
+pub const DC_RT_256: DcScenario = DcScenario {
+    name: "dc_rt_256",
+    kind: 0u8,
+    args: &[2f64, 0f64, 10000f64, 595f64],
+    res: &[0f64],
+};
+
+pub const DC_RT_257: DcScenario = DcScenario {
+    name: "dc_rt_257",
+    kind: 0u8,
+    args: &[2f64, 0f64, 10000f64, 596f64],
+    res: &[0f64],
+};
+
+pub const DC_RT_258: DcScenario = DcScenario {
+    name: "dc_rt_258",
+    kind: 0u8,
+    args: &[2f64, 0f64, 10000f64, 600f64],
+    res: &[0f64],
+};
+
+pub const DC_RT_259: DcScenario = DcScenario {
+    name: "dc_rt_259",
+    kind: 0u8,
+    args: &[2f64, 0f64, 10000f64, 600.5f64],
+    res: &[0f64],
+};
+
+pub const DC_RT_260: DcScenario = DcScenario {
+    name: "dc_rt_260",
+    kind: 0u8,
+    args: &[2f64, 0f64, 10000f64, 601f64],
+    res: &[1f64],
+};
+
+pub const DC_RT_261: DcScenario = DcScenario {
+    name: "dc_rt_261",
+    kind: 0u8,
+    args: &[2f64, 0f64, 10000f64, 618f64],
+    res: &[35f64],
+};
+
+pub const DC_RT_262: DcScenario = DcScenario {
+    name: "dc_rt_262",
+    kind: 0u8,
+    args: &[2f64, 0f64, 10000f64, 636f64],
+    res: &[70f64],
+};
+
+pub const DC_RT_263: DcScenario = DcScenario {
+    name: "dc_rt_263",
+    kind: 0u8,
+    args: &[2f64, 0f64, 10000f64, 640f64],
+    res: &[78f64],
+};
+
+pub const DC_RT_264: DcScenario = DcScenario {
+    name: "dc_rt_264",
+    kind: 0u8,
+    args: &[2f64, 0f64, 10000f64, 644f64],
+    res: &[86f64],
+};
+
+pub const DC_RT_265: DcScenario = DcScenario {
+    name: "dc_rt_265",
+    kind: 0u8,
+    args: &[2f64, 0f64, 10000f64, 768f64],
+    res: &[268f64],
+};
+
+pub const DC_RT_266: DcScenario = DcScenario {
+    name: "dc_rt_266",
+    kind: 0u8,
+    args: &[2f64, 0f64, 10000f64, 822f64],
+    res: &[374f64],
+};
+
+pub const DC_RT_267: DcScenario = DcScenario {
+    name: "dc_rt_267",
+    kind: 0u8,
+    args: &[2f64, 0f64, 10000f64, 858f64],
+    res: &[400f64],
+};
+
+pub const DC_RT_268: DcScenario = DcScenario {
+    name: "dc_rt_268",
+    kind: 0u8,
+    args: &[2f64, 0f64, 10000f64, 864f64],
+    res: &[400f64],
+};
+
+pub const DC_RT_269: DcScenario = DcScenario {
+    name: "dc_rt_269",
+    kind: 0u8,
+    args: &[2f64, 0f64, 10000f64, 896f64],
+    res: &[488f64],
+};
+
+pub const DC_RT_270: DcScenario = DcScenario {
+    name: "dc_rt_270",
+    kind: 0u8,
+    args: &[2f64, 0f64, 10000f64, 900f64],
+    res: &[500f64],
+};
+
+pub const DC_RT_271: DcScenario = DcScenario {
+    name: "dc_rt_271",
+    kind: 0u8,
+    args: &[2f64, 0f64, 10000f64, 1176f64],
+    res: &[1358f64],
+};
+
+pub const DC_RT_272: DcScenario = DcScenario {
+    name: "dc_rt_272",
+    kind: 0u8,
+    args: &[2f64, 0f64, 10000f64, 1246f64],
+    res: &[1700f64],
+};
+
+pub const DC_RT_273: DcScenario = DcScenario {
+    name: "dc_rt_273",
+    kind: 0u8,
+    args: &[2f64, 0f64, 10000f64, 1316f64],
+    res: &[2100f64],
+};
+
+pub const DC_RT_274: DcScenario = DcScenario {
+    name: "dc_rt_274",
+    kind: 0u8,
+    args: &[2f64, 0f64, 10000f64, 1386f64],
+    res: &[2500f64],
+};
+
+pub const DC_RT_275: DcScenario = DcScenario {
+    name: "dc_rt_275",
+    kind: 0u8,
+    args: &[2f64, 0f64, 10000f64, 1456f64],
+    res: &[3068f64],
+};
+
+pub const DC_RT_276: DcScenario = DcScenario {
+    name: "dc_rt_276",
+    kind: 0u8,
+    args: &[2f64, 0f64, 10000f64, 1526f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_277: DcScenario = DcScenario {
+    name: "dc_rt_277",
+    kind: 0u8,
+    args: &[2f64, 0f64, 10000f64, 1596f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_278: DcScenario = DcScenario {
+    name: "dc_rt_278",
+    kind: 0u8,
+    args: &[2f64, 0f64, 10000f64, 1666f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_279: DcScenario = DcScenario {
+    name: "dc_rt_279",
+    kind: 0u8,
+    args: &[2f64, 0f64, 10000f64, 1736f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_280: DcScenario = DcScenario {
+    name: "dc_rt_280",
+    kind: 0u8,
+    args: &[2f64, 0f64, 10000f64, 2100f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_281: DcScenario = DcScenario {
+    name: "dc_rt_281",
+    kind: 0u8,
+    args: &[2f64, 0f64, 10000f64, 2310f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_282: DcScenario = DcScenario {
+    name: "dc_rt_282",
+    kind: 0u8,
+    args: &[2f64, 0f64, 10000f64, 2520f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_283: DcScenario = DcScenario {
+    name: "dc_rt_283",
+    kind: 0u8,
+    args: &[2f64, 0f64, 10000f64, 2730f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_284: DcScenario = DcScenario {
+    name: "dc_rt_284",
+    kind: 0u8,
+    args: &[2f64, 0f64, 10000f64, 2940f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_285: DcScenario = DcScenario {
+    name: "dc_rt_285",
+    kind: 0u8,
+    args: &[2f64, 0f64, 10000f64, 3150f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_286: DcScenario = DcScenario {
+    name: "dc_rt_286",
+    kind: 0u8,
+    args: &[2f64, 0f64, 10000f64, 3360f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_287: DcScenario = DcScenario {
+    name: "dc_rt_287",
+    kind: 0u8,
+    args: &[2f64, 0f64, 10000f64, 3570f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_288: DcScenario = DcScenario {
+    name: "dc_rt_288",
+    kind: 0u8,
+    args: &[2f64, 0f64, 10000f64, 4500f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_289: DcScenario = DcScenario {
+    name: "dc_rt_289",
+    kind: 0u8,
+    args: &[2f64, 0f64, 10000f64, 1000000000f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_290: DcScenario = DcScenario {
+    name: "dc_rt_290",
+    kind: 0u8,
+    args: &[2f64, 0f64, 10000f64, f64::NAN],
+    res: &[3500f64],
+};
+
+pub const DC_RT_291: DcScenario = DcScenario {
+    name: "dc_rt_291",
+    kind: 0u8,
+    args: &[2f64, 0f64, 10000f64, f64::NEG_INFINITY],
+    res: &[0f64],
+};
+
+pub const DC_RT_292: DcScenario = DcScenario {
+    name: "dc_rt_292",
+    kind: 0u8,
+    args: &[2f64, 0f64, 10000f64, f64::INFINITY],
+    res: &[3500f64],
+};
+
+pub const DC_RT_293: DcScenario = DcScenario {
+    name: "dc_rt_293",
+    kind: 0u8,
+    args: &[2f64, 0f64, 10000f64, 600.9999999f64],
+    res: &[1f64],
+};
+
+pub const DC_RT_294: DcScenario = DcScenario {
+    name: "dc_rt_294",
+    kind: 0u8,
+    args: &[2f64, 1f64, 10000f64, -1000000000f64],
+    res: &[0f64],
+};
+
+pub const DC_RT_295: DcScenario = DcScenario {
+    name: "dc_rt_295",
+    kind: 0u8,
+    args: &[2f64, 1f64, 10000f64, -1f64],
+    res: &[0f64],
+};
+
+pub const DC_RT_296: DcScenario = DcScenario {
+    name: "dc_rt_296",
+    kind: 0u8,
+    args: &[2f64, 1f64, 10000f64, 0f64],
+    res: &[0f64],
+};
+
+pub const DC_RT_297: DcScenario = DcScenario {
+    name: "dc_rt_297",
+    kind: 0u8,
+    args: &[2f64, 1f64, 10000f64, 0.5f64],
+    res: &[0f64],
+};
+
+pub const DC_RT_298: DcScenario = DcScenario {
+    name: "dc_rt_298",
+    kind: 0u8,
+    args: &[2f64, 1f64, 10000f64, 595f64],
+    res: &[0f64],
+};
+
+pub const DC_RT_299: DcScenario = DcScenario {
+    name: "dc_rt_299",
+    kind: 0u8,
+    args: &[2f64, 1f64, 10000f64, 596f64],
+    res: &[0f64],
+};
+
+pub const DC_RT_300: DcScenario = DcScenario {
+    name: "dc_rt_300",
+    kind: 0u8,
+    args: &[2f64, 1f64, 10000f64, 600f64],
+    res: &[0f64],
+};
+
+pub const DC_RT_301: DcScenario = DcScenario {
+    name: "dc_rt_301",
+    kind: 0u8,
+    args: &[2f64, 1f64, 10000f64, 600.5f64],
+    res: &[1f64],
+};
+
+pub const DC_RT_302: DcScenario = DcScenario {
+    name: "dc_rt_302",
+    kind: 0u8,
+    args: &[2f64, 1f64, 10000f64, 601f64],
+    res: &[2f64],
+};
+
+pub const DC_RT_303: DcScenario = DcScenario {
+    name: "dc_rt_303",
+    kind: 0u8,
+    args: &[2f64, 1f64, 10000f64, 618f64],
+    res: &[52f64],
+};
+
+pub const DC_RT_304: DcScenario = DcScenario {
+    name: "dc_rt_304",
+    kind: 0u8,
+    args: &[2f64, 1f64, 10000f64, 636f64],
+    res: &[105f64],
+};
+
+pub const DC_RT_305: DcScenario = DcScenario {
+    name: "dc_rt_305",
+    kind: 0u8,
+    args: &[2f64, 1f64, 10000f64, 640f64],
+    res: &[117f64],
+};
+
+pub const DC_RT_306: DcScenario = DcScenario {
+    name: "dc_rt_306",
+    kind: 0u8,
+    args: &[2f64, 1f64, 10000f64, 644f64],
+    res: &[129f64],
+};
+
+pub const DC_RT_307: DcScenario = DcScenario {
+    name: "dc_rt_307",
+    kind: 0u8,
+    args: &[2f64, 1f64, 10000f64, 768f64],
+    res: &[402f64],
+};
+
+pub const DC_RT_308: DcScenario = DcScenario {
+    name: "dc_rt_308",
+    kind: 0u8,
+    args: &[2f64, 1f64, 10000f64, 822f64],
+    res: &[561f64],
+};
+
+pub const DC_RT_309: DcScenario = DcScenario {
+    name: "dc_rt_309",
+    kind: 0u8,
+    args: &[2f64, 1f64, 10000f64, 858f64],
+    res: &[600f64],
+};
+
+pub const DC_RT_310: DcScenario = DcScenario {
+    name: "dc_rt_310",
+    kind: 0u8,
+    args: &[2f64, 1f64, 10000f64, 864f64],
+    res: &[600f64],
+};
+
+pub const DC_RT_311: DcScenario = DcScenario {
+    name: "dc_rt_311",
+    kind: 0u8,
+    args: &[2f64, 1f64, 10000f64, 896f64],
+    res: &[717f64],
+};
+
+pub const DC_RT_312: DcScenario = DcScenario {
+    name: "dc_rt_312",
+    kind: 0u8,
+    args: &[2f64, 1f64, 10000f64, 900f64],
+    res: &[733f64],
+};
+
+pub const DC_RT_313: DcScenario = DcScenario {
+    name: "dc_rt_313",
+    kind: 0u8,
+    args: &[2f64, 1f64, 10000f64, 1176f64],
+    res: &[1758f64],
+};
+
+pub const DC_RT_314: DcScenario = DcScenario {
+    name: "dc_rt_314",
+    kind: 0u8,
+    args: &[2f64, 1f64, 10000f64, 1246f64],
+    res: &[2100f64],
+};
+
+pub const DC_RT_315: DcScenario = DcScenario {
+    name: "dc_rt_315",
+    kind: 0u8,
+    args: &[2f64, 1f64, 10000f64, 1316f64],
+    res: &[2450f64],
+};
+
+pub const DC_RT_316: DcScenario = DcScenario {
+    name: "dc_rt_316",
+    kind: 0u8,
+    args: &[2f64, 1f64, 10000f64, 1386f64],
+    res: &[2800f64],
+};
+
+pub const DC_RT_317: DcScenario = DcScenario {
+    name: "dc_rt_317",
+    kind: 0u8,
+    args: &[2f64, 1f64, 10000f64, 1456f64],
+    res: &[3198f64],
+};
+
+pub const DC_RT_318: DcScenario = DcScenario {
+    name: "dc_rt_318",
+    kind: 0u8,
+    args: &[2f64, 1f64, 10000f64, 1526f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_319: DcScenario = DcScenario {
+    name: "dc_rt_319",
+    kind: 0u8,
+    args: &[2f64, 1f64, 10000f64, 1596f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_320: DcScenario = DcScenario {
+    name: "dc_rt_320",
+    kind: 0u8,
+    args: &[2f64, 1f64, 10000f64, 1666f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_321: DcScenario = DcScenario {
+    name: "dc_rt_321",
+    kind: 0u8,
+    args: &[2f64, 1f64, 10000f64, 1736f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_322: DcScenario = DcScenario {
+    name: "dc_rt_322",
+    kind: 0u8,
+    args: &[2f64, 1f64, 10000f64, 2100f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_323: DcScenario = DcScenario {
+    name: "dc_rt_323",
+    kind: 0u8,
+    args: &[2f64, 1f64, 10000f64, 2310f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_324: DcScenario = DcScenario {
+    name: "dc_rt_324",
+    kind: 0u8,
+    args: &[2f64, 1f64, 10000f64, 2520f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_325: DcScenario = DcScenario {
+    name: "dc_rt_325",
+    kind: 0u8,
+    args: &[2f64, 1f64, 10000f64, 2730f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_326: DcScenario = DcScenario {
+    name: "dc_rt_326",
+    kind: 0u8,
+    args: &[2f64, 1f64, 10000f64, 2940f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_327: DcScenario = DcScenario {
+    name: "dc_rt_327",
+    kind: 0u8,
+    args: &[2f64, 1f64, 10000f64, 3150f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_328: DcScenario = DcScenario {
+    name: "dc_rt_328",
+    kind: 0u8,
+    args: &[2f64, 1f64, 10000f64, 3360f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_329: DcScenario = DcScenario {
+    name: "dc_rt_329",
+    kind: 0u8,
+    args: &[2f64, 1f64, 10000f64, 3570f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_330: DcScenario = DcScenario {
+    name: "dc_rt_330",
+    kind: 0u8,
+    args: &[2f64, 1f64, 10000f64, 4500f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_331: DcScenario = DcScenario {
+    name: "dc_rt_331",
+    kind: 0u8,
+    args: &[2f64, 1f64, 10000f64, 1000000000f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_332: DcScenario = DcScenario {
+    name: "dc_rt_332",
+    kind: 0u8,
+    args: &[2f64, 1f64, 10000f64, f64::NAN],
+    res: &[3500f64],
+};
+
+pub const DC_RT_333: DcScenario = DcScenario {
+    name: "dc_rt_333",
+    kind: 0u8,
+    args: &[2f64, 1f64, 10000f64, f64::NEG_INFINITY],
+    res: &[0f64],
+};
+
+pub const DC_RT_334: DcScenario = DcScenario {
+    name: "dc_rt_334",
+    kind: 0u8,
+    args: &[2f64, 1f64, 10000f64, f64::INFINITY],
+    res: &[3500f64],
+};
+
+pub const DC_RT_335: DcScenario = DcScenario {
+    name: "dc_rt_335",
+    kind: 0u8,
+    args: &[2f64, 1f64, 10000f64, 600.9999999f64],
+    res: &[2f64],
+};
+
+pub const DC_RT_336: DcScenario = DcScenario {
+    name: "dc_rt_336",
+    kind: 0u8,
+    args: &[2f64, 2f64, 10000f64, -1000000000f64],
+    res: &[0f64],
+};
+
+pub const DC_RT_337: DcScenario = DcScenario {
+    name: "dc_rt_337",
+    kind: 0u8,
+    args: &[2f64, 2f64, 10000f64, -1f64],
+    res: &[0f64],
+};
+
+pub const DC_RT_338: DcScenario = DcScenario {
+    name: "dc_rt_338",
+    kind: 0u8,
+    args: &[2f64, 2f64, 10000f64, 0f64],
+    res: &[0f64],
+};
+
+pub const DC_RT_339: DcScenario = DcScenario {
+    name: "dc_rt_339",
+    kind: 0u8,
+    args: &[2f64, 2f64, 10000f64, 0.5f64],
+    res: &[0f64],
+};
+
+pub const DC_RT_340: DcScenario = DcScenario {
+    name: "dc_rt_340",
+    kind: 0u8,
+    args: &[2f64, 2f64, 10000f64, 595f64],
+    res: &[0f64],
+};
+
+pub const DC_RT_341: DcScenario = DcScenario {
+    name: "dc_rt_341",
+    kind: 0u8,
+    args: &[2f64, 2f64, 10000f64, 596f64],
+    res: &[0f64],
+};
+
+pub const DC_RT_342: DcScenario = DcScenario {
+    name: "dc_rt_342",
+    kind: 0u8,
+    args: &[2f64, 2f64, 10000f64, 600f64],
+    res: &[0f64],
+};
+
+pub const DC_RT_343: DcScenario = DcScenario {
+    name: "dc_rt_343",
+    kind: 0u8,
+    args: &[2f64, 2f64, 10000f64, 600.5f64],
+    res: &[0f64],
+};
+
+pub const DC_RT_344: DcScenario = DcScenario {
+    name: "dc_rt_344",
+    kind: 0u8,
+    args: &[2f64, 2f64, 10000f64, 601f64],
+    res: &[1f64],
+};
+
+pub const DC_RT_345: DcScenario = DcScenario {
+    name: "dc_rt_345",
+    kind: 0u8,
+    args: &[2f64, 2f64, 10000f64, 618f64],
+    res: &[35f64],
+};
+
+pub const DC_RT_346: DcScenario = DcScenario {
+    name: "dc_rt_346",
+    kind: 0u8,
+    args: &[2f64, 2f64, 10000f64, 636f64],
+    res: &[70f64],
+};
+
+pub const DC_RT_347: DcScenario = DcScenario {
+    name: "dc_rt_347",
+    kind: 0u8,
+    args: &[2f64, 2f64, 10000f64, 640f64],
+    res: &[78f64],
+};
+
+pub const DC_RT_348: DcScenario = DcScenario {
+    name: "dc_rt_348",
+    kind: 0u8,
+    args: &[2f64, 2f64, 10000f64, 644f64],
+    res: &[86f64],
+};
+
+pub const DC_RT_349: DcScenario = DcScenario {
+    name: "dc_rt_349",
+    kind: 0u8,
+    args: &[2f64, 2f64, 10000f64, 768f64],
+    res: &[268f64],
+};
+
+pub const DC_RT_350: DcScenario = DcScenario {
+    name: "dc_rt_350",
+    kind: 0u8,
+    args: &[2f64, 2f64, 10000f64, 822f64],
+    res: &[374f64],
+};
+
+pub const DC_RT_351: DcScenario = DcScenario {
+    name: "dc_rt_351",
+    kind: 0u8,
+    args: &[2f64, 2f64, 10000f64, 858f64],
+    res: &[400f64],
+};
+
+pub const DC_RT_352: DcScenario = DcScenario {
+    name: "dc_rt_352",
+    kind: 0u8,
+    args: &[2f64, 2f64, 10000f64, 864f64],
+    res: &[400f64],
+};
+
+pub const DC_RT_353: DcScenario = DcScenario {
+    name: "dc_rt_353",
+    kind: 0u8,
+    args: &[2f64, 2f64, 10000f64, 896f64],
+    res: &[488f64],
+};
+
+pub const DC_RT_354: DcScenario = DcScenario {
+    name: "dc_rt_354",
+    kind: 0u8,
+    args: &[2f64, 2f64, 10000f64, 900f64],
+    res: &[500f64],
+};
+
+pub const DC_RT_355: DcScenario = DcScenario {
+    name: "dc_rt_355",
+    kind: 0u8,
+    args: &[2f64, 2f64, 10000f64, 1176f64],
+    res: &[1358f64],
+};
+
+pub const DC_RT_356: DcScenario = DcScenario {
+    name: "dc_rt_356",
+    kind: 0u8,
+    args: &[2f64, 2f64, 10000f64, 1246f64],
+    res: &[1700f64],
+};
+
+pub const DC_RT_357: DcScenario = DcScenario {
+    name: "dc_rt_357",
+    kind: 0u8,
+    args: &[2f64, 2f64, 10000f64, 1316f64],
+    res: &[2100f64],
+};
+
+pub const DC_RT_358: DcScenario = DcScenario {
+    name: "dc_rt_358",
+    kind: 0u8,
+    args: &[2f64, 2f64, 10000f64, 1386f64],
+    res: &[2500f64],
+};
+
+pub const DC_RT_359: DcScenario = DcScenario {
+    name: "dc_rt_359",
+    kind: 0u8,
+    args: &[2f64, 2f64, 10000f64, 1456f64],
+    res: &[3068f64],
+};
+
+pub const DC_RT_360: DcScenario = DcScenario {
+    name: "dc_rt_360",
+    kind: 0u8,
+    args: &[2f64, 2f64, 10000f64, 1526f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_361: DcScenario = DcScenario {
+    name: "dc_rt_361",
+    kind: 0u8,
+    args: &[2f64, 2f64, 10000f64, 1596f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_362: DcScenario = DcScenario {
+    name: "dc_rt_362",
+    kind: 0u8,
+    args: &[2f64, 2f64, 10000f64, 1666f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_363: DcScenario = DcScenario {
+    name: "dc_rt_363",
+    kind: 0u8,
+    args: &[2f64, 2f64, 10000f64, 1736f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_364: DcScenario = DcScenario {
+    name: "dc_rt_364",
+    kind: 0u8,
+    args: &[2f64, 2f64, 10000f64, 2100f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_365: DcScenario = DcScenario {
+    name: "dc_rt_365",
+    kind: 0u8,
+    args: &[2f64, 2f64, 10000f64, 2310f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_366: DcScenario = DcScenario {
+    name: "dc_rt_366",
+    kind: 0u8,
+    args: &[2f64, 2f64, 10000f64, 2520f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_367: DcScenario = DcScenario {
+    name: "dc_rt_367",
+    kind: 0u8,
+    args: &[2f64, 2f64, 10000f64, 2730f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_368: DcScenario = DcScenario {
+    name: "dc_rt_368",
+    kind: 0u8,
+    args: &[2f64, 2f64, 10000f64, 2940f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_369: DcScenario = DcScenario {
+    name: "dc_rt_369",
+    kind: 0u8,
+    args: &[2f64, 2f64, 10000f64, 3150f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_370: DcScenario = DcScenario {
+    name: "dc_rt_370",
+    kind: 0u8,
+    args: &[2f64, 2f64, 10000f64, 3360f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_371: DcScenario = DcScenario {
+    name: "dc_rt_371",
+    kind: 0u8,
+    args: &[2f64, 2f64, 10000f64, 3570f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_372: DcScenario = DcScenario {
+    name: "dc_rt_372",
+    kind: 0u8,
+    args: &[2f64, 2f64, 10000f64, 4500f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_373: DcScenario = DcScenario {
+    name: "dc_rt_373",
+    kind: 0u8,
+    args: &[2f64, 2f64, 10000f64, 1000000000f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_374: DcScenario = DcScenario {
+    name: "dc_rt_374",
+    kind: 0u8,
+    args: &[2f64, 2f64, 10000f64, f64::NAN],
+    res: &[3500f64],
+};
+
+pub const DC_RT_375: DcScenario = DcScenario {
+    name: "dc_rt_375",
+    kind: 0u8,
+    args: &[2f64, 2f64, 10000f64, f64::NEG_INFINITY],
+    res: &[0f64],
+};
+
+pub const DC_RT_376: DcScenario = DcScenario {
+    name: "dc_rt_376",
+    kind: 0u8,
+    args: &[2f64, 2f64, 10000f64, f64::INFINITY],
+    res: &[3500f64],
+};
+
+pub const DC_RT_377: DcScenario = DcScenario {
+    name: "dc_rt_377",
+    kind: 0u8,
+    args: &[2f64, 2f64, 10000f64, 600.9999999f64],
+    res: &[1f64],
+};
+
+pub const DC_RT_378: DcScenario = DcScenario {
+    name: "dc_rt_378",
+    kind: 0u8,
+    args: &[3f64, 0f64, 10000f64, -1000000000f64],
+    res: &[0f64],
+};
+
+pub const DC_RT_379: DcScenario = DcScenario {
+    name: "dc_rt_379",
+    kind: 0u8,
+    args: &[3f64, 0f64, 10000f64, -1f64],
+    res: &[0f64],
+};
+
+pub const DC_RT_380: DcScenario = DcScenario {
+    name: "dc_rt_380",
+    kind: 0u8,
+    args: &[3f64, 0f64, 10000f64, 0f64],
+    res: &[0f64],
+};
+
+pub const DC_RT_381: DcScenario = DcScenario {
+    name: "dc_rt_381",
+    kind: 0u8,
+    args: &[3f64, 0f64, 10000f64, 0.5f64],
+    res: &[0f64],
+};
+
+pub const DC_RT_382: DcScenario = DcScenario {
+    name: "dc_rt_382",
+    kind: 0u8,
+    args: &[3f64, 0f64, 10000f64, 595f64],
+    res: &[0f64],
+};
+
+pub const DC_RT_383: DcScenario = DcScenario {
+    name: "dc_rt_383",
+    kind: 0u8,
+    args: &[3f64, 0f64, 10000f64, 596f64],
+    res: &[0f64],
+};
+
+pub const DC_RT_384: DcScenario = DcScenario {
+    name: "dc_rt_384",
+    kind: 0u8,
+    args: &[3f64, 0f64, 10000f64, 600f64],
+    res: &[0f64],
+};
+
+pub const DC_RT_385: DcScenario = DcScenario {
+    name: "dc_rt_385",
+    kind: 0u8,
+    args: &[3f64, 0f64, 10000f64, 600.5f64],
+    res: &[2f64],
+};
+
+pub const DC_RT_386: DcScenario = DcScenario {
+    name: "dc_rt_386",
+    kind: 0u8,
+    args: &[3f64, 0f64, 10000f64, 601f64],
+    res: &[5f64],
+};
+
+pub const DC_RT_387: DcScenario = DcScenario {
+    name: "dc_rt_387",
+    kind: 0u8,
+    args: &[3f64, 0f64, 10000f64, 618f64],
+    res: &[100f64],
+};
+
+pub const DC_RT_388: DcScenario = DcScenario {
+    name: "dc_rt_388",
+    kind: 0u8,
+    args: &[3f64, 0f64, 10000f64, 636f64],
+    res: &[200f64],
+};
+
+pub const DC_RT_389: DcScenario = DcScenario {
+    name: "dc_rt_389",
+    kind: 0u8,
+    args: &[3f64, 0f64, 10000f64, 640f64],
+    res: &[200f64],
+};
+
+pub const DC_RT_390: DcScenario = DcScenario {
+    name: "dc_rt_390",
+    kind: 0u8,
+    args: &[3f64, 0f64, 10000f64, 644f64],
+    res: &[200f64],
+};
+
+pub const DC_RT_391: DcScenario = DcScenario {
+    name: "dc_rt_391",
+    kind: 0u8,
+    args: &[3f64, 0f64, 10000f64, 768f64],
+    res: &[1100f64],
+};
+
+pub const DC_RT_392: DcScenario = DcScenario {
+    name: "dc_rt_392",
+    kind: 0u8,
+    args: &[3f64, 0f64, 10000f64, 822f64],
+    res: &[1744f64],
+};
+
+pub const DC_RT_393: DcScenario = DcScenario {
+    name: "dc_rt_393",
+    kind: 0u8,
+    args: &[3f64, 0f64, 10000f64, 858f64],
+    res: &[2500f64],
+};
+
+pub const DC_RT_394: DcScenario = DcScenario {
+    name: "dc_rt_394",
+    kind: 0u8,
+    args: &[3f64, 0f64, 10000f64, 864f64],
+    res: &[2500f64],
+};
+
+pub const DC_RT_395: DcScenario = DcScenario {
+    name: "dc_rt_395",
+    kind: 0u8,
+    args: &[3f64, 0f64, 10000f64, 896f64],
+    res: &[3388f64],
+};
+
+pub const DC_RT_396: DcScenario = DcScenario {
+    name: "dc_rt_396",
+    kind: 0u8,
+    args: &[3f64, 0f64, 10000f64, 900f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_397: DcScenario = DcScenario {
+    name: "dc_rt_397",
+    kind: 0u8,
+    args: &[3f64, 0f64, 10000f64, 1176f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_398: DcScenario = DcScenario {
+    name: "dc_rt_398",
+    kind: 0u8,
+    args: &[3f64, 0f64, 10000f64, 1246f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_399: DcScenario = DcScenario {
+    name: "dc_rt_399",
+    kind: 0u8,
+    args: &[3f64, 0f64, 10000f64, 1316f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_400: DcScenario = DcScenario {
+    name: "dc_rt_400",
+    kind: 0u8,
+    args: &[3f64, 0f64, 10000f64, 1386f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_401: DcScenario = DcScenario {
+    name: "dc_rt_401",
+    kind: 0u8,
+    args: &[3f64, 0f64, 10000f64, 1456f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_402: DcScenario = DcScenario {
+    name: "dc_rt_402",
+    kind: 0u8,
+    args: &[3f64, 0f64, 10000f64, 1526f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_403: DcScenario = DcScenario {
+    name: "dc_rt_403",
+    kind: 0u8,
+    args: &[3f64, 0f64, 10000f64, 1596f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_404: DcScenario = DcScenario {
+    name: "dc_rt_404",
+    kind: 0u8,
+    args: &[3f64, 0f64, 10000f64, 1666f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_405: DcScenario = DcScenario {
+    name: "dc_rt_405",
+    kind: 0u8,
+    args: &[3f64, 0f64, 10000f64, 1736f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_406: DcScenario = DcScenario {
+    name: "dc_rt_406",
+    kind: 0u8,
+    args: &[3f64, 0f64, 10000f64, 2100f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_407: DcScenario = DcScenario {
+    name: "dc_rt_407",
+    kind: 0u8,
+    args: &[3f64, 0f64, 10000f64, 2310f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_408: DcScenario = DcScenario {
+    name: "dc_rt_408",
+    kind: 0u8,
+    args: &[3f64, 0f64, 10000f64, 2520f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_409: DcScenario = DcScenario {
+    name: "dc_rt_409",
+    kind: 0u8,
+    args: &[3f64, 0f64, 10000f64, 2730f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_410: DcScenario = DcScenario {
+    name: "dc_rt_410",
+    kind: 0u8,
+    args: &[3f64, 0f64, 10000f64, 2940f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_411: DcScenario = DcScenario {
+    name: "dc_rt_411",
+    kind: 0u8,
+    args: &[3f64, 0f64, 10000f64, 3150f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_412: DcScenario = DcScenario {
+    name: "dc_rt_412",
+    kind: 0u8,
+    args: &[3f64, 0f64, 10000f64, 3360f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_413: DcScenario = DcScenario {
+    name: "dc_rt_413",
+    kind: 0u8,
+    args: &[3f64, 0f64, 10000f64, 3570f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_414: DcScenario = DcScenario {
+    name: "dc_rt_414",
+    kind: 0u8,
+    args: &[3f64, 0f64, 10000f64, 4500f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_415: DcScenario = DcScenario {
+    name: "dc_rt_415",
+    kind: 0u8,
+    args: &[3f64, 0f64, 10000f64, 1000000000f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_416: DcScenario = DcScenario {
+    name: "dc_rt_416",
+    kind: 0u8,
+    args: &[3f64, 0f64, 10000f64, f64::NAN],
+    res: &[3500f64],
+};
+
+pub const DC_RT_417: DcScenario = DcScenario {
+    name: "dc_rt_417",
+    kind: 0u8,
+    args: &[3f64, 0f64, 10000f64, f64::NEG_INFINITY],
+    res: &[0f64],
+};
+
+pub const DC_RT_418: DcScenario = DcScenario {
+    name: "dc_rt_418",
+    kind: 0u8,
+    args: &[3f64, 0f64, 10000f64, f64::INFINITY],
+    res: &[3500f64],
+};
+
+pub const DC_RT_419: DcScenario = DcScenario {
+    name: "dc_rt_419",
+    kind: 0u8,
+    args: &[3f64, 0f64, 10000f64, 600.9999999f64],
+    res: &[5f64],
+};
+
+pub const DC_RT_420: DcScenario = DcScenario {
+    name: "dc_rt_420",
+    kind: 0u8,
+    args: &[3f64, 1f64, 10000f64, -1000000000f64],
+    res: &[0f64],
+};
+
+pub const DC_RT_421: DcScenario = DcScenario {
+    name: "dc_rt_421",
+    kind: 0u8,
+    args: &[3f64, 1f64, 10000f64, -1f64],
+    res: &[0f64],
+};
+
+pub const DC_RT_422: DcScenario = DcScenario {
+    name: "dc_rt_422",
+    kind: 0u8,
+    args: &[3f64, 1f64, 10000f64, 0f64],
+    res: &[0f64],
+};
+
+pub const DC_RT_423: DcScenario = DcScenario {
+    name: "dc_rt_423",
+    kind: 0u8,
+    args: &[3f64, 1f64, 10000f64, 0.5f64],
+    res: &[0f64],
+};
+
+pub const DC_RT_424: DcScenario = DcScenario {
+    name: "dc_rt_424",
+    kind: 0u8,
+    args: &[3f64, 1f64, 10000f64, 595f64],
+    res: &[0f64],
+};
+
+pub const DC_RT_425: DcScenario = DcScenario {
+    name: "dc_rt_425",
+    kind: 0u8,
+    args: &[3f64, 1f64, 10000f64, 596f64],
+    res: &[0f64],
+};
+
+pub const DC_RT_426: DcScenario = DcScenario {
+    name: "dc_rt_426",
+    kind: 0u8,
+    args: &[3f64, 1f64, 10000f64, 600f64],
+    res: &[0f64],
+};
+
+pub const DC_RT_427: DcScenario = DcScenario {
+    name: "dc_rt_427",
+    kind: 0u8,
+    args: &[3f64, 1f64, 10000f64, 600.5f64],
+    res: &[4f64],
+};
+
+pub const DC_RT_428: DcScenario = DcScenario {
+    name: "dc_rt_428",
+    kind: 0u8,
+    args: &[3f64, 1f64, 10000f64, 601f64],
+    res: &[8f64],
+};
+
+pub const DC_RT_429: DcScenario = DcScenario {
+    name: "dc_rt_429",
+    kind: 0u8,
+    args: &[3f64, 1f64, 10000f64, 618f64],
+    res: &[150f64],
+};
+
+pub const DC_RT_430: DcScenario = DcScenario {
+    name: "dc_rt_430",
+    kind: 0u8,
+    args: &[3f64, 1f64, 10000f64, 636f64],
+    res: &[300f64],
+};
+
+pub const DC_RT_431: DcScenario = DcScenario {
+    name: "dc_rt_431",
+    kind: 0u8,
+    args: &[3f64, 1f64, 10000f64, 640f64],
+    res: &[300f64],
+};
+
+pub const DC_RT_432: DcScenario = DcScenario {
+    name: "dc_rt_432",
+    kind: 0u8,
+    args: &[3f64, 1f64, 10000f64, 644f64],
+    res: &[300f64],
+};
+
+pub const DC_RT_433: DcScenario = DcScenario {
+    name: "dc_rt_433",
+    kind: 0u8,
+    args: &[3f64, 1f64, 10000f64, 768f64],
+    res: &[1500f64],
+};
+
+pub const DC_RT_434: DcScenario = DcScenario {
+    name: "dc_rt_434",
+    kind: 0u8,
+    args: &[3f64, 1f64, 10000f64, 822f64],
+    res: &[2138f64],
+};
+
+pub const DC_RT_435: DcScenario = DcScenario {
+    name: "dc_rt_435",
+    kind: 0u8,
+    args: &[3f64, 1f64, 10000f64, 858f64],
+    res: &[2800f64],
+};
+
+pub const DC_RT_436: DcScenario = DcScenario {
+    name: "dc_rt_436",
+    kind: 0u8,
+    args: &[3f64, 1f64, 10000f64, 864f64],
+    res: &[2800f64],
+};
+
+pub const DC_RT_437: DcScenario = DcScenario {
+    name: "dc_rt_437",
+    kind: 0u8,
+    args: &[3f64, 1f64, 10000f64, 896f64],
+    res: &[3422f64],
+};
+
+pub const DC_RT_438: DcScenario = DcScenario {
+    name: "dc_rt_438",
+    kind: 0u8,
+    args: &[3f64, 1f64, 10000f64, 900f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_439: DcScenario = DcScenario {
+    name: "dc_rt_439",
+    kind: 0u8,
+    args: &[3f64, 1f64, 10000f64, 1176f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_440: DcScenario = DcScenario {
+    name: "dc_rt_440",
+    kind: 0u8,
+    args: &[3f64, 1f64, 10000f64, 1246f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_441: DcScenario = DcScenario {
+    name: "dc_rt_441",
+    kind: 0u8,
+    args: &[3f64, 1f64, 10000f64, 1316f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_442: DcScenario = DcScenario {
+    name: "dc_rt_442",
+    kind: 0u8,
+    args: &[3f64, 1f64, 10000f64, 1386f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_443: DcScenario = DcScenario {
+    name: "dc_rt_443",
+    kind: 0u8,
+    args: &[3f64, 1f64, 10000f64, 1456f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_444: DcScenario = DcScenario {
+    name: "dc_rt_444",
+    kind: 0u8,
+    args: &[3f64, 1f64, 10000f64, 1526f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_445: DcScenario = DcScenario {
+    name: "dc_rt_445",
+    kind: 0u8,
+    args: &[3f64, 1f64, 10000f64, 1596f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_446: DcScenario = DcScenario {
+    name: "dc_rt_446",
+    kind: 0u8,
+    args: &[3f64, 1f64, 10000f64, 1666f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_447: DcScenario = DcScenario {
+    name: "dc_rt_447",
+    kind: 0u8,
+    args: &[3f64, 1f64, 10000f64, 1736f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_448: DcScenario = DcScenario {
+    name: "dc_rt_448",
+    kind: 0u8,
+    args: &[3f64, 1f64, 10000f64, 2100f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_449: DcScenario = DcScenario {
+    name: "dc_rt_449",
+    kind: 0u8,
+    args: &[3f64, 1f64, 10000f64, 2310f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_450: DcScenario = DcScenario {
+    name: "dc_rt_450",
+    kind: 0u8,
+    args: &[3f64, 1f64, 10000f64, 2520f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_451: DcScenario = DcScenario {
+    name: "dc_rt_451",
+    kind: 0u8,
+    args: &[3f64, 1f64, 10000f64, 2730f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_452: DcScenario = DcScenario {
+    name: "dc_rt_452",
+    kind: 0u8,
+    args: &[3f64, 1f64, 10000f64, 2940f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_453: DcScenario = DcScenario {
+    name: "dc_rt_453",
+    kind: 0u8,
+    args: &[3f64, 1f64, 10000f64, 3150f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_454: DcScenario = DcScenario {
+    name: "dc_rt_454",
+    kind: 0u8,
+    args: &[3f64, 1f64, 10000f64, 3360f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_455: DcScenario = DcScenario {
+    name: "dc_rt_455",
+    kind: 0u8,
+    args: &[3f64, 1f64, 10000f64, 3570f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_456: DcScenario = DcScenario {
+    name: "dc_rt_456",
+    kind: 0u8,
+    args: &[3f64, 1f64, 10000f64, 4500f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_457: DcScenario = DcScenario {
+    name: "dc_rt_457",
+    kind: 0u8,
+    args: &[3f64, 1f64, 10000f64, 1000000000f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_458: DcScenario = DcScenario {
+    name: "dc_rt_458",
+    kind: 0u8,
+    args: &[3f64, 1f64, 10000f64, f64::NAN],
+    res: &[3500f64],
+};
+
+pub const DC_RT_459: DcScenario = DcScenario {
+    name: "dc_rt_459",
+    kind: 0u8,
+    args: &[3f64, 1f64, 10000f64, f64::NEG_INFINITY],
+    res: &[0f64],
+};
+
+pub const DC_RT_460: DcScenario = DcScenario {
+    name: "dc_rt_460",
+    kind: 0u8,
+    args: &[3f64, 1f64, 10000f64, f64::INFINITY],
+    res: &[3500f64],
+};
+
+pub const DC_RT_461: DcScenario = DcScenario {
+    name: "dc_rt_461",
+    kind: 0u8,
+    args: &[3f64, 1f64, 10000f64, 600.9999999f64],
+    res: &[8f64],
+};
+
+pub const DC_RT_462: DcScenario = DcScenario {
+    name: "dc_rt_462",
+    kind: 0u8,
+    args: &[3f64, 2f64, 10000f64, -1000000000f64],
+    res: &[0f64],
+};
+
+pub const DC_RT_463: DcScenario = DcScenario {
+    name: "dc_rt_463",
+    kind: 0u8,
+    args: &[3f64, 2f64, 10000f64, -1f64],
+    res: &[0f64],
+};
+
+pub const DC_RT_464: DcScenario = DcScenario {
+    name: "dc_rt_464",
+    kind: 0u8,
+    args: &[3f64, 2f64, 10000f64, 0f64],
+    res: &[0f64],
+};
+
+pub const DC_RT_465: DcScenario = DcScenario {
+    name: "dc_rt_465",
+    kind: 0u8,
+    args: &[3f64, 2f64, 10000f64, 0.5f64],
+    res: &[0f64],
+};
+
+pub const DC_RT_466: DcScenario = DcScenario {
+    name: "dc_rt_466",
+    kind: 0u8,
+    args: &[3f64, 2f64, 10000f64, 595f64],
+    res: &[0f64],
+};
+
+pub const DC_RT_467: DcScenario = DcScenario {
+    name: "dc_rt_467",
+    kind: 0u8,
+    args: &[3f64, 2f64, 10000f64, 596f64],
+    res: &[0f64],
+};
+
+pub const DC_RT_468: DcScenario = DcScenario {
+    name: "dc_rt_468",
+    kind: 0u8,
+    args: &[3f64, 2f64, 10000f64, 600f64],
+    res: &[0f64],
+};
+
+pub const DC_RT_469: DcScenario = DcScenario {
+    name: "dc_rt_469",
+    kind: 0u8,
+    args: &[3f64, 2f64, 10000f64, 600.5f64],
+    res: &[2f64],
+};
+
+pub const DC_RT_470: DcScenario = DcScenario {
+    name: "dc_rt_470",
+    kind: 0u8,
+    args: &[3f64, 2f64, 10000f64, 601f64],
+    res: &[5f64],
+};
+
+pub const DC_RT_471: DcScenario = DcScenario {
+    name: "dc_rt_471",
+    kind: 0u8,
+    args: &[3f64, 2f64, 10000f64, 618f64],
+    res: &[100f64],
+};
+
+pub const DC_RT_472: DcScenario = DcScenario {
+    name: "dc_rt_472",
+    kind: 0u8,
+    args: &[3f64, 2f64, 10000f64, 636f64],
+    res: &[200f64],
+};
+
+pub const DC_RT_473: DcScenario = DcScenario {
+    name: "dc_rt_473",
+    kind: 0u8,
+    args: &[3f64, 2f64, 10000f64, 640f64],
+    res: &[200f64],
+};
+
+pub const DC_RT_474: DcScenario = DcScenario {
+    name: "dc_rt_474",
+    kind: 0u8,
+    args: &[3f64, 2f64, 10000f64, 644f64],
+    res: &[200f64],
+};
+
+pub const DC_RT_475: DcScenario = DcScenario {
+    name: "dc_rt_475",
+    kind: 0u8,
+    args: &[3f64, 2f64, 10000f64, 768f64],
+    res: &[1100f64],
+};
+
+pub const DC_RT_476: DcScenario = DcScenario {
+    name: "dc_rt_476",
+    kind: 0u8,
+    args: &[3f64, 2f64, 10000f64, 822f64],
+    res: &[1744f64],
+};
+
+pub const DC_RT_477: DcScenario = DcScenario {
+    name: "dc_rt_477",
+    kind: 0u8,
+    args: &[3f64, 2f64, 10000f64, 858f64],
+    res: &[2500f64],
+};
+
+pub const DC_RT_478: DcScenario = DcScenario {
+    name: "dc_rt_478",
+    kind: 0u8,
+    args: &[3f64, 2f64, 10000f64, 864f64],
+    res: &[2500f64],
+};
+
+pub const DC_RT_479: DcScenario = DcScenario {
+    name: "dc_rt_479",
+    kind: 0u8,
+    args: &[3f64, 2f64, 10000f64, 896f64],
+    res: &[3388f64],
+};
+
+pub const DC_RT_480: DcScenario = DcScenario {
+    name: "dc_rt_480",
+    kind: 0u8,
+    args: &[3f64, 2f64, 10000f64, 900f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_481: DcScenario = DcScenario {
+    name: "dc_rt_481",
+    kind: 0u8,
+    args: &[3f64, 2f64, 10000f64, 1176f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_482: DcScenario = DcScenario {
+    name: "dc_rt_482",
+    kind: 0u8,
+    args: &[3f64, 2f64, 10000f64, 1246f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_483: DcScenario = DcScenario {
+    name: "dc_rt_483",
+    kind: 0u8,
+    args: &[3f64, 2f64, 10000f64, 1316f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_484: DcScenario = DcScenario {
+    name: "dc_rt_484",
+    kind: 0u8,
+    args: &[3f64, 2f64, 10000f64, 1386f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_485: DcScenario = DcScenario {
+    name: "dc_rt_485",
+    kind: 0u8,
+    args: &[3f64, 2f64, 10000f64, 1456f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_486: DcScenario = DcScenario {
+    name: "dc_rt_486",
+    kind: 0u8,
+    args: &[3f64, 2f64, 10000f64, 1526f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_487: DcScenario = DcScenario {
+    name: "dc_rt_487",
+    kind: 0u8,
+    args: &[3f64, 2f64, 10000f64, 1596f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_488: DcScenario = DcScenario {
+    name: "dc_rt_488",
+    kind: 0u8,
+    args: &[3f64, 2f64, 10000f64, 1666f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_489: DcScenario = DcScenario {
+    name: "dc_rt_489",
+    kind: 0u8,
+    args: &[3f64, 2f64, 10000f64, 1736f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_490: DcScenario = DcScenario {
+    name: "dc_rt_490",
+    kind: 0u8,
+    args: &[3f64, 2f64, 10000f64, 2100f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_491: DcScenario = DcScenario {
+    name: "dc_rt_491",
+    kind: 0u8,
+    args: &[3f64, 2f64, 10000f64, 2310f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_492: DcScenario = DcScenario {
+    name: "dc_rt_492",
+    kind: 0u8,
+    args: &[3f64, 2f64, 10000f64, 2520f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_493: DcScenario = DcScenario {
+    name: "dc_rt_493",
+    kind: 0u8,
+    args: &[3f64, 2f64, 10000f64, 2730f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_494: DcScenario = DcScenario {
+    name: "dc_rt_494",
+    kind: 0u8,
+    args: &[3f64, 2f64, 10000f64, 2940f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_495: DcScenario = DcScenario {
+    name: "dc_rt_495",
+    kind: 0u8,
+    args: &[3f64, 2f64, 10000f64, 3150f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_496: DcScenario = DcScenario {
+    name: "dc_rt_496",
+    kind: 0u8,
+    args: &[3f64, 2f64, 10000f64, 3360f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_497: DcScenario = DcScenario {
+    name: "dc_rt_497",
+    kind: 0u8,
+    args: &[3f64, 2f64, 10000f64, 3570f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_498: DcScenario = DcScenario {
+    name: "dc_rt_498",
+    kind: 0u8,
+    args: &[3f64, 2f64, 10000f64, 4500f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_499: DcScenario = DcScenario {
+    name: "dc_rt_499",
+    kind: 0u8,
+    args: &[3f64, 2f64, 10000f64, 1000000000f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_500: DcScenario = DcScenario {
+    name: "dc_rt_500",
+    kind: 0u8,
+    args: &[3f64, 2f64, 10000f64, f64::NAN],
+    res: &[3500f64],
+};
+
+pub const DC_RT_501: DcScenario = DcScenario {
+    name: "dc_rt_501",
+    kind: 0u8,
+    args: &[3f64, 2f64, 10000f64, f64::NEG_INFINITY],
+    res: &[0f64],
+};
+
+pub const DC_RT_502: DcScenario = DcScenario {
+    name: "dc_rt_502",
+    kind: 0u8,
+    args: &[3f64, 2f64, 10000f64, f64::INFINITY],
+    res: &[3500f64],
+};
+
+pub const DC_RT_503: DcScenario = DcScenario {
+    name: "dc_rt_503",
+    kind: 0u8,
+    args: &[3f64, 2f64, 10000f64, 600.9999999f64],
+    res: &[5f64],
+};
+
+pub const DC_RT_504: DcScenario = DcScenario {
+    name: "dc_rt_504",
+    kind: 0u8,
+    args: &[4f64, 0f64, 10000f64, -1000000000f64],
+    res: &[0f64],
+};
+
+pub const DC_RT_505: DcScenario = DcScenario {
+    name: "dc_rt_505",
+    kind: 0u8,
+    args: &[4f64, 0f64, 10000f64, -1f64],
+    res: &[0f64],
+};
+
+pub const DC_RT_506: DcScenario = DcScenario {
+    name: "dc_rt_506",
+    kind: 0u8,
+    args: &[4f64, 0f64, 10000f64, 0f64],
+    res: &[0f64],
+};
+
+pub const DC_RT_507: DcScenario = DcScenario {
+    name: "dc_rt_507",
+    kind: 0u8,
+    args: &[4f64, 0f64, 10000f64, 0.5f64],
+    res: &[0f64],
+};
+
+pub const DC_RT_508: DcScenario = DcScenario {
+    name: "dc_rt_508",
+    kind: 0u8,
+    args: &[4f64, 0f64, 10000f64, 595f64],
+    res: &[0f64],
+};
+
+pub const DC_RT_509: DcScenario = DcScenario {
+    name: "dc_rt_509",
+    kind: 0u8,
+    args: &[4f64, 0f64, 10000f64, 596f64],
+    res: &[0f64],
+};
+
+pub const DC_RT_510: DcScenario = DcScenario {
+    name: "dc_rt_510",
+    kind: 0u8,
+    args: &[4f64, 0f64, 10000f64, 600f64],
+    res: &[0f64],
+};
+
+pub const DC_RT_511: DcScenario = DcScenario {
+    name: "dc_rt_511",
+    kind: 0u8,
+    args: &[4f64, 0f64, 10000f64, 600.5f64],
+    res: &[0f64],
+};
+
+pub const DC_RT_512: DcScenario = DcScenario {
+    name: "dc_rt_512",
+    kind: 0u8,
+    args: &[4f64, 0f64, 10000f64, 601f64],
+    res: &[1f64],
+};
+
+pub const DC_RT_513: DcScenario = DcScenario {
+    name: "dc_rt_513",
+    kind: 0u8,
+    args: &[4f64, 0f64, 10000f64, 618f64],
+    res: &[21f64],
+};
+
+pub const DC_RT_514: DcScenario = DcScenario {
+    name: "dc_rt_514",
+    kind: 0u8,
+    args: &[4f64, 0f64, 10000f64, 636f64],
+    res: &[42f64],
+};
+
+pub const DC_RT_515: DcScenario = DcScenario {
+    name: "dc_rt_515",
+    kind: 0u8,
+    args: &[4f64, 0f64, 10000f64, 640f64],
+    res: &[47f64],
+};
+
+pub const DC_RT_516: DcScenario = DcScenario {
+    name: "dc_rt_516",
+    kind: 0u8,
+    args: &[4f64, 0f64, 10000f64, 644f64],
+    res: &[52f64],
+};
+
+pub const DC_RT_517: DcScenario = DcScenario {
+    name: "dc_rt_517",
+    kind: 0u8,
+    args: &[4f64, 0f64, 10000f64, 768f64],
+    res: &[200f64],
+};
+
+pub const DC_RT_518: DcScenario = DcScenario {
+    name: "dc_rt_518",
+    kind: 0u8,
+    args: &[4f64, 0f64, 10000f64, 822f64],
+    res: &[200f64],
+};
+
+pub const DC_RT_519: DcScenario = DcScenario {
+    name: "dc_rt_519",
+    kind: 0u8,
+    args: &[4f64, 0f64, 10000f64, 858f64],
+    res: &[242f64],
+};
+
+pub const DC_RT_520: DcScenario = DcScenario {
+    name: "dc_rt_520",
+    kind: 0u8,
+    args: &[4f64, 0f64, 10000f64, 864f64],
+    res: &[250f64],
+};
+
+pub const DC_RT_521: DcScenario = DcScenario {
+    name: "dc_rt_521",
+    kind: 0u8,
+    args: &[4f64, 0f64, 10000f64, 896f64],
+    res: &[288f64],
+};
+
+pub const DC_RT_522: DcScenario = DcScenario {
+    name: "dc_rt_522",
+    kind: 0u8,
+    args: &[4f64, 0f64, 10000f64, 900f64],
+    res: &[292f64],
+};
+
+pub const DC_RT_523: DcScenario = DcScenario {
+    name: "dc_rt_523",
+    kind: 0u8,
+    args: &[4f64, 0f64, 10000f64, 1176f64],
+    res: &[635f64],
+};
+
+pub const DC_RT_524: DcScenario = DcScenario {
+    name: "dc_rt_524",
+    kind: 0u8,
+    args: &[4f64, 0f64, 10000f64, 1246f64],
+    res: &[700f64],
+};
+
+pub const DC_RT_525: DcScenario = DcScenario {
+    name: "dc_rt_525",
+    kind: 0u8,
+    args: &[4f64, 0f64, 10000f64, 1316f64],
+    res: &[819f64],
+};
+
+pub const DC_RT_526: DcScenario = DcScenario {
+    name: "dc_rt_526",
+    kind: 0u8,
+    args: &[4f64, 0f64, 10000f64, 1386f64],
+    res: &[985f64],
+};
+
+pub const DC_RT_527: DcScenario = DcScenario {
+    name: "dc_rt_527",
+    kind: 0u8,
+    args: &[4f64, 0f64, 10000f64, 1456f64],
+    res: &[1100f64],
+};
+
+pub const DC_RT_528: DcScenario = DcScenario {
+    name: "dc_rt_528",
+    kind: 0u8,
+    args: &[4f64, 0f64, 10000f64, 1526f64],
+    res: &[1235f64],
+};
+
+pub const DC_RT_529: DcScenario = DcScenario {
+    name: "dc_rt_529",
+    kind: 0u8,
+    args: &[4f64, 0f64, 10000f64, 1596f64],
+    res: &[1485f64],
+};
+
+pub const DC_RT_530: DcScenario = DcScenario {
+    name: "dc_rt_530",
+    kind: 0u8,
+    args: &[4f64, 0f64, 10000f64, 1666f64],
+    res: &[1700f64],
+};
+
+pub const DC_RT_531: DcScenario = DcScenario {
+    name: "dc_rt_531",
+    kind: 0u8,
+    args: &[4f64, 0f64, 10000f64, 1736f64],
+    res: &[1823f64],
+};
+
+pub const DC_RT_532: DcScenario = DcScenario {
+    name: "dc_rt_532",
+    kind: 0u8,
+    args: &[4f64, 0f64, 10000f64, 2100f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_533: DcScenario = DcScenario {
+    name: "dc_rt_533",
+    kind: 0u8,
+    args: &[4f64, 0f64, 10000f64, 2310f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_534: DcScenario = DcScenario {
+    name: "dc_rt_534",
+    kind: 0u8,
+    args: &[4f64, 0f64, 10000f64, 2520f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_535: DcScenario = DcScenario {
+    name: "dc_rt_535",
+    kind: 0u8,
+    args: &[4f64, 0f64, 10000f64, 2730f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_536: DcScenario = DcScenario {
+    name: "dc_rt_536",
+    kind: 0u8,
+    args: &[4f64, 0f64, 10000f64, 2940f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_537: DcScenario = DcScenario {
+    name: "dc_rt_537",
+    kind: 0u8,
+    args: &[4f64, 0f64, 10000f64, 3150f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_538: DcScenario = DcScenario {
+    name: "dc_rt_538",
+    kind: 0u8,
+    args: &[4f64, 0f64, 10000f64, 3360f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_539: DcScenario = DcScenario {
+    name: "dc_rt_539",
+    kind: 0u8,
+    args: &[4f64, 0f64, 10000f64, 3570f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_540: DcScenario = DcScenario {
+    name: "dc_rt_540",
+    kind: 0u8,
+    args: &[4f64, 0f64, 10000f64, 4500f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_541: DcScenario = DcScenario {
+    name: "dc_rt_541",
+    kind: 0u8,
+    args: &[4f64, 0f64, 10000f64, 1000000000f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_542: DcScenario = DcScenario {
+    name: "dc_rt_542",
+    kind: 0u8,
+    args: &[4f64, 0f64, 10000f64, f64::NAN],
+    res: &[3500f64],
+};
+
+pub const DC_RT_543: DcScenario = DcScenario {
+    name: "dc_rt_543",
+    kind: 0u8,
+    args: &[4f64, 0f64, 10000f64, f64::NEG_INFINITY],
+    res: &[0f64],
+};
+
+pub const DC_RT_544: DcScenario = DcScenario {
+    name: "dc_rt_544",
+    kind: 0u8,
+    args: &[4f64, 0f64, 10000f64, f64::INFINITY],
+    res: &[3500f64],
+};
+
+pub const DC_RT_545: DcScenario = DcScenario {
+    name: "dc_rt_545",
+    kind: 0u8,
+    args: &[4f64, 0f64, 10000f64, 600.9999999f64],
+    res: &[1f64],
+};
+
+pub const DC_RT_546: DcScenario = DcScenario {
+    name: "dc_rt_546",
+    kind: 0u8,
+    args: &[4f64, 1f64, 10000f64, -1000000000f64],
+    res: &[0f64],
+};
+
+pub const DC_RT_547: DcScenario = DcScenario {
+    name: "dc_rt_547",
+    kind: 0u8,
+    args: &[4f64, 1f64, 10000f64, -1f64],
+    res: &[0f64],
+};
+
+pub const DC_RT_548: DcScenario = DcScenario {
+    name: "dc_rt_548",
+    kind: 0u8,
+    args: &[4f64, 1f64, 10000f64, 0f64],
+    res: &[0f64],
+};
+
+pub const DC_RT_549: DcScenario = DcScenario {
+    name: "dc_rt_549",
+    kind: 0u8,
+    args: &[4f64, 1f64, 10000f64, 0.5f64],
+    res: &[0f64],
+};
+
+pub const DC_RT_550: DcScenario = DcScenario {
+    name: "dc_rt_550",
+    kind: 0u8,
+    args: &[4f64, 1f64, 10000f64, 595f64],
+    res: &[0f64],
+};
+
+pub const DC_RT_551: DcScenario = DcScenario {
+    name: "dc_rt_551",
+    kind: 0u8,
+    args: &[4f64, 1f64, 10000f64, 596f64],
+    res: &[0f64],
+};
+
+pub const DC_RT_552: DcScenario = DcScenario {
+    name: "dc_rt_552",
+    kind: 0u8,
+    args: &[4f64, 1f64, 10000f64, 600f64],
+    res: &[0f64],
+};
+
+pub const DC_RT_553: DcScenario = DcScenario {
+    name: "dc_rt_553",
+    kind: 0u8,
+    args: &[4f64, 1f64, 10000f64, 600.5f64],
+    res: &[0f64],
+};
+
+pub const DC_RT_554: DcScenario = DcScenario {
+    name: "dc_rt_554",
+    kind: 0u8,
+    args: &[4f64, 1f64, 10000f64, 601f64],
+    res: &[1f64],
+};
+
+pub const DC_RT_555: DcScenario = DcScenario {
+    name: "dc_rt_555",
+    kind: 0u8,
+    args: &[4f64, 1f64, 10000f64, 618f64],
+    res: &[32f64],
+};
+
+pub const DC_RT_556: DcScenario = DcScenario {
+    name: "dc_rt_556",
+    kind: 0u8,
+    args: &[4f64, 1f64, 10000f64, 636f64],
+    res: &[64f64],
+};
+
+pub const DC_RT_557: DcScenario = DcScenario {
+    name: "dc_rt_557",
+    kind: 0u8,
+    args: &[4f64, 1f64, 10000f64, 640f64],
+    res: &[71f64],
+};
+
+pub const DC_RT_558: DcScenario = DcScenario {
+    name: "dc_rt_558",
+    kind: 0u8,
+    args: &[4f64, 1f64, 10000f64, 644f64],
+    res: &[78f64],
+};
+
+pub const DC_RT_559: DcScenario = DcScenario {
+    name: "dc_rt_559",
+    kind: 0u8,
+    args: &[4f64, 1f64, 10000f64, 768f64],
+    res: &[300f64],
+};
+
+pub const DC_RT_560: DcScenario = DcScenario {
+    name: "dc_rt_560",
+    kind: 0u8,
+    args: &[4f64, 1f64, 10000f64, 822f64],
+    res: &[300f64],
+};
+
+pub const DC_RT_561: DcScenario = DcScenario {
+    name: "dc_rt_561",
+    kind: 0u8,
+    args: &[4f64, 1f64, 10000f64, 858f64],
+    res: &[364f64],
+};
+
+pub const DC_RT_562: DcScenario = DcScenario {
+    name: "dc_rt_562",
+    kind: 0u8,
+    args: &[4f64, 1f64, 10000f64, 864f64],
+    res: &[375f64],
+};
+
+pub const DC_RT_563: DcScenario = DcScenario {
+    name: "dc_rt_563",
+    kind: 0u8,
+    args: &[4f64, 1f64, 10000f64, 896f64],
+    res: &[432f64],
+};
+
+pub const DC_RT_564: DcScenario = DcScenario {
+    name: "dc_rt_564",
+    kind: 0u8,
+    args: &[4f64, 1f64, 10000f64, 900f64],
+    res: &[439f64],
+};
+
+pub const DC_RT_565: DcScenario = DcScenario {
+    name: "dc_rt_565",
+    kind: 0u8,
+    args: &[4f64, 1f64, 10000f64, 1176f64],
+    res: &[914f64],
+};
+
+pub const DC_RT_566: DcScenario = DcScenario {
+    name: "dc_rt_566",
+    kind: 0u8,
+    args: &[4f64, 1f64, 10000f64, 1246f64],
+    res: &[1000f64],
+};
+
+pub const DC_RT_567: DcScenario = DcScenario {
+    name: "dc_rt_567",
+    kind: 0u8,
+    args: &[4f64, 1f64, 10000f64, 1316f64],
+    res: &[1148f64],
+};
+
+pub const DC_RT_568: DcScenario = DcScenario {
+    name: "dc_rt_568",
+    kind: 0u8,
+    args: &[4f64, 1f64, 10000f64, 1386f64],
+    res: &[1357f64],
+};
+
+pub const DC_RT_569: DcScenario = DcScenario {
+    name: "dc_rt_569",
+    kind: 0u8,
+    args: &[4f64, 1f64, 10000f64, 1456f64],
+    res: &[1500f64],
+};
+
+pub const DC_RT_570: DcScenario = DcScenario {
+    name: "dc_rt_570",
+    kind: 0u8,
+    args: &[4f64, 1f64, 10000f64, 1526f64],
+    res: &[1635f64],
+};
+
+pub const DC_RT_571: DcScenario = DcScenario {
+    name: "dc_rt_571",
+    kind: 0u8,
+    args: &[4f64, 1f64, 10000f64, 1596f64],
+    res: &[1885f64],
+};
+
+pub const DC_RT_572: DcScenario = DcScenario {
+    name: "dc_rt_572",
+    kind: 0u8,
+    args: &[4f64, 1f64, 10000f64, 1666f64],
+    res: &[2100f64],
+};
+
+pub const DC_RT_573: DcScenario = DcScenario {
+    name: "dc_rt_573",
+    kind: 0u8,
+    args: &[4f64, 1f64, 10000f64, 1736f64],
+    res: &[2208f64],
+};
+
+pub const DC_RT_574: DcScenario = DcScenario {
+    name: "dc_rt_574",
+    kind: 0u8,
+    args: &[4f64, 1f64, 10000f64, 2100f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_575: DcScenario = DcScenario {
+    name: "dc_rt_575",
+    kind: 0u8,
+    args: &[4f64, 1f64, 10000f64, 2310f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_576: DcScenario = DcScenario {
+    name: "dc_rt_576",
+    kind: 0u8,
+    args: &[4f64, 1f64, 10000f64, 2520f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_577: DcScenario = DcScenario {
+    name: "dc_rt_577",
+    kind: 0u8,
+    args: &[4f64, 1f64, 10000f64, 2730f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_578: DcScenario = DcScenario {
+    name: "dc_rt_578",
+    kind: 0u8,
+    args: &[4f64, 1f64, 10000f64, 2940f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_579: DcScenario = DcScenario {
+    name: "dc_rt_579",
+    kind: 0u8,
+    args: &[4f64, 1f64, 10000f64, 3150f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_580: DcScenario = DcScenario {
+    name: "dc_rt_580",
+    kind: 0u8,
+    args: &[4f64, 1f64, 10000f64, 3360f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_581: DcScenario = DcScenario {
+    name: "dc_rt_581",
+    kind: 0u8,
+    args: &[4f64, 1f64, 10000f64, 3570f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_582: DcScenario = DcScenario {
+    name: "dc_rt_582",
+    kind: 0u8,
+    args: &[4f64, 1f64, 10000f64, 4500f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_583: DcScenario = DcScenario {
+    name: "dc_rt_583",
+    kind: 0u8,
+    args: &[4f64, 1f64, 10000f64, 1000000000f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_584: DcScenario = DcScenario {
+    name: "dc_rt_584",
+    kind: 0u8,
+    args: &[4f64, 1f64, 10000f64, f64::NAN],
+    res: &[3500f64],
+};
+
+pub const DC_RT_585: DcScenario = DcScenario {
+    name: "dc_rt_585",
+    kind: 0u8,
+    args: &[4f64, 1f64, 10000f64, f64::NEG_INFINITY],
+    res: &[0f64],
+};
+
+pub const DC_RT_586: DcScenario = DcScenario {
+    name: "dc_rt_586",
+    kind: 0u8,
+    args: &[4f64, 1f64, 10000f64, f64::INFINITY],
+    res: &[3500f64],
+};
+
+pub const DC_RT_587: DcScenario = DcScenario {
+    name: "dc_rt_587",
+    kind: 0u8,
+    args: &[4f64, 1f64, 10000f64, 600.9999999f64],
+    res: &[1f64],
+};
+
+pub const DC_RT_588: DcScenario = DcScenario {
+    name: "dc_rt_588",
+    kind: 0u8,
+    args: &[4f64, 2f64, 10000f64, -1000000000f64],
+    res: &[0f64],
+};
+
+pub const DC_RT_589: DcScenario = DcScenario {
+    name: "dc_rt_589",
+    kind: 0u8,
+    args: &[4f64, 2f64, 10000f64, -1f64],
+    res: &[0f64],
+};
+
+pub const DC_RT_590: DcScenario = DcScenario {
+    name: "dc_rt_590",
+    kind: 0u8,
+    args: &[4f64, 2f64, 10000f64, 0f64],
+    res: &[0f64],
+};
+
+pub const DC_RT_591: DcScenario = DcScenario {
+    name: "dc_rt_591",
+    kind: 0u8,
+    args: &[4f64, 2f64, 10000f64, 0.5f64],
+    res: &[0f64],
+};
+
+pub const DC_RT_592: DcScenario = DcScenario {
+    name: "dc_rt_592",
+    kind: 0u8,
+    args: &[4f64, 2f64, 10000f64, 595f64],
+    res: &[0f64],
+};
+
+pub const DC_RT_593: DcScenario = DcScenario {
+    name: "dc_rt_593",
+    kind: 0u8,
+    args: &[4f64, 2f64, 10000f64, 596f64],
+    res: &[0f64],
+};
+
+pub const DC_RT_594: DcScenario = DcScenario {
+    name: "dc_rt_594",
+    kind: 0u8,
+    args: &[4f64, 2f64, 10000f64, 600f64],
+    res: &[0f64],
+};
+
+pub const DC_RT_595: DcScenario = DcScenario {
+    name: "dc_rt_595",
+    kind: 0u8,
+    args: &[4f64, 2f64, 10000f64, 600.5f64],
+    res: &[0f64],
+};
+
+pub const DC_RT_596: DcScenario = DcScenario {
+    name: "dc_rt_596",
+    kind: 0u8,
+    args: &[4f64, 2f64, 10000f64, 601f64],
+    res: &[1f64],
+};
+
+pub const DC_RT_597: DcScenario = DcScenario {
+    name: "dc_rt_597",
+    kind: 0u8,
+    args: &[4f64, 2f64, 10000f64, 618f64],
+    res: &[21f64],
+};
+
+pub const DC_RT_598: DcScenario = DcScenario {
+    name: "dc_rt_598",
+    kind: 0u8,
+    args: &[4f64, 2f64, 10000f64, 636f64],
+    res: &[42f64],
+};
+
+pub const DC_RT_599: DcScenario = DcScenario {
+    name: "dc_rt_599",
+    kind: 0u8,
+    args: &[4f64, 2f64, 10000f64, 640f64],
+    res: &[47f64],
+};
+
+pub const DC_RT_600: DcScenario = DcScenario {
+    name: "dc_rt_600",
+    kind: 0u8,
+    args: &[4f64, 2f64, 10000f64, 644f64],
+    res: &[52f64],
+};
+
+pub const DC_RT_601: DcScenario = DcScenario {
+    name: "dc_rt_601",
+    kind: 0u8,
+    args: &[4f64, 2f64, 10000f64, 768f64],
+    res: &[200f64],
+};
+
+pub const DC_RT_602: DcScenario = DcScenario {
+    name: "dc_rt_602",
+    kind: 0u8,
+    args: &[4f64, 2f64, 10000f64, 822f64],
+    res: &[200f64],
+};
+
+pub const DC_RT_603: DcScenario = DcScenario {
+    name: "dc_rt_603",
+    kind: 0u8,
+    args: &[4f64, 2f64, 10000f64, 858f64],
+    res: &[242f64],
+};
+
+pub const DC_RT_604: DcScenario = DcScenario {
+    name: "dc_rt_604",
+    kind: 0u8,
+    args: &[4f64, 2f64, 10000f64, 864f64],
+    res: &[250f64],
+};
+
+pub const DC_RT_605: DcScenario = DcScenario {
+    name: "dc_rt_605",
+    kind: 0u8,
+    args: &[4f64, 2f64, 10000f64, 896f64],
+    res: &[288f64],
+};
+
+pub const DC_RT_606: DcScenario = DcScenario {
+    name: "dc_rt_606",
+    kind: 0u8,
+    args: &[4f64, 2f64, 10000f64, 900f64],
+    res: &[292f64],
+};
+
+pub const DC_RT_607: DcScenario = DcScenario {
+    name: "dc_rt_607",
+    kind: 0u8,
+    args: &[4f64, 2f64, 10000f64, 1176f64],
+    res: &[635f64],
+};
+
+pub const DC_RT_608: DcScenario = DcScenario {
+    name: "dc_rt_608",
+    kind: 0u8,
+    args: &[4f64, 2f64, 10000f64, 1246f64],
+    res: &[700f64],
+};
+
+pub const DC_RT_609: DcScenario = DcScenario {
+    name: "dc_rt_609",
+    kind: 0u8,
+    args: &[4f64, 2f64, 10000f64, 1316f64],
+    res: &[819f64],
+};
+
+pub const DC_RT_610: DcScenario = DcScenario {
+    name: "dc_rt_610",
+    kind: 0u8,
+    args: &[4f64, 2f64, 10000f64, 1386f64],
+    res: &[985f64],
+};
+
+pub const DC_RT_611: DcScenario = DcScenario {
+    name: "dc_rt_611",
+    kind: 0u8,
+    args: &[4f64, 2f64, 10000f64, 1456f64],
+    res: &[1100f64],
+};
+
+pub const DC_RT_612: DcScenario = DcScenario {
+    name: "dc_rt_612",
+    kind: 0u8,
+    args: &[4f64, 2f64, 10000f64, 1526f64],
+    res: &[1235f64],
+};
+
+pub const DC_RT_613: DcScenario = DcScenario {
+    name: "dc_rt_613",
+    kind: 0u8,
+    args: &[4f64, 2f64, 10000f64, 1596f64],
+    res: &[1485f64],
+};
+
+pub const DC_RT_614: DcScenario = DcScenario {
+    name: "dc_rt_614",
+    kind: 0u8,
+    args: &[4f64, 2f64, 10000f64, 1666f64],
+    res: &[1700f64],
+};
+
+pub const DC_RT_615: DcScenario = DcScenario {
+    name: "dc_rt_615",
+    kind: 0u8,
+    args: &[4f64, 2f64, 10000f64, 1736f64],
+    res: &[1823f64],
+};
+
+pub const DC_RT_616: DcScenario = DcScenario {
+    name: "dc_rt_616",
+    kind: 0u8,
+    args: &[4f64, 2f64, 10000f64, 2100f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_617: DcScenario = DcScenario {
+    name: "dc_rt_617",
+    kind: 0u8,
+    args: &[4f64, 2f64, 10000f64, 2310f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_618: DcScenario = DcScenario {
+    name: "dc_rt_618",
+    kind: 0u8,
+    args: &[4f64, 2f64, 10000f64, 2520f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_619: DcScenario = DcScenario {
+    name: "dc_rt_619",
+    kind: 0u8,
+    args: &[4f64, 2f64, 10000f64, 2730f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_620: DcScenario = DcScenario {
+    name: "dc_rt_620",
+    kind: 0u8,
+    args: &[4f64, 2f64, 10000f64, 2940f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_621: DcScenario = DcScenario {
+    name: "dc_rt_621",
+    kind: 0u8,
+    args: &[4f64, 2f64, 10000f64, 3150f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_622: DcScenario = DcScenario {
+    name: "dc_rt_622",
+    kind: 0u8,
+    args: &[4f64, 2f64, 10000f64, 3360f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_623: DcScenario = DcScenario {
+    name: "dc_rt_623",
+    kind: 0u8,
+    args: &[4f64, 2f64, 10000f64, 3570f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_624: DcScenario = DcScenario {
+    name: "dc_rt_624",
+    kind: 0u8,
+    args: &[4f64, 2f64, 10000f64, 4500f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_625: DcScenario = DcScenario {
+    name: "dc_rt_625",
+    kind: 0u8,
+    args: &[4f64, 2f64, 10000f64, 1000000000f64],
+    res: &[3500f64],
+};
+
+pub const DC_RT_626: DcScenario = DcScenario {
+    name: "dc_rt_626",
+    kind: 0u8,
+    args: &[4f64, 2f64, 10000f64, f64::NAN],
+    res: &[3500f64],
+};
+
+pub const DC_RT_627: DcScenario = DcScenario {
+    name: "dc_rt_627",
+    kind: 0u8,
+    args: &[4f64, 2f64, 10000f64, f64::NEG_INFINITY],
+    res: &[0f64],
+};
+
+pub const DC_RT_628: DcScenario = DcScenario {
+    name: "dc_rt_628",
+    kind: 0u8,
+    args: &[4f64, 2f64, 10000f64, f64::INFINITY],
+    res: &[3500f64],
+};
+
+pub const DC_RT_629: DcScenario = DcScenario {
+    name: "dc_rt_629",
+    kind: 0u8,
+    args: &[4f64, 2f64, 10000f64, 600.9999999f64],
+    res: &[1f64],
+};
+
+pub const DC_LAND_630: DcScenario = DcScenario {
+    name: "dc_land_630",
+    kind: 0u8,
+    args: &[1f64, 0f64, 0f64, 1000000000f64],
+    res: &[0f64],
+};
+
+pub const DC_LAND_631: DcScenario = DcScenario {
+    name: "dc_land_631",
+    kind: 0u8,
+    args: &[1f64, 0f64, -5f64, 1000000000f64],
+    res: &[0f64],
+};
+
+pub const DC_LAND_632: DcScenario = DcScenario {
+    name: "dc_land_632",
+    kind: 0u8,
+    args: &[1f64, 0f64, 1f64, 1000000000f64],
+    res: &[0f64],
+};
+
+pub const DC_LAND_633: DcScenario = DcScenario {
+    name: "dc_land_633",
+    kind: 0u8,
+    args: &[1f64, 0f64, 0.5f64, 1000000000f64],
+    res: &[0f64],
+};
+
+pub const DC_LAND_634: DcScenario = DcScenario {
+    name: "dc_land_634",
+    kind: 0u8,
+    args: &[1f64, 0f64, f64::NAN, 1000000000f64],
+    res: &[f64::NAN],
+};
+
+pub const DC_LAND_635: DcScenario = DcScenario {
+    name: "dc_land_635",
+    kind: 0u8,
+    args: &[1f64, 0f64, f64::INFINITY, 1000000000f64],
+    res: &[f64::INFINITY],
+};
+
+pub const DC_LAND_636: DcScenario = DcScenario {
+    name: "dc_land_636",
+    kind: 0u8,
+    args: &[1f64, 0f64, f64::NEG_INFINITY, 1000000000f64],
+    res: &[0f64],
+};
+
+pub const DC_LAND_637: DcScenario = DcScenario {
+    name: "dc_land_637",
+    kind: 0u8,
+    args: &[1f64, 0f64, 1000000000000f64, 1000000000f64],
+    res: &[350000000000f64],
+};
+
+pub const DC_WS_0: DcScenario = DcScenario {
+    name: "dc_ws_0",
+    kind: 1u8,
+    args: &[1f64, 0f64, f64::NAN],
+    res: &[35f64, 35f64, 0f64, 0f64, 0f64, 0f64, 1f64],
+};
+
+pub const DC_WS_1: DcScenario = DcScenario {
+    name: "dc_ws_1",
+    kind: 1u8,
+    args: &[1f64, 0f64, f64::NEG_INFINITY],
+    res: &[0f64, 2f64, 0f64, f64::INFINITY, 0f64, 0f64, 0f64],
+};
+
+pub const DC_WS_2: DcScenario = DcScenario {
+    name: "dc_ws_2",
+    kind: 1u8,
+    args: &[1f64, 0f64, 0f64],
+    res: &[0f64, 2f64, 0f64, 600f64, 0f64, 0f64, 0f64],
+};
+
+pub const DC_WS_3: DcScenario = DcScenario {
+    name: "dc_ws_3",
+    kind: 1u8,
+    args: &[1f64, 0f64, 594f64],
+    res: &[0f64, 2f64, 0f64, 6f64, 0f64, 0f64, 0f64],
+};
+
+pub const DC_WS_4: DcScenario = DcScenario {
+    name: "dc_ws_4",
+    kind: 1u8,
+    args: &[1f64, 0f64, 595f64],
+    res: &[0f64, 2f64, 0f64, 5f64, 0f64, 1f64, 0f64],
+};
+
+pub const DC_WS_5: DcScenario = DcScenario {
+    name: "dc_ws_5",
+    kind: 1u8,
+    args: &[1f64, 0f64, 596f64],
+    res: &[0f64, 2f64, 0f64, 4f64, 0f64, 1f64, 0f64],
+};
+
+pub const DC_WS_6: DcScenario = DcScenario {
+    name: "dc_ws_6",
+    kind: 1u8,
+    args: &[1f64, 0f64, 600f64],
+    res: &[0f64, 2f64, 0f64, 0f64, 0f64, 1f64, 0f64],
+};
+
+pub const DC_WS_7: DcScenario = DcScenario {
+    name: "dc_ws_7",
+    kind: 1u8,
+    args: &[1f64, 0f64, 600.5f64],
+    res: &[0f64, 2f64, 1f64, 0f64, 167.5f64, 1f64, 0f64],
+};
+
+pub const DC_WS_8: DcScenario = DcScenario {
+    name: "dc_ws_8",
+    kind: 1u8,
+    args: &[1f64, 0f64, 601f64],
+    res: &[0.01f64, 2f64, 1f64, 0f64, 167f64, 1f64, 0f64],
+};
+
+pub const DC_WS_9: DcScenario = DcScenario {
+    name: "dc_ws_9",
+    kind: 1u8,
+    args: &[1f64, 0f64, 605f64],
+    res: &[0.05f64, 2f64, 1f64, 0f64, 163f64, 1f64, 0f64],
+};
+
+pub const DC_WS_10: DcScenario = DcScenario {
+    name: "dc_ws_10",
+    kind: 1u8,
+    args: &[1f64, 0f64, 606f64],
+    res: &[0.07f64, 2f64, 1f64, 0f64, 162f64, 0f64, 0f64],
+};
+
+pub const DC_WS_11: DcScenario = DcScenario {
+    name: "dc_ws_11",
+    kind: 1u8,
+    args: &[1f64, 0f64, 618f64],
+    res: &[0.21f64, 2f64, 1f64, 0f64, 150f64, 0f64, 0f64],
+};
+
+pub const DC_WS_12: DcScenario = DcScenario {
+    name: "dc_ws_12",
+    kind: 1u8,
+    args: &[1f64, 0f64, 635f64],
+    res: &[0.41f64, 2f64, 1f64, 0f64, 133f64, 0f64, 0f64],
+};
+
+pub const DC_WS_13: DcScenario = DcScenario {
+    name: "dc_ws_13",
+    kind: 1u8,
+    args: &[1f64, 0f64, 636f64],
+    res: &[0.42f64, 2f64, 1f64, 0f64, 132f64, 0f64, 0f64],
+};
+
+pub const DC_WS_14: DcScenario = DcScenario {
+    name: "dc_ws_14",
+    kind: 1u8,
+    args: &[1f64, 0f64, 640f64],
+    res: &[0.47f64, 2f64, 1f64, 0f64, 128f64, 0f64, 0f64],
+};
+
+pub const DC_WS_15: DcScenario = DcScenario {
+    name: "dc_ws_15",
+    kind: 1u8,
+    args: &[1f64, 0f64, 644f64],
+    res: &[0.52f64, 2f64, 1f64, 0f64, 124f64, 0f64, 0f64],
+};
+
+pub const DC_WS_16: DcScenario = DcScenario {
+    name: "dc_ws_16",
+    kind: 1u8,
+    args: &[1f64, 0f64, 645f64],
+    res: &[0.53f64, 2f64, 1f64, 0f64, 123f64, 0f64, 0f64],
+};
+
+pub const DC_WS_17: DcScenario = DcScenario {
+    name: "dc_ws_17",
+    kind: 1u8,
+    args: &[1f64, 0f64, 767f64],
+    res: &[1.98f64, 2f64, 1f64, 0f64, 1f64, 0f64, 0f64],
+};
+
+pub const DC_WS_18: DcScenario = DcScenario {
+    name: "dc_ws_18",
+    kind: 1u8,
+    args: &[1f64, 0f64, 768f64],
+    res: &[2f64, 4f64, 0f64, 54f64, 0f64, 0f64, 0f64],
+};
+
+pub const DC_WS_19: DcScenario = DcScenario {
+    name: "dc_ws_19",
+    kind: 1u8,
+    args: &[1f64, 0f64, 772f64],
+    res: &[2f64, 4f64, 0f64, 50f64, 0f64, 0f64, 0f64],
+};
+
+pub const DC_WS_20: DcScenario = DcScenario {
+    name: "dc_ws_20",
+    kind: 1u8,
+    args: &[1f64, 0f64, 822f64],
+    res: &[2f64, 4f64, 1f64, 0f64, 168f64, 1f64, 0f64],
+};
+
+pub const DC_WS_21: DcScenario = DcScenario {
+    name: "dc_ws_21",
+    kind: 1u8,
+    args: &[1f64, 0f64, 858f64],
+    res: &[2.42f64, 4f64, 1f64, 0f64, 132f64, 0f64, 0f64],
+};
+
+pub const DC_WS_22: DcScenario = DcScenario {
+    name: "dc_ws_22",
+    kind: 1u8,
+    args: &[1f64, 0f64, 863f64],
+    res: &[2.48f64, 4f64, 1f64, 0f64, 127f64, 0f64, 0f64],
+};
+
+pub const DC_WS_23: DcScenario = DcScenario {
+    name: "dc_ws_23",
+    kind: 1u8,
+    args: &[1f64, 0f64, 864f64],
+    res: &[2.5f64, 4f64, 1f64, 0f64, 126f64, 0f64, 0f64],
+};
+
+pub const DC_WS_24: DcScenario = DcScenario {
+    name: "dc_ws_24",
+    kind: 1u8,
+    args: &[1f64, 0f64, 868f64],
+    res: &[2.54f64, 4f64, 1f64, 0f64, 122f64, 0f64, 0f64],
+};
+
+pub const DC_WS_25: DcScenario = DcScenario {
+    name: "dc_ws_25",
+    kind: 1u8,
+    args: &[1f64, 0f64, 895f64],
+    res: &[2.86f64, 4f64, 1f64, 0f64, 95f64, 0f64, 0f64],
+};
+
+pub const DC_WS_26: DcScenario = DcScenario {
+    name: "dc_ws_26",
+    kind: 1u8,
+    args: &[1f64, 0f64, 896f64],
+    res: &[2.88f64, 4f64, 1f64, 0f64, 94f64, 0f64, 0f64],
+};
+
+pub const DC_WS_27: DcScenario = DcScenario {
+    name: "dc_ws_27",
+    kind: 1u8,
+    args: &[1f64, 0f64, 900f64],
+    res: &[2.92f64, 4f64, 1f64, 0f64, 90f64, 0f64, 0f64],
+};
+
+pub const DC_WS_28: DcScenario = DcScenario {
+    name: "dc_ws_28",
+    kind: 1u8,
+    args: &[1f64, 0f64, 1067f64],
+    res: &[4.41f64, 7f64, 1f64, 0f64, 145f64, 0f64, 0f64],
+};
+
+pub const DC_WS_29: DcScenario = DcScenario {
+    name: "dc_ws_29",
+    kind: 1u8,
+    args: &[1f64, 0f64, 1068f64],
+    res: &[4.42f64, 7f64, 1f64, 0f64, 144f64, 0f64, 0f64],
+};
+
+pub const DC_WS_30: DcScenario = DcScenario {
+    name: "dc_ws_30",
+    kind: 1u8,
+    args: &[1f64, 0f64, 1175f64],
+    res: &[6.33f64, 7f64, 1f64, 0f64, 37f64, 0f64, 0f64],
+};
+
+pub const DC_WS_31: DcScenario = DcScenario {
+    name: "dc_ws_31",
+    kind: 1u8,
+    args: &[1f64, 0f64, 1176f64],
+    res: &[6.35f64, 7f64, 1f64, 0f64, 36f64, 0f64, 0f64],
+};
+
+pub const DC_WS_32: DcScenario = DcScenario {
+    name: "dc_ws_32",
+    kind: 1u8,
+    args: &[1f64, 0f64, 1245f64],
+    res: &[7f64, 11f64, 0f64, 21f64, 0f64, 0f64, 0f64],
+};
+
+pub const DC_WS_33: DcScenario = DcScenario {
+    name: "dc_ws_33",
+    kind: 1u8,
+    args: &[1f64, 0f64, 1246f64],
+    res: &[7f64, 11f64, 0f64, 20f64, 0f64, 0f64, 0f64],
+};
+
+pub const DC_WS_34: DcScenario = DcScenario {
+    name: "dc_ws_34",
+    kind: 1u8,
+    args: &[1f64, 0f64, 1314f64],
+    res: &[8.14f64, 11f64, 1f64, 0f64, 120f64, 0f64, 0f64],
+};
+
+pub const DC_WS_35: DcScenario = DcScenario {
+    name: "dc_ws_35",
+    kind: 1u8,
+    args: &[1f64, 0f64, 1315f64],
+    res: &[8.16f64, 11f64, 1f64, 0f64, 119f64, 0f64, 0f64],
+};
+
+pub const DC_WS_36: DcScenario = DcScenario {
+    name: "dc_ws_36",
+    kind: 1u8,
+    args: &[1f64, 0f64, 1316f64],
+    res: &[8.19f64, 11f64, 1f64, 0f64, 118f64, 0f64, 0f64],
+};
+
+pub const DC_WS_37: DcScenario = DcScenario {
+    name: "dc_ws_37",
+    kind: 1u8,
+    args: &[1f64, 0f64, 1385f64],
+    res: &[9.83f64, 11f64, 1f64, 0f64, 49f64, 0f64, 0f64],
+};
+
+pub const DC_WS_38: DcScenario = DcScenario {
+    name: "dc_ws_38",
+    kind: 1u8,
+    args: &[1f64, 0f64, 1386f64],
+    res: &[9.85f64, 11f64, 1f64, 0f64, 48f64, 0f64, 0f64],
+};
+
+pub const DC_WS_39: DcScenario = DcScenario {
+    name: "dc_ws_39",
+    kind: 1u8,
+    args: &[1f64, 0f64, 1455f64],
+    res: &[11f64, 17f64, 0f64, 33f64, 0f64, 0f64, 0f64],
+};
+
+pub const DC_WS_40: DcScenario = DcScenario {
+    name: "dc_ws_40",
+    kind: 1u8,
+    args: &[1f64, 0f64, 1456f64],
+    res: &[11f64, 17f64, 0f64, 32f64, 0f64, 0f64, 0f64],
+};
+
+pub const DC_WS_41: DcScenario = DcScenario {
+    name: "dc_ws_41",
+    kind: 1u8,
+    args: &[1f64, 0f64, 1525f64],
+    res: &[12.32f64, 17f64, 1f64, 0f64, 131f64, 0f64, 0f64],
+};
+
+pub const DC_WS_42: DcScenario = DcScenario {
+    name: "dc_ws_42",
+    kind: 1u8,
+    args: &[1f64, 0f64, 1526f64],
+    res: &[12.35f64, 17f64, 1f64, 0f64, 130f64, 0f64, 0f64],
+};
+
+pub const DC_WS_43: DcScenario = DcScenario {
+    name: "dc_ws_43",
+    kind: 1u8,
+    args: &[1f64, 0f64, 1595f64],
+    res: &[14.82f64, 17f64, 1f64, 0f64, 61f64, 0f64, 0f64],
+};
+
+pub const DC_WS_44: DcScenario = DcScenario {
+    name: "dc_ws_44",
+    kind: 1u8,
+    args: &[1f64, 0f64, 1596f64],
+    res: &[14.85f64, 17f64, 1f64, 0f64, 60f64, 0f64, 0f64],
+};
+
+pub const DC_WS_45: DcScenario = DcScenario {
+    name: "dc_ws_45",
+    kind: 1u8,
+    args: &[1f64, 0f64, 1665f64],
+    res: &[17f64, 25f64, 0f64, 45f64, 0f64, 0f64, 0f64],
+};
+
+pub const DC_WS_46: DcScenario = DcScenario {
+    name: "dc_ws_46",
+    kind: 1u8,
+    args: &[1f64, 0f64, 1666f64],
+    res: &[17f64, 25f64, 0f64, 44f64, 0f64, 0f64, 0f64],
+};
+
+pub const DC_WS_47: DcScenario = DcScenario {
+    name: "dc_ws_47",
+    kind: 1u8,
+    args: &[1f64, 0f64, 1735f64],
+    res: &[18.19f64, 25f64, 1f64, 0f64, 143f64, 0f64, 0f64],
+};
+
+pub const DC_WS_48: DcScenario = DcScenario {
+    name: "dc_ws_48",
+    kind: 1u8,
+    args: &[1f64, 0f64, 1736f64],
+    res: &[18.23f64, 25f64, 1f64, 0f64, 142f64, 0f64, 0f64],
+};
+
+pub const DC_WS_49: DcScenario = DcScenario {
+    name: "dc_ws_49",
+    kind: 1u8,
+    args: &[1f64, 0f64, 2309f64],
+    res: &[35f64, 35f64, 0f64, 0f64, 0f64, 0f64, 1f64],
+};
+
+pub const DC_WS_50: DcScenario = DcScenario {
+    name: "dc_ws_50",
+    kind: 1u8,
+    args: &[1f64, 0f64, 2310f64],
+    res: &[35f64, 35f64, 0f64, 0f64, 0f64, 0f64, 1f64],
+};
+
+pub const DC_WS_51: DcScenario = DcScenario {
+    name: "dc_ws_51",
+    kind: 1u8,
+    args: &[1f64, 0f64, 2939f64],
+    res: &[35f64, 35f64, 0f64, 0f64, 0f64, 0f64, 1f64],
+};
+
+pub const DC_WS_52: DcScenario = DcScenario {
+    name: "dc_ws_52",
+    kind: 1u8,
+    args: &[1f64, 0f64, 2940f64],
+    res: &[35f64, 35f64, 0f64, 0f64, 0f64, 0f64, 1f64],
+};
+
+pub const DC_WS_53: DcScenario = DcScenario {
+    name: "dc_ws_53",
+    kind: 1u8,
+    args: &[1f64, 0f64, 3569f64],
+    res: &[35f64, 35f64, 0f64, 0f64, 0f64, 0f64, 1f64],
+};
+
+pub const DC_WS_54: DcScenario = DcScenario {
+    name: "dc_ws_54",
+    kind: 1u8,
+    args: &[1f64, 0f64, 3570f64],
+    res: &[35f64, 35f64, 0f64, 0f64, 0f64, 0f64, 1f64],
+};
+
+pub const DC_WS_55: DcScenario = DcScenario {
+    name: "dc_ws_55",
+    kind: 1u8,
+    args: &[1f64, 0f64, 4499f64],
+    res: &[35f64, 35f64, 0f64, 0f64, 0f64, 0f64, 1f64],
+};
+
+pub const DC_WS_56: DcScenario = DcScenario {
+    name: "dc_ws_56",
+    kind: 1u8,
+    args: &[1f64, 0f64, 4500f64],
+    res: &[35f64, 35f64, 0f64, 0f64, 0f64, 0f64, 1f64],
+};
+
+pub const DC_WS_57: DcScenario = DcScenario {
+    name: "dc_ws_57",
+    kind: 1u8,
+    args: &[1f64, 0f64, 5000f64],
+    res: &[35f64, 35f64, 0f64, 0f64, 0f64, 0f64, 1f64],
+};
+
+pub const DC_WS_58: DcScenario = DcScenario {
+    name: "dc_ws_58",
+    kind: 1u8,
+    args: &[1f64, 0f64, 1000000000f64],
+    res: &[35f64, 35f64, 0f64, 0f64, 0f64, 0f64, 1f64],
+};
+
+pub const DC_WS_59: DcScenario = DcScenario {
+    name: "dc_ws_59",
+    kind: 1u8,
+    args: &[1f64, 0f64, f64::INFINITY],
+    res: &[35f64, 35f64, 0f64, 0f64, 0f64, 0f64, 1f64],
+};
+
+pub const DC_WS_60: DcScenario = DcScenario {
+    name: "dc_ws_60",
+    kind: 1u8,
+    args: &[1f64, 1f64, f64::NAN],
+    res: &[35f64, 35f64, 0f64, 0f64, 0f64, 0f64, 1f64],
+};
+
+pub const DC_WS_61: DcScenario = DcScenario {
+    name: "dc_ws_61",
+    kind: 1u8,
+    args: &[1f64, 1f64, f64::NEG_INFINITY],
+    res: &[0f64, 3f64, 0f64, f64::INFINITY, 0f64, 0f64, 0f64],
+};
+
+pub const DC_WS_62: DcScenario = DcScenario {
+    name: "dc_ws_62",
+    kind: 1u8,
+    args: &[1f64, 1f64, 0f64],
+    res: &[0f64, 3f64, 0f64, 600f64, 0f64, 0f64, 0f64],
+};
+
+pub const DC_WS_63: DcScenario = DcScenario {
+    name: "dc_ws_63",
+    kind: 1u8,
+    args: &[1f64, 1f64, 594f64],
+    res: &[0f64, 3f64, 0f64, 6f64, 0f64, 0f64, 0f64],
+};
+
+pub const DC_WS_64: DcScenario = DcScenario {
+    name: "dc_ws_64",
+    kind: 1u8,
+    args: &[1f64, 1f64, 595f64],
+    res: &[0f64, 3f64, 0f64, 5f64, 0f64, 1f64, 0f64],
+};
+
+pub const DC_WS_65: DcScenario = DcScenario {
+    name: "dc_ws_65",
+    kind: 1u8,
+    args: &[1f64, 1f64, 596f64],
+    res: &[0f64, 3f64, 0f64, 4f64, 0f64, 1f64, 0f64],
+};
+
+pub const DC_WS_66: DcScenario = DcScenario {
+    name: "dc_ws_66",
+    kind: 1u8,
+    args: &[1f64, 1f64, 600f64],
+    res: &[0f64, 3f64, 0f64, 0f64, 0f64, 1f64, 0f64],
+};
+
+pub const DC_WS_67: DcScenario = DcScenario {
+    name: "dc_ws_67",
+    kind: 1u8,
+    args: &[1f64, 1f64, 600.5f64],
+    res: &[0f64, 3f64, 1f64, 0f64, 167.5f64, 1f64, 0f64],
+};
+
+pub const DC_WS_68: DcScenario = DcScenario {
+    name: "dc_ws_68",
+    kind: 1u8,
+    args: &[1f64, 1f64, 601f64],
+    res: &[0.01f64, 3f64, 1f64, 0f64, 167f64, 1f64, 0f64],
+};
+
+pub const DC_WS_69: DcScenario = DcScenario {
+    name: "dc_ws_69",
+    kind: 1u8,
+    args: &[1f64, 1f64, 605f64],
+    res: &[0.08f64, 3f64, 1f64, 0f64, 163f64, 1f64, 0f64],
+};
+
+pub const DC_WS_70: DcScenario = DcScenario {
+    name: "dc_ws_70",
+    kind: 1u8,
+    args: &[1f64, 1f64, 606f64],
+    res: &[0.1f64, 3f64, 1f64, 0f64, 162f64, 0f64, 0f64],
+};
+
+pub const DC_WS_71: DcScenario = DcScenario {
+    name: "dc_ws_71",
+    kind: 1u8,
+    args: &[1f64, 1f64, 618f64],
+    res: &[0.32f64, 3f64, 1f64, 0f64, 150f64, 0f64, 0f64],
+};
+
+pub const DC_WS_72: DcScenario = DcScenario {
+    name: "dc_ws_72",
+    kind: 1u8,
+    args: &[1f64, 1f64, 635f64],
+    res: &[0.62f64, 3f64, 1f64, 0f64, 133f64, 0f64, 0f64],
+};
+
+pub const DC_WS_73: DcScenario = DcScenario {
+    name: "dc_ws_73",
+    kind: 1u8,
+    args: &[1f64, 1f64, 636f64],
+    res: &[0.64f64, 3f64, 1f64, 0f64, 132f64, 0f64, 0f64],
+};
+
+pub const DC_WS_74: DcScenario = DcScenario {
+    name: "dc_ws_74",
+    kind: 1u8,
+    args: &[1f64, 1f64, 640f64],
+    res: &[0.71f64, 3f64, 1f64, 0f64, 128f64, 0f64, 0f64],
+};
+
+pub const DC_WS_75: DcScenario = DcScenario {
+    name: "dc_ws_75",
+    kind: 1u8,
+    args: &[1f64, 1f64, 644f64],
+    res: &[0.78f64, 3f64, 1f64, 0f64, 124f64, 0f64, 0f64],
+};
+
+pub const DC_WS_76: DcScenario = DcScenario {
+    name: "dc_ws_76",
+    kind: 1u8,
+    args: &[1f64, 1f64, 645f64],
+    res: &[0.8f64, 3f64, 1f64, 0f64, 123f64, 0f64, 0f64],
+};
+
+pub const DC_WS_77: DcScenario = DcScenario {
+    name: "dc_ws_77",
+    kind: 1u8,
+    args: &[1f64, 1f64, 767f64],
+    res: &[2.98f64, 3f64, 1f64, 0f64, 1f64, 0f64, 0f64],
+};
+
+pub const DC_WS_78: DcScenario = DcScenario {
+    name: "dc_ws_78",
+    kind: 1u8,
+    args: &[1f64, 1f64, 768f64],
+    res: &[3f64, 6f64, 0f64, 54f64, 0f64, 0f64, 0f64],
+};
+
+pub const DC_WS_79: DcScenario = DcScenario {
+    name: "dc_ws_79",
+    kind: 1u8,
+    args: &[1f64, 1f64, 772f64],
+    res: &[3f64, 6f64, 0f64, 50f64, 0f64, 0f64, 0f64],
+};
+
+pub const DC_WS_80: DcScenario = DcScenario {
+    name: "dc_ws_80",
+    kind: 1u8,
+    args: &[1f64, 1f64, 822f64],
+    res: &[3f64, 6f64, 1f64, 0f64, 168f64, 1f64, 0f64],
+};
+
+pub const DC_WS_81: DcScenario = DcScenario {
+    name: "dc_ws_81",
+    kind: 1u8,
+    args: &[1f64, 1f64, 858f64],
+    res: &[3.64f64, 6f64, 1f64, 0f64, 132f64, 0f64, 0f64],
+};
+
+pub const DC_WS_82: DcScenario = DcScenario {
+    name: "dc_ws_82",
+    kind: 1u8,
+    args: &[1f64, 1f64, 863f64],
+    res: &[3.73f64, 6f64, 1f64, 0f64, 127f64, 0f64, 0f64],
+};
+
+pub const DC_WS_83: DcScenario = DcScenario {
+    name: "dc_ws_83",
+    kind: 1u8,
+    args: &[1f64, 1f64, 864f64],
+    res: &[3.75f64, 6f64, 1f64, 0f64, 126f64, 0f64, 0f64],
+};
+
+pub const DC_WS_84: DcScenario = DcScenario {
+    name: "dc_ws_84",
+    kind: 1u8,
+    args: &[1f64, 1f64, 868f64],
+    res: &[3.82f64, 6f64, 1f64, 0f64, 122f64, 0f64, 0f64],
+};
+
+pub const DC_WS_85: DcScenario = DcScenario {
+    name: "dc_ws_85",
+    kind: 1u8,
+    args: &[1f64, 1f64, 895f64],
+    res: &[4.3f64, 6f64, 1f64, 0f64, 95f64, 0f64, 0f64],
+};
+
+pub const DC_WS_86: DcScenario = DcScenario {
+    name: "dc_ws_86",
+    kind: 1u8,
+    args: &[1f64, 1f64, 896f64],
+    res: &[4.32f64, 6f64, 1f64, 0f64, 94f64, 0f64, 0f64],
+};
+
+pub const DC_WS_87: DcScenario = DcScenario {
+    name: "dc_ws_87",
+    kind: 1u8,
+    args: &[1f64, 1f64, 900f64],
+    res: &[4.39f64, 6f64, 1f64, 0f64, 90f64, 0f64, 0f64],
+};
+
+pub const DC_WS_88: DcScenario = DcScenario {
+    name: "dc_ws_88",
+    kind: 1u8,
+    args: &[1f64, 1f64, 1067f64],
+    res: &[6.54f64, 10f64, 1f64, 0f64, 145f64, 0f64, 0f64],
+};
+
+pub const DC_WS_89: DcScenario = DcScenario {
+    name: "dc_ws_89",
+    kind: 1u8,
+    args: &[1f64, 1f64, 1068f64],
+    res: &[6.57f64, 10f64, 1f64, 0f64, 144f64, 0f64, 0f64],
+};
+
+pub const DC_WS_90: DcScenario = DcScenario {
+    name: "dc_ws_90",
+    kind: 1u8,
+    args: &[1f64, 1f64, 1175f64],
+    res: &[9.11f64, 10f64, 1f64, 0f64, 37f64, 0f64, 0f64],
+};
+
+pub const DC_WS_91: DcScenario = DcScenario {
+    name: "dc_ws_91",
+    kind: 1u8,
+    args: &[1f64, 1f64, 1176f64],
+    res: &[9.14f64, 10f64, 1f64, 0f64, 36f64, 0f64, 0f64],
+};
+
+pub const DC_WS_92: DcScenario = DcScenario {
+    name: "dc_ws_92",
+    kind: 1u8,
+    args: &[1f64, 1f64, 1245f64],
+    res: &[10f64, 15f64, 0f64, 21f64, 0f64, 0f64, 0f64],
+};
+
+pub const DC_WS_93: DcScenario = DcScenario {
+    name: "dc_ws_93",
+    kind: 1u8,
+    args: &[1f64, 1f64, 1246f64],
+    res: &[10f64, 15f64, 0f64, 20f64, 0f64, 0f64, 0f64],
+};
+
+pub const DC_WS_94: DcScenario = DcScenario {
+    name: "dc_ws_94",
+    kind: 1u8,
+    args: &[1f64, 1f64, 1314f64],
+    res: &[11.42f64, 15f64, 1f64, 0f64, 120f64, 0f64, 0f64],
+};
+
+pub const DC_WS_95: DcScenario = DcScenario {
+    name: "dc_ws_95",
+    kind: 1u8,
+    args: &[1f64, 1f64, 1315f64],
+    res: &[11.45f64, 15f64, 1f64, 0f64, 119f64, 0f64, 0f64],
+};
+
+pub const DC_WS_96: DcScenario = DcScenario {
+    name: "dc_ws_96",
+    kind: 1u8,
+    args: &[1f64, 1f64, 1316f64],
+    res: &[11.48f64, 15f64, 1f64, 0f64, 118f64, 0f64, 0f64],
+};
+
+pub const DC_WS_97: DcScenario = DcScenario {
+    name: "dc_ws_97",
+    kind: 1u8,
+    args: &[1f64, 1f64, 1385f64],
+    res: &[13.54f64, 15f64, 1f64, 0f64, 49f64, 0f64, 0f64],
+};
+
+pub const DC_WS_98: DcScenario = DcScenario {
+    name: "dc_ws_98",
+    kind: 1u8,
+    args: &[1f64, 1f64, 1386f64],
+    res: &[13.57f64, 15f64, 1f64, 0f64, 48f64, 0f64, 0f64],
+};
+
+pub const DC_WS_99: DcScenario = DcScenario {
+    name: "dc_ws_99",
+    kind: 1u8,
+    args: &[1f64, 1f64, 1455f64],
+    res: &[15f64, 21f64, 0f64, 33f64, 0f64, 0f64, 0f64],
+};
+
+pub const DC_WS_100: DcScenario = DcScenario {
+    name: "dc_ws_100",
+    kind: 1u8,
+    args: &[1f64, 1f64, 1456f64],
+    res: &[15f64, 21f64, 0f64, 32f64, 0f64, 0f64, 0f64],
+};
+
+pub const DC_WS_101: DcScenario = DcScenario {
+    name: "dc_ws_101",
+    kind: 1u8,
+    args: &[1f64, 1f64, 1525f64],
+    res: &[16.32f64, 21f64, 1f64, 0f64, 131f64, 0f64, 0f64],
+};
+
+pub const DC_WS_102: DcScenario = DcScenario {
+    name: "dc_ws_102",
+    kind: 1u8,
+    args: &[1f64, 1f64, 1526f64],
+    res: &[16.35f64, 21f64, 1f64, 0f64, 130f64, 0f64, 0f64],
+};
+
+pub const DC_WS_103: DcScenario = DcScenario {
+    name: "dc_ws_103",
+    kind: 1u8,
+    args: &[1f64, 1f64, 1595f64],
+    res: &[18.82f64, 21f64, 1f64, 0f64, 61f64, 0f64, 0f64],
+};
+
+pub const DC_WS_104: DcScenario = DcScenario {
+    name: "dc_ws_104",
+    kind: 1u8,
+    args: &[1f64, 1f64, 1596f64],
+    res: &[18.85f64, 21f64, 1f64, 0f64, 60f64, 0f64, 0f64],
+};
+
+pub const DC_WS_105: DcScenario = DcScenario {
+    name: "dc_ws_105",
+    kind: 1u8,
+    args: &[1f64, 1f64, 1665f64],
+    res: &[21f64, 28f64, 0f64, 45f64, 0f64, 0f64, 0f64],
+};
+
+pub const DC_WS_106: DcScenario = DcScenario {
+    name: "dc_ws_106",
+    kind: 1u8,
+    args: &[1f64, 1f64, 1666f64],
+    res: &[21f64, 28f64, 0f64, 44f64, 0f64, 0f64, 0f64],
+};
+
+pub const DC_WS_107: DcScenario = DcScenario {
+    name: "dc_ws_107",
+    kind: 1u8,
+    args: &[1f64, 1f64, 1735f64],
+    res: &[22.04f64, 28f64, 1f64, 0f64, 143f64, 0f64, 0f64],
+};
+
+pub const DC_WS_108: DcScenario = DcScenario {
+    name: "dc_ws_108",
+    kind: 1u8,
+    args: &[1f64, 1f64, 1736f64],
+    res: &[22.08f64, 28f64, 1f64, 0f64, 142f64, 0f64, 0f64],
+};
+
+pub const DC_WS_109: DcScenario = DcScenario {
+    name: "dc_ws_109",
+    kind: 1u8,
+    args: &[1f64, 1f64, 2309f64],
+    res: &[35f64, 35f64, 0f64, 0f64, 0f64, 0f64, 1f64],
+};
+
+pub const DC_WS_110: DcScenario = DcScenario {
+    name: "dc_ws_110",
+    kind: 1u8,
+    args: &[1f64, 1f64, 2310f64],
+    res: &[35f64, 35f64, 0f64, 0f64, 0f64, 0f64, 1f64],
+};
+
+pub const DC_WS_111: DcScenario = DcScenario {
+    name: "dc_ws_111",
+    kind: 1u8,
+    args: &[1f64, 1f64, 2939f64],
+    res: &[35f64, 35f64, 0f64, 0f64, 0f64, 0f64, 1f64],
+};
+
+pub const DC_WS_112: DcScenario = DcScenario {
+    name: "dc_ws_112",
+    kind: 1u8,
+    args: &[1f64, 1f64, 2940f64],
+    res: &[35f64, 35f64, 0f64, 0f64, 0f64, 0f64, 1f64],
+};
+
+pub const DC_WS_113: DcScenario = DcScenario {
+    name: "dc_ws_113",
+    kind: 1u8,
+    args: &[1f64, 1f64, 3569f64],
+    res: &[35f64, 35f64, 0f64, 0f64, 0f64, 0f64, 1f64],
+};
+
+pub const DC_WS_114: DcScenario = DcScenario {
+    name: "dc_ws_114",
+    kind: 1u8,
+    args: &[1f64, 1f64, 3570f64],
+    res: &[35f64, 35f64, 0f64, 0f64, 0f64, 0f64, 1f64],
+};
+
+pub const DC_WS_115: DcScenario = DcScenario {
+    name: "dc_ws_115",
+    kind: 1u8,
+    args: &[1f64, 1f64, 4499f64],
+    res: &[35f64, 35f64, 0f64, 0f64, 0f64, 0f64, 1f64],
+};
+
+pub const DC_WS_116: DcScenario = DcScenario {
+    name: "dc_ws_116",
+    kind: 1u8,
+    args: &[1f64, 1f64, 4500f64],
+    res: &[35f64, 35f64, 0f64, 0f64, 0f64, 0f64, 1f64],
+};
+
+pub const DC_WS_117: DcScenario = DcScenario {
+    name: "dc_ws_117",
+    kind: 1u8,
+    args: &[1f64, 1f64, 5000f64],
+    res: &[35f64, 35f64, 0f64, 0f64, 0f64, 0f64, 1f64],
+};
+
+pub const DC_WS_118: DcScenario = DcScenario {
+    name: "dc_ws_118",
+    kind: 1u8,
+    args: &[1f64, 1f64, 1000000000f64],
+    res: &[35f64, 35f64, 0f64, 0f64, 0f64, 0f64, 1f64],
+};
+
+pub const DC_WS_119: DcScenario = DcScenario {
+    name: "dc_ws_119",
+    kind: 1u8,
+    args: &[1f64, 1f64, f64::INFINITY],
+    res: &[35f64, 35f64, 0f64, 0f64, 0f64, 0f64, 1f64],
+};
+
+pub const DC_WS_120: DcScenario = DcScenario {
+    name: "dc_ws_120",
+    kind: 1u8,
+    args: &[3f64, 0f64, f64::NAN],
+    res: &[35f64, 35f64, 0f64, 0f64, 0f64, 0f64, 1f64],
+};
+
+pub const DC_WS_121: DcScenario = DcScenario {
+    name: "dc_ws_121",
+    kind: 1u8,
+    args: &[3f64, 0f64, f64::NEG_INFINITY],
+    res: &[0f64, 2f64, 0f64, f64::INFINITY, 0f64, 0f64, 0f64],
+};
+
+pub const DC_WS_122: DcScenario = DcScenario {
+    name: "dc_ws_122",
+    kind: 1u8,
+    args: &[3f64, 0f64, 0f64],
+    res: &[0f64, 2f64, 0f64, 600f64, 0f64, 0f64, 0f64],
+};
+
+pub const DC_WS_123: DcScenario = DcScenario {
+    name: "dc_ws_123",
+    kind: 1u8,
+    args: &[3f64, 0f64, 594f64],
+    res: &[0f64, 2f64, 0f64, 6f64, 0f64, 0f64, 0f64],
+};
+
+pub const DC_WS_124: DcScenario = DcScenario {
+    name: "dc_ws_124",
+    kind: 1u8,
+    args: &[3f64, 0f64, 595f64],
+    res: &[0f64, 2f64, 0f64, 5f64, 0f64, 1f64, 0f64],
+};
+
+pub const DC_WS_125: DcScenario = DcScenario {
+    name: "dc_ws_125",
+    kind: 1u8,
+    args: &[3f64, 0f64, 596f64],
+    res: &[0f64, 2f64, 0f64, 4f64, 0f64, 1f64, 0f64],
+};
+
+pub const DC_WS_126: DcScenario = DcScenario {
+    name: "dc_ws_126",
+    kind: 1u8,
+    args: &[3f64, 0f64, 600f64],
+    res: &[0f64, 2f64, 0f64, 0f64, 0f64, 1f64, 0f64],
+};
+
+pub const DC_WS_127: DcScenario = DcScenario {
+    name: "dc_ws_127",
+    kind: 1u8,
+    args: &[3f64, 0f64, 600.5f64],
+    res: &[0.02f64, 2f64, 1f64, 0f64, 35.5f64, 1f64, 0f64],
+};
+
+pub const DC_WS_128: DcScenario = DcScenario {
+    name: "dc_ws_128",
+    kind: 1u8,
+    args: &[3f64, 0f64, 601f64],
+    res: &[0.05f64, 2f64, 1f64, 0f64, 35f64, 1f64, 0f64],
+};
+
+pub const DC_WS_129: DcScenario = DcScenario {
+    name: "dc_ws_129",
+    kind: 1u8,
+    args: &[3f64, 0f64, 605f64],
+    res: &[0.27f64, 2f64, 1f64, 0f64, 31f64, 1f64, 0f64],
+};
+
+pub const DC_WS_130: DcScenario = DcScenario {
+    name: "dc_ws_130",
+    kind: 1u8,
+    args: &[3f64, 0f64, 606f64],
+    res: &[0.33f64, 2f64, 1f64, 0f64, 30f64, 0f64, 0f64],
+};
+
+pub const DC_WS_131: DcScenario = DcScenario {
+    name: "dc_ws_131",
+    kind: 1u8,
+    args: &[3f64, 0f64, 618f64],
+    res: &[1f64, 2f64, 1f64, 0f64, 18f64, 0f64, 0f64],
+};
+
+pub const DC_WS_132: DcScenario = DcScenario {
+    name: "dc_ws_132",
+    kind: 1u8,
+    args: &[3f64, 0f64, 635f64],
+    res: &[1.94f64, 2f64, 1f64, 0f64, 1f64, 0f64, 0f64],
+};
+
+pub const DC_WS_133: DcScenario = DcScenario {
+    name: "dc_ws_133",
+    kind: 1u8,
+    args: &[3f64, 0f64, 636f64],
+    res: &[2f64, 4f64, 0f64, 8f64, 0f64, 0f64, 0f64],
+};
+
+pub const DC_WS_134: DcScenario = DcScenario {
+    name: "dc_ws_134",
+    kind: 1u8,
+    args: &[3f64, 0f64, 640f64],
+    res: &[2f64, 4f64, 0f64, 4f64, 0f64, 1f64, 0f64],
+};
+
+pub const DC_WS_135: DcScenario = DcScenario {
+    name: "dc_ws_135",
+    kind: 1u8,
+    args: &[3f64, 0f64, 644f64],
+    res: &[2f64, 4f64, 1f64, 0f64, 36f64, 1f64, 0f64],
+};
+
+pub const DC_WS_136: DcScenario = DcScenario {
+    name: "dc_ws_136",
+    kind: 1u8,
+    args: &[3f64, 0f64, 645f64],
+    res: &[2.05f64, 4f64, 1f64, 0f64, 35f64, 1f64, 0f64],
+};
+
+pub const DC_WS_137: DcScenario = DcScenario {
+    name: "dc_ws_137",
+    kind: 1u8,
+    args: &[3f64, 0f64, 767f64],
+    res: &[10.88f64, 11f64, 1f64, 0f64, 1f64, 0f64, 0f64],
+};
+
+pub const DC_WS_138: DcScenario = DcScenario {
+    name: "dc_ws_138",
+    kind: 1u8,
+    args: &[3f64, 0f64, 768f64],
+    res: &[11f64, 17f64, 0f64, 8f64, 0f64, 0f64, 0f64],
+};
+
+pub const DC_WS_139: DcScenario = DcScenario {
+    name: "dc_ws_139",
+    kind: 1u8,
+    args: &[3f64, 0f64, 772f64],
+    res: &[11f64, 17f64, 0f64, 4f64, 0f64, 1f64, 0f64],
+};
+
+pub const DC_WS_140: DcScenario = DcScenario {
+    name: "dc_ws_140",
+    kind: 1u8,
+    args: &[3f64, 0f64, 822f64],
+    res: &[17.44f64, 25f64, 1f64, 0f64, 34f64, 1f64, 0f64],
+};
+
+pub const DC_WS_141: DcScenario = DcScenario {
+    name: "dc_ws_141",
+    kind: 1u8,
+    args: &[3f64, 0f64, 858f64],
+    res: &[25f64, 35f64, 0f64, 6f64, 0f64, 0f64, 0f64],
+};
+
+pub const DC_WS_142: DcScenario = DcScenario {
+    name: "dc_ws_142",
+    kind: 1u8,
+    args: &[3f64, 0f64, 863f64],
+    res: &[25f64, 35f64, 0f64, 1f64, 0f64, 1f64, 0f64],
+};
+
+pub const DC_WS_143: DcScenario = DcScenario {
+    name: "dc_ws_143",
+    kind: 1u8,
+    args: &[3f64, 0f64, 864f64],
+    res: &[25f64, 35f64, 1f64, 0f64, 36f64, 1f64, 0f64],
+};
+
+pub const DC_WS_144: DcScenario = DcScenario {
+    name: "dc_ws_144",
+    kind: 1u8,
+    args: &[3f64, 0f64, 868f64],
+    res: &[26.11f64, 35f64, 1f64, 0f64, 32f64, 1f64, 0f64],
+};
+
+pub const DC_WS_145: DcScenario = DcScenario {
+    name: "dc_ws_145",
+    kind: 1u8,
+    args: &[3f64, 0f64, 895f64],
+    res: &[33.61f64, 35f64, 1f64, 0f64, 5f64, 0f64, 0f64],
+};
+
+pub const DC_WS_146: DcScenario = DcScenario {
+    name: "dc_ws_146",
+    kind: 1u8,
+    args: &[3f64, 0f64, 896f64],
+    res: &[33.88f64, 35f64, 1f64, 0f64, 4f64, 0f64, 0f64],
+};
+
+pub const DC_WS_147: DcScenario = DcScenario {
+    name: "dc_ws_147",
+    kind: 1u8,
+    args: &[3f64, 0f64, 900f64],
+    res: &[35f64, 35f64, 0f64, 0f64, 0f64, 0f64, 1f64],
+};
+
+pub const DC_WS_148: DcScenario = DcScenario {
+    name: "dc_ws_148",
+    kind: 1u8,
+    args: &[3f64, 0f64, 1067f64],
+    res: &[35f64, 35f64, 0f64, 0f64, 0f64, 0f64, 1f64],
+};
+
+pub const DC_WS_149: DcScenario = DcScenario {
+    name: "dc_ws_149",
+    kind: 1u8,
+    args: &[3f64, 0f64, 1068f64],
+    res: &[35f64, 35f64, 0f64, 0f64, 0f64, 0f64, 1f64],
+};
+
+pub const DC_WS_150: DcScenario = DcScenario {
+    name: "dc_ws_150",
+    kind: 1u8,
+    args: &[3f64, 0f64, 1175f64],
+    res: &[35f64, 35f64, 0f64, 0f64, 0f64, 0f64, 1f64],
+};
+
+pub const DC_WS_151: DcScenario = DcScenario {
+    name: "dc_ws_151",
+    kind: 1u8,
+    args: &[3f64, 0f64, 1176f64],
+    res: &[35f64, 35f64, 0f64, 0f64, 0f64, 0f64, 1f64],
+};
+
+pub const DC_WS_152: DcScenario = DcScenario {
+    name: "dc_ws_152",
+    kind: 1u8,
+    args: &[3f64, 0f64, 1245f64],
+    res: &[35f64, 35f64, 0f64, 0f64, 0f64, 0f64, 1f64],
+};
+
+pub const DC_WS_153: DcScenario = DcScenario {
+    name: "dc_ws_153",
+    kind: 1u8,
+    args: &[3f64, 0f64, 1246f64],
+    res: &[35f64, 35f64, 0f64, 0f64, 0f64, 0f64, 1f64],
+};
+
+pub const DC_WS_154: DcScenario = DcScenario {
+    name: "dc_ws_154",
+    kind: 1u8,
+    args: &[3f64, 0f64, 1314f64],
+    res: &[35f64, 35f64, 0f64, 0f64, 0f64, 0f64, 1f64],
+};
+
+pub const DC_WS_155: DcScenario = DcScenario {
+    name: "dc_ws_155",
+    kind: 1u8,
+    args: &[3f64, 0f64, 1315f64],
+    res: &[35f64, 35f64, 0f64, 0f64, 0f64, 0f64, 1f64],
+};
+
+pub const DC_WS_156: DcScenario = DcScenario {
+    name: "dc_ws_156",
+    kind: 1u8,
+    args: &[3f64, 0f64, 1316f64],
+    res: &[35f64, 35f64, 0f64, 0f64, 0f64, 0f64, 1f64],
+};
+
+pub const DC_WS_157: DcScenario = DcScenario {
+    name: "dc_ws_157",
+    kind: 1u8,
+    args: &[3f64, 0f64, 1385f64],
+    res: &[35f64, 35f64, 0f64, 0f64, 0f64, 0f64, 1f64],
+};
+
+pub const DC_WS_158: DcScenario = DcScenario {
+    name: "dc_ws_158",
+    kind: 1u8,
+    args: &[3f64, 0f64, 1386f64],
+    res: &[35f64, 35f64, 0f64, 0f64, 0f64, 0f64, 1f64],
+};
+
+pub const DC_WS_159: DcScenario = DcScenario {
+    name: "dc_ws_159",
+    kind: 1u8,
+    args: &[3f64, 0f64, 1455f64],
+    res: &[35f64, 35f64, 0f64, 0f64, 0f64, 0f64, 1f64],
+};
+
+pub const DC_WS_160: DcScenario = DcScenario {
+    name: "dc_ws_160",
+    kind: 1u8,
+    args: &[3f64, 0f64, 1456f64],
+    res: &[35f64, 35f64, 0f64, 0f64, 0f64, 0f64, 1f64],
+};
+
+pub const DC_WS_161: DcScenario = DcScenario {
+    name: "dc_ws_161",
+    kind: 1u8,
+    args: &[3f64, 0f64, 1525f64],
+    res: &[35f64, 35f64, 0f64, 0f64, 0f64, 0f64, 1f64],
+};
+
+pub const DC_WS_162: DcScenario = DcScenario {
+    name: "dc_ws_162",
+    kind: 1u8,
+    args: &[3f64, 0f64, 1526f64],
+    res: &[35f64, 35f64, 0f64, 0f64, 0f64, 0f64, 1f64],
+};
+
+pub const DC_WS_163: DcScenario = DcScenario {
+    name: "dc_ws_163",
+    kind: 1u8,
+    args: &[3f64, 0f64, 1595f64],
+    res: &[35f64, 35f64, 0f64, 0f64, 0f64, 0f64, 1f64],
+};
+
+pub const DC_WS_164: DcScenario = DcScenario {
+    name: "dc_ws_164",
+    kind: 1u8,
+    args: &[3f64, 0f64, 1596f64],
+    res: &[35f64, 35f64, 0f64, 0f64, 0f64, 0f64, 1f64],
+};
+
+pub const DC_WS_165: DcScenario = DcScenario {
+    name: "dc_ws_165",
+    kind: 1u8,
+    args: &[3f64, 0f64, 1665f64],
+    res: &[35f64, 35f64, 0f64, 0f64, 0f64, 0f64, 1f64],
+};
+
+pub const DC_WS_166: DcScenario = DcScenario {
+    name: "dc_ws_166",
+    kind: 1u8,
+    args: &[3f64, 0f64, 1666f64],
+    res: &[35f64, 35f64, 0f64, 0f64, 0f64, 0f64, 1f64],
+};
+
+pub const DC_WS_167: DcScenario = DcScenario {
+    name: "dc_ws_167",
+    kind: 1u8,
+    args: &[3f64, 0f64, 1735f64],
+    res: &[35f64, 35f64, 0f64, 0f64, 0f64, 0f64, 1f64],
+};
+
+pub const DC_WS_168: DcScenario = DcScenario {
+    name: "dc_ws_168",
+    kind: 1u8,
+    args: &[3f64, 0f64, 1736f64],
+    res: &[35f64, 35f64, 0f64, 0f64, 0f64, 0f64, 1f64],
+};
+
+pub const DC_WS_169: DcScenario = DcScenario {
+    name: "dc_ws_169",
+    kind: 1u8,
+    args: &[3f64, 0f64, 2309f64],
+    res: &[35f64, 35f64, 0f64, 0f64, 0f64, 0f64, 1f64],
+};
+
+pub const DC_WS_170: DcScenario = DcScenario {
+    name: "dc_ws_170",
+    kind: 1u8,
+    args: &[3f64, 0f64, 2310f64],
+    res: &[35f64, 35f64, 0f64, 0f64, 0f64, 0f64, 1f64],
+};
+
+pub const DC_WS_171: DcScenario = DcScenario {
+    name: "dc_ws_171",
+    kind: 1u8,
+    args: &[3f64, 0f64, 2939f64],
+    res: &[35f64, 35f64, 0f64, 0f64, 0f64, 0f64, 1f64],
+};
+
+pub const DC_WS_172: DcScenario = DcScenario {
+    name: "dc_ws_172",
+    kind: 1u8,
+    args: &[3f64, 0f64, 2940f64],
+    res: &[35f64, 35f64, 0f64, 0f64, 0f64, 0f64, 1f64],
+};
+
+pub const DC_WS_173: DcScenario = DcScenario {
+    name: "dc_ws_173",
+    kind: 1u8,
+    args: &[3f64, 0f64, 3569f64],
+    res: &[35f64, 35f64, 0f64, 0f64, 0f64, 0f64, 1f64],
+};
+
+pub const DC_WS_174: DcScenario = DcScenario {
+    name: "dc_ws_174",
+    kind: 1u8,
+    args: &[3f64, 0f64, 3570f64],
+    res: &[35f64, 35f64, 0f64, 0f64, 0f64, 0f64, 1f64],
+};
+
+pub const DC_WS_175: DcScenario = DcScenario {
+    name: "dc_ws_175",
+    kind: 1u8,
+    args: &[3f64, 0f64, 4499f64],
+    res: &[35f64, 35f64, 0f64, 0f64, 0f64, 0f64, 1f64],
+};
+
+pub const DC_WS_176: DcScenario = DcScenario {
+    name: "dc_ws_176",
+    kind: 1u8,
+    args: &[3f64, 0f64, 4500f64],
+    res: &[35f64, 35f64, 0f64, 0f64, 0f64, 0f64, 1f64],
+};
+
+pub const DC_WS_177: DcScenario = DcScenario {
+    name: "dc_ws_177",
+    kind: 1u8,
+    args: &[3f64, 0f64, 5000f64],
+    res: &[35f64, 35f64, 0f64, 0f64, 0f64, 0f64, 1f64],
+};
+
+pub const DC_WS_178: DcScenario = DcScenario {
+    name: "dc_ws_178",
+    kind: 1u8,
+    args: &[3f64, 0f64, 1000000000f64],
+    res: &[35f64, 35f64, 0f64, 0f64, 0f64, 0f64, 1f64],
+};
+
+pub const DC_WS_179: DcScenario = DcScenario {
+    name: "dc_ws_179",
+    kind: 1u8,
+    args: &[3f64, 0f64, f64::INFINITY],
+    res: &[35f64, 35f64, 0f64, 0f64, 0f64, 0f64, 1f64],
+};
+
+pub const DC_WS_180: DcScenario = DcScenario {
+    name: "dc_ws_180",
+    kind: 1u8,
+    args: &[0f64, 1f64, f64::NAN],
+    res: &[35f64, 35f64, 0f64, 0f64, 0f64, 0f64, 1f64],
+};
+
+pub const DC_WS_181: DcScenario = DcScenario {
+    name: "dc_ws_181",
+    kind: 1u8,
+    args: &[0f64, 1f64, f64::NEG_INFINITY],
+    res: &[0f64, 3f64, 0f64, f64::INFINITY, 0f64, 0f64, 0f64],
+};
+
+pub const DC_WS_182: DcScenario = DcScenario {
+    name: "dc_ws_182",
+    kind: 1u8,
+    args: &[0f64, 1f64, 0f64],
+    res: &[0f64, 3f64, 0f64, 600f64, 0f64, 0f64, 0f64],
+};
+
+pub const DC_WS_183: DcScenario = DcScenario {
+    name: "dc_ws_183",
+    kind: 1u8,
+    args: &[0f64, 1f64, 594f64],
+    res: &[0f64, 3f64, 0f64, 6f64, 0f64, 0f64, 0f64],
+};
+
+pub const DC_WS_184: DcScenario = DcScenario {
+    name: "dc_ws_184",
+    kind: 1u8,
+    args: &[0f64, 1f64, 595f64],
+    res: &[0f64, 3f64, 0f64, 5f64, 0f64, 1f64, 0f64],
+};
+
+pub const DC_WS_185: DcScenario = DcScenario {
+    name: "dc_ws_185",
+    kind: 1u8,
+    args: &[0f64, 1f64, 596f64],
+    res: &[0f64, 3f64, 0f64, 4f64, 0f64, 1f64, 0f64],
+};
+
+pub const DC_WS_186: DcScenario = DcScenario {
+    name: "dc_ws_186",
+    kind: 1u8,
+    args: &[0f64, 1f64, 600f64],
+    res: &[0f64, 3f64, 0f64, 0f64, 0f64, 1f64, 0f64],
+};
+
+pub const DC_WS_187: DcScenario = DcScenario {
+    name: "dc_ws_187",
+    kind: 1u8,
+    args: &[0f64, 1f64, 600.5f64],
+    res: &[0f64, 3f64, 1f64, 0f64, 239.5f64, 1f64, 0f64],
+};
+
+pub const DC_WS_188: DcScenario = DcScenario {
+    name: "dc_ws_188",
+    kind: 1u8,
+    args: &[0f64, 1f64, 601f64],
+    res: &[0.01f64, 3f64, 1f64, 0f64, 239f64, 1f64, 0f64],
+};
+
+pub const DC_WS_189: DcScenario = DcScenario {
+    name: "dc_ws_189",
+    kind: 1u8,
+    args: &[0f64, 1f64, 605f64],
+    res: &[0.06f64, 3f64, 1f64, 0f64, 235f64, 1f64, 0f64],
+};
+
+pub const DC_WS_190: DcScenario = DcScenario {
+    name: "dc_ws_190",
+    kind: 1u8,
+    args: &[0f64, 1f64, 606f64],
+    res: &[0.07f64, 3f64, 1f64, 0f64, 234f64, 0f64, 0f64],
+};
+
+pub const DC_WS_191: DcScenario = DcScenario {
+    name: "dc_ws_191",
+    kind: 1u8,
+    args: &[0f64, 1f64, 618f64],
+    res: &[0.22f64, 3f64, 1f64, 0f64, 222f64, 0f64, 0f64],
+};
+
+pub const DC_WS_192: DcScenario = DcScenario {
+    name: "dc_ws_192",
+    kind: 1u8,
+    args: &[0f64, 1f64, 635f64],
+    res: &[0.43f64, 3f64, 1f64, 0f64, 205f64, 0f64, 0f64],
+};
+
+pub const DC_WS_193: DcScenario = DcScenario {
+    name: "dc_ws_193",
+    kind: 1u8,
+    args: &[0f64, 1f64, 636f64],
+    res: &[0.45f64, 3f64, 1f64, 0f64, 204f64, 0f64, 0f64],
+};
+
+pub const DC_WS_194: DcScenario = DcScenario {
+    name: "dc_ws_194",
+    kind: 1u8,
+    args: &[0f64, 1f64, 640f64],
+    res: &[0.5f64, 3f64, 1f64, 0f64, 200f64, 0f64, 0f64],
+};
+
+pub const DC_WS_195: DcScenario = DcScenario {
+    name: "dc_ws_195",
+    kind: 1u8,
+    args: &[0f64, 1f64, 644f64],
+    res: &[0.55f64, 3f64, 1f64, 0f64, 196f64, 0f64, 0f64],
+};
+
+pub const DC_WS_196: DcScenario = DcScenario {
+    name: "dc_ws_196",
+    kind: 1u8,
+    args: &[0f64, 1f64, 645f64],
+    res: &[0.56f64, 3f64, 1f64, 0f64, 195f64, 0f64, 0f64],
+};
+
+pub const DC_WS_197: DcScenario = DcScenario {
+    name: "dc_ws_197",
+    kind: 1u8,
+    args: &[0f64, 1f64, 767f64],
+    res: &[2.08f64, 3f64, 1f64, 0f64, 73f64, 0f64, 0f64],
+};
+
+pub const DC_WS_198: DcScenario = DcScenario {
+    name: "dc_ws_198",
+    kind: 1u8,
+    args: &[0f64, 1f64, 768f64],
+    res: &[2.1f64, 3f64, 1f64, 0f64, 72f64, 0f64, 0f64],
+};
+
+pub const DC_WS_199: DcScenario = DcScenario {
+    name: "dc_ws_199",
+    kind: 1u8,
+    args: &[0f64, 1f64, 772f64],
+    res: &[2.15f64, 3f64, 1f64, 0f64, 68f64, 0f64, 0f64],
+};
+
+pub const DC_WS_200: DcScenario = DcScenario {
+    name: "dc_ws_200",
+    kind: 1u8,
+    args: &[0f64, 1f64, 822f64],
+    res: &[2.77f64, 3f64, 1f64, 0f64, 18f64, 0f64, 0f64],
+};
+
+pub const DC_WS_201: DcScenario = DcScenario {
+    name: "dc_ws_201",
+    kind: 1u8,
+    args: &[0f64, 1f64, 858f64],
+    res: &[3f64, 6f64, 0f64, 52f64, 0f64, 0f64, 0f64],
+};
+
+pub const DC_WS_202: DcScenario = DcScenario {
+    name: "dc_ws_202",
+    kind: 1u8,
+    args: &[0f64, 1f64, 863f64],
+    res: &[3f64, 6f64, 0f64, 47f64, 0f64, 0f64, 0f64],
+};
+
+pub const DC_WS_203: DcScenario = DcScenario {
+    name: "dc_ws_203",
+    kind: 1u8,
+    args: &[0f64, 1f64, 864f64],
+    res: &[3f64, 6f64, 0f64, 46f64, 0f64, 0f64, 0f64],
+};
+
+pub const DC_WS_204: DcScenario = DcScenario {
+    name: "dc_ws_204",
+    kind: 1u8,
+    args: &[0f64, 1f64, 868f64],
+    res: &[3f64, 6f64, 0f64, 42f64, 0f64, 0f64, 0f64],
+};
+
+pub const DC_WS_205: DcScenario = DcScenario {
+    name: "dc_ws_205",
+    kind: 1u8,
+    args: &[0f64, 1f64, 895f64],
+    res: &[3f64, 6f64, 0f64, 15f64, 0f64, 0f64, 0f64],
+};
+
+pub const DC_WS_206: DcScenario = DcScenario {
+    name: "dc_ws_206",
+    kind: 1u8,
+    args: &[0f64, 1f64, 896f64],
+    res: &[3f64, 6f64, 0f64, 14f64, 0f64, 0f64, 0f64],
+};
+
+pub const DC_WS_207: DcScenario = DcScenario {
+    name: "dc_ws_207",
+    kind: 1u8,
+    args: &[0f64, 1f64, 900f64],
+    res: &[3f64, 6f64, 0f64, 10f64, 0f64, 0f64, 0f64],
+};
+
+pub const DC_WS_208: DcScenario = DcScenario {
+    name: "dc_ws_208",
+    kind: 1u8,
+    args: &[0f64, 1f64, 1067f64],
+    res: &[4.96f64, 6f64, 1f64, 0f64, 83f64, 0f64, 0f64],
+};
+
+pub const DC_WS_209: DcScenario = DcScenario {
+    name: "dc_ws_209",
+    kind: 1u8,
+    args: &[0f64, 1f64, 1068f64],
+    res: &[4.97f64, 6f64, 1f64, 0f64, 82f64, 0f64, 0f64],
+};
+
+pub const DC_WS_210: DcScenario = DcScenario {
+    name: "dc_ws_210",
+    kind: 1u8,
+    args: &[0f64, 1f64, 1175f64],
+    res: &[6f64, 10f64, 0f64, 45f64, 0f64, 0f64, 0f64],
+};
+
+pub const DC_WS_211: DcScenario = DcScenario {
+    name: "dc_ws_211",
+    kind: 1u8,
+    args: &[0f64, 1f64, 1176f64],
+    res: &[6f64, 10f64, 0f64, 44f64, 0f64, 0f64, 0f64],
+};
+
+pub const DC_WS_212: DcScenario = DcScenario {
+    name: "dc_ws_212",
+    kind: 1u8,
+    args: &[0f64, 1f64, 1245f64],
+    res: &[6.41f64, 10f64, 1f64, 0f64, 215f64, 0f64, 0f64],
+};
+
+pub const DC_WS_213: DcScenario = DcScenario {
+    name: "dc_ws_213",
+    kind: 1u8,
+    args: &[0f64, 1f64, 1246f64],
+    res: &[6.43f64, 10f64, 1f64, 0f64, 214f64, 0f64, 0f64],
+};
+
+pub const DC_WS_214: DcScenario = DcScenario {
+    name: "dc_ws_214",
+    kind: 1u8,
+    args: &[0f64, 1f64, 1314f64],
+    res: &[7.56f64, 10f64, 1f64, 0f64, 146f64, 0f64, 0f64],
+};
+
+pub const DC_WS_215: DcScenario = DcScenario {
+    name: "dc_ws_215",
+    kind: 1u8,
+    args: &[0f64, 1f64, 1315f64],
+    res: &[7.58f64, 10f64, 1f64, 0f64, 145f64, 0f64, 0f64],
+};
+
+pub const DC_WS_216: DcScenario = DcScenario {
+    name: "dc_ws_216",
+    kind: 1u8,
+    args: &[0f64, 1f64, 1316f64],
+    res: &[7.6f64, 10f64, 1f64, 0f64, 144f64, 0f64, 0f64],
+};
+
+pub const DC_WS_217: DcScenario = DcScenario {
+    name: "dc_ws_217",
+    kind: 1u8,
+    args: &[0f64, 1f64, 1385f64],
+    res: &[8.75f64, 10f64, 1f64, 0f64, 75f64, 0f64, 0f64],
+};
+
+pub const DC_WS_218: DcScenario = DcScenario {
+    name: "dc_ws_218",
+    kind: 1u8,
+    args: &[0f64, 1f64, 1386f64],
+    res: &[8.76f64, 10f64, 1f64, 0f64, 74f64, 0f64, 0f64],
+};
+
+pub const DC_WS_219: DcScenario = DcScenario {
+    name: "dc_ws_219",
+    kind: 1u8,
+    args: &[0f64, 1f64, 1455f64],
+    res: &[9.91f64, 10f64, 1f64, 0f64, 5f64, 0f64, 0f64],
+};
+
+pub const DC_WS_220: DcScenario = DcScenario {
+    name: "dc_ws_220",
+    kind: 1u8,
+    args: &[0f64, 1f64, 1456f64],
+    res: &[9.93f64, 10f64, 1f64, 0f64, 4f64, 0f64, 0f64],
+};
+
+pub const DC_WS_221: DcScenario = DcScenario {
+    name: "dc_ws_221",
+    kind: 1u8,
+    args: &[0f64, 1f64, 1525f64],
+    res: &[10f64, 15f64, 0f64, 5f64, 0f64, 1f64, 0f64],
+};
+
+pub const DC_WS_222: DcScenario = DcScenario {
+    name: "dc_ws_222",
+    kind: 1u8,
+    args: &[0f64, 1f64, 1526f64],
+    res: &[10f64, 15f64, 0f64, 4f64, 0f64, 1f64, 0f64],
+};
+
+pub const DC_WS_223: DcScenario = DcScenario {
+    name: "dc_ws_223",
+    kind: 1u8,
+    args: &[0f64, 1f64, 1595f64],
+    res: &[11.35f64, 15f64, 1f64, 0f64, 175f64, 0f64, 0f64],
+};
+
+pub const DC_WS_224: DcScenario = DcScenario {
+    name: "dc_ws_224",
+    kind: 1u8,
+    args: &[0f64, 1f64, 1596f64],
+    res: &[11.37f64, 15f64, 1f64, 0f64, 174f64, 0f64, 0f64],
+};
+
+pub const DC_WS_225: DcScenario = DcScenario {
+    name: "dc_ws_225",
+    kind: 1u8,
+    args: &[0f64, 1f64, 1665f64],
+    res: &[12.81f64, 15f64, 1f64, 0f64, 105f64, 0f64, 0f64],
+};
+
+pub const DC_WS_226: DcScenario = DcScenario {
+    name: "dc_ws_226",
+    kind: 1u8,
+    args: &[0f64, 1f64, 1666f64],
+    res: &[12.83f64, 15f64, 1f64, 0f64, 104f64, 0f64, 0f64],
+};
+
+pub const DC_WS_227: DcScenario = DcScenario {
+    name: "dc_ws_227",
+    kind: 1u8,
+    args: &[0f64, 1f64, 1735f64],
+    res: &[14.27f64, 15f64, 1f64, 0f64, 35f64, 0f64, 0f64],
+};
+
+pub const DC_WS_228: DcScenario = DcScenario {
+    name: "dc_ws_228",
+    kind: 1u8,
+    args: &[0f64, 1f64, 1736f64],
+    res: &[14.29f64, 15f64, 1f64, 0f64, 34f64, 0f64, 0f64],
+};
+
+pub const DC_WS_229: DcScenario = DcScenario {
+    name: "dc_ws_229",
+    kind: 1u8,
+    args: &[0f64, 1f64, 2309f64],
+    res: &[25.63f64, 28f64, 1f64, 0f64, 81f64, 0f64, 0f64],
+};
+
+pub const DC_WS_230: DcScenario = DcScenario {
+    name: "dc_ws_230",
+    kind: 1u8,
+    args: &[0f64, 1f64, 2310f64],
+    res: &[25.66f64, 28f64, 1f64, 0f64, 80f64, 0f64, 0f64],
+};
+
+pub const DC_WS_231: DcScenario = DcScenario {
+    name: "dc_ws_231",
+    kind: 1u8,
+    args: &[0f64, 1f64, 2939f64],
+    res: &[35f64, 35f64, 0f64, 0f64, 0f64, 0f64, 1f64],
+};
+
+pub const DC_WS_232: DcScenario = DcScenario {
+    name: "dc_ws_232",
+    kind: 1u8,
+    args: &[0f64, 1f64, 2940f64],
+    res: &[35f64, 35f64, 0f64, 0f64, 0f64, 0f64, 1f64],
+};
+
+pub const DC_WS_233: DcScenario = DcScenario {
+    name: "dc_ws_233",
+    kind: 1u8,
+    args: &[0f64, 1f64, 3569f64],
+    res: &[35f64, 35f64, 0f64, 0f64, 0f64, 0f64, 1f64],
+};
+
+pub const DC_WS_234: DcScenario = DcScenario {
+    name: "dc_ws_234",
+    kind: 1u8,
+    args: &[0f64, 1f64, 3570f64],
+    res: &[35f64, 35f64, 0f64, 0f64, 0f64, 0f64, 1f64],
+};
+
+pub const DC_WS_235: DcScenario = DcScenario {
+    name: "dc_ws_235",
+    kind: 1u8,
+    args: &[0f64, 1f64, 4499f64],
+    res: &[35f64, 35f64, 0f64, 0f64, 0f64, 0f64, 1f64],
+};
+
+pub const DC_WS_236: DcScenario = DcScenario {
+    name: "dc_ws_236",
+    kind: 1u8,
+    args: &[0f64, 1f64, 4500f64],
+    res: &[35f64, 35f64, 0f64, 0f64, 0f64, 0f64, 1f64],
+};
+
+pub const DC_WS_237: DcScenario = DcScenario {
+    name: "dc_ws_237",
+    kind: 1u8,
+    args: &[0f64, 1f64, 5000f64],
+    res: &[35f64, 35f64, 0f64, 0f64, 0f64, 0f64, 1f64],
+};
+
+pub const DC_WS_238: DcScenario = DcScenario {
+    name: "dc_ws_238",
+    kind: 1u8,
+    args: &[0f64, 1f64, 1000000000f64],
+    res: &[35f64, 35f64, 0f64, 0f64, 0f64, 0f64, 1f64],
+};
+
+pub const DC_WS_239: DcScenario = DcScenario {
+    name: "dc_ws_239",
+    kind: 1u8,
+    args: &[0f64, 1f64, f64::INFINITY],
+    res: &[35f64, 35f64, 0f64, 0f64, 0f64, 0f64, 1f64],
+};
+
+pub const DC_WS_240: DcScenario = DcScenario {
+    name: "dc_ws_240",
+    kind: 1u8,
+    args: &[2f64, 1f64, f64::NAN],
+    res: &[35f64, 35f64, 0f64, 0f64, 0f64, 0f64, 1f64],
+};
+
+pub const DC_WS_241: DcScenario = DcScenario {
+    name: "dc_ws_241",
+    kind: 1u8,
+    args: &[2f64, 1f64, f64::NEG_INFINITY],
+    res: &[0f64, 3f64, 0f64, f64::INFINITY, 0f64, 0f64, 0f64],
+};
+
+pub const DC_WS_242: DcScenario = DcScenario {
+    name: "dc_ws_242",
+    kind: 1u8,
+    args: &[2f64, 1f64, 0f64],
+    res: &[0f64, 3f64, 0f64, 600f64, 0f64, 0f64, 0f64],
+};
+
+pub const DC_WS_243: DcScenario = DcScenario {
+    name: "dc_ws_243",
+    kind: 1u8,
+    args: &[2f64, 1f64, 594f64],
+    res: &[0f64, 3f64, 0f64, 6f64, 0f64, 0f64, 0f64],
+};
+
+pub const DC_WS_244: DcScenario = DcScenario {
+    name: "dc_ws_244",
+    kind: 1u8,
+    args: &[2f64, 1f64, 595f64],
+    res: &[0f64, 3f64, 0f64, 5f64, 0f64, 1f64, 0f64],
+};
+
+pub const DC_WS_245: DcScenario = DcScenario {
+    name: "dc_ws_245",
+    kind: 1u8,
+    args: &[2f64, 1f64, 596f64],
+    res: &[0f64, 3f64, 0f64, 4f64, 0f64, 1f64, 0f64],
+};
+
+pub const DC_WS_246: DcScenario = DcScenario {
+    name: "dc_ws_246",
+    kind: 1u8,
+    args: &[2f64, 1f64, 600f64],
+    res: &[0f64, 3f64, 0f64, 0f64, 0f64, 1f64, 0f64],
+};
+
+pub const DC_WS_247: DcScenario = DcScenario {
+    name: "dc_ws_247",
+    kind: 1u8,
+    args: &[2f64, 1f64, 600.5f64],
+    res: &[0.01f64, 3f64, 1f64, 0f64, 101.5f64, 1f64, 0f64],
+};
+
+pub const DC_WS_248: DcScenario = DcScenario {
+    name: "dc_ws_248",
+    kind: 1u8,
+    args: &[2f64, 1f64, 601f64],
+    res: &[0.02f64, 3f64, 1f64, 0f64, 101f64, 1f64, 0f64],
+};
+
+pub const DC_WS_249: DcScenario = DcScenario {
+    name: "dc_ws_249",
+    kind: 1u8,
+    args: &[2f64, 1f64, 605f64],
+    res: &[0.14f64, 3f64, 1f64, 0f64, 97f64, 1f64, 0f64],
+};
+
+pub const DC_WS_250: DcScenario = DcScenario {
+    name: "dc_ws_250",
+    kind: 1u8,
+    args: &[2f64, 1f64, 606f64],
+    res: &[0.17f64, 3f64, 1f64, 0f64, 96f64, 0f64, 0f64],
+};
+
+pub const DC_WS_251: DcScenario = DcScenario {
+    name: "dc_ws_251",
+    kind: 1u8,
+    args: &[2f64, 1f64, 618f64],
+    res: &[0.52f64, 3f64, 1f64, 0f64, 84f64, 0f64, 0f64],
+};
+
+pub const DC_WS_252: DcScenario = DcScenario {
+    name: "dc_ws_252",
+    kind: 1u8,
+    args: &[2f64, 1f64, 635f64],
+    res: &[1.02f64, 3f64, 1f64, 0f64, 67f64, 0f64, 0f64],
+};
+
+pub const DC_WS_253: DcScenario = DcScenario {
+    name: "dc_ws_253",
+    kind: 1u8,
+    args: &[2f64, 1f64, 636f64],
+    res: &[1.05f64, 3f64, 1f64, 0f64, 66f64, 0f64, 0f64],
+};
+
+pub const DC_WS_254: DcScenario = DcScenario {
+    name: "dc_ws_254",
+    kind: 1u8,
+    args: &[2f64, 1f64, 640f64],
+    res: &[1.17f64, 3f64, 1f64, 0f64, 62f64, 0f64, 0f64],
+};
+
+pub const DC_WS_255: DcScenario = DcScenario {
+    name: "dc_ws_255",
+    kind: 1u8,
+    args: &[2f64, 1f64, 644f64],
+    res: &[1.29f64, 3f64, 1f64, 0f64, 58f64, 0f64, 0f64],
+};
+
+pub const DC_WS_256: DcScenario = DcScenario {
+    name: "dc_ws_256",
+    kind: 1u8,
+    args: &[2f64, 1f64, 645f64],
+    res: &[1.32f64, 3f64, 1f64, 0f64, 57f64, 0f64, 0f64],
+};
+
+pub const DC_WS_257: DcScenario = DcScenario {
+    name: "dc_ws_257",
+    kind: 1u8,
+    args: &[2f64, 1f64, 767f64],
+    res: &[4f64, 6f64, 1f64, 0f64, 68f64, 0f64, 0f64],
+};
+
+pub const DC_WS_258: DcScenario = DcScenario {
+    name: "dc_ws_258",
+    kind: 1u8,
+    args: &[2f64, 1f64, 768f64],
+    res: &[4.02f64, 6f64, 1f64, 0f64, 67f64, 0f64, 0f64],
+};
+
+pub const DC_WS_259: DcScenario = DcScenario {
+    name: "dc_ws_259",
+    kind: 1u8,
+    args: &[2f64, 1f64, 772f64],
+    res: &[4.14f64, 6f64, 1f64, 0f64, 63f64, 0f64, 0f64],
+};
+
+pub const DC_WS_260: DcScenario = DcScenario {
+    name: "dc_ws_260",
+    kind: 1u8,
+    args: &[2f64, 1f64, 822f64],
+    res: &[5.61f64, 6f64, 1f64, 0f64, 13f64, 0f64, 0f64],
+};
+
+pub const DC_WS_261: DcScenario = DcScenario {
+    name: "dc_ws_261",
+    kind: 1u8,
+    args: &[2f64, 1f64, 858f64],
+    res: &[6f64, 10f64, 0f64, 8f64, 0f64, 0f64, 0f64],
+};
+
+pub const DC_WS_262: DcScenario = DcScenario {
+    name: "dc_ws_262",
+    kind: 1u8,
+    args: &[2f64, 1f64, 863f64],
+    res: &[6f64, 10f64, 0f64, 3f64, 0f64, 1f64, 0f64],
+};
+
+pub const DC_WS_263: DcScenario = DcScenario {
+    name: "dc_ws_263",
+    kind: 1u8,
+    args: &[2f64, 1f64, 864f64],
+    res: &[6f64, 10f64, 0f64, 2f64, 0f64, 1f64, 0f64],
+};
+
+pub const DC_WS_264: DcScenario = DcScenario {
+    name: "dc_ws_264",
+    kind: 1u8,
+    args: &[2f64, 1f64, 868f64],
+    res: &[6.07f64, 10f64, 1f64, 0f64, 100f64, 1f64, 0f64],
+};
+
+pub const DC_WS_265: DcScenario = DcScenario {
+    name: "dc_ws_265",
+    kind: 1u8,
+    args: &[2f64, 1f64, 895f64],
+    res: &[7.13f64, 10f64, 1f64, 0f64, 73f64, 0f64, 0f64],
+};
+
+pub const DC_WS_266: DcScenario = DcScenario {
+    name: "dc_ws_266",
+    kind: 1u8,
+    args: &[2f64, 1f64, 896f64],
+    res: &[7.17f64, 10f64, 1f64, 0f64, 72f64, 0f64, 0f64],
+};
+
+pub const DC_WS_267: DcScenario = DcScenario {
+    name: "dc_ws_267",
+    kind: 1u8,
+    args: &[2f64, 1f64, 900f64],
+    res: &[7.33f64, 10f64, 1f64, 0f64, 68f64, 0f64, 0f64],
+};
+
+pub const DC_WS_268: DcScenario = DcScenario {
+    name: "dc_ws_268",
+    kind: 1u8,
+    args: &[2f64, 1f64, 1067f64],
+    res: &[13.33f64, 15f64, 1f64, 0f64, 34f64, 0f64, 0f64],
+};
+
+pub const DC_WS_269: DcScenario = DcScenario {
+    name: "dc_ws_269",
+    kind: 1u8,
+    args: &[2f64, 1f64, 1068f64],
+    res: &[13.38f64, 15f64, 1f64, 0f64, 33f64, 0f64, 0f64],
+};
+
+pub const DC_WS_270: DcScenario = DcScenario {
+    name: "dc_ws_270",
+    kind: 1u8,
+    args: &[2f64, 1f64, 1175f64],
+    res: &[17.52f64, 21f64, 1f64, 0f64, 59f64, 0f64, 0f64],
+};
+
+pub const DC_WS_271: DcScenario = DcScenario {
+    name: "dc_ws_271",
+    kind: 1u8,
+    args: &[2f64, 1f64, 1176f64],
+    res: &[17.58f64, 21f64, 1f64, 0f64, 58f64, 0f64, 0f64],
+};
+
+pub const DC_WS_272: DcScenario = DcScenario {
+    name: "dc_ws_272",
+    kind: 1u8,
+    args: &[2f64, 1f64, 1245f64],
+    res: &[21f64, 28f64, 0f64, 20f64, 0f64, 0f64, 0f64],
+};
+
+pub const DC_WS_273: DcScenario = DcScenario {
+    name: "dc_ws_273",
+    kind: 1u8,
+    args: &[2f64, 1f64, 1246f64],
+    res: &[21f64, 28f64, 0f64, 19f64, 0f64, 0f64, 0f64],
+};
+
+pub const DC_WS_274: DcScenario = DcScenario {
+    name: "dc_ws_274",
+    kind: 1u8,
+    args: &[2f64, 1f64, 1314f64],
+    res: &[24.36f64, 28f64, 1f64, 0f64, 53f64, 0f64, 0f64],
+};
+
+pub const DC_WS_275: DcScenario = DcScenario {
+    name: "dc_ws_275",
+    kind: 1u8,
+    args: &[2f64, 1f64, 1315f64],
+    res: &[24.43f64, 28f64, 1f64, 0f64, 52f64, 0f64, 0f64],
+};
+
+pub const DC_WS_276: DcScenario = DcScenario {
+    name: "dc_ws_276",
+    kind: 1u8,
+    args: &[2f64, 1f64, 1316f64],
+    res: &[24.5f64, 28f64, 1f64, 0f64, 51f64, 0f64, 0f64],
+};
+
+pub const DC_WS_277: DcScenario = DcScenario {
+    name: "dc_ws_277",
+    kind: 1u8,
+    args: &[2f64, 1f64, 1385f64],
+    res: &[28f64, 35f64, 0f64, 13f64, 0f64, 0f64, 0f64],
+};
+
+pub const DC_WS_278: DcScenario = DcScenario {
+    name: "dc_ws_278",
+    kind: 1u8,
+    args: &[2f64, 1f64, 1386f64],
+    res: &[28f64, 35f64, 0f64, 12f64, 0f64, 0f64, 0f64],
+};
+
+pub const DC_WS_279: DcScenario = DcScenario {
+    name: "dc_ws_279",
+    kind: 1u8,
+    args: &[2f64, 1f64, 1455f64],
+    res: &[31.91f64, 35f64, 1f64, 0f64, 45f64, 0f64, 0f64],
+};
+
+pub const DC_WS_280: DcScenario = DcScenario {
+    name: "dc_ws_280",
+    kind: 1u8,
+    args: &[2f64, 1f64, 1456f64],
+    res: &[31.98f64, 35f64, 1f64, 0f64, 44f64, 0f64, 0f64],
+};
+
+pub const DC_WS_281: DcScenario = DcScenario {
+    name: "dc_ws_281",
+    kind: 1u8,
+    args: &[2f64, 1f64, 1525f64],
+    res: &[35f64, 35f64, 0f64, 0f64, 0f64, 0f64, 1f64],
+};
+
+pub const DC_WS_282: DcScenario = DcScenario {
+    name: "dc_ws_282",
+    kind: 1u8,
+    args: &[2f64, 1f64, 1526f64],
+    res: &[35f64, 35f64, 0f64, 0f64, 0f64, 0f64, 1f64],
+};
+
+pub const DC_WS_283: DcScenario = DcScenario {
+    name: "dc_ws_283",
+    kind: 1u8,
+    args: &[2f64, 1f64, 1595f64],
+    res: &[35f64, 35f64, 0f64, 0f64, 0f64, 0f64, 1f64],
+};
+
+pub const DC_WS_284: DcScenario = DcScenario {
+    name: "dc_ws_284",
+    kind: 1u8,
+    args: &[2f64, 1f64, 1596f64],
+    res: &[35f64, 35f64, 0f64, 0f64, 0f64, 0f64, 1f64],
+};
+
+pub const DC_WS_285: DcScenario = DcScenario {
+    name: "dc_ws_285",
+    kind: 1u8,
+    args: &[2f64, 1f64, 1665f64],
+    res: &[35f64, 35f64, 0f64, 0f64, 0f64, 0f64, 1f64],
+};
+
+pub const DC_WS_286: DcScenario = DcScenario {
+    name: "dc_ws_286",
+    kind: 1u8,
+    args: &[2f64, 1f64, 1666f64],
+    res: &[35f64, 35f64, 0f64, 0f64, 0f64, 0f64, 1f64],
+};
+
+pub const DC_WS_287: DcScenario = DcScenario {
+    name: "dc_ws_287",
+    kind: 1u8,
+    args: &[2f64, 1f64, 1735f64],
+    res: &[35f64, 35f64, 0f64, 0f64, 0f64, 0f64, 1f64],
+};
+
+pub const DC_WS_288: DcScenario = DcScenario {
+    name: "dc_ws_288",
+    kind: 1u8,
+    args: &[2f64, 1f64, 1736f64],
+    res: &[35f64, 35f64, 0f64, 0f64, 0f64, 0f64, 1f64],
+};
+
+pub const DC_WS_289: DcScenario = DcScenario {
+    name: "dc_ws_289",
+    kind: 1u8,
+    args: &[2f64, 1f64, 2309f64],
+    res: &[35f64, 35f64, 0f64, 0f64, 0f64, 0f64, 1f64],
+};
+
+pub const DC_WS_290: DcScenario = DcScenario {
+    name: "dc_ws_290",
+    kind: 1u8,
+    args: &[2f64, 1f64, 2310f64],
+    res: &[35f64, 35f64, 0f64, 0f64, 0f64, 0f64, 1f64],
+};
+
+pub const DC_WS_291: DcScenario = DcScenario {
+    name: "dc_ws_291",
+    kind: 1u8,
+    args: &[2f64, 1f64, 2939f64],
+    res: &[35f64, 35f64, 0f64, 0f64, 0f64, 0f64, 1f64],
+};
+
+pub const DC_WS_292: DcScenario = DcScenario {
+    name: "dc_ws_292",
+    kind: 1u8,
+    args: &[2f64, 1f64, 2940f64],
+    res: &[35f64, 35f64, 0f64, 0f64, 0f64, 0f64, 1f64],
+};
+
+pub const DC_WS_293: DcScenario = DcScenario {
+    name: "dc_ws_293",
+    kind: 1u8,
+    args: &[2f64, 1f64, 3569f64],
+    res: &[35f64, 35f64, 0f64, 0f64, 0f64, 0f64, 1f64],
+};
+
+pub const DC_WS_294: DcScenario = DcScenario {
+    name: "dc_ws_294",
+    kind: 1u8,
+    args: &[2f64, 1f64, 3570f64],
+    res: &[35f64, 35f64, 0f64, 0f64, 0f64, 0f64, 1f64],
+};
+
+pub const DC_WS_295: DcScenario = DcScenario {
+    name: "dc_ws_295",
+    kind: 1u8,
+    args: &[2f64, 1f64, 4499f64],
+    res: &[35f64, 35f64, 0f64, 0f64, 0f64, 0f64, 1f64],
+};
+
+pub const DC_WS_296: DcScenario = DcScenario {
+    name: "dc_ws_296",
+    kind: 1u8,
+    args: &[2f64, 1f64, 4500f64],
+    res: &[35f64, 35f64, 0f64, 0f64, 0f64, 0f64, 1f64],
+};
+
+pub const DC_WS_297: DcScenario = DcScenario {
+    name: "dc_ws_297",
+    kind: 1u8,
+    args: &[2f64, 1f64, 5000f64],
+    res: &[35f64, 35f64, 0f64, 0f64, 0f64, 0f64, 1f64],
+};
+
+pub const DC_WS_298: DcScenario = DcScenario {
+    name: "dc_ws_298",
+    kind: 1u8,
+    args: &[2f64, 1f64, 1000000000f64],
+    res: &[35f64, 35f64, 0f64, 0f64, 0f64, 0f64, 1f64],
+};
+
+pub const DC_WS_299: DcScenario = DcScenario {
+    name: "dc_ws_299",
+    kind: 1u8,
+    args: &[2f64, 1f64, f64::INFINITY],
+    res: &[35f64, 35f64, 0f64, 0f64, 0f64, 0f64, 1f64],
+};
+
+pub const DC_WS_300: DcScenario = DcScenario {
+    name: "dc_ws_300",
+    kind: 1u8,
+    args: &[4f64, 0f64, f64::NAN],
+    res: &[35f64, 35f64, 0f64, 0f64, 0f64, 0f64, 1f64],
+};
+
+pub const DC_WS_301: DcScenario = DcScenario {
+    name: "dc_ws_301",
+    kind: 1u8,
+    args: &[4f64, 0f64, f64::NEG_INFINITY],
+    res: &[0f64, 2f64, 0f64, f64::INFINITY, 0f64, 0f64, 0f64],
+};
+
+pub const DC_WS_302: DcScenario = DcScenario {
+    name: "dc_ws_302",
+    kind: 1u8,
+    args: &[4f64, 0f64, 0f64],
+    res: &[0f64, 2f64, 0f64, 600f64, 0f64, 0f64, 0f64],
+};
+
+pub const DC_WS_303: DcScenario = DcScenario {
+    name: "dc_ws_303",
+    kind: 1u8,
+    args: &[4f64, 0f64, 594f64],
+    res: &[0f64, 2f64, 0f64, 6f64, 0f64, 0f64, 0f64],
+};
+
+pub const DC_WS_304: DcScenario = DcScenario {
+    name: "dc_ws_304",
+    kind: 1u8,
+    args: &[4f64, 0f64, 595f64],
+    res: &[0f64, 2f64, 0f64, 5f64, 0f64, 1f64, 0f64],
+};
+
+pub const DC_WS_305: DcScenario = DcScenario {
+    name: "dc_ws_305",
+    kind: 1u8,
+    args: &[4f64, 0f64, 596f64],
+    res: &[0f64, 2f64, 0f64, 4f64, 0f64, 1f64, 0f64],
+};
+
+pub const DC_WS_306: DcScenario = DcScenario {
+    name: "dc_ws_306",
+    kind: 1u8,
+    args: &[4f64, 0f64, 600f64],
+    res: &[0f64, 2f64, 0f64, 0f64, 0f64, 1f64, 0f64],
+};
+
+pub const DC_WS_307: DcScenario = DcScenario {
+    name: "dc_ws_307",
+    kind: 1u8,
+    args: &[4f64, 0f64, 600.5f64],
+    res: &[0f64, 2f64, 1f64, 0f64, 167.5f64, 1f64, 0f64],
+};
+
+pub const DC_WS_308: DcScenario = DcScenario {
+    name: "dc_ws_308",
+    kind: 1u8,
+    args: &[4f64, 0f64, 601f64],
+    res: &[0.01f64, 2f64, 1f64, 0f64, 167f64, 1f64, 0f64],
+};
+
+pub const DC_WS_309: DcScenario = DcScenario {
+    name: "dc_ws_309",
+    kind: 1u8,
+    args: &[4f64, 0f64, 605f64],
+    res: &[0.05f64, 2f64, 1f64, 0f64, 163f64, 1f64, 0f64],
+};
+
+pub const DC_WS_310: DcScenario = DcScenario {
+    name: "dc_ws_310",
+    kind: 1u8,
+    args: &[4f64, 0f64, 606f64],
+    res: &[0.07f64, 2f64, 1f64, 0f64, 162f64, 0f64, 0f64],
+};
+
+pub const DC_WS_311: DcScenario = DcScenario {
+    name: "dc_ws_311",
+    kind: 1u8,
+    args: &[4f64, 0f64, 618f64],
+    res: &[0.21f64, 2f64, 1f64, 0f64, 150f64, 0f64, 0f64],
+};
+
+pub const DC_WS_312: DcScenario = DcScenario {
+    name: "dc_ws_312",
+    kind: 1u8,
+    args: &[4f64, 0f64, 635f64],
+    res: &[0.41f64, 2f64, 1f64, 0f64, 133f64, 0f64, 0f64],
+};
+
+pub const DC_WS_313: DcScenario = DcScenario {
+    name: "dc_ws_313",
+    kind: 1u8,
+    args: &[4f64, 0f64, 636f64],
+    res: &[0.42f64, 2f64, 1f64, 0f64, 132f64, 0f64, 0f64],
+};
+
+pub const DC_WS_314: DcScenario = DcScenario {
+    name: "dc_ws_314",
+    kind: 1u8,
+    args: &[4f64, 0f64, 640f64],
+    res: &[0.47f64, 2f64, 1f64, 0f64, 128f64, 0f64, 0f64],
+};
+
+pub const DC_WS_315: DcScenario = DcScenario {
+    name: "dc_ws_315",
+    kind: 1u8,
+    args: &[4f64, 0f64, 644f64],
+    res: &[0.52f64, 2f64, 1f64, 0f64, 124f64, 0f64, 0f64],
+};
+
+pub const DC_WS_316: DcScenario = DcScenario {
+    name: "dc_ws_316",
+    kind: 1u8,
+    args: &[4f64, 0f64, 645f64],
+    res: &[0.53f64, 2f64, 1f64, 0f64, 123f64, 0f64, 0f64],
+};
+
+pub const DC_WS_317: DcScenario = DcScenario {
+    name: "dc_ws_317",
+    kind: 1u8,
+    args: &[4f64, 0f64, 767f64],
+    res: &[1.98f64, 2f64, 1f64, 0f64, 1f64, 0f64, 0f64],
+};
+
+pub const DC_WS_318: DcScenario = DcScenario {
+    name: "dc_ws_318",
+    kind: 1u8,
+    args: &[4f64, 0f64, 768f64],
+    res: &[2f64, 4f64, 0f64, 54f64, 0f64, 0f64, 0f64],
+};
+
+pub const DC_WS_319: DcScenario = DcScenario {
+    name: "dc_ws_319",
+    kind: 1u8,
+    args: &[4f64, 0f64, 772f64],
+    res: &[2f64, 4f64, 0f64, 50f64, 0f64, 0f64, 0f64],
+};
+
+pub const DC_WS_320: DcScenario = DcScenario {
+    name: "dc_ws_320",
+    kind: 1u8,
+    args: &[4f64, 0f64, 822f64],
+    res: &[2f64, 4f64, 1f64, 0f64, 168f64, 1f64, 0f64],
+};
+
+pub const DC_WS_321: DcScenario = DcScenario {
+    name: "dc_ws_321",
+    kind: 1u8,
+    args: &[4f64, 0f64, 858f64],
+    res: &[2.42f64, 4f64, 1f64, 0f64, 132f64, 0f64, 0f64],
+};
+
+pub const DC_WS_322: DcScenario = DcScenario {
+    name: "dc_ws_322",
+    kind: 1u8,
+    args: &[4f64, 0f64, 863f64],
+    res: &[2.48f64, 4f64, 1f64, 0f64, 127f64, 0f64, 0f64],
+};
+
+pub const DC_WS_323: DcScenario = DcScenario {
+    name: "dc_ws_323",
+    kind: 1u8,
+    args: &[4f64, 0f64, 864f64],
+    res: &[2.5f64, 4f64, 1f64, 0f64, 126f64, 0f64, 0f64],
+};
+
+pub const DC_WS_324: DcScenario = DcScenario {
+    name: "dc_ws_324",
+    kind: 1u8,
+    args: &[4f64, 0f64, 868f64],
+    res: &[2.54f64, 4f64, 1f64, 0f64, 122f64, 0f64, 0f64],
+};
+
+pub const DC_WS_325: DcScenario = DcScenario {
+    name: "dc_ws_325",
+    kind: 1u8,
+    args: &[4f64, 0f64, 895f64],
+    res: &[2.86f64, 4f64, 1f64, 0f64, 95f64, 0f64, 0f64],
+};
+
+pub const DC_WS_326: DcScenario = DcScenario {
+    name: "dc_ws_326",
+    kind: 1u8,
+    args: &[4f64, 0f64, 896f64],
+    res: &[2.88f64, 4f64, 1f64, 0f64, 94f64, 0f64, 0f64],
+};
+
+pub const DC_WS_327: DcScenario = DcScenario {
+    name: "dc_ws_327",
+    kind: 1u8,
+    args: &[4f64, 0f64, 900f64],
+    res: &[2.92f64, 4f64, 1f64, 0f64, 90f64, 0f64, 0f64],
+};
+
+pub const DC_WS_328: DcScenario = DcScenario {
+    name: "dc_ws_328",
+    kind: 1u8,
+    args: &[4f64, 0f64, 1067f64],
+    res: &[4.41f64, 7f64, 1f64, 0f64, 145f64, 0f64, 0f64],
+};
+
+pub const DC_WS_329: DcScenario = DcScenario {
+    name: "dc_ws_329",
+    kind: 1u8,
+    args: &[4f64, 0f64, 1068f64],
+    res: &[4.42f64, 7f64, 1f64, 0f64, 144f64, 0f64, 0f64],
+};
+
+pub const DC_WS_330: DcScenario = DcScenario {
+    name: "dc_ws_330",
+    kind: 1u8,
+    args: &[4f64, 0f64, 1175f64],
+    res: &[6.33f64, 7f64, 1f64, 0f64, 37f64, 0f64, 0f64],
+};
+
+pub const DC_WS_331: DcScenario = DcScenario {
+    name: "dc_ws_331",
+    kind: 1u8,
+    args: &[4f64, 0f64, 1176f64],
+    res: &[6.35f64, 7f64, 1f64, 0f64, 36f64, 0f64, 0f64],
+};
+
+pub const DC_WS_332: DcScenario = DcScenario {
+    name: "dc_ws_332",
+    kind: 1u8,
+    args: &[4f64, 0f64, 1245f64],
+    res: &[7f64, 11f64, 0f64, 21f64, 0f64, 0f64, 0f64],
+};
+
+pub const DC_WS_333: DcScenario = DcScenario {
+    name: "dc_ws_333",
+    kind: 1u8,
+    args: &[4f64, 0f64, 1246f64],
+    res: &[7f64, 11f64, 0f64, 20f64, 0f64, 0f64, 0f64],
+};
+
+pub const DC_WS_334: DcScenario = DcScenario {
+    name: "dc_ws_334",
+    kind: 1u8,
+    args: &[4f64, 0f64, 1314f64],
+    res: &[8.14f64, 11f64, 1f64, 0f64, 120f64, 0f64, 0f64],
+};
+
+pub const DC_WS_335: DcScenario = DcScenario {
+    name: "dc_ws_335",
+    kind: 1u8,
+    args: &[4f64, 0f64, 1315f64],
+    res: &[8.16f64, 11f64, 1f64, 0f64, 119f64, 0f64, 0f64],
+};
+
+pub const DC_WS_336: DcScenario = DcScenario {
+    name: "dc_ws_336",
+    kind: 1u8,
+    args: &[4f64, 0f64, 1316f64],
+    res: &[8.19f64, 11f64, 1f64, 0f64, 118f64, 0f64, 0f64],
+};
+
+pub const DC_WS_337: DcScenario = DcScenario {
+    name: "dc_ws_337",
+    kind: 1u8,
+    args: &[4f64, 0f64, 1385f64],
+    res: &[9.83f64, 11f64, 1f64, 0f64, 49f64, 0f64, 0f64],
+};
+
+pub const DC_WS_338: DcScenario = DcScenario {
+    name: "dc_ws_338",
+    kind: 1u8,
+    args: &[4f64, 0f64, 1386f64],
+    res: &[9.85f64, 11f64, 1f64, 0f64, 48f64, 0f64, 0f64],
+};
+
+pub const DC_WS_339: DcScenario = DcScenario {
+    name: "dc_ws_339",
+    kind: 1u8,
+    args: &[4f64, 0f64, 1455f64],
+    res: &[11f64, 17f64, 0f64, 33f64, 0f64, 0f64, 0f64],
+};
+
+pub const DC_WS_340: DcScenario = DcScenario {
+    name: "dc_ws_340",
+    kind: 1u8,
+    args: &[4f64, 0f64, 1456f64],
+    res: &[11f64, 17f64, 0f64, 32f64, 0f64, 0f64, 0f64],
+};
+
+pub const DC_WS_341: DcScenario = DcScenario {
+    name: "dc_ws_341",
+    kind: 1u8,
+    args: &[4f64, 0f64, 1525f64],
+    res: &[12.32f64, 17f64, 1f64, 0f64, 131f64, 0f64, 0f64],
+};
+
+pub const DC_WS_342: DcScenario = DcScenario {
+    name: "dc_ws_342",
+    kind: 1u8,
+    args: &[4f64, 0f64, 1526f64],
+    res: &[12.35f64, 17f64, 1f64, 0f64, 130f64, 0f64, 0f64],
+};
+
+pub const DC_WS_343: DcScenario = DcScenario {
+    name: "dc_ws_343",
+    kind: 1u8,
+    args: &[4f64, 0f64, 1595f64],
+    res: &[14.82f64, 17f64, 1f64, 0f64, 61f64, 0f64, 0f64],
+};
+
+pub const DC_WS_344: DcScenario = DcScenario {
+    name: "dc_ws_344",
+    kind: 1u8,
+    args: &[4f64, 0f64, 1596f64],
+    res: &[14.85f64, 17f64, 1f64, 0f64, 60f64, 0f64, 0f64],
+};
+
+pub const DC_WS_345: DcScenario = DcScenario {
+    name: "dc_ws_345",
+    kind: 1u8,
+    args: &[4f64, 0f64, 1665f64],
+    res: &[17f64, 25f64, 0f64, 45f64, 0f64, 0f64, 0f64],
+};
+
+pub const DC_WS_346: DcScenario = DcScenario {
+    name: "dc_ws_346",
+    kind: 1u8,
+    args: &[4f64, 0f64, 1666f64],
+    res: &[17f64, 25f64, 0f64, 44f64, 0f64, 0f64, 0f64],
+};
+
+pub const DC_WS_347: DcScenario = DcScenario {
+    name: "dc_ws_347",
+    kind: 1u8,
+    args: &[4f64, 0f64, 1735f64],
+    res: &[18.19f64, 25f64, 1f64, 0f64, 143f64, 0f64, 0f64],
+};
+
+pub const DC_WS_348: DcScenario = DcScenario {
+    name: "dc_ws_348",
+    kind: 1u8,
+    args: &[4f64, 0f64, 1736f64],
+    res: &[18.23f64, 25f64, 1f64, 0f64, 142f64, 0f64, 0f64],
+};
+
+pub const DC_WS_349: DcScenario = DcScenario {
+    name: "dc_ws_349",
+    kind: 1u8,
+    args: &[4f64, 0f64, 2309f64],
+    res: &[35f64, 35f64, 0f64, 0f64, 0f64, 0f64, 1f64],
+};
+
+pub const DC_WS_350: DcScenario = DcScenario {
+    name: "dc_ws_350",
+    kind: 1u8,
+    args: &[4f64, 0f64, 2310f64],
+    res: &[35f64, 35f64, 0f64, 0f64, 0f64, 0f64, 1f64],
+};
+
+pub const DC_WS_351: DcScenario = DcScenario {
+    name: "dc_ws_351",
+    kind: 1u8,
+    args: &[4f64, 0f64, 2939f64],
+    res: &[35f64, 35f64, 0f64, 0f64, 0f64, 0f64, 1f64],
+};
+
+pub const DC_WS_352: DcScenario = DcScenario {
+    name: "dc_ws_352",
+    kind: 1u8,
+    args: &[4f64, 0f64, 2940f64],
+    res: &[35f64, 35f64, 0f64, 0f64, 0f64, 0f64, 1f64],
+};
+
+pub const DC_WS_353: DcScenario = DcScenario {
+    name: "dc_ws_353",
+    kind: 1u8,
+    args: &[4f64, 0f64, 3569f64],
+    res: &[35f64, 35f64, 0f64, 0f64, 0f64, 0f64, 1f64],
+};
+
+pub const DC_WS_354: DcScenario = DcScenario {
+    name: "dc_ws_354",
+    kind: 1u8,
+    args: &[4f64, 0f64, 3570f64],
+    res: &[35f64, 35f64, 0f64, 0f64, 0f64, 0f64, 1f64],
+};
+
+pub const DC_WS_355: DcScenario = DcScenario {
+    name: "dc_ws_355",
+    kind: 1u8,
+    args: &[4f64, 0f64, 4499f64],
+    res: &[35f64, 35f64, 0f64, 0f64, 0f64, 0f64, 1f64],
+};
+
+pub const DC_WS_356: DcScenario = DcScenario {
+    name: "dc_ws_356",
+    kind: 1u8,
+    args: &[4f64, 0f64, 4500f64],
+    res: &[35f64, 35f64, 0f64, 0f64, 0f64, 0f64, 1f64],
+};
+
+pub const DC_WS_357: DcScenario = DcScenario {
+    name: "dc_ws_357",
+    kind: 1u8,
+    args: &[4f64, 0f64, 5000f64],
+    res: &[35f64, 35f64, 0f64, 0f64, 0f64, 0f64, 1f64],
+};
+
+pub const DC_WS_358: DcScenario = DcScenario {
+    name: "dc_ws_358",
+    kind: 1u8,
+    args: &[4f64, 0f64, 1000000000f64],
+    res: &[35f64, 35f64, 0f64, 0f64, 0f64, 0f64, 1f64],
+};
+
+pub const DC_WS_359: DcScenario = DcScenario {
+    name: "dc_ws_359",
+    kind: 1u8,
+    args: &[4f64, 0f64, f64::INFINITY],
+    res: &[35f64, 35f64, 0f64, 0f64, 0f64, 0f64, 1f64],
+};
+
+pub const DC_SPK_0: DcScenario = DcScenario {
+    name: "dc_spk_0",
+    kind: 2u8,
+    args: &[0f64, 0f64, 7f64],
+    res: &[21380f64],
+};
+
+pub const DC_SPK_1: DcScenario = DcScenario {
+    name: "dc_spk_1",
+    kind: 2u8,
+    args: &[0f64, 1f64, 7f64],
+    res: &[58725f64],
+};
+
+pub const DC_SPK_2: DcScenario = DcScenario {
+    name: "dc_spk_2",
+    kind: 2u8,
+    args: &[0f64, -1f64, 7f64],
+    res: &[49571f64],
+};
+
+pub const DC_SPK_3: DcScenario = DcScenario {
+    name: "dc_spk_3",
+    kind: 2u8,
+    args: &[0f64, 60f64, 7f64],
+    res: &[33859f64],
+};
+
+pub const DC_SPK_4: DcScenario = DcScenario {
+    name: "dc_spk_4",
+    kind: 2u8,
+    args: &[0f64, 2147483648f64, 7f64],
+    res: &[54148f64],
+};
+
+pub const DC_SPK_5: DcScenario = DcScenario {
+    name: "dc_spk_5",
+    kind: 2u8,
+    args: &[0f64, f64::NAN, 7f64],
+    res: &[21380f64],
+};
+
+pub const DC_SPK_6: DcScenario = DcScenario {
+    name: "dc_spk_6",
+    kind: 2u8,
+    args: &[1f64, 0f64, 7f64],
+    res: &[5315f64],
+};
+
+pub const DC_SPK_7: DcScenario = DcScenario {
+    name: "dc_spk_7",
+    kind: 2u8,
+    args: &[1f64, 1f64, 7f64],
+    res: &[42661f64],
+};
+
+pub const DC_SPK_8: DcScenario = DcScenario {
+    name: "dc_spk_8",
+    kind: 2u8,
+    args: &[1f64, -1f64, 7f64],
+    res: &[33506f64],
+};
+
+pub const DC_SPK_9: DcScenario = DcScenario {
+    name: "dc_spk_9",
+    kind: 2u8,
+    args: &[1f64, 60f64, 7f64],
+    res: &[17795f64],
+};
+
+pub const DC_SPK_10: DcScenario = DcScenario {
+    name: "dc_spk_10",
+    kind: 2u8,
+    args: &[1f64, 2147483648f64, 7f64],
+    res: &[38083f64],
+};
+
+pub const DC_SPK_11: DcScenario = DcScenario {
+    name: "dc_spk_11",
+    kind: 2u8,
+    args: &[1f64, f64::NAN, 7f64],
+    res: &[5315f64],
+};
+
+pub const DC_SPK_12: DcScenario = DcScenario {
+    name: "dc_spk_12",
+    kind: 2u8,
+    args: &[-1f64, 0f64, 7f64],
+    res: &[37444f64],
+};
+
+pub const DC_SPK_13: DcScenario = DcScenario {
+    name: "dc_spk_13",
+    kind: 2u8,
+    args: &[-1f64, 1f64, 7f64],
+    res: &[9253f64],
+};
+
+pub const DC_SPK_14: DcScenario = DcScenario {
+    name: "dc_spk_14",
+    kind: 2u8,
+    args: &[-1f64, -1f64, 7f64],
+    res: &[99f64],
+};
+
+pub const DC_SPK_15: DcScenario = DcScenario {
+    name: "dc_spk_15",
+    kind: 2u8,
+    args: &[-1f64, 60f64, 7f64],
+    res: &[49923f64],
+};
+
+pub const DC_SPK_16: DcScenario = DcScenario {
+    name: "dc_spk_16",
+    kind: 2u8,
+    args: &[-1f64, 2147483648f64, 7f64],
+    res: &[4676f64],
+};
+
+pub const DC_SPK_17: DcScenario = DcScenario {
+    name: "dc_spk_17",
+    kind: 2u8,
+    args: &[-1f64, f64::NAN, 7f64],
+    res: &[37444f64],
+};
+
+pub const DC_SPK_18: DcScenario = DcScenario {
+    name: "dc_spk_18",
+    kind: 2u8,
+    args: &[2f64, 0f64, 7f64],
+    res: &[54787f64],
+};
+
+pub const DC_SPK_19: DcScenario = DcScenario {
+    name: "dc_spk_19",
+    kind: 2u8,
+    args: &[2f64, 1f64, 7f64],
+    res: &[26596f64],
+};
+
+pub const DC_SPK_20: DcScenario = DcScenario {
+    name: "dc_spk_20",
+    kind: 2u8,
+    args: &[2f64, -1f64, 7f64],
+    res: &[17442f64],
+};
+
+pub const DC_SPK_21: DcScenario = DcScenario {
+    name: "dc_spk_21",
+    kind: 2u8,
+    args: &[2f64, 60f64, 7f64],
+    res: &[1730f64],
+};
+
+pub const DC_SPK_22: DcScenario = DcScenario {
+    name: "dc_spk_22",
+    kind: 2u8,
+    args: &[2f64, 2147483648f64, 7f64],
+    res: &[22019f64],
+};
+
+pub const DC_SPK_23: DcScenario = DcScenario {
+    name: "dc_spk_23",
+    kind: 2u8,
+    args: &[2f64, f64::NAN, 7f64],
+    res: &[54787f64],
+};
+
+pub const DC_SPK_24: DcScenario = DcScenario {
+    name: "dc_spk_24",
+    kind: 2u8,
+    args: &[3f64, 0f64, 7f64],
+    res: &[38723f64],
+};
+
+pub const DC_SPK_25: DcScenario = DcScenario {
+    name: "dc_spk_25",
+    kind: 2u8,
+    args: &[3f64, 1f64, 7f64],
+    res: &[10532f64],
+};
+
+pub const DC_SPK_26: DcScenario = DcScenario {
+    name: "dc_spk_26",
+    kind: 2u8,
+    args: &[3f64, -1f64, 7f64],
+    res: &[1378f64],
+};
+
+pub const DC_SPK_27: DcScenario = DcScenario {
+    name: "dc_spk_27",
+    kind: 2u8,
+    args: &[3f64, 60f64, 7f64],
+    res: &[51202f64],
+};
+
+pub const DC_SPK_28: DcScenario = DcScenario {
+    name: "dc_spk_28",
+    kind: 2u8,
+    args: &[3f64, 2147483648f64, 7f64],
+    res: &[5955f64],
+};
+
+pub const DC_SPK_29: DcScenario = DcScenario {
+    name: "dc_spk_29",
+    kind: 2u8,
+    args: &[3f64, f64::NAN, 7f64],
+    res: &[38723f64],
+};
+
+pub const DC_SPK_30: DcScenario = DcScenario {
+    name: "dc_spk_30",
+    kind: 2u8,
+    args: &[0.5f64, 0f64, 7f64],
+    res: &[21380f64],
+};
+
+pub const DC_SPK_31: DcScenario = DcScenario {
+    name: "dc_spk_31",
+    kind: 2u8,
+    args: &[0.5f64, 1f64, 7f64],
+    res: &[58725f64],
+};
+
+pub const DC_SPK_32: DcScenario = DcScenario {
+    name: "dc_spk_32",
+    kind: 2u8,
+    args: &[0.5f64, -1f64, 7f64],
+    res: &[49571f64],
+};
+
+pub const DC_SPK_33: DcScenario = DcScenario {
+    name: "dc_spk_33",
+    kind: 2u8,
+    args: &[0.5f64, 60f64, 7f64],
+    res: &[33859f64],
+};
+
+pub const DC_SPK_34: DcScenario = DcScenario {
+    name: "dc_spk_34",
+    kind: 2u8,
+    args: &[0.5f64, 2147483648f64, 7f64],
+    res: &[54148f64],
+};
+
+pub const DC_SPK_35: DcScenario = DcScenario {
+    name: "dc_spk_35",
+    kind: 2u8,
+    args: &[0.5f64, f64::NAN, 7f64],
+    res: &[21380f64],
+};
+
+pub const DC_SPK_36: DcScenario = DcScenario {
+    name: "dc_spk_36",
+    kind: 2u8,
+    args: &[-0.5f64, 0f64, 7f64],
+    res: &[21380f64],
+};
+
+pub const DC_SPK_37: DcScenario = DcScenario {
+    name: "dc_spk_37",
+    kind: 2u8,
+    args: &[-0.5f64, 1f64, 7f64],
+    res: &[58725f64],
+};
+
+pub const DC_SPK_38: DcScenario = DcScenario {
+    name: "dc_spk_38",
+    kind: 2u8,
+    args: &[-0.5f64, -1f64, 7f64],
+    res: &[49571f64],
+};
+
+pub const DC_SPK_39: DcScenario = DcScenario {
+    name: "dc_spk_39",
+    kind: 2u8,
+    args: &[-0.5f64, 60f64, 7f64],
+    res: &[33859f64],
+};
+
+pub const DC_SPK_40: DcScenario = DcScenario {
+    name: "dc_spk_40",
+    kind: 2u8,
+    args: &[-0.5f64, 2147483648f64, 7f64],
+    res: &[54148f64],
+};
+
+pub const DC_SPK_41: DcScenario = DcScenario {
+    name: "dc_spk_41",
+    kind: 2u8,
+    args: &[-0.5f64, f64::NAN, 7f64],
+    res: &[21380f64],
+};
+
+pub const DC_SPK_42: DcScenario = DcScenario {
+    name: "dc_spk_42",
+    kind: 2u8,
+    args: &[f64::NAN, 0f64, 7f64],
+    res: &[21380f64],
+};
+
+pub const DC_SPK_43: DcScenario = DcScenario {
+    name: "dc_spk_43",
+    kind: 2u8,
+    args: &[f64::NAN, 1f64, 7f64],
+    res: &[58725f64],
+};
+
+pub const DC_SPK_44: DcScenario = DcScenario {
+    name: "dc_spk_44",
+    kind: 2u8,
+    args: &[f64::NAN, -1f64, 7f64],
+    res: &[49571f64],
+};
+
+pub const DC_SPK_45: DcScenario = DcScenario {
+    name: "dc_spk_45",
+    kind: 2u8,
+    args: &[f64::NAN, 60f64, 7f64],
+    res: &[33859f64],
+};
+
+pub const DC_SPK_46: DcScenario = DcScenario {
+    name: "dc_spk_46",
+    kind: 2u8,
+    args: &[f64::NAN, 2147483648f64, 7f64],
+    res: &[54148f64],
+};
+
+pub const DC_SPK_47: DcScenario = DcScenario {
+    name: "dc_spk_47",
+    kind: 2u8,
+    args: &[f64::NAN, f64::NAN, 7f64],
+    res: &[21380f64],
+};
+
+pub const DC_SPK_48: DcScenario = DcScenario {
+    name: "dc_spk_48",
+    kind: 2u8,
+    args: &[f64::INFINITY, 0f64, 7f64],
+    res: &[21380f64],
+};
+
+pub const DC_SPK_49: DcScenario = DcScenario {
+    name: "dc_spk_49",
+    kind: 2u8,
+    args: &[f64::INFINITY, 1f64, 7f64],
+    res: &[58725f64],
+};
+
+pub const DC_SPK_50: DcScenario = DcScenario {
+    name: "dc_spk_50",
+    kind: 2u8,
+    args: &[f64::INFINITY, -1f64, 7f64],
+    res: &[49571f64],
+};
+
+pub const DC_SPK_51: DcScenario = DcScenario {
+    name: "dc_spk_51",
+    kind: 2u8,
+    args: &[f64::INFINITY, 60f64, 7f64],
+    res: &[33859f64],
+};
+
+pub const DC_SPK_52: DcScenario = DcScenario {
+    name: "dc_spk_52",
+    kind: 2u8,
+    args: &[f64::INFINITY, 2147483648f64, 7f64],
+    res: &[54148f64],
+};
+
+pub const DC_SPK_53: DcScenario = DcScenario {
+    name: "dc_spk_53",
+    kind: 2u8,
+    args: &[f64::INFINITY, f64::NAN, 7f64],
+    res: &[21380f64],
+};
+
+pub const DC_SPK_54: DcScenario = DcScenario {
+    name: "dc_spk_54",
+    kind: 2u8,
+    args: &[f64::NEG_INFINITY, 0f64, 7f64],
+    res: &[21380f64],
+};
+
+pub const DC_SPK_55: DcScenario = DcScenario {
+    name: "dc_spk_55",
+    kind: 2u8,
+    args: &[f64::NEG_INFINITY, 1f64, 7f64],
+    res: &[58725f64],
+};
+
+pub const DC_SPK_56: DcScenario = DcScenario {
+    name: "dc_spk_56",
+    kind: 2u8,
+    args: &[f64::NEG_INFINITY, -1f64, 7f64],
+    res: &[49571f64],
+};
+
+pub const DC_SPK_57: DcScenario = DcScenario {
+    name: "dc_spk_57",
+    kind: 2u8,
+    args: &[f64::NEG_INFINITY, 60f64, 7f64],
+    res: &[33859f64],
+};
+
+pub const DC_SPK_58: DcScenario = DcScenario {
+    name: "dc_spk_58",
+    kind: 2u8,
+    args: &[f64::NEG_INFINITY, 2147483648f64, 7f64],
+    res: &[54148f64],
+};
+
+pub const DC_SPK_59: DcScenario = DcScenario {
+    name: "dc_spk_59",
+    kind: 2u8,
+    args: &[f64::NEG_INFINITY, f64::NAN, 7f64],
+    res: &[21380f64],
+};
+
+pub const DC_SPK_60: DcScenario = DcScenario {
+    name: "dc_spk_60",
+    kind: 2u8,
+    args: &[2147483648f64, 0f64, 7f64],
+    res: &[54148f64],
+};
+
+pub const DC_SPK_61: DcScenario = DcScenario {
+    name: "dc_spk_61",
+    kind: 2u8,
+    args: &[2147483648f64, 1f64, 7f64],
+    res: &[25957f64],
+};
+
+pub const DC_SPK_62: DcScenario = DcScenario {
+    name: "dc_spk_62",
+    kind: 2u8,
+    args: &[2147483648f64, -1f64, 7f64],
+    res: &[16803f64],
+};
+
+pub const DC_SPK_63: DcScenario = DcScenario {
+    name: "dc_spk_63",
+    kind: 2u8,
+    args: &[2147483648f64, 60f64, 7f64],
+    res: &[1091f64],
+};
+
+pub const DC_SPK_64: DcScenario = DcScenario {
+    name: "dc_spk_64",
+    kind: 2u8,
+    args: &[2147483648f64, 2147483648f64, 7f64],
+    res: &[21380f64],
+};
+
+pub const DC_SPK_65: DcScenario = DcScenario {
+    name: "dc_spk_65",
+    kind: 2u8,
+    args: &[2147483648f64, f64::NAN, 7f64],
+    res: &[54148f64],
+};
+
+pub const DC_SPK_66: DcScenario = DcScenario {
+    name: "dc_spk_66",
+    kind: 2u8,
+    args: &[-2147483648f64, 0f64, 7f64],
+    res: &[54148f64],
+};
+
+pub const DC_SPK_67: DcScenario = DcScenario {
+    name: "dc_spk_67",
+    kind: 2u8,
+    args: &[-2147483648f64, 1f64, 7f64],
+    res: &[25957f64],
+};
+
+pub const DC_SPK_68: DcScenario = DcScenario {
+    name: "dc_spk_68",
+    kind: 2u8,
+    args: &[-2147483648f64, -1f64, 7f64],
+    res: &[16803f64],
+};
+
+pub const DC_SPK_69: DcScenario = DcScenario {
+    name: "dc_spk_69",
+    kind: 2u8,
+    args: &[-2147483648f64, 60f64, 7f64],
+    res: &[1091f64],
+};
+
+pub const DC_SPK_70: DcScenario = DcScenario {
+    name: "dc_spk_70",
+    kind: 2u8,
+    args: &[-2147483648f64, 2147483648f64, 7f64],
+    res: &[21380f64],
+};
+
+pub const DC_SPK_71: DcScenario = DcScenario {
+    name: "dc_spk_71",
+    kind: 2u8,
+    args: &[-2147483648f64, f64::NAN, 7f64],
+    res: &[54148f64],
+};
+
+pub const DC_SPK_72: DcScenario = DcScenario {
+    name: "dc_spk_72",
+    kind: 2u8,
+    args: &[4294967296f64, 0f64, 7f64],
+    res: &[21380f64],
+};
+
+pub const DC_SPK_73: DcScenario = DcScenario {
+    name: "dc_spk_73",
+    kind: 2u8,
+    args: &[4294967296f64, 1f64, 7f64],
+    res: &[58725f64],
+};
+
+pub const DC_SPK_74: DcScenario = DcScenario {
+    name: "dc_spk_74",
+    kind: 2u8,
+    args: &[4294967296f64, -1f64, 7f64],
+    res: &[49571f64],
+};
+
+pub const DC_SPK_75: DcScenario = DcScenario {
+    name: "dc_spk_75",
+    kind: 2u8,
+    args: &[4294967296f64, 60f64, 7f64],
+    res: &[33859f64],
+};
+
+pub const DC_SPK_76: DcScenario = DcScenario {
+    name: "dc_spk_76",
+    kind: 2u8,
+    args: &[4294967296f64, 2147483648f64, 7f64],
+    res: &[54148f64],
+};
+
+pub const DC_SPK_77: DcScenario = DcScenario {
+    name: "dc_spk_77",
+    kind: 2u8,
+    args: &[4294967296f64, f64::NAN, 7f64],
+    res: &[21380f64],
+};
+
+pub const DC_SPK_78: DcScenario = DcScenario {
+    name: "dc_spk_78",
+    kind: 2u8,
+    args: &[9007199254740992f64, 0f64, 7f64],
+    res: &[21380f64],
+};
+
+pub const DC_SPK_79: DcScenario = DcScenario {
+    name: "dc_spk_79",
+    kind: 2u8,
+    args: &[9007199254740992f64, 1f64, 7f64],
+    res: &[58725f64],
+};
+
+pub const DC_SPK_80: DcScenario = DcScenario {
+    name: "dc_spk_80",
+    kind: 2u8,
+    args: &[9007199254740992f64, -1f64, 7f64],
+    res: &[49571f64],
+};
+
+pub const DC_SPK_81: DcScenario = DcScenario {
+    name: "dc_spk_81",
+    kind: 2u8,
+    args: &[9007199254740992f64, 60f64, 7f64],
+    res: &[33859f64],
+};
+
+pub const DC_SPK_82: DcScenario = DcScenario {
+    name: "dc_spk_82",
+    kind: 2u8,
+    args: &[9007199254740992f64, 2147483648f64, 7f64],
+    res: &[54148f64],
+};
+
+pub const DC_SPK_83: DcScenario = DcScenario {
+    name: "dc_spk_83",
+    kind: 2u8,
+    args: &[9007199254740992f64, f64::NAN, 7f64],
+    res: &[21380f64],
+};
+
+pub const DC_SPK_84: DcScenario = DcScenario {
+    name: "dc_spk_84",
+    kind: 2u8,
+    args: &[12345.678f64, 0f64, 7f64],
+    res: &[19072f64],
+};
+
+pub const DC_SPK_85: DcScenario = DcScenario {
+    name: "dc_spk_85",
+    kind: 2u8,
+    args: &[12345.678f64, 1f64, 7f64],
+    res: &[56417f64],
+};
+
+pub const DC_SPK_86: DcScenario = DcScenario {
+    name: "dc_spk_86",
+    kind: 2u8,
+    args: &[12345.678f64, -1f64, 7f64],
+    res: &[47263f64],
+};
+
+pub const DC_SPK_87: DcScenario = DcScenario {
+    name: "dc_spk_87",
+    kind: 2u8,
+    args: &[12345.678f64, 60f64, 7f64],
+    res: &[31551f64],
+};
+
+pub const DC_SPK_88: DcScenario = DcScenario {
+    name: "dc_spk_88",
+    kind: 2u8,
+    args: &[12345.678f64, 2147483648f64, 7f64],
+    res: &[51840f64],
+};
+
+pub const DC_SPK_89: DcScenario = DcScenario {
+    name: "dc_spk_89",
+    kind: 2u8,
+    args: &[12345.678f64, f64::NAN, 7f64],
+    res: &[19072f64],
+};
+
+pub const DC_SPK_90: DcScenario = DcScenario {
+    name: "dc_spk_90",
+    kind: 2u8,
+    args: &[-98765.4321f64, 0f64, 7f64],
+    res: &[54626f64],
+};
+
+pub const DC_SPK_91: DcScenario = DcScenario {
+    name: "dc_spk_91",
+    kind: 2u8,
+    args: &[-98765.4321f64, 1f64, 7f64],
+    res: &[26435f64],
+};
+
+pub const DC_SPK_92: DcScenario = DcScenario {
+    name: "dc_spk_92",
+    kind: 2u8,
+    args: &[-98765.4321f64, -1f64, 7f64],
+    res: &[17281f64],
+};
+
+pub const DC_SPK_93: DcScenario = DcScenario {
+    name: "dc_spk_93",
+    kind: 2u8,
+    args: &[-98765.4321f64, 60f64, 7f64],
+    res: &[1569f64],
+};
+
+pub const DC_SPK_94: DcScenario = DcScenario {
+    name: "dc_spk_94",
+    kind: 2u8,
+    args: &[-98765.4321f64, 2147483648f64, 7f64],
+    res: &[21858f64],
+};
+
+pub const DC_SPK_95: DcScenario = DcScenario {
+    name: "dc_spk_95",
+    kind: 2u8,
+    args: &[-98765.4321f64, f64::NAN, 7f64],
+    res: &[54626f64],
+};
+
+pub const DC_SPK_96: DcScenario = DcScenario {
+    name: "dc_spk_96",
+    kind: 2u8,
+    args: &[65535f64, 0f64, 7f64],
+    res: &[15341f64],
+};
+
+pub const DC_SPK_97: DcScenario = DcScenario {
+    name: "dc_spk_97",
+    kind: 2u8,
+    args: &[65535f64, 1f64, 7f64],
+    res: &[52686f64],
+};
+
+pub const DC_SPK_98: DcScenario = DcScenario {
+    name: "dc_spk_98",
+    kind: 2u8,
+    args: &[65535f64, -1f64, 7f64],
+    res: &[43532f64],
+};
+
+pub const DC_SPK_99: DcScenario = DcScenario {
+    name: "dc_spk_99",
+    kind: 2u8,
+    args: &[65535f64, 60f64, 7f64],
+    res: &[27820f64],
+};
+
+pub const DC_SPK_100: DcScenario = DcScenario {
+    name: "dc_spk_100",
+    kind: 2u8,
+    args: &[65535f64, 2147483648f64, 7f64],
+    res: &[48109f64],
+};
+
+pub const DC_SPK_101: DcScenario = DcScenario {
+    name: "dc_spk_101",
+    kind: 2u8,
+    args: &[65535f64, f64::NAN, 7f64],
+    res: &[15341f64],
+};
+
+pub const DC_SPK_102: DcScenario = DcScenario {
+    name: "dc_spk_102",
+    kind: 2u8,
+    args: &[65536f64, 0f64, 7f64],
+    res: &[64813f64],
+};
+
+pub const DC_SPK_103: DcScenario = DcScenario {
+    name: "dc_spk_103",
+    kind: 2u8,
+    args: &[65536f64, 1f64, 7f64],
+    res: &[36622f64],
+};
+
+pub const DC_SPK_104: DcScenario = DcScenario {
+    name: "dc_spk_104",
+    kind: 2u8,
+    args: &[65536f64, -1f64, 7f64],
+    res: &[27468f64],
+};
+
+pub const DC_SPK_105: DcScenario = DcScenario {
+    name: "dc_spk_105",
+    kind: 2u8,
+    args: &[65536f64, 60f64, 7f64],
+    res: &[11756f64],
+};
+
+pub const DC_SPK_106: DcScenario = DcScenario {
+    name: "dc_spk_106",
+    kind: 2u8,
+    args: &[65536f64, 2147483648f64, 7f64],
+    res: &[32045f64],
+};
+
+pub const DC_SPK_107: DcScenario = DcScenario {
+    name: "dc_spk_107",
+    kind: 2u8,
+    args: &[65536f64, f64::NAN, 7f64],
+    res: &[64813f64],
+};
+
+pub const DC_SPK_108: DcScenario = DcScenario {
+    name: "dc_spk_108",
+    kind: 2u8,
+    args: &[4294967295f64, 0f64, 7f64],
+    res: &[37444f64],
+};
+
+pub const DC_SPK_109: DcScenario = DcScenario {
+    name: "dc_spk_109",
+    kind: 2u8,
+    args: &[4294967295f64, 1f64, 7f64],
+    res: &[9253f64],
+};
+
+pub const DC_SPK_110: DcScenario = DcScenario {
+    name: "dc_spk_110",
+    kind: 2u8,
+    args: &[4294967295f64, -1f64, 7f64],
+    res: &[99f64],
+};
+
+pub const DC_SPK_111: DcScenario = DcScenario {
+    name: "dc_spk_111",
+    kind: 2u8,
+    args: &[4294967295f64, 60f64, 7f64],
+    res: &[49923f64],
+};
+
+pub const DC_SPK_112: DcScenario = DcScenario {
+    name: "dc_spk_112",
+    kind: 2u8,
+    args: &[4294967295f64, 2147483648f64, 7f64],
+    res: &[4676f64],
+};
+
+pub const DC_SPK_113: DcScenario = DcScenario {
+    name: "dc_spk_113",
+    kind: 2u8,
+    args: &[4294967295f64, f64::NAN, 7f64],
+    res: &[37444f64],
+};
+
+pub const DC_FRT_114: DcScenario = DcScenario {
+    name: "dc_frt_114",
+    kind: 3u8,
+    args: &[0f64, 0f64],
+    res: &[0f64],
+};
+
+pub const DC_FRT_115: DcScenario = DcScenario {
+    name: "dc_frt_115",
+    kind: 3u8,
+    args: &[0f64, 1f64],
+    res: &[15680f64],
+};
+
+pub const DC_FRT_116: DcScenario = DcScenario {
+    name: "dc_frt_116",
+    kind: 3u8,
+    args: &[0f64, -1f64],
+    res: &[1453f64],
+};
+
+pub const DC_FRT_117: DcScenario = DcScenario {
+    name: "dc_frt_117",
+    kind: 3u8,
+    args: &[0f64, 4294967296f64],
+    res: &[0f64],
+};
+
+pub const DC_FRT_118: DcScenario = DcScenario {
+    name: "dc_frt_118",
+    kind: 3u8,
+    args: &[0f64, f64::NAN],
+    res: &[0f64],
+};
+
+pub const DC_FRT_119: DcScenario = DcScenario {
+    name: "dc_frt_119",
+    kind: 3u8,
+    args: &[1f64, 0f64],
+    res: &[42967f64],
+};
+
+pub const DC_FRT_120: DcScenario = DcScenario {
+    name: "dc_frt_120",
+    kind: 3u8,
+    args: &[1f64, 1f64],
+    res: &[17057f64],
+};
+
+pub const DC_FRT_121: DcScenario = DcScenario {
+    name: "dc_frt_121",
+    kind: 3u8,
+    args: &[1f64, -1f64],
+    res: &[53809f64],
+};
+
+pub const DC_FRT_122: DcScenario = DcScenario {
+    name: "dc_frt_122",
+    kind: 3u8,
+    args: &[1f64, 4294967296f64],
+    res: &[42967f64],
+};
+
+pub const DC_FRT_123: DcScenario = DcScenario {
+    name: "dc_frt_123",
+    kind: 3u8,
+    args: &[1f64, f64::NAN],
+    res: &[42967f64],
+};
+
+pub const DC_FRT_124: DcScenario = DcScenario {
+    name: "dc_frt_124",
+    kind: 3u8,
+    args: &[-1f64, 0f64],
+    res: &[42443f64],
+};
+
+pub const DC_FRT_125: DcScenario = DcScenario {
+    name: "dc_frt_125",
+    kind: 3u8,
+    args: &[-1f64, 1f64],
+    res: &[53809f64],
+};
+
+pub const DC_FRT_126: DcScenario = DcScenario {
+    name: "dc_frt_126",
+    kind: 3u8,
+    args: &[-1f64, -1f64],
+    res: &[17057f64],
+};
+
+pub const DC_FRT_127: DcScenario = DcScenario {
+    name: "dc_frt_127",
+    kind: 3u8,
+    args: &[-1f64, 4294967296f64],
+    res: &[42443f64],
+};
+
+pub const DC_FRT_128: DcScenario = DcScenario {
+    name: "dc_frt_128",
+    kind: 3u8,
+    args: &[-1f64, f64::NAN],
+    res: &[42443f64],
+};
+
+pub const DC_FRT_129: DcScenario = DcScenario {
+    name: "dc_frt_129",
+    kind: 3u8,
+    args: &[2f64, 0f64],
+    res: &[29928f64],
+};
+
+pub const DC_FRT_130: DcScenario = DcScenario {
+    name: "dc_frt_130",
+    kind: 3u8,
+    args: &[2f64, 1f64],
+    res: &[57640f64],
+};
+
+pub const DC_FRT_131: DcScenario = DcScenario {
+    name: "dc_frt_131",
+    kind: 3u8,
+    args: &[2f64, -1f64],
+    res: &[30804f64],
+};
+
+pub const DC_FRT_132: DcScenario = DcScenario {
+    name: "dc_frt_132",
+    kind: 3u8,
+    args: &[2f64, 4294967296f64],
+    res: &[29928f64],
+};
+
+pub const DC_FRT_133: DcScenario = DcScenario {
+    name: "dc_frt_133",
+    kind: 3u8,
+    args: &[2f64, f64::NAN],
+    res: &[29928f64],
+};
+
+pub const DC_FRT_134: DcScenario = DcScenario {
+    name: "dc_frt_134",
+    kind: 3u8,
+    args: &[3f64, 0f64],
+    res: &[24984f64],
+};
+
+pub const DC_FRT_135: DcScenario = DcScenario {
+    name: "dc_frt_135",
+    kind: 3u8,
+    args: &[3f64, 1f64],
+    res: &[59733f64],
+};
+
+pub const DC_FRT_136: DcScenario = DcScenario {
+    name: "dc_frt_136",
+    kind: 3u8,
+    args: &[3f64, -1f64],
+    res: &[22360f64],
+};
+
+pub const DC_FRT_137: DcScenario = DcScenario {
+    name: "dc_frt_137",
+    kind: 3u8,
+    args: &[3f64, 4294967296f64],
+    res: &[24984f64],
+};
+
+pub const DC_FRT_138: DcScenario = DcScenario {
+    name: "dc_frt_138",
+    kind: 3u8,
+    args: &[3f64, f64::NAN],
+    res: &[24984f64],
+};
+
+pub const DC_FRT_139: DcScenario = DcScenario {
+    name: "dc_frt_139",
+    kind: 3u8,
+    args: &[0.5f64, 0f64],
+    res: &[0f64],
+};
+
+pub const DC_FRT_140: DcScenario = DcScenario {
+    name: "dc_frt_140",
+    kind: 3u8,
+    args: &[0.5f64, 1f64],
+    res: &[15680f64],
+};
+
+pub const DC_FRT_141: DcScenario = DcScenario {
+    name: "dc_frt_141",
+    kind: 3u8,
+    args: &[0.5f64, -1f64],
+    res: &[1453f64],
+};
+
+pub const DC_FRT_142: DcScenario = DcScenario {
+    name: "dc_frt_142",
+    kind: 3u8,
+    args: &[0.5f64, 4294967296f64],
+    res: &[0f64],
+};
+
+pub const DC_FRT_143: DcScenario = DcScenario {
+    name: "dc_frt_143",
+    kind: 3u8,
+    args: &[0.5f64, f64::NAN],
+    res: &[0f64],
+};
+
+pub const DC_FRT_144: DcScenario = DcScenario {
+    name: "dc_frt_144",
+    kind: 3u8,
+    args: &[-0.5f64, 0f64],
+    res: &[0f64],
+};
+
+pub const DC_FRT_145: DcScenario = DcScenario {
+    name: "dc_frt_145",
+    kind: 3u8,
+    args: &[-0.5f64, 1f64],
+    res: &[15680f64],
+};
+
+pub const DC_FRT_146: DcScenario = DcScenario {
+    name: "dc_frt_146",
+    kind: 3u8,
+    args: &[-0.5f64, -1f64],
+    res: &[1453f64],
+};
+
+pub const DC_FRT_147: DcScenario = DcScenario {
+    name: "dc_frt_147",
+    kind: 3u8,
+    args: &[-0.5f64, 4294967296f64],
+    res: &[0f64],
+};
+
+pub const DC_FRT_148: DcScenario = DcScenario {
+    name: "dc_frt_148",
+    kind: 3u8,
+    args: &[-0.5f64, f64::NAN],
+    res: &[0f64],
+};
+
+pub const DC_FRT_149: DcScenario = DcScenario {
+    name: "dc_frt_149",
+    kind: 3u8,
+    args: &[f64::NAN, 0f64],
+    res: &[0f64],
+};
+
+pub const DC_FRT_150: DcScenario = DcScenario {
+    name: "dc_frt_150",
+    kind: 3u8,
+    args: &[f64::NAN, 1f64],
+    res: &[15680f64],
+};
+
+pub const DC_FRT_151: DcScenario = DcScenario {
+    name: "dc_frt_151",
+    kind: 3u8,
+    args: &[f64::NAN, -1f64],
+    res: &[1453f64],
+};
+
+pub const DC_FRT_152: DcScenario = DcScenario {
+    name: "dc_frt_152",
+    kind: 3u8,
+    args: &[f64::NAN, 4294967296f64],
+    res: &[0f64],
+};
+
+pub const DC_FRT_153: DcScenario = DcScenario {
+    name: "dc_frt_153",
+    kind: 3u8,
+    args: &[f64::NAN, f64::NAN],
+    res: &[0f64],
+};
+
+pub const DC_FRT_154: DcScenario = DcScenario {
+    name: "dc_frt_154",
+    kind: 3u8,
+    args: &[f64::INFINITY, 0f64],
+    res: &[0f64],
+};
+
+pub const DC_FRT_155: DcScenario = DcScenario {
+    name: "dc_frt_155",
+    kind: 3u8,
+    args: &[f64::INFINITY, 1f64],
+    res: &[15680f64],
+};
+
+pub const DC_FRT_156: DcScenario = DcScenario {
+    name: "dc_frt_156",
+    kind: 3u8,
+    args: &[f64::INFINITY, -1f64],
+    res: &[1453f64],
+};
+
+pub const DC_FRT_157: DcScenario = DcScenario {
+    name: "dc_frt_157",
+    kind: 3u8,
+    args: &[f64::INFINITY, 4294967296f64],
+    res: &[0f64],
+};
+
+pub const DC_FRT_158: DcScenario = DcScenario {
+    name: "dc_frt_158",
+    kind: 3u8,
+    args: &[f64::INFINITY, f64::NAN],
+    res: &[0f64],
+};
+
+pub const DC_FRT_159: DcScenario = DcScenario {
+    name: "dc_frt_159",
+    kind: 3u8,
+    args: &[f64::NEG_INFINITY, 0f64],
+    res: &[0f64],
+};
+
+pub const DC_FRT_160: DcScenario = DcScenario {
+    name: "dc_frt_160",
+    kind: 3u8,
+    args: &[f64::NEG_INFINITY, 1f64],
+    res: &[15680f64],
+};
+
+pub const DC_FRT_161: DcScenario = DcScenario {
+    name: "dc_frt_161",
+    kind: 3u8,
+    args: &[f64::NEG_INFINITY, -1f64],
+    res: &[1453f64],
+};
+
+pub const DC_FRT_162: DcScenario = DcScenario {
+    name: "dc_frt_162",
+    kind: 3u8,
+    args: &[f64::NEG_INFINITY, 4294967296f64],
+    res: &[0f64],
+};
+
+pub const DC_FRT_163: DcScenario = DcScenario {
+    name: "dc_frt_163",
+    kind: 3u8,
+    args: &[f64::NEG_INFINITY, f64::NAN],
+    res: &[0f64],
+};
+
+pub const DC_FRT_164: DcScenario = DcScenario {
+    name: "dc_frt_164",
+    kind: 3u8,
+    args: &[2147483648f64, 0f64],
+    res: &[29842f64],
+};
+
+pub const DC_FRT_165: DcScenario = DcScenario {
+    name: "dc_frt_165",
+    kind: 3u8,
+    args: &[2147483648f64, 1f64],
+    res: &[45527f64],
+};
+
+pub const DC_FRT_166: DcScenario = DcScenario {
+    name: "dc_frt_166",
+    kind: 3u8,
+    args: &[2147483648f64, -1f64],
+    res: &[31293f64],
+};
+
+pub const DC_FRT_167: DcScenario = DcScenario {
+    name: "dc_frt_167",
+    kind: 3u8,
+    args: &[2147483648f64, 4294967296f64],
+    res: &[29842f64],
+};
+
+pub const DC_FRT_168: DcScenario = DcScenario {
+    name: "dc_frt_168",
+    kind: 3u8,
+    args: &[2147483648f64, f64::NAN],
+    res: &[29842f64],
+};
+
+pub const DC_FRT_169: DcScenario = DcScenario {
+    name: "dc_frt_169",
+    kind: 3u8,
+    args: &[-2147483648f64, 0f64],
+    res: &[29842f64],
+};
+
+pub const DC_FRT_170: DcScenario = DcScenario {
+    name: "dc_frt_170",
+    kind: 3u8,
+    args: &[-2147483648f64, 1f64],
+    res: &[45527f64],
+};
+
+pub const DC_FRT_171: DcScenario = DcScenario {
+    name: "dc_frt_171",
+    kind: 3u8,
+    args: &[-2147483648f64, -1f64],
+    res: &[31293f64],
+};
+
+pub const DC_FRT_172: DcScenario = DcScenario {
+    name: "dc_frt_172",
+    kind: 3u8,
+    args: &[-2147483648f64, 4294967296f64],
+    res: &[29842f64],
+};
+
+pub const DC_FRT_173: DcScenario = DcScenario {
+    name: "dc_frt_173",
+    kind: 3u8,
+    args: &[-2147483648f64, f64::NAN],
+    res: &[29842f64],
+};
+
+pub const DC_FRT_174: DcScenario = DcScenario {
+    name: "dc_frt_174",
+    kind: 3u8,
+    args: &[4294967296f64, 0f64],
+    res: &[0f64],
+};
+
+pub const DC_FRT_175: DcScenario = DcScenario {
+    name: "dc_frt_175",
+    kind: 3u8,
+    args: &[4294967296f64, 1f64],
+    res: &[15680f64],
+};
+
+pub const DC_FRT_176: DcScenario = DcScenario {
+    name: "dc_frt_176",
+    kind: 3u8,
+    args: &[4294967296f64, -1f64],
+    res: &[1453f64],
+};
+
+pub const DC_FRT_177: DcScenario = DcScenario {
+    name: "dc_frt_177",
+    kind: 3u8,
+    args: &[4294967296f64, 4294967296f64],
+    res: &[0f64],
+};
+
+pub const DC_FRT_178: DcScenario = DcScenario {
+    name: "dc_frt_178",
+    kind: 3u8,
+    args: &[4294967296f64, f64::NAN],
+    res: &[0f64],
+};
+
+pub const DC_FRT_179: DcScenario = DcScenario {
+    name: "dc_frt_179",
+    kind: 3u8,
+    args: &[9007199254740992f64, 0f64],
+    res: &[0f64],
+};
+
+pub const DC_FRT_180: DcScenario = DcScenario {
+    name: "dc_frt_180",
+    kind: 3u8,
+    args: &[9007199254740992f64, 1f64],
+    res: &[15680f64],
+};
+
+pub const DC_FRT_181: DcScenario = DcScenario {
+    name: "dc_frt_181",
+    kind: 3u8,
+    args: &[9007199254740992f64, -1f64],
+    res: &[1453f64],
+};
+
+pub const DC_FRT_182: DcScenario = DcScenario {
+    name: "dc_frt_182",
+    kind: 3u8,
+    args: &[9007199254740992f64, 4294967296f64],
+    res: &[0f64],
+};
+
+pub const DC_FRT_183: DcScenario = DcScenario {
+    name: "dc_frt_183",
+    kind: 3u8,
+    args: &[9007199254740992f64, f64::NAN],
+    res: &[0f64],
+};
+
+pub const DC_FRT_184: DcScenario = DcScenario {
+    name: "dc_frt_184",
+    kind: 3u8,
+    args: &[12345.678f64, 0f64],
+    res: &[18488f64],
+};
+
+pub const DC_FRT_185: DcScenario = DcScenario {
+    name: "dc_frt_185",
+    kind: 3u8,
+    args: &[12345.678f64, 1f64],
+    res: &[3332f64],
+};
+
+pub const DC_FRT_186: DcScenario = DcScenario {
+    name: "dc_frt_186",
+    kind: 3u8,
+    args: &[12345.678f64, -1f64],
+    res: &[6256f64],
+};
+
+pub const DC_FRT_187: DcScenario = DcScenario {
+    name: "dc_frt_187",
+    kind: 3u8,
+    args: &[12345.678f64, 4294967296f64],
+    res: &[18488f64],
+};
+
+pub const DC_FRT_188: DcScenario = DcScenario {
+    name: "dc_frt_188",
+    kind: 3u8,
+    args: &[12345.678f64, f64::NAN],
+    res: &[18488f64],
+};
+
+pub const DC_FRT_189: DcScenario = DcScenario {
+    name: "dc_frt_189",
+    kind: 3u8,
+    args: &[-98765.4321f64, 0f64],
+    res: &[5495f64],
+};
+
+pub const DC_FRT_190: DcScenario = DcScenario {
+    name: "dc_frt_190",
+    kind: 3u8,
+    args: &[-98765.4321f64, 1f64],
+    res: &[65011f64],
+};
+
+pub const DC_FRT_191: DcScenario = DcScenario {
+    name: "dc_frt_191",
+    kind: 3u8,
+    args: &[-98765.4321f64, -1f64],
+    res: &[18178f64],
+};
+
+pub const DC_FRT_192: DcScenario = DcScenario {
+    name: "dc_frt_192",
+    kind: 3u8,
+    args: &[-98765.4321f64, 4294967296f64],
+    res: &[5495f64],
+};
+
+pub const DC_FRT_193: DcScenario = DcScenario {
+    name: "dc_frt_193",
+    kind: 3u8,
+    args: &[-98765.4321f64, f64::NAN],
+    res: &[5495f64],
+};
+
+pub const DC_FRT_194: DcScenario = DcScenario {
+    name: "dc_frt_194",
+    kind: 3u8,
+    args: &[65535f64, 0f64],
+    res: &[51447f64],
+};
+
+pub const DC_FRT_195: DcScenario = DcScenario {
+    name: "dc_frt_195",
+    kind: 3u8,
+    args: &[65535f64, 1f64],
+    res: &[44401f64],
+};
+
+pub const DC_FRT_196: DcScenario = DcScenario {
+    name: "dc_frt_196",
+    kind: 3u8,
+    args: &[65535f64, -1f64],
+    res: &[25343f64],
+};
+
+pub const DC_FRT_197: DcScenario = DcScenario {
+    name: "dc_frt_197",
+    kind: 3u8,
+    args: &[65535f64, 4294967296f64],
+    res: &[51447f64],
+};
+
+pub const DC_FRT_198: DcScenario = DcScenario {
+    name: "dc_frt_198",
+    kind: 3u8,
+    args: &[65535f64, f64::NAN],
+    res: &[51447f64],
+};
+
+pub const DC_FRT_199: DcScenario = DcScenario {
+    name: "dc_frt_199",
+    kind: 3u8,
+    args: &[65536f64, 0f64],
+    res: &[47344f64],
+};
+
+pub const DC_FRT_200: DcScenario = DcScenario {
+    name: "dc_frt_200",
+    kind: 3u8,
+    args: &[65536f64, 1f64],
+    res: &[52918f64],
+};
+
+pub const DC_FRT_201: DcScenario = DcScenario {
+    name: "dc_frt_201",
+    kind: 3u8,
+    args: &[65536f64, -1f64],
+    res: &[35025f64],
+};
+
+pub const DC_FRT_202: DcScenario = DcScenario {
+    name: "dc_frt_202",
+    kind: 3u8,
+    args: &[65536f64, 4294967296f64],
+    res: &[47344f64],
+};
+
+pub const DC_FRT_203: DcScenario = DcScenario {
+    name: "dc_frt_203",
+    kind: 3u8,
+    args: &[65536f64, f64::NAN],
+    res: &[47344f64],
+};
+
+pub const DC_FRT_204: DcScenario = DcScenario {
+    name: "dc_frt_204",
+    kind: 3u8,
+    args: &[4294967295f64, 0f64],
+    res: &[42443f64],
+};
+
+pub const DC_FRT_205: DcScenario = DcScenario {
+    name: "dc_frt_205",
+    kind: 3u8,
+    args: &[4294967295f64, 1f64],
+    res: &[53809f64],
+};
+
+pub const DC_FRT_206: DcScenario = DcScenario {
+    name: "dc_frt_206",
+    kind: 3u8,
+    args: &[4294967295f64, -1f64],
+    res: &[17057f64],
+};
+
+pub const DC_FRT_207: DcScenario = DcScenario {
+    name: "dc_frt_207",
+    kind: 3u8,
+    args: &[4294967295f64, 4294967296f64],
+    res: &[42443f64],
+};
+
+pub const DC_FRT_208: DcScenario = DcScenario {
+    name: "dc_frt_208",
+    kind: 3u8,
+    args: &[4294967295f64, f64::NAN],
+    res: &[42443f64],
+};
+
+pub const DC_TF_0: DcScenario = DcScenario {
+    name: "dc_tf_0",
+    kind: 4u8,
+    args: &[1000f64, 0f64, 10f64, 50f64, 100f64],
+    res: &[500f64],
+};
+
+pub const DC_TF_1: DcScenario = DcScenario {
+    name: "dc_tf_1",
+    kind: 4u8,
+    args: &[1000f64, 50f64, 10f64, 50f64, 100f64],
+    res: &[300f64],
+};
+
+pub const DC_TF_2: DcScenario = DcScenario {
+    name: "dc_tf_2",
+    kind: 4u8,
+    args: &[1000f64, 99f64, 10f64, 50f64, 100f64],
+    res: &[110f64],
+};
+
+pub const DC_TF_3: DcScenario = DcScenario {
+    name: "dc_tf_3",
+    kind: 4u8,
+    args: &[1000f64, 100f64, 10f64, 50f64, 100f64],
+    res: &[100f64],
+};
+
+pub const DC_TF_4: DcScenario = DcScenario {
+    name: "dc_tf_4",
+    kind: 4u8,
+    args: &[1000f64, 101f64, 10f64, 50f64, 100f64],
+    res: &[100f64],
+};
+
+pub const DC_TF_5: DcScenario = DcScenario {
+    name: "dc_tf_5",
+    kind: 4u8,
+    args: &[1000f64, -5f64, 10f64, 50f64, 100f64],
+    res: &[500f64],
+};
+
+pub const DC_TF_6: DcScenario = DcScenario {
+    name: "dc_tf_6",
+    kind: 4u8,
+    args: &[1000f64, f64::NAN, 10f64, 50f64, 100f64],
+    res: &[100f64],
+};
+
+pub const DC_TF_7: DcScenario = DcScenario {
+    name: "dc_tf_7",
+    kind: 4u8,
+    args: &[1000f64, f64::INFINITY, 10f64, 50f64, 100f64],
+    res: &[100f64],
+};
+
+pub const DC_TF_8: DcScenario = DcScenario {
+    name: "dc_tf_8",
+    kind: 4u8,
+    args: &[1000f64, 50.7f64, 10f64, 50f64, 100f64],
+    res: &[300f64],
+};
+
+pub const DC_TF_9: DcScenario = DcScenario {
+    name: "dc_tf_9",
+    kind: 4u8,
+    args: &[999f64, 33f64, 10f64, 50f64, 100f64],
+    res: &[369f64],
+};
+
+pub const DC_TF_10: DcScenario = DcScenario {
+    name: "dc_tf_10",
+    kind: 4u8,
+    args: &[1f64, 50f64, 10f64, 50f64, 100f64],
+    res: &[0f64],
+};
+
+pub const DC_TF_11: DcScenario = DcScenario {
+    name: "dc_tf_11",
+    kind: 4u8,
+    args: &[0f64, 50f64, 10f64, 50f64, 100f64],
+    res: &[0f64],
+};
+
+pub const DC_TF_12: DcScenario = DcScenario {
+    name: "dc_tf_12",
+    kind: 4u8,
+    args: &[1000f64, 50f64, 50f64, 50f64, 100f64],
+    res: &[500f64],
+};
+
+pub const DC_TF_13: DcScenario = DcScenario {
+    name: "dc_tf_13",
+    kind: 4u8,
+    args: &[1000f64, 50f64, 60f64, 50f64, 100f64],
+    res: &[600f64],
+};
+
+pub const DC_TF_14: DcScenario = DcScenario {
+    name: "dc_tf_14",
+    kind: 4u8,
+    args: &[1000f64, 50f64, 10f64, 50f64, 0f64],
+    res: &[100f64],
+};
+
+pub const DC_TF_15: DcScenario = DcScenario {
+    name: "dc_tf_15",
+    kind: 4u8,
+    args: &[1000f64, 50f64, 10f64, 50f64, -10f64],
+    res: &[100f64],
+};
+
+pub const DC_TF_16: DcScenario = DcScenario {
+    name: "dc_tf_16",
+    kind: 4u8,
+    args: &[1000f64, 50f64, 10f64, 50f64, f64::NAN],
+    res: &[100f64],
+};
+
+pub const DC_TF_17: DcScenario = DcScenario {
+    name: "dc_tf_17",
+    kind: 4u8,
+    args: &[1000000000f64, 1f64, 10f64, 90f64, 1000000000f64],
+    res: &[900000000f64],
+};
+
+pub const DC_TF_18: DcScenario = DcScenario {
+    name: "dc_tf_18",
+    kind: 4u8,
+    args: &[1000f64, 1000000000f64, 10f64, 50f64, 100f64],
+    res: &[100f64],
+};
+
+pub const DC_DR_0: DcScenario = DcScenario {
+    name: "dc_dr_0",
+    kind: 5u8,
+    args: &[1000f64, 0f64, 1f64, 11f64, 100f64, 1f64],
+    res: &[10f64],
+};
+
+pub const DC_DR_1: DcScenario = DcScenario {
+    name: "dc_dr_1",
+    kind: 5u8,
+    args: &[1000f64, 1f64, 1f64, 11f64, 100f64, 1f64],
+    res: &[10f64],
+};
+
+pub const DC_DR_2: DcScenario = DcScenario {
+    name: "dc_dr_2",
+    kind: 5u8,
+    args: &[1000f64, 50f64, 1f64, 11f64, 100f64, 1f64],
+    res: &[60f64],
+};
+
+pub const DC_DR_3: DcScenario = DcScenario {
+    name: "dc_dr_3",
+    kind: 5u8,
+    args: &[1000f64, 99f64, 1f64, 11f64, 100f64, 1f64],
+    res: &[100f64],
+};
+
+pub const DC_DR_4: DcScenario = DcScenario {
+    name: "dc_dr_4",
+    kind: 5u8,
+    args: &[1000f64, 100f64, 1f64, 11f64, 100f64, 1f64],
+    res: &[110f64],
+};
+
+pub const DC_DR_5: DcScenario = DcScenario {
+    name: "dc_dr_5",
+    kind: 5u8,
+    args: &[1000f64, 1000000000f64, 1f64, 11f64, 100f64, 1f64],
+    res: &[110f64],
+};
+
+pub const DC_DR_6: DcScenario = DcScenario {
+    name: "dc_dr_6",
+    kind: 5u8,
+    args: &[1000f64, -5f64, 1f64, 11f64, 100f64, 1f64],
+    res: &[10f64],
+};
+
+pub const DC_DR_7: DcScenario = DcScenario {
+    name: "dc_dr_7",
+    kind: 5u8,
+    args: &[1000f64, f64::NAN, 1f64, 11f64, 100f64, 1f64],
+    res: &[110f64],
+};
+
+pub const DC_DR_8: DcScenario = DcScenario {
+    name: "dc_dr_8",
+    kind: 5u8,
+    args: &[1000f64, 50f64, 1f64, 11f64, 100f64, 2f64],
+    res: &[30f64],
+};
+
+pub const DC_DR_9: DcScenario = DcScenario {
+    name: "dc_dr_9",
+    kind: 5u8,
+    args: &[1000f64, 50f64, 1f64, 11f64, 100f64, 3f64],
+    res: &[20f64],
+};
+
+pub const DC_DR_10: DcScenario = DcScenario {
+    name: "dc_dr_10",
+    kind: 5u8,
+    args: &[1000f64, 50f64, 1f64, 11f64, 100f64, 10f64],
+    res: &[10f64],
+};
+
+pub const DC_DR_11: DcScenario = DcScenario {
+    name: "dc_dr_11",
+    kind: 5u8,
+    args: &[1000f64, 50f64, 1f64, 11f64, 100f64, 2.5f64],
+    res: &[20f64],
+};
+
+pub const DC_DR_12: DcScenario = DcScenario {
+    name: "dc_dr_12",
+    kind: 5u8,
+    args: &[1000f64, 50f64, 1f64, 11f64, 100f64, 0.5f64],
+    res: &[60f64],
+};
+
+pub const DC_DR_13: DcScenario = DcScenario {
+    name: "dc_dr_13",
+    kind: 5u8,
+    args: &[1000f64, 50f64, 1f64, 11f64, 100f64, 0f64],
+    res: &[60f64],
+};
+
+pub const DC_DR_14: DcScenario = DcScenario {
+    name: "dc_dr_14",
+    kind: 5u8,
+    args: &[1000f64, 50f64, 1f64, 11f64, 100f64, -1f64],
+    res: &[60f64],
+};
+
+pub const DC_DR_15: DcScenario = DcScenario {
+    name: "dc_dr_15",
+    kind: 5u8,
+    args: &[1000f64, 50f64, 1f64, 11f64, 100f64, f64::NAN],
+    res: &[110f64],
+};
+
+pub const DC_DR_16: DcScenario = DcScenario {
+    name: "dc_dr_16",
+    kind: 5u8,
+    args: &[1000f64, 99f64, 1f64, 11f64, 100f64, 3f64],
+    res: &[100f64],
+};
+
+pub const DC_DR_17: DcScenario = DcScenario {
+    name: "dc_dr_17",
+    kind: 5u8,
+    args: &[1000f64, 1f64, 1f64, 11f64, 100f64, 3f64],
+    res: &[10f64],
+};
+
+pub const DC_DR_18: DcScenario = DcScenario {
+    name: "dc_dr_18",
+    kind: 5u8,
+    args: &[1000f64, 50f64, 1f64, 11f64, 0f64, 1f64],
+    res: &[110f64],
+};
+
+pub const DC_DR_19: DcScenario = DcScenario {
+    name: "dc_dr_19",
+    kind: 5u8,
+    args: &[1000f64, 50f64, 1f64, 11f64, -10f64, 1f64],
+    res: &[110f64],
+};
+
+pub const DC_DR_20: DcScenario = DcScenario {
+    name: "dc_dr_20",
+    kind: 5u8,
+    args: &[1000f64, 50f64, 1f64, 11f64, f64::NAN, 1f64],
+    res: &[110f64],
+};
+
+pub const DC_DR_21: DcScenario = DcScenario {
+    name: "dc_dr_21",
+    kind: 5u8,
+    args: &[0f64, 1000000000f64, 1f64, 11f64, 100f64, 1f64],
+    res: &[1f64],
+};
+
+pub const DC_DR_22: DcScenario = DcScenario {
+    name: "dc_dr_22",
+    kind: 5u8,
+    args: &[1000f64, 1000000000f64, 11f64, 11f64, 100f64, 1f64],
+    res: &[110f64],
+};
+
+pub const DC_DR_23: DcScenario = DcScenario {
+    name: "dc_dr_23",
+    kind: 5u8,
+    args: &[1000f64, 1000000000f64, 11f64, 1f64, 100f64, 1f64],
+    res: &[10f64],
+};
+
+pub const DC_DR_24: DcScenario = DcScenario {
+    name: "dc_dr_24",
+    kind: 5u8,
+    args: &[1000000000f64, 50f64, 1f64, 11f64, 100f64, 2f64],
+    res: &[30000000f64],
+};
+
+pub const DC_DR_25: DcScenario = DcScenario {
+    name: "dc_dr_25",
+    kind: 5u8,
+    args: &[999f64, 37f64, 1f64, 11f64, 100f64, 2f64],
+    res: &[19f64],
+};
+
+pub const DC_RQ_0: DcScenario = DcScenario {
+    name: "dc_rq_0",
+    kind: 6u8,
+    args: &[100f64, 5f64, 10f64],
+    res: &[20f64],
+};
+
+pub const DC_RQ_1: DcScenario = DcScenario {
+    name: "dc_rq_1",
+    kind: 6u8,
+    args: &[100f64, 0f64, 10f64],
+    res: &[10f64],
+};
+
+pub const DC_RQ_2: DcScenario = DcScenario {
+    name: "dc_rq_2",
+    kind: 6u8,
+    args: &[100f64, 9f64, 10f64],
+    res: &[100f64],
+};
+
+pub const DC_RQ_3: DcScenario = DcScenario {
+    name: "dc_rq_3",
+    kind: 6u8,
+    args: &[100f64, 10f64, 10f64],
+    res: &[100f64],
+};
+
+pub const DC_RQ_4: DcScenario = DcScenario {
+    name: "dc_rq_4",
+    kind: 6u8,
+    args: &[100f64, 1000000000f64, 10f64],
+    res: &[100f64],
+};
+
+pub const DC_RQ_5: DcScenario = DcScenario {
+    name: "dc_rq_5",
+    kind: 6u8,
+    args: &[0f64, 0f64, 10f64],
+    res: &[0f64],
+};
+
+pub const DC_RQ_6: DcScenario = DcScenario {
+    name: "dc_rq_6",
+    kind: 6u8,
+    args: &[-5f64, 0f64, 10f64],
+    res: &[0f64],
+};
+
+pub const DC_RQ_7: DcScenario = DcScenario {
+    name: "dc_rq_7",
+    kind: 6u8,
+    args: &[100f64, 0f64, 0f64],
+    res: &[0f64],
+};
+
+pub const DC_RQ_8: DcScenario = DcScenario {
+    name: "dc_rq_8",
+    kind: 6u8,
+    args: &[100f64, 0f64, -10f64],
+    res: &[0f64],
+};
+
+pub const DC_RQ_9: DcScenario = DcScenario {
+    name: "dc_rq_9",
+    kind: 6u8,
+    args: &[f64::NAN, 0f64, 10f64],
+    res: &[f64::NAN],
+};
+
+pub const DC_RQ_10: DcScenario = DcScenario {
+    name: "dc_rq_10",
+    kind: 6u8,
+    args: &[100f64, f64::NAN, 10f64],
+    res: &[f64::NAN],
+};
+
+pub const DC_RQ_11: DcScenario = DcScenario {
+    name: "dc_rq_11",
+    kind: 6u8,
+    args: &[100f64, 0f64, f64::NAN],
+    res: &[f64::NAN],
+};
+
+pub const DC_RQ_12: DcScenario = DcScenario {
+    name: "dc_rq_12",
+    kind: 6u8,
+    args: &[100.5f64, 5f64, 10f64],
+    res: &[21f64],
+};
+
+pub const DC_RQ_13: DcScenario = DcScenario {
+    name: "dc_rq_13",
+    kind: 6u8,
+    args: &[1f64, 0f64, 1000000000f64],
+    res: &[1f64],
+};
+
+pub const DC_RQ_14: DcScenario = DcScenario {
+    name: "dc_rq_14",
+    kind: 6u8,
+    args: &[1000000000f64, 1000000000f64, 1000000000f64],
+    res: &[1000000000f64],
+};
+
+pub const DC_RQ_15: DcScenario = DcScenario {
+    name: "dc_rq_15",
+    kind: 6u8,
+    args: &[100f64, -5f64, 10f64],
+    res: &[7f64],
+};
+
+pub const DC_RQ_16: DcScenario = DcScenario {
+    name: "dc_rq_16",
+    kind: 6u8,
+    args: &[100f64, 5f64, f64::INFINITY],
+    res: &[0f64],
+};
+
+pub const DC_RQ_17: DcScenario = DcScenario {
+    name: "dc_rq_17",
+    kind: 6u8,
+    args: &[f64::INFINITY, 0f64, 10f64],
+    res: &[f64::INFINITY],
+};
+
+pub const DC_SCENARIOS: &[DcScenario] = &[
+    DC_RT_0,
+    DC_RT_1,
+    DC_RT_2,
+    DC_RT_3,
+    DC_RT_4,
+    DC_RT_5,
+    DC_RT_6,
+    DC_RT_7,
+    DC_RT_8,
+    DC_RT_9,
+    DC_RT_10,
+    DC_RT_11,
+    DC_RT_12,
+    DC_RT_13,
+    DC_RT_14,
+    DC_RT_15,
+    DC_RT_16,
+    DC_RT_17,
+    DC_RT_18,
+    DC_RT_19,
+    DC_RT_20,
+    DC_RT_21,
+    DC_RT_22,
+    DC_RT_23,
+    DC_RT_24,
+    DC_RT_25,
+    DC_RT_26,
+    DC_RT_27,
+    DC_RT_28,
+    DC_RT_29,
+    DC_RT_30,
+    DC_RT_31,
+    DC_RT_32,
+    DC_RT_33,
+    DC_RT_34,
+    DC_RT_35,
+    DC_RT_36,
+    DC_RT_37,
+    DC_RT_38,
+    DC_RT_39,
+    DC_RT_40,
+    DC_RT_41,
+    DC_RT_42,
+    DC_RT_43,
+    DC_RT_44,
+    DC_RT_45,
+    DC_RT_46,
+    DC_RT_47,
+    DC_RT_48,
+    DC_RT_49,
+    DC_RT_50,
+    DC_RT_51,
+    DC_RT_52,
+    DC_RT_53,
+    DC_RT_54,
+    DC_RT_55,
+    DC_RT_56,
+    DC_RT_57,
+    DC_RT_58,
+    DC_RT_59,
+    DC_RT_60,
+    DC_RT_61,
+    DC_RT_62,
+    DC_RT_63,
+    DC_RT_64,
+    DC_RT_65,
+    DC_RT_66,
+    DC_RT_67,
+    DC_RT_68,
+    DC_RT_69,
+    DC_RT_70,
+    DC_RT_71,
+    DC_RT_72,
+    DC_RT_73,
+    DC_RT_74,
+    DC_RT_75,
+    DC_RT_76,
+    DC_RT_77,
+    DC_RT_78,
+    DC_RT_79,
+    DC_RT_80,
+    DC_RT_81,
+    DC_RT_82,
+    DC_RT_83,
+    DC_RT_84,
+    DC_RT_85,
+    DC_RT_86,
+    DC_RT_87,
+    DC_RT_88,
+    DC_RT_89,
+    DC_RT_90,
+    DC_RT_91,
+    DC_RT_92,
+    DC_RT_93,
+    DC_RT_94,
+    DC_RT_95,
+    DC_RT_96,
+    DC_RT_97,
+    DC_RT_98,
+    DC_RT_99,
+    DC_RT_100,
+    DC_RT_101,
+    DC_RT_102,
+    DC_RT_103,
+    DC_RT_104,
+    DC_RT_105,
+    DC_RT_106,
+    DC_RT_107,
+    DC_RT_108,
+    DC_RT_109,
+    DC_RT_110,
+    DC_RT_111,
+    DC_RT_112,
+    DC_RT_113,
+    DC_RT_114,
+    DC_RT_115,
+    DC_RT_116,
+    DC_RT_117,
+    DC_RT_118,
+    DC_RT_119,
+    DC_RT_120,
+    DC_RT_121,
+    DC_RT_122,
+    DC_RT_123,
+    DC_RT_124,
+    DC_RT_125,
+    DC_RT_126,
+    DC_RT_127,
+    DC_RT_128,
+    DC_RT_129,
+    DC_RT_130,
+    DC_RT_131,
+    DC_RT_132,
+    DC_RT_133,
+    DC_RT_134,
+    DC_RT_135,
+    DC_RT_136,
+    DC_RT_137,
+    DC_RT_138,
+    DC_RT_139,
+    DC_RT_140,
+    DC_RT_141,
+    DC_RT_142,
+    DC_RT_143,
+    DC_RT_144,
+    DC_RT_145,
+    DC_RT_146,
+    DC_RT_147,
+    DC_RT_148,
+    DC_RT_149,
+    DC_RT_150,
+    DC_RT_151,
+    DC_RT_152,
+    DC_RT_153,
+    DC_RT_154,
+    DC_RT_155,
+    DC_RT_156,
+    DC_RT_157,
+    DC_RT_158,
+    DC_RT_159,
+    DC_RT_160,
+    DC_RT_161,
+    DC_RT_162,
+    DC_RT_163,
+    DC_RT_164,
+    DC_RT_165,
+    DC_RT_166,
+    DC_RT_167,
+    DC_RT_168,
+    DC_RT_169,
+    DC_RT_170,
+    DC_RT_171,
+    DC_RT_172,
+    DC_RT_173,
+    DC_RT_174,
+    DC_RT_175,
+    DC_RT_176,
+    DC_RT_177,
+    DC_RT_178,
+    DC_RT_179,
+    DC_RT_180,
+    DC_RT_181,
+    DC_RT_182,
+    DC_RT_183,
+    DC_RT_184,
+    DC_RT_185,
+    DC_RT_186,
+    DC_RT_187,
+    DC_RT_188,
+    DC_RT_189,
+    DC_RT_190,
+    DC_RT_191,
+    DC_RT_192,
+    DC_RT_193,
+    DC_RT_194,
+    DC_RT_195,
+    DC_RT_196,
+    DC_RT_197,
+    DC_RT_198,
+    DC_RT_199,
+    DC_RT_200,
+    DC_RT_201,
+    DC_RT_202,
+    DC_RT_203,
+    DC_RT_204,
+    DC_RT_205,
+    DC_RT_206,
+    DC_RT_207,
+    DC_RT_208,
+    DC_RT_209,
+    DC_RT_210,
+    DC_RT_211,
+    DC_RT_212,
+    DC_RT_213,
+    DC_RT_214,
+    DC_RT_215,
+    DC_RT_216,
+    DC_RT_217,
+    DC_RT_218,
+    DC_RT_219,
+    DC_RT_220,
+    DC_RT_221,
+    DC_RT_222,
+    DC_RT_223,
+    DC_RT_224,
+    DC_RT_225,
+    DC_RT_226,
+    DC_RT_227,
+    DC_RT_228,
+    DC_RT_229,
+    DC_RT_230,
+    DC_RT_231,
+    DC_RT_232,
+    DC_RT_233,
+    DC_RT_234,
+    DC_RT_235,
+    DC_RT_236,
+    DC_RT_237,
+    DC_RT_238,
+    DC_RT_239,
+    DC_RT_240,
+    DC_RT_241,
+    DC_RT_242,
+    DC_RT_243,
+    DC_RT_244,
+    DC_RT_245,
+    DC_RT_246,
+    DC_RT_247,
+    DC_RT_248,
+    DC_RT_249,
+    DC_RT_250,
+    DC_RT_251,
+    DC_RT_252,
+    DC_RT_253,
+    DC_RT_254,
+    DC_RT_255,
+    DC_RT_256,
+    DC_RT_257,
+    DC_RT_258,
+    DC_RT_259,
+    DC_RT_260,
+    DC_RT_261,
+    DC_RT_262,
+    DC_RT_263,
+    DC_RT_264,
+    DC_RT_265,
+    DC_RT_266,
+    DC_RT_267,
+    DC_RT_268,
+    DC_RT_269,
+    DC_RT_270,
+    DC_RT_271,
+    DC_RT_272,
+    DC_RT_273,
+    DC_RT_274,
+    DC_RT_275,
+    DC_RT_276,
+    DC_RT_277,
+    DC_RT_278,
+    DC_RT_279,
+    DC_RT_280,
+    DC_RT_281,
+    DC_RT_282,
+    DC_RT_283,
+    DC_RT_284,
+    DC_RT_285,
+    DC_RT_286,
+    DC_RT_287,
+    DC_RT_288,
+    DC_RT_289,
+    DC_RT_290,
+    DC_RT_291,
+    DC_RT_292,
+    DC_RT_293,
+    DC_RT_294,
+    DC_RT_295,
+    DC_RT_296,
+    DC_RT_297,
+    DC_RT_298,
+    DC_RT_299,
+    DC_RT_300,
+    DC_RT_301,
+    DC_RT_302,
+    DC_RT_303,
+    DC_RT_304,
+    DC_RT_305,
+    DC_RT_306,
+    DC_RT_307,
+    DC_RT_308,
+    DC_RT_309,
+    DC_RT_310,
+    DC_RT_311,
+    DC_RT_312,
+    DC_RT_313,
+    DC_RT_314,
+    DC_RT_315,
+    DC_RT_316,
+    DC_RT_317,
+    DC_RT_318,
+    DC_RT_319,
+    DC_RT_320,
+    DC_RT_321,
+    DC_RT_322,
+    DC_RT_323,
+    DC_RT_324,
+    DC_RT_325,
+    DC_RT_326,
+    DC_RT_327,
+    DC_RT_328,
+    DC_RT_329,
+    DC_RT_330,
+    DC_RT_331,
+    DC_RT_332,
+    DC_RT_333,
+    DC_RT_334,
+    DC_RT_335,
+    DC_RT_336,
+    DC_RT_337,
+    DC_RT_338,
+    DC_RT_339,
+    DC_RT_340,
+    DC_RT_341,
+    DC_RT_342,
+    DC_RT_343,
+    DC_RT_344,
+    DC_RT_345,
+    DC_RT_346,
+    DC_RT_347,
+    DC_RT_348,
+    DC_RT_349,
+    DC_RT_350,
+    DC_RT_351,
+    DC_RT_352,
+    DC_RT_353,
+    DC_RT_354,
+    DC_RT_355,
+    DC_RT_356,
+    DC_RT_357,
+    DC_RT_358,
+    DC_RT_359,
+    DC_RT_360,
+    DC_RT_361,
+    DC_RT_362,
+    DC_RT_363,
+    DC_RT_364,
+    DC_RT_365,
+    DC_RT_366,
+    DC_RT_367,
+    DC_RT_368,
+    DC_RT_369,
+    DC_RT_370,
+    DC_RT_371,
+    DC_RT_372,
+    DC_RT_373,
+    DC_RT_374,
+    DC_RT_375,
+    DC_RT_376,
+    DC_RT_377,
+    DC_RT_378,
+    DC_RT_379,
+    DC_RT_380,
+    DC_RT_381,
+    DC_RT_382,
+    DC_RT_383,
+    DC_RT_384,
+    DC_RT_385,
+    DC_RT_386,
+    DC_RT_387,
+    DC_RT_388,
+    DC_RT_389,
+    DC_RT_390,
+    DC_RT_391,
+    DC_RT_392,
+    DC_RT_393,
+    DC_RT_394,
+    DC_RT_395,
+    DC_RT_396,
+    DC_RT_397,
+    DC_RT_398,
+    DC_RT_399,
+    DC_RT_400,
+    DC_RT_401,
+    DC_RT_402,
+    DC_RT_403,
+    DC_RT_404,
+    DC_RT_405,
+    DC_RT_406,
+    DC_RT_407,
+    DC_RT_408,
+    DC_RT_409,
+    DC_RT_410,
+    DC_RT_411,
+    DC_RT_412,
+    DC_RT_413,
+    DC_RT_414,
+    DC_RT_415,
+    DC_RT_416,
+    DC_RT_417,
+    DC_RT_418,
+    DC_RT_419,
+    DC_RT_420,
+    DC_RT_421,
+    DC_RT_422,
+    DC_RT_423,
+    DC_RT_424,
+    DC_RT_425,
+    DC_RT_426,
+    DC_RT_427,
+    DC_RT_428,
+    DC_RT_429,
+    DC_RT_430,
+    DC_RT_431,
+    DC_RT_432,
+    DC_RT_433,
+    DC_RT_434,
+    DC_RT_435,
+    DC_RT_436,
+    DC_RT_437,
+    DC_RT_438,
+    DC_RT_439,
+    DC_RT_440,
+    DC_RT_441,
+    DC_RT_442,
+    DC_RT_443,
+    DC_RT_444,
+    DC_RT_445,
+    DC_RT_446,
+    DC_RT_447,
+    DC_RT_448,
+    DC_RT_449,
+    DC_RT_450,
+    DC_RT_451,
+    DC_RT_452,
+    DC_RT_453,
+    DC_RT_454,
+    DC_RT_455,
+    DC_RT_456,
+    DC_RT_457,
+    DC_RT_458,
+    DC_RT_459,
+    DC_RT_460,
+    DC_RT_461,
+    DC_RT_462,
+    DC_RT_463,
+    DC_RT_464,
+    DC_RT_465,
+    DC_RT_466,
+    DC_RT_467,
+    DC_RT_468,
+    DC_RT_469,
+    DC_RT_470,
+    DC_RT_471,
+    DC_RT_472,
+    DC_RT_473,
+    DC_RT_474,
+    DC_RT_475,
+    DC_RT_476,
+    DC_RT_477,
+    DC_RT_478,
+    DC_RT_479,
+    DC_RT_480,
+    DC_RT_481,
+    DC_RT_482,
+    DC_RT_483,
+    DC_RT_484,
+    DC_RT_485,
+    DC_RT_486,
+    DC_RT_487,
+    DC_RT_488,
+    DC_RT_489,
+    DC_RT_490,
+    DC_RT_491,
+    DC_RT_492,
+    DC_RT_493,
+    DC_RT_494,
+    DC_RT_495,
+    DC_RT_496,
+    DC_RT_497,
+    DC_RT_498,
+    DC_RT_499,
+    DC_RT_500,
+    DC_RT_501,
+    DC_RT_502,
+    DC_RT_503,
+    DC_RT_504,
+    DC_RT_505,
+    DC_RT_506,
+    DC_RT_507,
+    DC_RT_508,
+    DC_RT_509,
+    DC_RT_510,
+    DC_RT_511,
+    DC_RT_512,
+    DC_RT_513,
+    DC_RT_514,
+    DC_RT_515,
+    DC_RT_516,
+    DC_RT_517,
+    DC_RT_518,
+    DC_RT_519,
+    DC_RT_520,
+    DC_RT_521,
+    DC_RT_522,
+    DC_RT_523,
+    DC_RT_524,
+    DC_RT_525,
+    DC_RT_526,
+    DC_RT_527,
+    DC_RT_528,
+    DC_RT_529,
+    DC_RT_530,
+    DC_RT_531,
+    DC_RT_532,
+    DC_RT_533,
+    DC_RT_534,
+    DC_RT_535,
+    DC_RT_536,
+    DC_RT_537,
+    DC_RT_538,
+    DC_RT_539,
+    DC_RT_540,
+    DC_RT_541,
+    DC_RT_542,
+    DC_RT_543,
+    DC_RT_544,
+    DC_RT_545,
+    DC_RT_546,
+    DC_RT_547,
+    DC_RT_548,
+    DC_RT_549,
+    DC_RT_550,
+    DC_RT_551,
+    DC_RT_552,
+    DC_RT_553,
+    DC_RT_554,
+    DC_RT_555,
+    DC_RT_556,
+    DC_RT_557,
+    DC_RT_558,
+    DC_RT_559,
+    DC_RT_560,
+    DC_RT_561,
+    DC_RT_562,
+    DC_RT_563,
+    DC_RT_564,
+    DC_RT_565,
+    DC_RT_566,
+    DC_RT_567,
+    DC_RT_568,
+    DC_RT_569,
+    DC_RT_570,
+    DC_RT_571,
+    DC_RT_572,
+    DC_RT_573,
+    DC_RT_574,
+    DC_RT_575,
+    DC_RT_576,
+    DC_RT_577,
+    DC_RT_578,
+    DC_RT_579,
+    DC_RT_580,
+    DC_RT_581,
+    DC_RT_582,
+    DC_RT_583,
+    DC_RT_584,
+    DC_RT_585,
+    DC_RT_586,
+    DC_RT_587,
+    DC_RT_588,
+    DC_RT_589,
+    DC_RT_590,
+    DC_RT_591,
+    DC_RT_592,
+    DC_RT_593,
+    DC_RT_594,
+    DC_RT_595,
+    DC_RT_596,
+    DC_RT_597,
+    DC_RT_598,
+    DC_RT_599,
+    DC_RT_600,
+    DC_RT_601,
+    DC_RT_602,
+    DC_RT_603,
+    DC_RT_604,
+    DC_RT_605,
+    DC_RT_606,
+    DC_RT_607,
+    DC_RT_608,
+    DC_RT_609,
+    DC_RT_610,
+    DC_RT_611,
+    DC_RT_612,
+    DC_RT_613,
+    DC_RT_614,
+    DC_RT_615,
+    DC_RT_616,
+    DC_RT_617,
+    DC_RT_618,
+    DC_RT_619,
+    DC_RT_620,
+    DC_RT_621,
+    DC_RT_622,
+    DC_RT_623,
+    DC_RT_624,
+    DC_RT_625,
+    DC_RT_626,
+    DC_RT_627,
+    DC_RT_628,
+    DC_RT_629,
+    DC_LAND_630,
+    DC_LAND_631,
+    DC_LAND_632,
+    DC_LAND_633,
+    DC_LAND_634,
+    DC_LAND_635,
+    DC_LAND_636,
+    DC_LAND_637,
+    DC_WS_0,
+    DC_WS_1,
+    DC_WS_2,
+    DC_WS_3,
+    DC_WS_4,
+    DC_WS_5,
+    DC_WS_6,
+    DC_WS_7,
+    DC_WS_8,
+    DC_WS_9,
+    DC_WS_10,
+    DC_WS_11,
+    DC_WS_12,
+    DC_WS_13,
+    DC_WS_14,
+    DC_WS_15,
+    DC_WS_16,
+    DC_WS_17,
+    DC_WS_18,
+    DC_WS_19,
+    DC_WS_20,
+    DC_WS_21,
+    DC_WS_22,
+    DC_WS_23,
+    DC_WS_24,
+    DC_WS_25,
+    DC_WS_26,
+    DC_WS_27,
+    DC_WS_28,
+    DC_WS_29,
+    DC_WS_30,
+    DC_WS_31,
+    DC_WS_32,
+    DC_WS_33,
+    DC_WS_34,
+    DC_WS_35,
+    DC_WS_36,
+    DC_WS_37,
+    DC_WS_38,
+    DC_WS_39,
+    DC_WS_40,
+    DC_WS_41,
+    DC_WS_42,
+    DC_WS_43,
+    DC_WS_44,
+    DC_WS_45,
+    DC_WS_46,
+    DC_WS_47,
+    DC_WS_48,
+    DC_WS_49,
+    DC_WS_50,
+    DC_WS_51,
+    DC_WS_52,
+    DC_WS_53,
+    DC_WS_54,
+    DC_WS_55,
+    DC_WS_56,
+    DC_WS_57,
+    DC_WS_58,
+    DC_WS_59,
+    DC_WS_60,
+    DC_WS_61,
+    DC_WS_62,
+    DC_WS_63,
+    DC_WS_64,
+    DC_WS_65,
+    DC_WS_66,
+    DC_WS_67,
+    DC_WS_68,
+    DC_WS_69,
+    DC_WS_70,
+    DC_WS_71,
+    DC_WS_72,
+    DC_WS_73,
+    DC_WS_74,
+    DC_WS_75,
+    DC_WS_76,
+    DC_WS_77,
+    DC_WS_78,
+    DC_WS_79,
+    DC_WS_80,
+    DC_WS_81,
+    DC_WS_82,
+    DC_WS_83,
+    DC_WS_84,
+    DC_WS_85,
+    DC_WS_86,
+    DC_WS_87,
+    DC_WS_88,
+    DC_WS_89,
+    DC_WS_90,
+    DC_WS_91,
+    DC_WS_92,
+    DC_WS_93,
+    DC_WS_94,
+    DC_WS_95,
+    DC_WS_96,
+    DC_WS_97,
+    DC_WS_98,
+    DC_WS_99,
+    DC_WS_100,
+    DC_WS_101,
+    DC_WS_102,
+    DC_WS_103,
+    DC_WS_104,
+    DC_WS_105,
+    DC_WS_106,
+    DC_WS_107,
+    DC_WS_108,
+    DC_WS_109,
+    DC_WS_110,
+    DC_WS_111,
+    DC_WS_112,
+    DC_WS_113,
+    DC_WS_114,
+    DC_WS_115,
+    DC_WS_116,
+    DC_WS_117,
+    DC_WS_118,
+    DC_WS_119,
+    DC_WS_120,
+    DC_WS_121,
+    DC_WS_122,
+    DC_WS_123,
+    DC_WS_124,
+    DC_WS_125,
+    DC_WS_126,
+    DC_WS_127,
+    DC_WS_128,
+    DC_WS_129,
+    DC_WS_130,
+    DC_WS_131,
+    DC_WS_132,
+    DC_WS_133,
+    DC_WS_134,
+    DC_WS_135,
+    DC_WS_136,
+    DC_WS_137,
+    DC_WS_138,
+    DC_WS_139,
+    DC_WS_140,
+    DC_WS_141,
+    DC_WS_142,
+    DC_WS_143,
+    DC_WS_144,
+    DC_WS_145,
+    DC_WS_146,
+    DC_WS_147,
+    DC_WS_148,
+    DC_WS_149,
+    DC_WS_150,
+    DC_WS_151,
+    DC_WS_152,
+    DC_WS_153,
+    DC_WS_154,
+    DC_WS_155,
+    DC_WS_156,
+    DC_WS_157,
+    DC_WS_158,
+    DC_WS_159,
+    DC_WS_160,
+    DC_WS_161,
+    DC_WS_162,
+    DC_WS_163,
+    DC_WS_164,
+    DC_WS_165,
+    DC_WS_166,
+    DC_WS_167,
+    DC_WS_168,
+    DC_WS_169,
+    DC_WS_170,
+    DC_WS_171,
+    DC_WS_172,
+    DC_WS_173,
+    DC_WS_174,
+    DC_WS_175,
+    DC_WS_176,
+    DC_WS_177,
+    DC_WS_178,
+    DC_WS_179,
+    DC_WS_180,
+    DC_WS_181,
+    DC_WS_182,
+    DC_WS_183,
+    DC_WS_184,
+    DC_WS_185,
+    DC_WS_186,
+    DC_WS_187,
+    DC_WS_188,
+    DC_WS_189,
+    DC_WS_190,
+    DC_WS_191,
+    DC_WS_192,
+    DC_WS_193,
+    DC_WS_194,
+    DC_WS_195,
+    DC_WS_196,
+    DC_WS_197,
+    DC_WS_198,
+    DC_WS_199,
+    DC_WS_200,
+    DC_WS_201,
+    DC_WS_202,
+    DC_WS_203,
+    DC_WS_204,
+    DC_WS_205,
+    DC_WS_206,
+    DC_WS_207,
+    DC_WS_208,
+    DC_WS_209,
+    DC_WS_210,
+    DC_WS_211,
+    DC_WS_212,
+    DC_WS_213,
+    DC_WS_214,
+    DC_WS_215,
+    DC_WS_216,
+    DC_WS_217,
+    DC_WS_218,
+    DC_WS_219,
+    DC_WS_220,
+    DC_WS_221,
+    DC_WS_222,
+    DC_WS_223,
+    DC_WS_224,
+    DC_WS_225,
+    DC_WS_226,
+    DC_WS_227,
+    DC_WS_228,
+    DC_WS_229,
+    DC_WS_230,
+    DC_WS_231,
+    DC_WS_232,
+    DC_WS_233,
+    DC_WS_234,
+    DC_WS_235,
+    DC_WS_236,
+    DC_WS_237,
+    DC_WS_238,
+    DC_WS_239,
+    DC_WS_240,
+    DC_WS_241,
+    DC_WS_242,
+    DC_WS_243,
+    DC_WS_244,
+    DC_WS_245,
+    DC_WS_246,
+    DC_WS_247,
+    DC_WS_248,
+    DC_WS_249,
+    DC_WS_250,
+    DC_WS_251,
+    DC_WS_252,
+    DC_WS_253,
+    DC_WS_254,
+    DC_WS_255,
+    DC_WS_256,
+    DC_WS_257,
+    DC_WS_258,
+    DC_WS_259,
+    DC_WS_260,
+    DC_WS_261,
+    DC_WS_262,
+    DC_WS_263,
+    DC_WS_264,
+    DC_WS_265,
+    DC_WS_266,
+    DC_WS_267,
+    DC_WS_268,
+    DC_WS_269,
+    DC_WS_270,
+    DC_WS_271,
+    DC_WS_272,
+    DC_WS_273,
+    DC_WS_274,
+    DC_WS_275,
+    DC_WS_276,
+    DC_WS_277,
+    DC_WS_278,
+    DC_WS_279,
+    DC_WS_280,
+    DC_WS_281,
+    DC_WS_282,
+    DC_WS_283,
+    DC_WS_284,
+    DC_WS_285,
+    DC_WS_286,
+    DC_WS_287,
+    DC_WS_288,
+    DC_WS_289,
+    DC_WS_290,
+    DC_WS_291,
+    DC_WS_292,
+    DC_WS_293,
+    DC_WS_294,
+    DC_WS_295,
+    DC_WS_296,
+    DC_WS_297,
+    DC_WS_298,
+    DC_WS_299,
+    DC_WS_300,
+    DC_WS_301,
+    DC_WS_302,
+    DC_WS_303,
+    DC_WS_304,
+    DC_WS_305,
+    DC_WS_306,
+    DC_WS_307,
+    DC_WS_308,
+    DC_WS_309,
+    DC_WS_310,
+    DC_WS_311,
+    DC_WS_312,
+    DC_WS_313,
+    DC_WS_314,
+    DC_WS_315,
+    DC_WS_316,
+    DC_WS_317,
+    DC_WS_318,
+    DC_WS_319,
+    DC_WS_320,
+    DC_WS_321,
+    DC_WS_322,
+    DC_WS_323,
+    DC_WS_324,
+    DC_WS_325,
+    DC_WS_326,
+    DC_WS_327,
+    DC_WS_328,
+    DC_WS_329,
+    DC_WS_330,
+    DC_WS_331,
+    DC_WS_332,
+    DC_WS_333,
+    DC_WS_334,
+    DC_WS_335,
+    DC_WS_336,
+    DC_WS_337,
+    DC_WS_338,
+    DC_WS_339,
+    DC_WS_340,
+    DC_WS_341,
+    DC_WS_342,
+    DC_WS_343,
+    DC_WS_344,
+    DC_WS_345,
+    DC_WS_346,
+    DC_WS_347,
+    DC_WS_348,
+    DC_WS_349,
+    DC_WS_350,
+    DC_WS_351,
+    DC_WS_352,
+    DC_WS_353,
+    DC_WS_354,
+    DC_WS_355,
+    DC_WS_356,
+    DC_WS_357,
+    DC_WS_358,
+    DC_WS_359,
+    DC_SPK_0,
+    DC_SPK_1,
+    DC_SPK_2,
+    DC_SPK_3,
+    DC_SPK_4,
+    DC_SPK_5,
+    DC_SPK_6,
+    DC_SPK_7,
+    DC_SPK_8,
+    DC_SPK_9,
+    DC_SPK_10,
+    DC_SPK_11,
+    DC_SPK_12,
+    DC_SPK_13,
+    DC_SPK_14,
+    DC_SPK_15,
+    DC_SPK_16,
+    DC_SPK_17,
+    DC_SPK_18,
+    DC_SPK_19,
+    DC_SPK_20,
+    DC_SPK_21,
+    DC_SPK_22,
+    DC_SPK_23,
+    DC_SPK_24,
+    DC_SPK_25,
+    DC_SPK_26,
+    DC_SPK_27,
+    DC_SPK_28,
+    DC_SPK_29,
+    DC_SPK_30,
+    DC_SPK_31,
+    DC_SPK_32,
+    DC_SPK_33,
+    DC_SPK_34,
+    DC_SPK_35,
+    DC_SPK_36,
+    DC_SPK_37,
+    DC_SPK_38,
+    DC_SPK_39,
+    DC_SPK_40,
+    DC_SPK_41,
+    DC_SPK_42,
+    DC_SPK_43,
+    DC_SPK_44,
+    DC_SPK_45,
+    DC_SPK_46,
+    DC_SPK_47,
+    DC_SPK_48,
+    DC_SPK_49,
+    DC_SPK_50,
+    DC_SPK_51,
+    DC_SPK_52,
+    DC_SPK_53,
+    DC_SPK_54,
+    DC_SPK_55,
+    DC_SPK_56,
+    DC_SPK_57,
+    DC_SPK_58,
+    DC_SPK_59,
+    DC_SPK_60,
+    DC_SPK_61,
+    DC_SPK_62,
+    DC_SPK_63,
+    DC_SPK_64,
+    DC_SPK_65,
+    DC_SPK_66,
+    DC_SPK_67,
+    DC_SPK_68,
+    DC_SPK_69,
+    DC_SPK_70,
+    DC_SPK_71,
+    DC_SPK_72,
+    DC_SPK_73,
+    DC_SPK_74,
+    DC_SPK_75,
+    DC_SPK_76,
+    DC_SPK_77,
+    DC_SPK_78,
+    DC_SPK_79,
+    DC_SPK_80,
+    DC_SPK_81,
+    DC_SPK_82,
+    DC_SPK_83,
+    DC_SPK_84,
+    DC_SPK_85,
+    DC_SPK_86,
+    DC_SPK_87,
+    DC_SPK_88,
+    DC_SPK_89,
+    DC_SPK_90,
+    DC_SPK_91,
+    DC_SPK_92,
+    DC_SPK_93,
+    DC_SPK_94,
+    DC_SPK_95,
+    DC_SPK_96,
+    DC_SPK_97,
+    DC_SPK_98,
+    DC_SPK_99,
+    DC_SPK_100,
+    DC_SPK_101,
+    DC_SPK_102,
+    DC_SPK_103,
+    DC_SPK_104,
+    DC_SPK_105,
+    DC_SPK_106,
+    DC_SPK_107,
+    DC_SPK_108,
+    DC_SPK_109,
+    DC_SPK_110,
+    DC_SPK_111,
+    DC_SPK_112,
+    DC_SPK_113,
+    DC_FRT_114,
+    DC_FRT_115,
+    DC_FRT_116,
+    DC_FRT_117,
+    DC_FRT_118,
+    DC_FRT_119,
+    DC_FRT_120,
+    DC_FRT_121,
+    DC_FRT_122,
+    DC_FRT_123,
+    DC_FRT_124,
+    DC_FRT_125,
+    DC_FRT_126,
+    DC_FRT_127,
+    DC_FRT_128,
+    DC_FRT_129,
+    DC_FRT_130,
+    DC_FRT_131,
+    DC_FRT_132,
+    DC_FRT_133,
+    DC_FRT_134,
+    DC_FRT_135,
+    DC_FRT_136,
+    DC_FRT_137,
+    DC_FRT_138,
+    DC_FRT_139,
+    DC_FRT_140,
+    DC_FRT_141,
+    DC_FRT_142,
+    DC_FRT_143,
+    DC_FRT_144,
+    DC_FRT_145,
+    DC_FRT_146,
+    DC_FRT_147,
+    DC_FRT_148,
+    DC_FRT_149,
+    DC_FRT_150,
+    DC_FRT_151,
+    DC_FRT_152,
+    DC_FRT_153,
+    DC_FRT_154,
+    DC_FRT_155,
+    DC_FRT_156,
+    DC_FRT_157,
+    DC_FRT_158,
+    DC_FRT_159,
+    DC_FRT_160,
+    DC_FRT_161,
+    DC_FRT_162,
+    DC_FRT_163,
+    DC_FRT_164,
+    DC_FRT_165,
+    DC_FRT_166,
+    DC_FRT_167,
+    DC_FRT_168,
+    DC_FRT_169,
+    DC_FRT_170,
+    DC_FRT_171,
+    DC_FRT_172,
+    DC_FRT_173,
+    DC_FRT_174,
+    DC_FRT_175,
+    DC_FRT_176,
+    DC_FRT_177,
+    DC_FRT_178,
+    DC_FRT_179,
+    DC_FRT_180,
+    DC_FRT_181,
+    DC_FRT_182,
+    DC_FRT_183,
+    DC_FRT_184,
+    DC_FRT_185,
+    DC_FRT_186,
+    DC_FRT_187,
+    DC_FRT_188,
+    DC_FRT_189,
+    DC_FRT_190,
+    DC_FRT_191,
+    DC_FRT_192,
+    DC_FRT_193,
+    DC_FRT_194,
+    DC_FRT_195,
+    DC_FRT_196,
+    DC_FRT_197,
+    DC_FRT_198,
+    DC_FRT_199,
+    DC_FRT_200,
+    DC_FRT_201,
+    DC_FRT_202,
+    DC_FRT_203,
+    DC_FRT_204,
+    DC_FRT_205,
+    DC_FRT_206,
+    DC_FRT_207,
+    DC_FRT_208,
+    DC_TF_0,
+    DC_TF_1,
+    DC_TF_2,
+    DC_TF_3,
+    DC_TF_4,
+    DC_TF_5,
+    DC_TF_6,
+    DC_TF_7,
+    DC_TF_8,
+    DC_TF_9,
+    DC_TF_10,
+    DC_TF_11,
+    DC_TF_12,
+    DC_TF_13,
+    DC_TF_14,
+    DC_TF_15,
+    DC_TF_16,
+    DC_TF_17,
+    DC_TF_18,
+    DC_DR_0,
+    DC_DR_1,
+    DC_DR_2,
+    DC_DR_3,
+    DC_DR_4,
+    DC_DR_5,
+    DC_DR_6,
+    DC_DR_7,
+    DC_DR_8,
+    DC_DR_9,
+    DC_DR_10,
+    DC_DR_11,
+    DC_DR_12,
+    DC_DR_13,
+    DC_DR_14,
+    DC_DR_15,
+    DC_DR_16,
+    DC_DR_17,
+    DC_DR_18,
+    DC_DR_19,
+    DC_DR_20,
+    DC_DR_21,
+    DC_DR_22,
+    DC_DR_23,
+    DC_DR_24,
+    DC_DR_25,
+    DC_RQ_0,
+    DC_RQ_1,
+    DC_RQ_2,
+    DC_RQ_3,
+    DC_RQ_4,
+    DC_RQ_5,
+    DC_RQ_6,
+    DC_RQ_7,
+    DC_RQ_8,
+    DC_RQ_9,
+    DC_RQ_10,
+    DC_RQ_11,
+    DC_RQ_12,
+    DC_RQ_13,
+    DC_RQ_14,
+    DC_RQ_15,
+    DC_RQ_16,
+    DC_RQ_17,
+];
+

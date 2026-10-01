@@ -156,6 +156,7 @@ const { anonWordName } = await loadTs("src/core/AnonNames.ts");
 const CloseCodes = await loadTs("src/core/CloseCodes.ts");
 const SL = await loadTs("src/core/ServerList.ts");
 const PD = await loadTs("src/core/PatternDecoder.ts");
+const DC = await loadTs("src/core/game/DoomsdayClock.ts");
 const { AStar } = await loadTs("src/core/pathfinding/algorithms/AStar.ts");
 const { AStarRail } = await loadTs("src/core/pathfinding/algorithms/AStar.Rail.ts");
 const { AStarWater } = await loadTs("src/core/pathfinding/algorithms/AStar.Water.ts");
@@ -942,6 +943,124 @@ const pdRes1 = (bytes, x, y) => {
   ];
   for (const [bytes, x, y] of k1cases)
     capturePD(`pd_ip_${i++}`, 1, [...pdBytesTok(bytes), x, y], pdRes1(bytes, x, y));
+}
+
+// --- DoomsdayClock scenario runner --------------------------------------------
+// Exercises the real DoomsdayClock.ts wave math. kind 0 requiredTiles
+// [speed,team,land,elapsed] -> [tiles]; kind 1 waveState [speed,team,elapsed]
+// -> [currentPct, targetPct, growing, secToNext, secToTarget, flash, done];
+// kind 2 rotSpeckleNoise [x,y,salt]; kind 3 rotFrontNoise [tile,salt];
+// kind 4 troopFloor [max,spw,drainFloor,start,decay]; kind 5 drain
+// [max,spw,start,max,ramp,exponent]; kind 6 rotQuota [left,under,death].
+// Speed codes: 0 slow / 1 normal / 2 fast / 3 veryfast / 4 unknown (the ??
+// fallback); team code 1 = teamGame === true.
+const dcScenarios = [];
+function captureDC(name, kind, args, res) {
+  dcScenarios.push({ name, kind, args: args.flat().map(uenc), res: res.flat().map(uenc) });
+}
+const DC_SPEEDS = ["slow", "normal", "fast", "veryfast", "weird"];
+const dcProfile = (sc, team) => ({
+  speed: DC_SPEEDS[sc],
+  ...(team === 1 ? { teamGame: true } : team === 2 ? { teamGame: undefined } : {}),
+});
+// kind 0: required tiles across the wave boundaries of every speed.
+{
+  let i = 0;
+  const cases = [];
+  for (let sc = 0; sc < 5; sc++)
+    for (const team of [0, 1, 2])
+      for (const el of [
+        -1e9, -1, 0, 0.5, 595, 596, 600, 600.5, 601, 618, 636, 640, 644, 768,
+        822, 858, 864, 896, 900, 1176, 1246, 1316, 1386, 1456, 1526, 1596,
+        1666, 1736, 2100, 2310, 2520, 2730, 2940, 3150, 3360, 3570, 4500,
+        1e9, NaN, -Infinity, Infinity, 600.9999999,
+      ])
+        cases.push([sc, team, el]);
+  for (const [sc, team, el] of cases)
+    captureDC(`dc_rt_${i++}`, 0, [sc, team, 10000, el],
+      [DC.doomsdayClockRequiredTiles(dcProfile(sc, team), 10000, el)]);
+  for (const land of [0, -5, 1, 0.5, NaN, Infinity, -Infinity, 1e12])
+    captureDC(`dc_land_${i++}`, 0, [1, 0, land, 1e9],
+      [DC.doomsdayClockRequiredTiles(dcProfile(1, 0), land, 1e9)]);
+}
+// kind 1: wave state — every segment boundary of normal + veryfast, both ladders.
+{
+  let i = 0;
+  for (const [sc, team] of [[1, 0], [1, 1], [3, 0], [0, 1], [2, 1], [4, 0]])
+    for (const el of [
+      NaN, -Infinity, 0, 594, 595, 596, 600, 600.5, 601, 605, 606, 618, 635,
+      636, 640, 644, 645, 767, 768, 772, 822, 858, 863, 864, 868, 895, 896,
+      900, 1067, 1068, 1175, 1176, 1245, 1246, 1314, 1315, 1316, 1385, 1386,
+      1455, 1456, 1525, 1526, 1595, 1596, 1665, 1666, 1735, 1736, 2309, 2310,
+      2939, 2940, 3569, 3570, 4499, 4500, 5000, 1e9, Infinity,
+    ])
+      captureDC(`dc_ws_${i++}`, 1, [sc, team, el], (() => {
+        const w = DC.doomsdayClockWaveState(dcProfile(sc, team), el);
+        return [w.currentPercent, w.targetPercent, w.growing ? 1 : 0,
+          w.secondsToNextGrowth, w.secondsToTarget, w.waveFlash ? 1 : 0, w.done ? 1 : 0];
+      })());
+}
+// kind 2/3: the two rot noises over the int32 coercion edges.
+{
+  let i = 0;
+  const vals = [0, 1, -1, 2, 3, 0.5, -0.5, NaN, Infinity, -Infinity, 2 ** 31,
+    -(2 ** 31), 2 ** 32, 2 ** 53, 12345.678, -98765.4321, 65535, 65536, 4294967295];
+  for (const x of vals)
+    for (const y of [0, 1, -1, 60, 2 ** 31, NaN])
+      captureDC(`dc_spk_${i++}`, 2, [x, y, 7],
+        [DC.rotSpeckleNoise(x, y, 7)]);
+  for (const t of vals)
+    for (const s of [0, 1, -1, 2 ** 32, NaN])
+      captureDC(`dc_frt_${i++}`, 3, [t, s], [DC.rotFrontNoise(t, s)]);
+}
+// kind 4: troop floor.
+{
+  let i = 0;
+  for (const [max, spw, end, start, decay] of [
+    [1000, 0, 10, 50, 100], [1000, 50, 10, 50, 100], [1000, 99, 10, 50, 100],
+    [1000, 100, 10, 50, 100], [1000, 101, 10, 50, 100], [1000, -5, 10, 50, 100],
+    [1000, NaN, 10, 50, 100], [1000, Infinity, 10, 50, 100],
+    [1000, 50.7, 10, 50, 100], [999, 33, 10, 50, 100], [1, 50, 10, 50, 100],
+    [0, 50, 10, 50, 100], [1000, 50, 50, 50, 100], [1000, 50, 60, 50, 100],
+    [1000, 50, 10, 50, 0], [1000, 50, 10, 50, -10], [1000, 50, 10, 50, NaN],
+    [1e9, 1, 10, 90, 1e9], [1000, 1e9, 10, 50, 100],
+  ])
+    captureDC(`dc_tf_${i++}`, 4, [max, spw, end, start, decay],
+      [DC.doomsdayClockTroopFloor(max, spw, {
+        drainFloorPercent: end, floorStartPercent: start, floorDecaySeconds: decay,
+      })]);
+}
+// kind 5: drain, linear vs convex vs fractional/NaN exponents.
+{
+  let i = 0;
+  for (const [max, spw, start, mx, ramp, exp] of [
+    [1000, 0, 1, 11, 100, 1], [1000, 1, 1, 11, 100, 1], [1000, 50, 1, 11, 100, 1],
+    [1000, 99, 1, 11, 100, 1], [1000, 100, 1, 11, 100, 1], [1000, 1e9, 1, 11, 100, 1],
+    [1000, -5, 1, 11, 100, 1], [1000, NaN, 1, 11, 100, 1],
+    [1000, 50, 1, 11, 100, 2], [1000, 50, 1, 11, 100, 3], [1000, 50, 1, 11, 100, 10],
+    [1000, 50, 1, 11, 100, 2.5], [1000, 50, 1, 11, 100, 0.5], [1000, 50, 1, 11, 100, 0],
+    [1000, 50, 1, 11, 100, -1], [1000, 50, 1, 11, 100, NaN],
+    [1000, 99, 1, 11, 100, 3], [1000, 1, 1, 11, 100, 3],
+    [1000, 50, 1, 11, 0, 1], [1000, 50, 1, 11, -10, 1], [1000, 50, 1, 11, NaN, 1],
+    [0, 1e9, 1, 11, 100, 1], [1000, 1e9, 11, 11, 100, 1], [1000, 1e9, 11, 1, 100, 1],
+    [1e9, 50, 1, 11, 100, 2], [999, 37, 1, 11, 100, 2],
+  ])
+    captureDC(`dc_dr_${i++}`, 5, [max, spw, start, mx, ramp, exp],
+      [DC.doomsdayClockDrain(max, spw, {
+        drainStartPercent: start, drainMaxPercent: mx, drainRampSeconds: ramp,
+      }, exp)]);
+}
+// kind 6: rot quota.
+{
+  let i = 0;
+  for (const [left, under, death] of [
+    [100, 5, 10], [100, 0, 10], [100, 9, 10], [100, 10, 10], [100, 1e9, 10],
+    [0, 0, 10], [-5, 0, 10], [100, 0, 0], [100, 0, -10], [NaN, 0, 10],
+    [100, NaN, 10], [100, 0, NaN], [100.5, 5, 10], [1, 0, 1e9], [1e9, 1e9, 1e9],
+    [100, -5, 10], [100, 5, Infinity], [Infinity, 0, 10],
+  ])
+    captureDC(`dc_rq_${i++}`, 6, [left, under, death],
+      [DC.doomsdayClockRotQuota(left, under, { rotDeathSeconds: death })]);
 }
 
 // --- AStar scenario runner ---------------------------------------------------
@@ -3654,6 +3773,7 @@ const structures = {
   close: closeScenarios,
   serverlist: slScenarios,
   patterndecoder: pdScenarios,
+  doomsdayclock: dcScenarios,
   astar: asScenarios,
   rail: railScenarios,
   water: waterScenarios,
@@ -5404,6 +5524,29 @@ for (const s of structures.patterndecoder) {
 }
 L.push("pub const PD_SCENARIOS: &[PdScenario] = &[");
 for (const s of structures.patterndecoder) L.push(`    ${s.name.toUpperCase()},`);
+L.push("];");
+L.push("");
+
+L.push("/// DoomsdayClock scenario: one `doomsday_clock::run_op(kind, args)` call.");
+L.push("pub struct DcScenario {");
+L.push("    pub name: &'static str,");
+L.push("    pub kind: u8,");
+L.push("    pub args: &'static [f64],");
+L.push("    pub res: &'static [f64],");
+L.push("}");
+L.push("");
+for (const s of structures.doomsdayclock) {
+  const id = s.name.toUpperCase();
+  L.push(`pub const ${id}: DcScenario = DcScenario {`);
+  L.push(`    name: "${s.name}",`);
+  L.push(`    kind: ${s.kind}u8,`);
+  L.push(`    args: &[${s.args.map(utilResLit).join(", ")}],`);
+  L.push(`    res: &[${s.res.map(utilResLit).join(", ")}],`);
+  L.push("};");
+  L.push("");
+}
+L.push("pub const DC_SCENARIOS: &[DcScenario] = &[");
+for (const s of structures.doomsdayclock) L.push(`    ${s.name.toUpperCase()},`);
 L.push("];");
 L.push("");
 

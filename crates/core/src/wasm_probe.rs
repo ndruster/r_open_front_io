@@ -3470,3 +3470,31 @@ pub extern "C" fn probe_pd_op(kind: u32) -> usize {
 pub extern "C" fn probe_pd_out_at(i: usize) -> f64 {
     PD_OUT.with(|o| o.borrow()[i])
 }
+
+// ====================== P27: DoomsdayClock (DoomsdayClock.ts) =================
+
+thread_local! {
+    static DC_ARGS: std::cell::RefCell<Vec<f64>> = const { std::cell::RefCell::new(Vec::new()) };
+    static DC_OUT: std::cell::RefCell<Vec<f64>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
+/// Push one flat token (speed/team codes, land/elapsed, noise coords…).
+#[no_mangle]
+pub extern "C" fn probe_dc_arg(v: f64) {
+    DC_ARGS.with(|t| t.borrow_mut().push(v));
+}
+
+/// Run `doomsday_clock::run_op(kind, args)`; returns the result-stream length.
+#[no_mangle]
+pub extern "C" fn probe_dc_op(kind: u32) -> usize {
+    let a = DC_ARGS.with(|t| std::mem::take(&mut *t.borrow_mut()));
+    let out = crate::doomsday_clock::run_op(kind as u8, &a);
+    let len = out.len();
+    DC_OUT.with(|o| *o.borrow_mut() = out);
+    len
+}
+
+#[no_mangle]
+pub extern "C" fn probe_dc_out_at(i: usize) -> f64 {
+    DC_OUT.with(|o| o.borrow()[i])
+}

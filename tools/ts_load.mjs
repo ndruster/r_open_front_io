@@ -799,6 +799,27 @@ function prepare(rel) {
     );
   }
 
+  if (rel.endsWith("ServerList.ts")) {
+    // zod is only used by the wire-validation schemas (not ported — the pure
+    // functions never touch them at runtime). Replace the import with an
+    // inert self-returning Proxy so the schema declarations still evaluate.
+    out = must(
+      out,
+      'import { z } from "zod";\n',
+      "const z = new Proxy(function () {}, { get: () => z, apply: () => z });\n",
+      "ServerList zod import",
+    );
+    // pathNamesGame is module-private in TS; export it so the capture can
+    // exercise its decodeURIComponent edges directly (the Rust twin exposes
+    // it for the same reason).
+    out = must(
+      out,
+      "function pathNamesGame(versionFreePath: string, gameID: string): boolean {",
+      "export function pathNamesGame(versionFreePath: string, gameID: string): boolean {",
+      "ServerList pathNamesGame export",
+    );
+  }
+
   mkdirSync(cacheDir, { recursive: true });
   const hash = createHash("sha1").update(out).digest("hex").slice(0, 10);
   const base = `${basename(rel, ".ts")}-${hash}.ts`;

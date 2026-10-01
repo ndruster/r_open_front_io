@@ -33,6 +33,9 @@ rust/
 │   │   │                          anonWordName)
 │   │   ├── close_codes.rs         port of CloseCodes.ts (tables +
 │   │   │                          isTerminalClose / isCloseReason)
+│   │   ├── server_list.rs         port of ServerList.ts (commit/site
+│   │   │                          predicates + version routing; zod
+│   │   │                          schemas not ported)
 │   │   ├── wasm_probe.rs          `extern "C"` surface, feature-gated
 │   │   └── pathfinding/
 │   │       ├── mod.rs
@@ -431,6 +434,23 @@ desync, not a rounding nit. Two things enforce that here:
     near-misses are `false`. The 57 scenarios sweep every declared value,
     the range boundaries, the fractional / zero / negative / non-finite code
     edges, and the reason membership edges.
+27. **`ServerList.ts`** (`server_list`) is the server-discovery helper set:
+    commit/site shape predicates, `commitsMatch` / `versionMatches` prefix
+    rules, build-aware letter filtering (`servesBuild`,
+    `pickServerForBuild`), `ownLetterIn` host precedence, and the
+    `/v/<commit>/` URL rewrites (`stripVersionPrefix`, `shortCommit`,
+    `versionedPath`, `versionedPathForGame`). The zod schemas are wire
+    validation at the API boundary and are **not** ported. JS-isms pinned:
+    the regexes are hand-transcribed (`{7,40}` counts UTF-16 units, `\d` is
+    ASCII-only, `[^/]+` / `[^/?#]+` stop at the first delimiter);
+    `pickServerForBuild` sends `NaN` / `±Infinity` / fractional picks to
+    index `0` and clamps integers into range; `ownLetterIn` lowercases hosts
+    with Unicode-aware `toLowerCase`; `pathNamesGame` decodes the id with a
+    JS-accurate `decodeURIComponent` whose malformed escapes (`%`, `%zz`,
+    overlongs, encoded surrogates) fall back to the raw segment. The 150
+    scenarios sweep the predicate edges, the prefix/identity matrix, the
+    open/draining/fenced pick table with every clamp kind, the host/letter
+    precedence, and the version-URL loop guards.
 
 Regenerate whenever a ported source changes:
 
@@ -464,7 +484,7 @@ node rust/tools/run_wasm_parity.mjs
 
 `wasm-probe` exposes the ported functions through `extern "C"` scalar
 entrypoints (`src/wasm_probe.rs`); the runner imports `data/vectors.json` and
-compares every value. Last run: **33,001 comparisons, all bit-identical**.
+compares every value. Last run: **33,572 comparisons, all bit-identical**.
 
 ### Windows: the linker environment
 

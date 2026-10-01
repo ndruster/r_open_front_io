@@ -33,6 +33,11 @@
 //!   `anonWordName`: trunc/abs/floor JS-isms, property-access word lookup
 //!   that spells out-of-range indices as `"undefined"`, and `String(round)`
 //!   for the suffix)
+//! * [`server_list`] — `src/core/ServerList.ts` (commit/site predicates,
+//!   `commitsMatch`/`versionMatches` prefix rules, build-aware letter
+//!   filtering and `pickServerForBuild` clamping, `ownLetterIn` host match,
+//!   and the `/v/<commit>/` URL rewrites with hand-transcribed regexes and a
+//!   JS-accurate `decodeURIComponent`; the zod schemas are not ported)
 //! * [`line`] — `src/core/utilities/Line.ts` (`DistanceBasedBezierCurve`:
 //!   fixed-point De Casteljau subdivision for MIRV trajectories)
 //! * [`veterancy`] — `src/core/game/Veterancy.ts` (`maxHealthWithVeterancy`:
@@ -89,6 +94,7 @@ pub mod line;
 pub mod motion_plans;
 pub mod pathfinding;
 pub mod pseudo_random;
+pub mod server_list;
 pub mod team_assignment;
 pub mod terrain_search_map;
 pub mod tile_set;

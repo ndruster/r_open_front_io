@@ -154,6 +154,7 @@ const { BFS } = await loadTs("src/core/pathfinding/algorithms/BFS.ts");
 const { AirPathFinder } = await loadTs("src/core/pathfinding/PathFinder.Air.ts");
 const { anonWordName } = await loadTs("src/core/AnonNames.ts");
 const CloseCodes = await loadTs("src/core/CloseCodes.ts");
+const SL = await loadTs("src/core/ServerList.ts");
 const { AStar } = await loadTs("src/core/pathfinding/algorithms/AStar.ts");
 const { AStarRail } = await loadTs("src/core/pathfinding/algorithms/AStar.Rail.ts");
 const { AStarWater } = await loadTs("src/core/pathfinding/algorithms/AStar.Water.ts");
@@ -667,6 +668,179 @@ captureCloseReason("cr_case", "Close_Reason.Unknown");
 captureCloseReason("cr_prefix", "close_reason");
 captureCloseReason("cr_suffix", "close_reason.unknown ");
 captureCloseReason("cr_unknown_word", "close_reason.does_not_exist");
+
+// --- ServerList scenario runner ----------------------------------------------
+// Exercises the real ServerList.ts pure functions (the zod schemas are not
+// ported). Each scenario is one `run_op(kind, args)` call: args and res are
+// flat f64 token streams — a string is [len, u0, ..], an input optional string
+// is [0] / [1, string], an output string|null is [-1] / [len, u0, ..], a list
+// is [n, (letter, host, numWorkers, version, state)*n] with state
+// 0=open/1=draining/2=fenced. Numeric args that can be JS-only values go
+// through uenc. The Rust twin is `server_list::*`.
+const slScenarios = [];
+const encS = (s) => [
+  s.length,
+  ...Array.from({ length: s.length }, (_, i) => s.charCodeAt(i)),
+];
+const encIn = (v) => (v === undefined || v === null ? [0] : [1, ...encS(v)]);
+const encOut = (v) => (v === null || v === undefined ? [-1] : encS(v));
+const encList = (entries) => [
+  entries.length,
+  ...entries.flatMap(([l, e]) => [
+    ...encS(l),
+    ...encS(e.host),
+    e.numWorkers,
+    ...encS(e.version),
+    e.state,
+  ]),
+];
+function captureSL(name, kind, args, res) {
+  slScenarios.push({ name, kind, args: args.flat().map(uenc), res: res.flat().map(uenc) });
+}
+const SL_C1 = "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678";
+const SL_C7 = "a1b2c3d";
+const SL_C2 = "deadbeef1234567890abcdef1234567890abcd";
+const SL_LIST = [
+  ["a", { host: "a.example.com", numWorkers: 1, version: SL_C1, state: 0 }],
+  ["b", { host: "B.EXAMPLE.COM", numWorkers: 2, version: SL_C2, state: 1 }],
+  ["c", { host: "c.example.com", numWorkers: 1, version: "00112233445566778899aabbccddeeff00112233", state: 2 }],
+];
+// The same list with the zod enum's *string* states, for calling the TS
+// functions (the token stream above keeps the numeric encoding).
+const SL_STATE_NAMES = ["open", "draining", "fenced"];
+const slTsList = () => ({
+  servers: Object.fromEntries(
+    SL_LIST.map(([l, e]) => [l, { ...e, state: SL_STATE_NAMES[e.state] }]),
+  ),
+});
+// kind 0/1: the two shape predicates.
+{
+  let i = 0;
+  for (const v of [SL_C7, SL_C1, SL_C1 + "0", "abcdef", "ABCDEF0", "abcdefg",
+    "0x12345", "", "a1b2c3é", "é1b2c3d4", "a1b2c3d", "A1B2C3D", "ffffff",
+    "0000000", "1234567890123456789012345678901234567890"])
+    captureSL(`sl_commit_${i++}`, 0, [encS(v)], [SL.isCommitLike(v)]);
+}
+// kind 1: site shapes.
+{
+  let i = 0;
+  for (const v of ["a", "a.b", "a..b", "a-", "-a", "A", "a_b", ".", "..",
+    "x".repeat(253), "x".repeat(254), "a-b-c", "1.2.3", "-.", ".-", "a.b.c.d",
+    "abcÉ", "a b"])
+    captureSL(`sl_site_${i++}`, 1, [encS(v)], [SL.isSiteLike(v)]);
+}
+// kind 2: commitsMatch prefix / identity edges.
+{
+  let i = 0;
+  for (const [a, b] of [[SL_C7, SL_C1], [SL_C1, SL_C7], ["A1B2C3D", SL_C1],
+    ["a1b2c3e", SL_C1], ["DEV", "DEV"], ["DEV", "dev"], [SL_C7, "a1b2c3"],
+    ["", ""], [SL_C1, SL_C1], ["deadbee", SL_C2], ["DEADBEE", SL_C2],
+    ["a1b2c3d4", "a1b2c3d"]])
+    captureSL(`sl_cm_${i++}`, 2, [...encS(a), ...encS(b)], [SL.commitsMatch(a, b)]);
+}
+// kind 3: versionMatches (unlabeled builds match anything).
+{
+  let i = 0;
+  for (const [own, ver] of [["DEV", SL_C1], ["desktop", SL_C1], [SL_C7, SL_C1],
+    [SL_C1, SL_C2], [SL_C1, SL_C1], ["dev", SL_C1], [SL_C2, SL_C2],
+    ["abcdef", SL_C1], ["", ""]])
+    captureSL(`sl_vm_${i++}`, 3, [...encS(own), ...encS(ver)], [SL.versionMatches(own, ver)]);
+}
+// kind 4: servesBuild per letter (present / absent / fenced / draining).
+{
+  let i = 0;
+  for (const [letter, own] of [["a", SL_C1], ["b", SL_C2], ["c", "00112233445566778899aabbccddeeff00112233"],
+    ["z", SL_C1], ["a", SL_C2], ["b", "DEV"], ["c", "DEV"], ["toString", SL_C1]])
+    captureSL(`sl_serves_${i++}`, 4, [...encList(SL_LIST), ...encS(letter), ...encS(own)],
+      [SL.servesBuild(slTsList(), letter, own)]);
+}
+// kind 5: pickServerForBuild. pick kind 0 const arg, 1 n-1, 2 n, 3 -1.
+{
+  const slPick = (k, a) => (n) => (k === 0 ? a : k === 1 ? n - 1 : k === 2 ? n : -1);
+  let i = 0;
+  for (const [own, pk, pa] of [
+    [SL_C1, 0, 0], [SL_C1, 0, 5], [SL_C1, 0, NaN], [SL_C1, 0, 0.5],
+    [SL_C1, 0, -3], [SL_C1, 0, -0], [SL_C1, 0, Infinity], [SL_C1, 1, 0],
+    [SL_C1, 2, 0], [SL_C1, 3, 0], [SL_C2, 0, 0], ["DEV", 0, 1],
+    [SL_C7, 0, 0], ["00112233445566778899aabbccddeeff00112233", 0, 0],
+  ]) {
+    const list = slTsList();
+    const got = SL.pickServerForBuild(list, own, slPick(pk, pa));
+    captureSL(`sl_pick_${i++}`, 5, [...encList(SL_LIST), ...encS(own), pk, uenc(pa)],
+      [encOut(got)]);
+  }
+}
+// kind 6: ownLetterIn host / letter precedence.
+{
+  let i = 0;
+  for (const [host, letter] of [["A.EXAMPLE.COM", "b"], ["nope", "b"], ["", "b"],
+    [undefined, "b"], [undefined, "z"], [undefined, undefined], ["b.example.com", "a"],
+    ["a.example.com", undefined], ["", undefined], ["", "z"]])
+    captureSL(`sl_own_${i++}`, 6, [...encList(SL_LIST), ...encIn(host), ...encIn(letter)],
+      [encOut(SL.ownLetterIn(slTsList(), host, letter))]);
+}
+// kind 7: stripVersionPrefix.
+{
+  let i = 0;
+  for (const p of [`/v/${SL_C1}/game/5`, `/v/${SL_C7}`, "/v//x", "/v/", "/game/5",
+    "/v/abc", "/V/x", `/v/${SL_C1}`, "/v/a/b/c", "/v/%20/x", "/v/x/"]) {
+    const r = SL.stripVersionPrefix(p);
+    captureSL(`sl_strip_${i++}`, 7, [...encS(p)], [encOut(r.commit), encS(r.path)]);
+  }
+}
+// kind 8: shortCommit.
+{
+  let i = 0;
+  for (const v of [SL_C1, SL_C1.toUpperCase(), SL_C7, "DEV", "abcdefg", "abcdef",
+    "A1B2C3D4E5F6", "0000000"])
+    captureSL(`sl_short_${i++}`, 8, [...encS(v)], [encS(SL.shortCommit(v))]);
+}
+// kind 9: versionedPath (loop guard + worker strip + search).
+{
+  let i = 0;
+  for (const [commit, pathname, search] of [
+    [SL_C1, `/v/${SL_C7}/game/5`, ""], [SL_C1, "/w12/game/5", "?lobby"],
+    ["DEV", "/game/5", ""], [SL_C1, `/v/${SL_C1}/game/5`, ""],
+    [SL_C2, "/w1/game/9", "?spectate"], ["abcdef", "/v/zzz/x", ""],
+    [SL_C1, "/w/game/5", ""], [SL_C1, "/w12x/game/5", ""],
+  ])
+    captureSL(`sl_vp_${i++}`, 9, [...encS(commit), ...encS(pathname), ...encS(search)],
+      [encOut(SL.versionedPath(commit, pathname, search))]);
+}
+// kind 10: pathNamesGame (decode edges).
+{
+  let i = 0;
+  for (const [p, id] of [["/game/abc", "abc"], ["/w12/game/abc", "abc"],
+    ["/game/abc?x", "abc"], ["/game/abc/def", "abc"], ["/game/", "abc"],
+    ["/GAME/abc", "abc"], ["/w/game/abc", "abc"], ["/game/%41", "A"],
+    ["/game/%41", "%41"], ["/game/%zz", "%zz"], ["/game/%", "%"],
+    ["/game/%C0%80", "%C0%80"], ["/game/%E4%B8%AD", "中"],
+    ["/game/%F0%9F%98%80", "😀"], ["/game/%2F", "/"], ["/game/%D8%80", "%D8%80"],
+    ["/game/%E0%80%80", "%E0%80%80"], ["/game/%ED%A0%80", "%ED%A0%80"],
+    ["/game/%FF", "%FF"], ["/game/%25", "%"], ["/game/a%2Fb", "a/b"],
+    ["/game/x", "x"], ["/w7/game/%41", "A"], ["/w12", "abc"],
+    ["/game/abc#frag", "abc"], ["/game/", ""], ["/game/%E4%B8", "%E4%B8"]])
+    captureSL(`sl_png_${i++}`, 10, [...encS(p), ...encS(id)], [SL.pathNamesGame(p, id)]);
+}
+// kind 11: versionedPathForGame.
+{
+  let i = 0;
+  for (const [own, gv, gid, vfp, pathname, search, spec] of [
+    ["DEV", SL_C2, "5", "/game/5", "/game/5", "", false],
+    [SL_C1, SL_C2, "5", "/game/5", "/game/5", "", false],
+    [SL_C1, SL_C2, "5", "/game/5", "/v/deadbee/game/5", "", false],
+    [SL_C1, SL_C2, "5", "/game/5", "/game/OTHER", "", true],
+    [SL_C1, undefined, "5", "/game/5", "/game/5", "", false],
+    [SL_C1, SL_C1, "5", "/game/5", "/game/5", "", false],
+    [SL_C1, SL_C2, "5", "/game/5", "/w12/game/5", "?lobby", false],
+    [SL_C1, SL_C2, "5", "/game/5", "/v/zzz/game/5", "", true],
+    ["abcdef", SL_C2, "9", "/game/9", "/home", "?x", false],
+    [SL_C1, "DEV", "5", "/game/5", "/game/5", "", false],
+  ])
+    captureSL(`sl_vpf_${i++}`, 11, [...encS(own), ...encIn(gv), ...encS(gid), ...encS(vfp),
+      ...encS(pathname), ...encS(search), spec ? 1 : 0],
+      [encOut(SL.versionedPathForGame(own, gv, gid, vfp, pathname, search, spec))]);
+}
 
 // --- AStar scenario runner ---------------------------------------------------
 // The grid adapter below is the *twin* of `pathfinding::a_star::GridAdapter`
@@ -3376,6 +3550,7 @@ const structures = {
   air: airScenarios,
   anon: anonScenarios,
   close: closeScenarios,
+  serverlist: slScenarios,
   astar: asScenarios,
   rail: railScenarios,
   water: waterScenarios,
@@ -5076,6 +5251,31 @@ for (const s of structures.close) {
 }
 L.push("pub const CLOSE_SCENARIOS: &[CloseScenario] = &[");
 for (const s of structures.close) L.push(`    ${s.name.toUpperCase()},`);
+L.push("];");
+L.push("");
+
+L.push("/// ServerList scenario: one `server_list::run_op(kind, args)` call.");
+L.push("/// `args` / `res` are flat f64 token streams (strings as");
+L.push("/// `[len, u0, ..]`, output `string|null` as `[-1]` or the string).");
+L.push("pub struct SlScenario {");
+L.push("    pub name: &'static str,");
+L.push("    pub kind: u8,");
+L.push("    pub args: &'static [f64],");
+L.push("    pub res: &'static [f64],");
+L.push("}");
+L.push("");
+for (const s of structures.serverlist) {
+  const id = s.name.toUpperCase();
+  L.push(`pub const ${id}: SlScenario = SlScenario {`);
+  L.push(`    name: "${s.name}",`);
+  L.push(`    kind: ${s.kind}u8,`);
+  L.push(`    args: &[${s.args.map(utilResLit).join(", ")}],`);
+  L.push(`    res: &[${s.res.map(utilResLit).join(", ")}],`);
+  L.push("};");
+  L.push("");
+}
+L.push("pub const SL_SCENARIOS: &[SlScenario] = &[");
+for (const s of structures.serverlist) L.push(`    ${s.name.toUpperCase()},`);
 L.push("];");
 L.push("");
 

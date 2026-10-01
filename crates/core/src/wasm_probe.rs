@@ -3414,3 +3414,31 @@ pub extern "C" fn probe_close_op(kind: u32) -> u8 {
         }
     }
 }
+
+// ========================= P25: ServerList (ServerList.ts) ====================
+
+thread_local! {
+    static SL_ARGS: std::cell::RefCell<Vec<f64>> = const { std::cell::RefCell::new(Vec::new()) };
+    static SL_OUT: std::cell::RefCell<Vec<f64>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
+/// Push one flat token (string length, code unit, numeric arg, list entry…).
+#[no_mangle]
+pub extern "C" fn probe_sl_arg(v: f64) {
+    SL_ARGS.with(|t| t.borrow_mut().push(v));
+}
+
+/// Run `server_list::run_op(kind, args)`; returns the result-stream length.
+#[no_mangle]
+pub extern "C" fn probe_sl_op(kind: u32) -> usize {
+    let a = SL_ARGS.with(|t| std::mem::take(&mut *t.borrow_mut()));
+    let out = crate::server_list::run_op(kind as u8, &a);
+    let len = out.len();
+    SL_OUT.with(|o| *o.borrow_mut() = out);
+    len
+}
+
+#[no_mangle]
+pub extern "C" fn probe_sl_out_at(i: usize) -> f64 {
+    SL_OUT.with(|o| o.borrow()[i])
+}

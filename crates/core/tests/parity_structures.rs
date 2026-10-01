@@ -2197,3 +2197,17 @@ fn replay_close_scenarios() {
         assert_eq!(got, s.res, "{} verdict", s.name);
     }
 }
+
+// ServerList.ts: replay every pure function through the shared `run_op`
+// runner (the zod schemas are not ported) and compare the flat token streams.
+#[test]
+fn replay_serverlist_scenarios() {
+    use openfront_core::server_list::run_op;
+    for s in vectors::SL_SCENARIOS {
+        let got = run_op(s.kind, s.args);
+        assert_eq!(got.len(), s.res.len(), "{} res len: got {got:?} want {:?}", s.name, s.res);
+        for (j, (g, w)) in got.iter().zip(s.res.iter()).enumerate() {
+            assert!(obj_is(*g, *w), "{} res[{j}]: got {g} want {w}", s.name);
+        }
+    }
+}

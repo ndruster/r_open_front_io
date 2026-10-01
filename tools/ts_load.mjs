@@ -1117,6 +1117,24 @@ function prepare(rel) {
     );
   }
 
+  if (rel.endsWith("game/TileTraversalScratch.ts")) {
+    // Game / TileRef are type-only here (the scratch only calls game.width()/
+    // height() and stores TileRef numbers in a plain array). Dropping the
+    // imports avoids pulling the Game value graph into strip mode.
+    out = must(
+      out,
+      'import { Game } from "./Game";\n',
+      "",
+      "TileTraversalScratch Game import",
+    );
+    out = must(
+      out,
+      'import { TileRef } from "./GameMap";\n',
+      "",
+      "TileTraversalScratch TileRef import",
+    );
+  }
+
   if (rel.endsWith("PatternDecoder.ts")) {
     // PlayerPattern is a type-only import (a z.infer type from Schemas); strip
     // mode cannot tell and would pull in the whole zod schema graph -> drop.

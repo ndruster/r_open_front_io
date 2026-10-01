@@ -75,6 +75,11 @@
 //!   `` `${cx}:${cy}` `` template string; register / unregister / query over
 //!   `game.x/y`-decoded rail tiles, rails keyed by capture refid, insertion-
 //!   ordered `Map`/`Set` semantics preserved)
+//! * [`tile_traversal_scratch`] — `src/core/game/TileTraversalScratch.ts`
+//!   (per-game generation-stamped `Uint32Array` visited buffer + reusable
+//!   stack + `Int32Array` cluster map, `WeakMap`-cached by game refid; JS
+//!   `ToIndex` allocation coercion, shrink-keeps / grow-reallocates reuse,
+//!   `0xffffffff` bump wrap with `fill(0)`)
 //! * [`line`] — `src/core/utilities/Line.ts` (`DistanceBasedBezierCurve`:
 //!   fixed-point De Casteljau subdivision for MIRV trajectories)
 //! * [`veterancy`] — `src/core/game/Veterancy.ts` (`maxHealthWithVeterancy`:
@@ -141,6 +146,7 @@ pub mod server_list;
 pub mod team_assignment;
 pub mod terrain_search_map;
 pub mod tile_set;
+pub mod tile_traversal_scratch;
 pub mod util;
 pub mod veterancy;
 pub mod water_manager;

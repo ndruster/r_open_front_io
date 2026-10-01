@@ -97,6 +97,7 @@ for (const name of [
   "probe_gu_arg", "probe_gu_op", "probe_gu_out_at",
   "probe_rr_arg", "probe_rr_op", "probe_rr_out_at",
   "probe_rsg_reset", "probe_rsg_arg", "probe_rsg_op", "probe_rsg_out_at",
+  "probe_tts_reset", "probe_tts_arg", "probe_tts_op", "probe_tts_out_at",
 ]) {
   if (typeof ex[name] !== "function") {
     console.error(`missing wasm export ${name} - rebuild with --features wasm-probe`);
@@ -1663,6 +1664,28 @@ for (const s of S.railroad) {
     const g = ex.probe_rr_out_at(i);
     const w = numTok(s.res[i]);
     if (!Object.is(g, w)) fail(`${s.name} res[${i}]`, 0, g, w);
+  }
+}
+
+// --- game/TileTraversalScratch.ts (tile_traversal_scratch) --------------------
+// Replays the stateful op stream (allocate / bump / typed-array writes /
+// stack push) through the wasm RigHarness. Each scenario resets the harness
+// first (a fresh WeakMap per capture scenario).
+for (const s of S.tiletravscratch) {
+  ex.probe_tts_reset();
+  for (const op of s.ops) {
+    for (const a of op.args) ex.probe_tts_arg(numTok(a));
+    const len = Number(ex.probe_tts_op(op.kind));
+    if (len !== op.res.length) {
+      fail(`${s.name} op${op.kind} res len`, 0, len, op.res.length);
+      continue;
+    }
+    for (let i = 0; i < len; i++) {
+      checks++;
+      const g = ex.probe_tts_out_at(i);
+      const w = numTok(op.res[i]);
+      if (!Object.is(g, w)) fail(`${s.name} op${op.kind} res[${i}]`, 0, g, w);
+    }
   }
 }
 

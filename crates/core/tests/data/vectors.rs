@@ -32633,3 +32633,124 @@ pub const RSG_SCENARIOS: &[RsgScenario] = &[
     RSG_FRAC_CELL_10,
 ];
 
+/// One `TileTraversalScratch.ts` op: `kind` + flat `args` / `res` token
+/// streams (see the Rust `RigHarness::run_op` docs).
+pub struct TtsOp {
+    pub kind: u8,
+    pub args: &'static [f64],
+    pub res: &'static [f64],
+}
+/// One scratch scenario: the op stream replayed against a fresh harness
+/// (kind 0 allocates / reuses a per-game scratch).
+pub struct TtsScenario {
+    pub name: &'static str,
+    pub ops: &'static [TtsOp],
+}
+
+const TTS_REUSE_0_OPS: &[TtsOp] = &[
+    TtsOp { kind: 0, args: &[1f64, 2f64, 2f64], res: &[0f64, 4f64, 0f64, 4f64, 0f64] },
+    TtsOp { kind: 0, args: &[1f64, 2f64, 2f64], res: &[0f64, 4f64, 0f64, 4f64, 0f64] },
+    TtsOp { kind: 0, args: &[1f64, 1f64, 2f64], res: &[0f64, 4f64, 0f64, 4f64, 0f64] },
+    TtsOp { kind: 0, args: &[1f64, 3f64, 3f64], res: &[0f64, 9f64, 0f64, 9f64, 0f64] },
+];
+pub const TTS_REUSE_0: TtsScenario = TtsScenario {
+    name: "tts_reuse_0",
+    ops: TTS_REUSE_0_OPS,
+};
+
+const TTS_BUMP_WRAP_1_OPS: &[TtsOp] = &[
+    TtsOp { kind: 0, args: &[1f64, 4f64, 4f64], res: &[0f64, 16f64, 0f64, 16f64, 0f64] },
+    TtsOp { kind: 1, args: &[1f64], res: &[1f64] },
+    TtsOp { kind: 1, args: &[1f64], res: &[2f64] },
+    TtsOp { kind: 3, args: &[1f64, 0f64, 4294967295f64], res: &[4294967295f64] },
+    TtsOp { kind: 5, args: &[1f64, 0f64], res: &[4294967295f64] },
+    TtsOp { kind: 2, args: &[1f64, 4294967294f64], res: &[4294967294f64] },
+    TtsOp { kind: 1, args: &[1f64], res: &[1f64] },
+    TtsOp { kind: 5, args: &[1f64, 0f64], res: &[0f64] },
+];
+pub const TTS_BUMP_WRAP_1: TtsScenario = TtsScenario {
+    name: "tts_bump_wrap_1",
+    ops: TTS_BUMP_WRAP_1_OPS,
+};
+
+const TTS_DISTINCT_GAMES_2_OPS: &[TtsOp] = &[
+    TtsOp { kind: 0, args: &[1f64, 2f64, 2f64], res: &[0f64, 4f64, 0f64, 4f64, 0f64] },
+    TtsOp { kind: 0, args: &[2f64, 4f64, 4f64], res: &[0f64, 16f64, 0f64, 16f64, 0f64] },
+    TtsOp { kind: 1, args: &[1f64], res: &[1f64] },
+    TtsOp { kind: 1, args: &[2f64], res: &[1f64] },
+    TtsOp { kind: 0, args: &[1f64, 2f64, 2f64], res: &[0f64, 4f64, 0f64, 4f64, 1f64] },
+    TtsOp { kind: 0, args: &[2f64, 4f64, 4f64], res: &[0f64, 16f64, 0f64, 16f64, 1f64] },
+];
+pub const TTS_DISTINCT_GAMES_2: TtsScenario = TtsScenario {
+    name: "tts_distinct_games_2",
+    ops: TTS_DISTINCT_GAMES_2_OPS,
+};
+
+const TTS_THROW_NEG_3_OPS: &[TtsOp] = &[
+    TtsOp { kind: 0, args: &[1f64, -1f64, 5f64], res: &[1f64] },
+];
+pub const TTS_THROW_NEG_3: TtsScenario = TtsScenario {
+    name: "tts_throw_neg_3",
+    ops: TTS_THROW_NEG_3_OPS,
+};
+
+const TTS_FRAC_TOTAL_4_OPS: &[TtsOp] = &[
+    TtsOp { kind: 0, args: &[1f64, 1.5f64, 1f64], res: &[0f64, 1f64, 0f64, 1f64, 0f64] },
+];
+pub const TTS_FRAC_TOTAL_4: TtsScenario = TtsScenario {
+    name: "tts_frac_total_4",
+    ops: TTS_FRAC_TOTAL_4_OPS,
+};
+
+const TTS_NAN_TOTAL_5_OPS: &[TtsOp] = &[
+    TtsOp { kind: 0, args: &[1f64, f64::NAN, 5f64], res: &[0f64, 0f64, 0f64, 0f64, 0f64] },
+];
+pub const TTS_NAN_TOTAL_5: TtsScenario = TtsScenario {
+    name: "tts_nan_total_5",
+    ops: TTS_NAN_TOTAL_5_OPS,
+};
+
+const TTS_TYPED_OOB_6_OPS: &[TtsOp] = &[
+    TtsOp { kind: 0, args: &[1f64, 2f64, 2f64], res: &[0f64, 4f64, 0f64, 4f64, 0f64] },
+    TtsOp { kind: 3, args: &[1f64, 1f64, 4294967301f64], res: &[5f64] },
+    TtsOp { kind: 5, args: &[1f64, 1f64], res: &[5f64] },
+    TtsOp { kind: 3, args: &[1f64, 99f64, 7f64], res: &[f64::NAN] },
+    TtsOp { kind: 5, args: &[1f64, 99f64], res: &[f64::NAN] },
+    TtsOp { kind: 6, args: &[1f64, 0f64, -1f64], res: &[-1f64] },
+    TtsOp { kind: 6, args: &[1f64, 1f64, 4294967295f64], res: &[-1f64] },
+];
+pub const TTS_TYPED_OOB_6: TtsScenario = TtsScenario {
+    name: "tts_typed_oob_6",
+    ops: TTS_TYPED_OOB_6_OPS,
+};
+
+const TTS_STACK_7_OPS: &[TtsOp] = &[
+    TtsOp { kind: 0, args: &[1f64, 2f64, 2f64], res: &[0f64, 4f64, 0f64, 4f64, 0f64] },
+    TtsOp { kind: 4, args: &[1f64, 10f64], res: &[1f64] },
+    TtsOp { kind: 4, args: &[1f64, 20f64], res: &[2f64] },
+];
+pub const TTS_STACK_7: TtsScenario = TtsScenario {
+    name: "tts_stack_7",
+    ops: TTS_STACK_7_OPS,
+};
+
+const TTS_INF_TOTAL_8_OPS: &[TtsOp] = &[
+    TtsOp { kind: 0, args: &[1f64, f64::INFINITY, 1f64], res: &[1f64] },
+];
+pub const TTS_INF_TOTAL_8: TtsScenario = TtsScenario {
+    name: "tts_inf_total_8",
+    ops: TTS_INF_TOTAL_8_OPS,
+};
+
+pub const TTS_SCENARIOS: &[TtsScenario] = &[
+    TTS_REUSE_0,
+    TTS_BUMP_WRAP_1,
+    TTS_DISTINCT_GAMES_2,
+    TTS_THROW_NEG_3,
+    TTS_FRAC_TOTAL_4,
+    TTS_NAN_TOTAL_5,
+    TTS_TYPED_OOB_6,
+    TTS_STACK_7,
+    TTS_INF_TOTAL_8,
+];
+

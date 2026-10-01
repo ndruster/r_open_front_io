@@ -59,6 +59,11 @@ rust/
 │   │   │                          (cellSize buckets keyed by `${cx}:${cy}`;
 │   │   │                          register/unregister/query + insertion-ordered
 │   │   │                          Map/Set dumps, rails keyed by refid)
+│   │   ├── tile_traversal_scratch.rs port of game/TileTraversalScratch.ts
+│   │   │                          (per-game generation-stamped visited buffer
+│   │   │                          + stack + cluster map, WeakMap-cached by
+│   │   │                          game refid; ToIndex allocation, shrink-keeps
+│   │   │                          reuse, 0xffffffff bump wrap)
 │   │   ├── wasm_probe.rs          `extern "C"` surface, feature-gated
 │   │   └── pathfinding/
 │   │       ├── mod.rs
@@ -580,6 +585,20 @@ desync, not a rounding nit. Two things enforce that here:
     scenarios cover the dumps (`debug_cells` / `debug_rail_cells`), re-
     registration, shared-cell ordering, cell sizes 1 / 2.5 / 100, and
     negative-radius empty queries.
+35. **`game/TileTraversalScratch.ts`** (`tile_traversal_scratch`) —
+    `tileTraversalScratch` + `bumpTraversalGeneration`: the shared per-game
+    traversal scratch (a generation-stamped `Uint32Array` visited buffer, a
+    reusable `stack`, an `Int32Array` cluster map) cached in a `WeakMap` keyed
+    by the `Game` object — modelled by a capture-assigned game refid. The
+    allocation runs JS `ToIndex` (`NaN`/`±0` → length 0, fractional truncates,
+    negative / `≥ 2^53` / `±Infinity` → `RangeError`, recorded as a `[1]` op
+    result); the reuse test `visited.length < totalTiles` keeps oversized
+    buffers on a shrinking game and reallocates (resetting `gen`) on a growing
+    one; `bump` wraps at `0xffffffff` with `visited.fill(0)` and `gen = 1`.
+    Element access follows typed-array semantics (`ToUint32`/`ToInt32` writes,
+    OOB writes dropped, OOB reads `undefined` → `NaN`). 9 scenarios cover
+    allocate/reuse/shrink/grow, the bump wrap, distinct games, the throw and
+    truncation boundaries, and typed-array OOB.
 
 Regenerate whenever a ported source changes:
 
@@ -613,7 +632,7 @@ node rust/tools/run_wasm_parity.mjs
 
 `wasm-probe` exposes the ported functions through `extern "C"` scalar
 entrypoints (`src/wasm_probe.rs`); the runner imports `data/vectors.json` and
-compares every value. Last run: **39,653 comparisons, all bit-identical**.
+compares every value. Last run: **39,737 comparisons, all bit-identical**.
 
 ### Windows: the linker environment
 

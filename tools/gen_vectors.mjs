@@ -162,6 +162,7 @@ const WM = await loadTs("src/core/game/WaterManager.ts");
 const GUU = await loadTs("src/core/game/GameUpdateUtils.ts");
 const RR = await loadTs("src/core/game/Railroad.ts");
 const RSG = await loadTs("src/core/game/RailroadSpatialGrid.ts");
+const TTS = await loadTs("src/core/game/TileTraversalScratch.ts");
 const { AStar } = await loadTs("src/core/pathfinding/algorithms/AStar.ts");
 const { AStarRail } = await loadTs("src/core/pathfinding/algorithms/AStar.Rail.ts");
 const { AStarWater } = await loadTs("src/core/pathfinding/algorithms/AStar.Water.ts");
@@ -1405,6 +1406,166 @@ runRSG("rsg_frac_cell", 10, 10, [
   [4],
   [3, 22, 0],
 ]);
+
+// --- TileTraversalScratch scenario runner -------------------------------------
+// Exercises the real TileTraversalScratch.ts through a stateful op stream. The
+// module caches a per-game scratch in a WeakMap keyed by the Game object, so
+// each scenario uses a fresh game stub `{ width, height }` (the Rust harness
+// reset() clears its cache between scenarios, matching a fresh WeakMap). A
+// persistent game object per refid keeps identity stable across ops (the
+// WeakMap keys on object identity, exactly like the railOf table in RSG).
+// kind 0 = tileTraversalScratch(refid, width, height) -> `[1]` (ToIndex throw)
+// or `[0, visited_len, stack_len, cluster_len, gen]`; 1 = bump(refid) -> `[gen]`;
+// 2 = set_gen(refid, g) -> `[gen]`; 3 = write_visited(refid, i, v) -> `[val]`;
+// 4 = push_stack(refid, tile) -> `[stack_len]`; 5 = read_visited(refid, i) ->
+// `[val]` (NaN for OOB); 6 = write_cluster(refid, i, v) -> `[val]`.
+const ttsScenarios = [];
+let ttsIdx = 0;
+function runTTS(name, games, ops) {
+  // games: { refid: [width, height] }. A persistent stub object per refid
+  // keeps WeakMap identity stable; kind 0 mutates its accessors to the recorded
+  // dims before calling tileTraversalScratch. The scratch returned by kind 0 is
+  // cached per refid and reused by kinds 1-6 (matching the Rust harness, whose
+  // non-alloc ops touch the existing scratch directly — they never re-run the
+  // grow-realloc check).
+  const gameObjs = new Map();
+  for (const [refid, [w, h]] of Object.entries(games)) {
+    gameObjs.set(Number(refid), { width: () => w, height: () => h });
+  }
+  const scratchByRefid = new Map();
+  const played = [];
+  for (const [k, ...a] of ops) {
+    let args, res;
+    const refid = a[0];
+    if (k === 0) {
+      // a = [refid, w, h]; set the game's dims before the call.
+      const [, w, h] = a;
+      const g = gameObjs.get(refid);
+      g.width = () => w;
+      g.height = () => h;
+      args = [refid, w, h];
+      try {
+        const s = TTS.tileTraversalScratch(g);
+        scratchByRefid.set(refid, s);
+        res = [0, s.visited.length, s.stack.length, s.clusterIndexMap.length, s.gen];
+      } catch {
+        res = [1];
+      }
+    } else {
+      const s = scratchByRefid.get(refid);
+      if (k === 1) {
+        args = [refid];
+        res = [TTS.bumpTraversalGeneration(s)];
+      } else if (k === 2) {
+        // set_gen: pre-arm the wrap by writing scratch.gen directly.
+        args = [refid, a[1]];
+        s.gen = a[1];
+        res = [s.gen];
+      } else if (k === 3) {
+        args = [refid, a[1], a[2]];
+        s.visited[a[1]] = a[2];
+        const v = s.visited[a[1]];
+        res = [v === undefined ? NaN : v];
+      } else if (k === 4) {
+        args = [refid, a[1]];
+        s.stack.push(a[1]);
+        res = [s.stack.length];
+      } else if (k === 5) {
+        args = [refid, a[1]];
+        const v = s.visited[a[1]];
+        res = [v === undefined ? NaN : v];
+      } else {
+        // kind 6: write_cluster
+        args = [refid, a[1], a[2]];
+        s.clusterIndexMap[a[1]] = a[2];
+        const v = s.clusterIndexMap[a[1]];
+        res = [v === undefined ? NaN : v];
+      }
+    }
+    played.push({ kind: k, args: args.flat().map(uenc), res: res.flat().map(uenc) });
+  }
+  ttsScenarios.push({ name: `${name}_${ttsIdx++}`, ops: played });
+}
+
+// 1. Allocate, reuse (same size), shrink keeps buffers, grow reallocates.
+runTTS(
+  "tts_reuse",
+  { 1: [2, 2] },
+  [
+    [0, 1, 2, 2], // -> [0,4,0,4,0]
+    [0, 1, 2, 2], // same size reuses
+    [0, 1, 1, 2], // shrink: keeps 4-slot buffers
+    [0, 1, 3, 3], // grow: reallocates, gen resets to 0
+  ],
+);
+
+// 2. Bump + wrap: arm gen just below the wrap, write visited, bump fills.
+runTTS(
+  "tts_bump_wrap",
+  { 1: [4, 4] },
+  [
+    [0, 1, 4, 4], // [0,16,0,16,0]
+    [1, 1],       // bump -> 1
+    [1, 1],       // bump -> 2
+    [3, 1, 0, 4_294_967_295], // visited[0] = 0xffffffff (ToUint32 -> 4294967295)
+    [5, 1, 0],    // read back -> 4294967295
+    [2, 1, 4_294_967_294], // arm wrap: gen = 0xfffffffe
+    [1, 1],       // bump -> 0xffffffff -> fill(0), gen=1
+    [5, 1, 0],    // visited[0] now 0
+  ],
+);
+
+// 3. Distinct games get distinct scratches.
+runTTS(
+  "tts_distinct_games",
+  { 1: [2, 2], 2: [4, 4] },
+  [
+    [0, 1, 2, 2], // game1 -> len 4
+    [0, 2, 4, 4], // game2 -> len 16
+    [1, 1],       // bump game1 -> 1
+    [1, 2],       // bump game2 -> 1 (independent gen)
+    [0, 1, 2, 2], // game1 still len 4, gen 1
+    [0, 2, 4, 4], // game2 still len 16, gen 1
+  ],
+);
+
+// 4. ToIndex throw on negative total.
+runTTS("tts_throw_neg", { 1: [-1, 5] }, [[0, 1, -1, 5]]);
+
+// 5. Fractional total truncates (no throw): 1.5*1 -> length 1.
+runTTS("tts_frac_total", { 1: [1.5, 1] }, [[0, 1, 1.5, 1]]);
+
+// 6. NaN total allocates length 0.
+runTTS("tts_nan_total", { 1: [NaN, 5] }, [[0, 1, NaN, 5]]);
+
+// 7. Typed-array OOB: in-range write/read, OOB write dropped, OOB read NaN.
+runTTS(
+  "tts_typed_oob",
+  { 1: [2, 2] },
+  [
+    [0, 1, 2, 2], // len 4
+    [3, 1, 1, 4_294_967_301], // ToUint32(4294967301) = 5
+    [5, 1, 1],    // read -> 5
+    [3, 1, 99, 7], // OOB write dropped
+    [5, 1, 99],   // OOB read -> NaN
+    [6, 1, 0, -1], // cluster[0] = -1 (ToInt32)
+    [6, 1, 1, 4_294_967_295], // ToInt32(0xffffffff) = -1
+  ],
+);
+
+// 8. Stack push observable (length only).
+runTTS(
+  "tts_stack",
+  { 1: [2, 2] },
+  [
+    [0, 1, 2, 2],
+    [4, 1, 10], // push -> len 1
+    [4, 1, 20], // push -> len 2
+  ],
+);
+
+// 9. Infinity total throws.
+runTTS("tts_inf_total", { 1: [Infinity, 1] }, [[0, 1, Infinity, 1]]);
 
 // --- PatternDecoder scenario runner -------------------------------------------
 // Exercises the real PatternDecoder.ts decode + isPrimary through the shared
@@ -4693,6 +4854,7 @@ const structures = {
   gameupdateutils: guScenarios,
   railroad: rrScenarios,
   railgrid: rsgScenarios,
+  tiletravscratch: ttsScenarios,
   astar: asScenarios,
   rail: railScenarios,
   water: waterScenarios,
@@ -6655,6 +6817,39 @@ for (const s of structures.railgrid) {
 }
 L.push("pub const RSG_SCENARIOS: &[RsgScenario] = &[");
 for (const s of structures.railgrid) L.push(`    ${s.name.toUpperCase()},`);
+L.push("];");
+L.push("");
+
+L.push("/// One `TileTraversalScratch.ts` op: `kind` + flat `args` / `res` token");
+L.push("/// streams (see the Rust `RigHarness::run_op` docs).");
+L.push("pub struct TtsOp {");
+L.push("    pub kind: u8,");
+L.push("    pub args: &'static [f64],");
+L.push("    pub res: &'static [f64],");
+L.push("}");
+L.push("/// One scratch scenario: the op stream replayed against a fresh harness");
+L.push("/// (kind 0 allocates / reuses a per-game scratch).");
+L.push("pub struct TtsScenario {");
+L.push("    pub name: &'static str,");
+L.push("    pub ops: &'static [TtsOp],");
+L.push("}");
+L.push("");
+for (const s of structures.tiletravscratch) {
+  const id = s.name.toUpperCase();
+  L.push(`const ${id}_OPS: &[TtsOp] = &[`);
+  for (const o of s.ops)
+    L.push(
+      `    TtsOp { kind: ${o.kind}, args: &[${o.args.map(utilResLit).join(", ")}], res: &[${o.res.map(utilResLit).join(", ")}] },`,
+    );
+  L.push("];");
+  L.push(`pub const ${id}: TtsScenario = TtsScenario {`);
+  L.push(`    name: "${s.name}",`);
+  L.push(`    ops: ${id}_OPS,`);
+  L.push("};");
+  L.push("");
+}
+L.push("pub const TTS_SCENARIOS: &[TtsScenario] = &[");
+for (const s of structures.tiletravscratch) L.push(`    ${s.name.toUpperCase()},`);
 L.push("];");
 L.push("");
 

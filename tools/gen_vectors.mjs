@@ -150,6 +150,7 @@ const { MinHeap, BucketQueue } = await loadTs(
 );
 const { FlatBinaryHeap } = await loadTs("src/core/execution/utils/FlatBinaryHeap.ts");
 const { BFSGrid } = await loadTs("src/core/pathfinding/algorithms/BFS.Grid.ts");
+const { BFS } = await loadTs("src/core/pathfinding/algorithms/BFS.ts");
 const { AStar } = await loadTs("src/core/pathfinding/algorithms/AStar.ts");
 const { AStarRail } = await loadTs("src/core/pathfinding/algorithms/AStar.Rail.ts");
 const { AStarWater } = await loadTs("src/core/pathfinding/algorithms/AStar.Water.ts");
@@ -194,6 +195,15 @@ const enc = (v) =>
           : Object.is(v, -0)
             ? "-0"
             : v;
+
+// Like enc(), but also maps the infinities to tokens (JSON.stringify would
+// otherwise turn them into null and the host could not tell them apart).
+const uenc = (v) =>
+  v === Number.POSITIVE_INFINITY
+    ? "i"
+    : v === Number.NEGATIVE_INFINITY
+      ? "-i"
+      : enc(v);
 
 function play(inst, ops) {
   return ops.map(([k, a, b]) => {
@@ -412,6 +422,79 @@ captureGrid("bg_dist1", 3, 3, 4, -1, 1, 0, -1);
 // 1x70000 corridor: exercises the Uint16Array distance wrap (depth 69999 ->
 // 4463). Too long to inline; verified via its visit-stream hash.
 captureGrid("bg_corridor_wrap", 70_000, 1, 0, -1, Infinity, 0, -1);
+
+// --- BFS scenario runner (generic BFS.ts) ------------------------------------
+// The real TS `BFS` over a Map-keyed edge table (Map uses SameValueZero, so a
+// NaN key is reachable — the Rust replay mirrors that with an is_nan match).
+// The visitor records the full (node, dist) stream and implements the tri-state
+// by `mode`: 0 explore-all, 1 reject `blocker` (return null), 2 found `blocker`
+// (return `foundval`). `foundval` may be 0 to pin that a falsy non-null return
+// still short-circuits. Starts are always passed as an array (the scalar/array
+// split is not observable in BFS.ts — Array.isArray just normalises).
+const bfsScenarios = [];
+function captureBFS(name, edges, starts, maxd, mode, blocker, foundval) {
+  const map = new Map();
+  for (const [k, nb] of edges) map.set(k, nb);
+  const adapter = { neighbors: (node) => (map.has(node) ? map.get(node).slice() : []) };
+  const bfs = new BFS(adapter);
+  const visits = [];
+  const visitor = (node, dist) => {
+    visits.push([node, dist]);
+    if (mode === 1 && node === blocker) return null;
+    if (mode === 2 && node === blocker) return foundval;
+    return undefined;
+  };
+  const start = starts.length === 1 ? starts[0] : starts;
+  const r = bfs.search(start, maxd, visitor);
+  bfsScenarios.push({
+    name,
+    edges: edges.map(([k, nb]) => [uenc(k), nb.map(uenc)]),
+    starts: starts.map(uenc),
+    maxd: uenc(maxd),
+    mode,
+    blocker: uenc(blocker),
+    foundval: uenc(foundval),
+    visits: visits.map(([n, d]) => [uenc(n), uenc(d)]),
+    result: r === null || r === undefined ? "u" : uenc(r),
+  });
+}
+// 3x3 grid, N/S/W/E order (twin of the BFSGrid adapter).
+const BFS_GRID3 = (() => {
+  const e = [];
+  for (let n = 0; n < 9; n++) {
+    const nb = [];
+    if (n >= 3) nb.push(n - 3);
+    if (n < 6) nb.push(n + 3);
+    if (n % 3 !== 0) nb.push(n - 1);
+    if (n % 3 !== 2) nb.push(n + 1);
+    e.push([n, nb]);
+  }
+  return e;
+})();
+captureBFS("bfs_grid3x3", BFS_GRID3, [4], Infinity, 0, -1, 0);
+// Duplicate start: Set dedups, queue pushes twice -> visitor sees 0 at dist 0
+// twice (the core JS-ism of the starts loop).
+captureBFS("bfs_dup_start", BFS_GRID3, [0, 0], Infinity, 0, -1, 0);
+captureBFS("bfs_found42", BFS_GRID3, [4], Infinity, 2, 7, 42);
+// Falsy found value still short-circuits (0 !== null && 0 !== undefined).
+captureBFS("bfs_found_zero", BFS_GRID3, [4], Infinity, 2, 7, 0);
+// Reject 1: its children 0/2 arrive only later via 3/5 at dist 2.
+captureBFS("bfs_reject1", BFS_GRID3, [4], Infinity, 1, 1, 0);
+// Depth clip: dist-1 nodes still visited, their nextDist=2 > 1 clips.
+captureBFS("bfs_dist1", BFS_GRID3, [4], 1, 0, -1, 0);
+// NaN bound: `nextDist > NaN` is false -> never clips -> full 9 visits.
+captureBFS("bfs_nan_maxd", BFS_GRID3, [4], NaN, 0, -1, 0);
+// Self-loop + duplicate neighbours collapse at enqueue-time marking.
+captureBFS("bfs_selfloop", [[0, [0, 1, 1, 2]]], [0], Infinity, 0, -1, 0);
+// Empty start array -> queue empty -> no visits, null.
+captureBFS("bfs_empty_starts", BFS_GRID3, [], Infinity, 0, -1, 0);
+// Fractional / negative nodes flow through unchanged.
+captureBFS("bfs_nonint", [[-1.5, [0.25]], [0.25, [-1.5, 7.75]], [7.75, []]], [-1.5], Infinity, 0, -1, 0);
+// NaN nodes: two NaN starts are one Set key but two queue entries; the NaN
+// neighbour of 1 is already visited, so it is not re-enqueued.
+captureBFS("bfs_nan_nodes", [[NaN, [1]], [1, [NaN]]], [NaN, NaN], Infinity, 0, -1, 0);
+// Two disconnected components seeded by a multi-start.
+captureBFS("bfs_multi_comp", [[10, [11]], [11, []], [20, [21]], [21, []]], [10, 20], Infinity, 0, -1, 0);
 
 // --- AStar scenario runner ---------------------------------------------------
 // The grid adapter below is the *twin* of `pathfinding::a_star::GridAdapter`
@@ -1196,14 +1279,6 @@ runTs("ts_clear", [1, 2, 3], [
 //  13 boundingBoxTiles [w,h,center,radius] -> [tiles...]
 //  14 calculateBoundingBoxCenter [w,h,tile...] -> [cx,cy]
 const utilScenarios = [];
-// Like enc(), but also maps the infinities to tokens (JSON.stringify would
-// otherwise turn them into null and the host could not tell them apart).
-const uenc = (v) =>
-  v === Number.POSITIVE_INFINITY
-    ? "i"
-    : v === Number.NEGATIVE_INFINITY
-      ? "-i"
-      : enc(v);
 function pushUtil(name, kind, args, res, strs = [], status = 0) {
   utilScenarios.push({ name, kind, args: args.map(uenc), strs, status, res: res.map(uenc) });
 }
@@ -3125,6 +3200,7 @@ const structures = {
   bucket: bqScenarios,
   flatheap: fbhScenarios,
   bfsgrid: bgScenarios,
+  bfs: bfsScenarios,
   astar: asScenarios,
   rail: railScenarios,
   water: waterScenarios,
@@ -4657,6 +4733,61 @@ for (const s of structures.smoothingwater) {
 }
 L.push("pub const SMOOTHING_WATER_SCENARIOS: &[SmoothingWaterScenario] = &[");
 for (const s of structures.smoothingwater) L.push(`    ${s.name.toUpperCase()},`);
+L.push("];");
+L.push("");
+
+L.push("/// Generic BFS scenario (BFS.ts). `edges` is a flat SameValueZero-keyed");
+L.push("/// table: entry i is [key, nb_0, .., nb_{deg_i-1}] with the key count");
+L.push("/// carried separately in `edge_degrees`. Tokens n/-0/i/-i decode to");
+L.push("/// NaN/-0/+Inf/-Inf. `visits` is the flat [node, dist] visitor stream;");
+L.push("/// `has_result`/`result` carry the search return (null -> false).");
+L.push("pub struct BfsTsScenario {");
+L.push("    pub name: &'static str,");
+L.push("    pub edges: &'static [f64],");
+L.push("    pub edge_degrees: &'static [usize],");
+L.push("    pub starts: &'static [f64],");
+L.push("    pub max_d: f64,");
+L.push("    pub mode: u8,");
+L.push("    pub blocker: f64,");
+L.push("    pub foundval: f64,");
+L.push("    pub visits: &'static [f64],");
+L.push("    pub has_result: bool,");
+L.push("    pub result: f64,");
+L.push("}");
+L.push("");
+const bfsTok = (v) => {
+  if (v === "n") return "f64::NAN";
+  if (v === "-0") return "-0.0f64";
+  if (v === "i") return "f64::INFINITY";
+  if (v === "-i") return "f64::NEG_INFINITY";
+  return f64(v);
+};
+for (const s of structures.bfs) {
+  const id = s.name.toUpperCase();
+  const flat = [];
+  const degrees = [];
+  for (const [k, nb] of s.edges) {
+    flat.push(bfsTok(k));
+    degrees.push(nb.length);
+    for (const n of nb) flat.push(bfsTok(n));
+  }
+  L.push(`pub const ${id}: BfsTsScenario = BfsTsScenario {`);
+  L.push(`    name: "${s.name}",`);
+  L.push(`    edges: &[${flat.join(", ")}],`);
+  L.push(`    edge_degrees: &[${degrees.map((d) => `${d}usize`).join(", ")}],`);
+  L.push(`    starts: &[${s.starts.map(bfsTok).join(", ")}],`);
+  L.push(`    max_d: ${bfsTok(s.maxd)},`);
+  L.push(`    mode: ${s.mode}u8,`);
+  L.push(`    blocker: ${bfsTok(s.blocker)},`);
+  L.push(`    foundval: ${bfsTok(s.foundval)},`);
+  L.push(`    visits: &[${s.visits.flat().map(bfsTok).join(", ")}],`);
+  L.push(`    has_result: ${s.result !== "u"},`);
+  L.push(`    result: ${s.result === "u" ? "0.0f64" : bfsTok(s.result)},`);
+  L.push("};");
+  L.push("");
+}
+L.push("pub const BFS_TS_SCENARIOS: &[BfsTsScenario] = &[");
+for (const s of structures.bfs) L.push(`    ${s.name.toUpperCase()},`);
 L.push("];");
 L.push("");
 

@@ -35,6 +35,7 @@ rust/
 │   │       ├── priority_queue.rs  port of algorithms/PriorityQueue.ts
 │   │       ├── flat_heap.rs       port of execution/utils/FlatBinaryHeap.ts
 │   │       ├── bfs_grid.rs        port of algorithms/BFS.Grid.ts
+│   │       ├── bfs.rs             port of algorithms/BFS.ts (generic BFS)
 │   │       ├── a_star.rs          port of algorithms/AStar.ts (+ GridAdapter)
 │   │       ├── rail.rs            port of algorithms/AStar.Rail.ts
 │   │       │                      (+ TerrainMap: GameMapImpl's packed bytes)
@@ -371,6 +372,19 @@ desync, not a rounding nit. Two things enforce that here:
     >50-tile partial splice, and the pass-3 subtlety where a failing
     `canSee` still leaves `farthest` at its `lo` initialisation — so a
     shallow band blocks smoothing without shortening the path.
+23. **`BFS.ts`** (`pathfinding::bfs`) is the generic graph BFS with a visitor
+    callback (`T = f64`, adapter trait `BfsAdapter::neighbors`). JS-isms
+    pinned: the starts loop does `visited.add(s); queue.push(s)` unconditionally,
+    so a **duplicate start is a Set no-op yet still enqueued** — the visitor
+    sees that node once per occurrence; the tri-state return treats any
+    non-null/non-undefined value (including falsy `0`) as found; the depth
+    clip is a JS `>` comparison, **false against `NaN`**, so a NaN bound never
+    clips (a `!(<=)` rewrite would diverge); `visited` is a `Set` with
+    SameValueZero (`NaN` dedupes against `NaN`, `+0`/`-0` are one key); and
+    neighbours are marked visited at *enqueue* time, collapsing self-loops and
+    repeated neighbours. The twelve scenarios pin the duplicate-start double
+    visit, the falsy-found short-circuit, the reject-without-expansion dist
+    shift, the NaN bound, NaN-node dedup, and the empty-start no-op.
 
 Regenerate whenever a ported source changes:
 
@@ -404,7 +418,7 @@ node rust/tools/run_wasm_parity.mjs
 
 `wasm-probe` exposes the ported functions through `extern "C"` scalar
 entrypoints (`src/wasm_probe.rs`); the runner imports `data/vectors.json` and
-compares every value. Last run: **31,194 comparisons, all bit-identical**.
+compares every value. Last run: **31,342 comparisons, all bit-identical**.
 
 ### Windows: the linker environment
 

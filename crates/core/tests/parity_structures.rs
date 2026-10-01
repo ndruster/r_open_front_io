@@ -20,6 +20,7 @@ use openfront_core::pathfinding::abstract_graph::{
 };
 use openfront_core::pathfinding::abstract_graph_astar::AbstractGraphAStar;
 use openfront_core::pathfinding::a_star::{AStar, GridAdapter};
+use openfront_core::pathfinding::bfs::BfsAdapter;
 use openfront_core::pathfinding::bfs_grid::{BfsGrid, Visit};
 use openfront_core::pathfinding::connected_components::ConnectedComponents;
 use openfront_core::pathfinding::flat_heap::FlatBinaryHeap;
@@ -2054,6 +2055,86 @@ fn replay_smoothing_water_transformer_scenarios() {
                 ),
             }
             qi += 1;
+        }
+    }
+}
+
+// Generic BFS (BFS.ts): replays the recorded (node, dist) visitor stream and
+// the search return. The edge table is keyed with SameValueZero (NaN keys are
+// reachable), mirroring the capture runner's `Map`.
+struct TableAdapter {
+    keys: Vec<f64>,
+    nbrs: Vec<Vec<f64>>,
+}
+
+impl BfsAdapter for TableAdapter {
+    fn neighbors(&mut self, node: f64) -> Vec<f64> {
+        for (i, &k) in self.keys.iter().enumerate() {
+            if k == node || (k.is_nan() && node.is_nan()) {
+                return self.nbrs[i].clone();
+            }
+        }
+        Vec::new()
+    }
+}
+
+fn same_f64(a: f64, b: f64) -> bool {
+    a == b || (a.is_nan() && b.is_nan())
+}
+
+#[test]
+fn replay_bfs_ts_scenarios() {
+    use openfront_core::pathfinding::bfs::Bfs as BfsTs;
+    use openfront_core::pathfinding::PathStart;
+    for s in vectors::BFS_TS_SCENARIOS {
+        // Rebuild the edge table from the flat encoding.
+        let mut keys = Vec::new();
+        let mut nbrs = Vec::new();
+        let mut p = 0usize;
+        for &deg in s.edge_degrees {
+            keys.push(s.edges[p]);
+            p += 1;
+            nbrs.push(s.edges[p..p + deg].to_vec());
+            p += deg;
+        }
+        assert_eq!(p, s.edges.len(), "{} edge table length", s.name);
+
+        let mut bfs = BfsTs::new(TableAdapter { keys, nbrs });
+        let mut visits = Vec::new();
+        let got = bfs.search(
+            PathStart::Multi(s.starts),
+            s.max_d,
+            |n, d| -> Visit<f64> {
+                visits.push((n, d));
+                if s.mode == 1 && same_f64(n, s.blocker) {
+                    Visit::Reject
+                } else if s.mode == 2 && same_f64(n, s.blocker) {
+                    Visit::Found(s.foundval)
+                } else {
+                    Visit::Explore
+                }
+            },
+        );
+
+        assert_eq!(visits.len(), s.visits.len() / 2, "{} visit count", s.name);
+        for (i, &(n, d)) in visits.iter().enumerate() {
+            assert!(
+                same_f64(n, s.visits[2 * i]),
+                "{} visit[{i}] node got {n} want {}",
+                s.name,
+                s.visits[2 * i]
+            );
+            assert!(
+                same_f64(d, s.visits[2 * i + 1]),
+                "{} visit[{i}] dist got {d} want {}",
+                s.name,
+                s.visits[2 * i + 1]
+            );
+        }
+        match (s.has_result, got) {
+            (false, None) => {}
+            (true, Some(v)) => assert!(same_f64(v, s.result), "{} result", s.name),
+            (want, got) => panic!("{} result mismatch: want {want}, got {got:?}", s.name),
         }
     }
 }

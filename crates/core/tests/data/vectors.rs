@@ -15781,3 +15781,205 @@ pub const SMOOTHING_WATER_SCENARIOS: &[SmoothingWaterScenario] = &[
     SWT_LONG,
 ];
 
+/// Generic BFS scenario (BFS.ts). `edges` is a flat SameValueZero-keyed
+/// table: entry i is [key, nb_0, .., nb_{deg_i-1}] with the key count
+/// carried separately in `edge_degrees`. Tokens n/-0/i/-i decode to
+/// NaN/-0/+Inf/-Inf. `visits` is the flat [node, dist] visitor stream;
+/// `has_result`/`result` carry the search return (null -> false).
+pub struct BfsTsScenario {
+    pub name: &'static str,
+    pub edges: &'static [f64],
+    pub edge_degrees: &'static [usize],
+    pub starts: &'static [f64],
+    pub max_d: f64,
+    pub mode: u8,
+    pub blocker: f64,
+    pub foundval: f64,
+    pub visits: &'static [f64],
+    pub has_result: bool,
+    pub result: f64,
+}
+
+pub const BFS_GRID3X3: BfsTsScenario = BfsTsScenario {
+    name: "bfs_grid3x3",
+    edges: &[0f64, 3f64, 1f64, 1f64, 4f64, 0f64, 2f64, 2f64, 5f64, 1f64, 3f64, 0f64, 6f64, 4f64, 4f64, 1f64, 7f64, 3f64, 5f64, 5f64, 2f64, 8f64, 4f64, 6f64, 3f64, 7f64, 7f64, 4f64, 6f64, 8f64, 8f64, 5f64, 7f64],
+    edge_degrees: &[2usize, 3usize, 2usize, 3usize, 4usize, 3usize, 2usize, 3usize, 2usize],
+    starts: &[4f64],
+    max_d: f64::INFINITY,
+    mode: 0u8,
+    blocker: -1f64,
+    foundval: 0f64,
+    visits: &[4f64, 0f64, 1f64, 1f64, 7f64, 1f64, 3f64, 1f64, 5f64, 1f64, 0f64, 2f64, 2f64, 2f64, 6f64, 2f64, 8f64, 2f64],
+    has_result: false,
+    result: 0.0f64,
+};
+
+pub const BFS_DUP_START: BfsTsScenario = BfsTsScenario {
+    name: "bfs_dup_start",
+    edges: &[0f64, 3f64, 1f64, 1f64, 4f64, 0f64, 2f64, 2f64, 5f64, 1f64, 3f64, 0f64, 6f64, 4f64, 4f64, 1f64, 7f64, 3f64, 5f64, 5f64, 2f64, 8f64, 4f64, 6f64, 3f64, 7f64, 7f64, 4f64, 6f64, 8f64, 8f64, 5f64, 7f64],
+    edge_degrees: &[2usize, 3usize, 2usize, 3usize, 4usize, 3usize, 2usize, 3usize, 2usize],
+    starts: &[0f64, 0f64],
+    max_d: f64::INFINITY,
+    mode: 0u8,
+    blocker: -1f64,
+    foundval: 0f64,
+    visits: &[0f64, 0f64, 0f64, 0f64, 3f64, 1f64, 1f64, 1f64, 6f64, 2f64, 4f64, 2f64, 2f64, 2f64, 7f64, 3f64, 5f64, 3f64, 8f64, 4f64],
+    has_result: false,
+    result: 0.0f64,
+};
+
+pub const BFS_FOUND42: BfsTsScenario = BfsTsScenario {
+    name: "bfs_found42",
+    edges: &[0f64, 3f64, 1f64, 1f64, 4f64, 0f64, 2f64, 2f64, 5f64, 1f64, 3f64, 0f64, 6f64, 4f64, 4f64, 1f64, 7f64, 3f64, 5f64, 5f64, 2f64, 8f64, 4f64, 6f64, 3f64, 7f64, 7f64, 4f64, 6f64, 8f64, 8f64, 5f64, 7f64],
+    edge_degrees: &[2usize, 3usize, 2usize, 3usize, 4usize, 3usize, 2usize, 3usize, 2usize],
+    starts: &[4f64],
+    max_d: f64::INFINITY,
+    mode: 2u8,
+    blocker: 7f64,
+    foundval: 42f64,
+    visits: &[4f64, 0f64, 1f64, 1f64, 7f64, 1f64],
+    has_result: true,
+    result: 42f64,
+};
+
+pub const BFS_FOUND_ZERO: BfsTsScenario = BfsTsScenario {
+    name: "bfs_found_zero",
+    edges: &[0f64, 3f64, 1f64, 1f64, 4f64, 0f64, 2f64, 2f64, 5f64, 1f64, 3f64, 0f64, 6f64, 4f64, 4f64, 1f64, 7f64, 3f64, 5f64, 5f64, 2f64, 8f64, 4f64, 6f64, 3f64, 7f64, 7f64, 4f64, 6f64, 8f64, 8f64, 5f64, 7f64],
+    edge_degrees: &[2usize, 3usize, 2usize, 3usize, 4usize, 3usize, 2usize, 3usize, 2usize],
+    starts: &[4f64],
+    max_d: f64::INFINITY,
+    mode: 2u8,
+    blocker: 7f64,
+    foundval: 0f64,
+    visits: &[4f64, 0f64, 1f64, 1f64, 7f64, 1f64],
+    has_result: true,
+    result: 0f64,
+};
+
+pub const BFS_REJECT1: BfsTsScenario = BfsTsScenario {
+    name: "bfs_reject1",
+    edges: &[0f64, 3f64, 1f64, 1f64, 4f64, 0f64, 2f64, 2f64, 5f64, 1f64, 3f64, 0f64, 6f64, 4f64, 4f64, 1f64, 7f64, 3f64, 5f64, 5f64, 2f64, 8f64, 4f64, 6f64, 3f64, 7f64, 7f64, 4f64, 6f64, 8f64, 8f64, 5f64, 7f64],
+    edge_degrees: &[2usize, 3usize, 2usize, 3usize, 4usize, 3usize, 2usize, 3usize, 2usize],
+    starts: &[4f64],
+    max_d: f64::INFINITY,
+    mode: 1u8,
+    blocker: 1f64,
+    foundval: 0f64,
+    visits: &[4f64, 0f64, 1f64, 1f64, 7f64, 1f64, 3f64, 1f64, 5f64, 1f64, 6f64, 2f64, 8f64, 2f64, 0f64, 2f64, 2f64, 2f64],
+    has_result: false,
+    result: 0.0f64,
+};
+
+pub const BFS_DIST1: BfsTsScenario = BfsTsScenario {
+    name: "bfs_dist1",
+    edges: &[0f64, 3f64, 1f64, 1f64, 4f64, 0f64, 2f64, 2f64, 5f64, 1f64, 3f64, 0f64, 6f64, 4f64, 4f64, 1f64, 7f64, 3f64, 5f64, 5f64, 2f64, 8f64, 4f64, 6f64, 3f64, 7f64, 7f64, 4f64, 6f64, 8f64, 8f64, 5f64, 7f64],
+    edge_degrees: &[2usize, 3usize, 2usize, 3usize, 4usize, 3usize, 2usize, 3usize, 2usize],
+    starts: &[4f64],
+    max_d: 1f64,
+    mode: 0u8,
+    blocker: -1f64,
+    foundval: 0f64,
+    visits: &[4f64, 0f64, 1f64, 1f64, 7f64, 1f64, 3f64, 1f64, 5f64, 1f64],
+    has_result: false,
+    result: 0.0f64,
+};
+
+pub const BFS_NAN_MAXD: BfsTsScenario = BfsTsScenario {
+    name: "bfs_nan_maxd",
+    edges: &[0f64, 3f64, 1f64, 1f64, 4f64, 0f64, 2f64, 2f64, 5f64, 1f64, 3f64, 0f64, 6f64, 4f64, 4f64, 1f64, 7f64, 3f64, 5f64, 5f64, 2f64, 8f64, 4f64, 6f64, 3f64, 7f64, 7f64, 4f64, 6f64, 8f64, 8f64, 5f64, 7f64],
+    edge_degrees: &[2usize, 3usize, 2usize, 3usize, 4usize, 3usize, 2usize, 3usize, 2usize],
+    starts: &[4f64],
+    max_d: f64::NAN,
+    mode: 0u8,
+    blocker: -1f64,
+    foundval: 0f64,
+    visits: &[4f64, 0f64, 1f64, 1f64, 7f64, 1f64, 3f64, 1f64, 5f64, 1f64, 0f64, 2f64, 2f64, 2f64, 6f64, 2f64, 8f64, 2f64],
+    has_result: false,
+    result: 0.0f64,
+};
+
+pub const BFS_SELFLOOP: BfsTsScenario = BfsTsScenario {
+    name: "bfs_selfloop",
+    edges: &[0f64, 0f64, 1f64, 1f64, 2f64],
+    edge_degrees: &[4usize],
+    starts: &[0f64],
+    max_d: f64::INFINITY,
+    mode: 0u8,
+    blocker: -1f64,
+    foundval: 0f64,
+    visits: &[0f64, 0f64, 1f64, 1f64, 2f64, 1f64],
+    has_result: false,
+    result: 0.0f64,
+};
+
+pub const BFS_EMPTY_STARTS: BfsTsScenario = BfsTsScenario {
+    name: "bfs_empty_starts",
+    edges: &[0f64, 3f64, 1f64, 1f64, 4f64, 0f64, 2f64, 2f64, 5f64, 1f64, 3f64, 0f64, 6f64, 4f64, 4f64, 1f64, 7f64, 3f64, 5f64, 5f64, 2f64, 8f64, 4f64, 6f64, 3f64, 7f64, 7f64, 4f64, 6f64, 8f64, 8f64, 5f64, 7f64],
+    edge_degrees: &[2usize, 3usize, 2usize, 3usize, 4usize, 3usize, 2usize, 3usize, 2usize],
+    starts: &[],
+    max_d: f64::INFINITY,
+    mode: 0u8,
+    blocker: -1f64,
+    foundval: 0f64,
+    visits: &[],
+    has_result: false,
+    result: 0.0f64,
+};
+
+pub const BFS_NONINT: BfsTsScenario = BfsTsScenario {
+    name: "bfs_nonint",
+    edges: &[-1.5f64, 0.25f64, 0.25f64, -1.5f64, 7.75f64, 7.75f64],
+    edge_degrees: &[1usize, 2usize, 0usize],
+    starts: &[-1.5f64],
+    max_d: f64::INFINITY,
+    mode: 0u8,
+    blocker: -1f64,
+    foundval: 0f64,
+    visits: &[-1.5f64, 0f64, 0.25f64, 1f64, 7.75f64, 2f64],
+    has_result: false,
+    result: 0.0f64,
+};
+
+pub const BFS_NAN_NODES: BfsTsScenario = BfsTsScenario {
+    name: "bfs_nan_nodes",
+    edges: &[f64::NAN, 1f64, 1f64, f64::NAN],
+    edge_degrees: &[1usize, 1usize],
+    starts: &[f64::NAN, f64::NAN],
+    max_d: f64::INFINITY,
+    mode: 0u8,
+    blocker: -1f64,
+    foundval: 0f64,
+    visits: &[f64::NAN, 0f64, f64::NAN, 0f64, 1f64, 1f64],
+    has_result: false,
+    result: 0.0f64,
+};
+
+pub const BFS_MULTI_COMP: BfsTsScenario = BfsTsScenario {
+    name: "bfs_multi_comp",
+    edges: &[10f64, 11f64, 11f64, 20f64, 21f64, 21f64],
+    edge_degrees: &[1usize, 0usize, 1usize, 0usize],
+    starts: &[10f64, 20f64],
+    max_d: f64::INFINITY,
+    mode: 0u8,
+    blocker: -1f64,
+    foundval: 0f64,
+    visits: &[10f64, 0f64, 20f64, 0f64, 11f64, 1f64, 21f64, 1f64],
+    has_result: false,
+    result: 0.0f64,
+};
+
+pub const BFS_TS_SCENARIOS: &[BfsTsScenario] = &[
+    BFS_GRID3X3,
+    BFS_DUP_START,
+    BFS_FOUND42,
+    BFS_FOUND_ZERO,
+    BFS_REJECT1,
+    BFS_DIST1,
+    BFS_NAN_MAXD,
+    BFS_SELFLOOP,
+    BFS_EMPTY_STARTS,
+    BFS_NONINT,
+    BFS_NAN_NODES,
+    BFS_MULTI_COMP,
+];
+

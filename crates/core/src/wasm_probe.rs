@@ -3165,3 +3165,140 @@ pub extern "C" fn probe_swt_seen_at(i: usize) -> f64 {
 pub extern "C" fn probe_swt_seen_goal() -> f64 {
     SWT_SEEN.with(|s| s.borrow().as_ref().unwrap().2)
 }
+
+// ========================= P21: BFS (BFS.ts) ==================================
+
+thread_local! {
+    /// Flat edge table: `BFS_EDGE_KEYS[i]` has neighbours `BFS_EDGE_NBS[i]`.
+    static BFS_EDGE_KEYS: std::cell::RefCell<Vec<f64>> =
+        const { std::cell::RefCell::new(Vec::new()) };
+    static BFS_EDGE_NBS: std::cell::RefCell<Vec<Vec<f64>>> =
+        const { std::cell::RefCell::new(Vec::new()) };
+    /// The neighbour list currently being built (consumed by `probe_bfs_edge_end`).
+    static BFS_EDGE_CUR: std::cell::RefCell<Vec<f64>> =
+        const { std::cell::RefCell::new(Vec::new()) };
+    static BFS_STARTS: std::cell::RefCell<Vec<f64>> =
+        const { std::cell::RefCell::new(Vec::new()) };
+    /// Recorded visitor stream as flat [node, dist] pairs.
+    static BFS_VISITS: std::cell::RefCell<Vec<f64>> =
+        const { std::cell::RefCell::new(Vec::new()) };
+    static BFS_RESULT: std::cell::RefCell<Option<f64>> =
+        const { std::cell::RefCell::new(None) };
+}
+
+struct ProbeBfsAdapter {
+    keys: Vec<f64>,
+    nbrs: Vec<Vec<f64>>,
+}
+
+impl crate::pathfinding::bfs::BfsAdapter for ProbeBfsAdapter {
+    fn neighbors(&mut self, node: f64) -> Vec<f64> {
+        for (i, &k) in self.keys.iter().enumerate() {
+            if k == node || (k.is_nan() && node.is_nan()) {
+                return self.nbrs[i].clone();
+            }
+        }
+        Vec::new()
+    }
+}
+
+/// Clear the edge table.
+#[no_mangle]
+pub extern "C" fn probe_bfs_edge_reset() {
+    BFS_EDGE_KEYS.with(|k| k.borrow_mut().clear());
+    BFS_EDGE_NBS.with(|n| n.borrow_mut().clear());
+    BFS_EDGE_CUR.with(|c| c.borrow_mut().clear());
+}
+
+/// Begin an edge entry keyed by `k` (neighbours follow via `probe_bfs_edge_nb`).
+#[no_mangle]
+pub extern "C"
+fn probe_bfs_edge_key(k: f64) {
+    BFS_EDGE_CUR.with(|c| c.borrow_mut().clear());
+    BFS_EDGE_KEYS.with(|ks| ks.borrow_mut().push(k));
+}
+
+/// Append one neighbour to the current edge entry.
+#[no_mangle]
+pub extern "C"
+fn probe_bfs_edge_nb(n: f64) {
+    BFS_EDGE_CUR.with(|c| c.borrow_mut().push(n));
+}
+
+/// Finalise the current edge entry (call after its last `probe_bfs_edge_nb`).
+#[no_mangle]
+pub extern "C"
+fn probe_bfs_edge_end() {
+    let cur = BFS_EDGE_CUR.with(|c| c.borrow().clone());
+    BFS_EDGE_NBS.with(|n| n.borrow_mut().push(cur));
+}
+
+/// Clear the per-run start / visit / result buffers.
+#[no_mangle]
+pub extern "C" fn probe_bfs_reset() {
+    BFS_STARTS.with(|s| s.borrow_mut().clear());
+    BFS_VISITS.with(|v| v.borrow_mut().clear());
+    BFS_RESULT.with(|r| *r.borrow_mut() = None);
+}
+
+/// Queue one start node.
+#[no_mangle]
+pub extern "C" fn probe_bfs_start(v: f64) {
+    BFS_STARTS.with(|s| s.borrow_mut().push(v));
+}
+
+/// Run one search. `mode` 0 = explore-all, 1 = reject `blocker`, 2 = found
+/// `blocker` returning `foundval`. Returns 0 = null, 1 = found (read the value
+/// via `probe_bfs_result`).
+#[no_mangle]
+pub extern "C" fn probe_bfs_run(max_d: f64, mode: u32, blocker: f64, foundval: f64) -> u8 {
+    let keys = BFS_EDGE_KEYS.with(|k| k.borrow().clone());
+    let nbrs = BFS_EDGE_NBS.with(|n| n.borrow().clone());
+    let starts = BFS_STARTS.with(|s| s.borrow().clone());
+    let mut bfs = crate::pathfinding::bfs::Bfs::new(ProbeBfsAdapter { keys, nbrs });
+    let r = bfs.search(
+        crate::pathfinding::PathStart::Multi(&starts),
+        max_d,
+        |n: f64, d: f64| -> crate::pathfinding::Visit<f64> {
+            BFS_VISITS.with(|v| {
+                v.borrow_mut().push(n);
+                v.borrow_mut().push(d);
+            });
+            let is_blocker = n == blocker || (n.is_nan() && blocker.is_nan());
+            if is_blocker && mode == 1 {
+                crate::pathfinding::Visit::Reject
+            } else if is_blocker && mode == 2 {
+                crate::pathfinding::Visit::Found(foundval)
+            } else {
+                crate::pathfinding::Visit::Explore
+            }
+        },
+    );
+    BFS_RESULT.with(|res| *res.borrow_mut() = r);
+    r.is_some() as u8
+}
+
+#[no_mangle]
+pub extern "C" fn probe_bfs_visits_len() -> usize {
+    BFS_VISITS.with(|v| v.borrow().len())
+}
+
+#[no_mangle]
+pub extern "C" fn probe_bfs_visit_node(i: usize) -> f64 {
+    BFS_VISITS.with(|v| v.borrow()[2 * i])
+}
+
+#[no_mangle]
+pub extern "C" fn probe_bfs_visit_dist(i: usize) -> f64 {
+    BFS_VISITS.with(|v| v.borrow()[2 * i + 1])
+}
+
+#[no_mangle]
+pub extern "C" fn probe_bfs_result_flag() -> u8 {
+    BFS_RESULT.with(|r| r.borrow().is_some() as u8)
+}
+
+#[no_mangle]
+pub extern "C" fn probe_bfs_result() -> f64 {
+    BFS_RESULT.with(|r| r.borrow().unwrap())
+}

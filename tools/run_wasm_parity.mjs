@@ -79,6 +79,10 @@ for (const name of [
   "probe_swt_out_len", "probe_swt_out_at", "probe_swt_seen_flag",
   "probe_swt_seen_multi", "probe_swt_seen_len", "probe_swt_seen_at",
   "probe_swt_seen_goal",
+  "probe_bfs_edge_reset", "probe_bfs_edge_key", "probe_bfs_edge_nb",
+  "probe_bfs_edge_end", "probe_bfs_reset", "probe_bfs_start", "probe_bfs_run",
+  "probe_bfs_visits_len", "probe_bfs_visit_node", "probe_bfs_visit_dist",
+  "probe_bfs_result_flag", "probe_bfs_result",
 ]) {
   if (typeof ex[name] !== "function") {
     console.error(`missing wasm export ${name} - rebuild with --features wasm-probe`);
@@ -1418,6 +1422,32 @@ for (const s of S.smoothingwater) {
       cmpBits(`${s.name} q${qi} seen goal`, ex.probe_swt_seen_goal(), toBits(seen.goal), qi);
     }
   }
+}
+
+// --- Generic BFS (BFS.ts) -----------------------------------------------------
+// Rebuild the edge table through the scalar probe API, replay the search, and
+// compare the full (node, dist) visitor stream and the return bit-exactly.
+for (const s of S.bfs) {
+  ex.probe_bfs_edge_reset();
+  for (const [k, nb] of s.edges) {
+    ex.probe_bfs_edge_key(numTok(k));
+    for (const n of nb) ex.probe_bfs_edge_nb(numTok(n));
+    ex.probe_bfs_edge_end();
+  }
+  ex.probe_bfs_reset();
+  for (const st of s.starts) ex.probe_bfs_start(numTok(st));
+  const found = Number(ex.probe_bfs_run(numTok(s.maxd), s.mode, numTok(s.blocker), numTok(s.foundval)));
+  cmpU32(`${s.name} result flag`, found, s.result === "u" ? 0 : 1, 0);
+  const nvisits = s.visits.length;
+  checks++;
+  if (Number(ex.probe_bfs_visits_len()) !== nvisits * 2)
+    fail(`${s.name} visits length`, 0, Number(ex.probe_bfs_visits_len()), nvisits * 2);
+  for (let i = 0; i < nvisits; i++) {
+    cmpBits(`${s.name} visit[${i}] node`, ex.probe_bfs_visit_node(i), toBits(numTok(s.visits[i][0])), i);
+    cmpBits(`${s.name} visit[${i}] dist`, ex.probe_bfs_visit_dist(i), toBits(numTok(s.visits[i][1])), i);
+  }
+  if (s.result !== "u")
+    cmpBits(`${s.name} result`, ex.probe_bfs_result(), toBits(numTok(s.result)), 0);
 }
 
 console.log(`${checks} vector comparisons executed against wasm build`);

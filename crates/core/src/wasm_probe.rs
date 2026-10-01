@@ -3442,3 +3442,31 @@ pub extern "C" fn probe_sl_op(kind: u32) -> usize {
 pub extern "C" fn probe_sl_out_at(i: usize) -> f64 {
     SL_OUT.with(|o| o.borrow()[i])
 }
+
+// ====================== P26: PatternDecoder (PatternDecoder.ts) ===============
+
+thread_local! {
+    static PD_ARGS: std::cell::RefCell<Vec<f64>> = const { std::cell::RefCell::new(Vec::new()) };
+    static PD_OUT: std::cell::RefCell<Vec<f64>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
+/// Push one flat token (byte-buffer length, byte value, x, y…).
+#[no_mangle]
+pub extern "C" fn probe_pd_arg(v: f64) {
+    PD_ARGS.with(|t| t.borrow_mut().push(v));
+}
+
+/// Run `pattern_decoder::run_op(kind, args)`; returns the result-stream length.
+#[no_mangle]
+pub extern "C" fn probe_pd_op(kind: u32) -> usize {
+    let a = PD_ARGS.with(|t| std::mem::take(&mut *t.borrow_mut()));
+    let out = crate::pattern_decoder::run_op(kind as u8, &a);
+    let len = out.len();
+    PD_OUT.with(|o| *o.borrow_mut() = out);
+    len
+}
+
+#[no_mangle]
+pub extern "C" fn probe_pd_out_at(i: usize) -> f64 {
+    PD_OUT.with(|o| o.borrow()[i])
+}

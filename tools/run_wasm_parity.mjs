@@ -87,6 +87,7 @@ for (const name of [
   "probe_anon_run", "probe_anon_out_at",
   "probe_close_arg", "probe_close_op",
   "probe_sl_arg", "probe_sl_op", "probe_sl_out_at",
+  "probe_pd_arg", "probe_pd_op", "probe_pd_out_at",
 ]) {
   if (typeof ex[name] !== "function") {
     console.error(`missing wasm export ${name} - rebuild with --features wasm-probe`);
@@ -1524,6 +1525,24 @@ for (const s of S.serverlist) {
   for (let i = 0; i < len; i++) {
     checks++;
     const g = ex.probe_sl_out_at(i);
+    const w = numTok(s.res[i]);
+    if (!Object.is(g, w)) fail(`${s.name} res[${i}]`, 0, g, w);
+  }
+}
+
+// --- PatternDecoder (PatternDecoder.ts) ----------------------------------------
+// Replays decode + isPrimary through the shared run_op runner; args and res
+// are flat f64 token streams, compared element-by-element with Object.is.
+for (const s of S.patterndecoder) {
+  for (const a of s.args) ex.probe_pd_arg(numTok(a));
+  const len = Number(ex.probe_pd_op(s.kind));
+  if (len !== s.res.length) {
+    fail(`${s.name} res len`, 0, len, s.res.length);
+    continue;
+  }
+  for (let i = 0; i < len; i++) {
+    checks++;
+    const g = ex.probe_pd_out_at(i);
     const w = numTok(s.res[i]);
     if (!Object.is(g, w)) fail(`${s.name} res[${i}]`, 0, g, w);
   }

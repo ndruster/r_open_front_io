@@ -155,6 +155,7 @@ const { AirPathFinder } = await loadTs("src/core/pathfinding/PathFinder.Air.ts")
 const { anonWordName } = await loadTs("src/core/AnonNames.ts");
 const CloseCodes = await loadTs("src/core/CloseCodes.ts");
 const SL = await loadTs("src/core/ServerList.ts");
+const PD = await loadTs("src/core/PatternDecoder.ts");
 const { AStar } = await loadTs("src/core/pathfinding/algorithms/AStar.ts");
 const { AStarRail } = await loadTs("src/core/pathfinding/algorithms/AStar.Rail.ts");
 const { AStarWater } = await loadTs("src/core/pathfinding/algorithms/AStar.Water.ts");
@@ -840,6 +841,107 @@ const slTsList = () => ({
     captureSL(`sl_vpf_${i++}`, 11, [...encS(own), ...encIn(gv), ...encS(gid), ...encS(vfp),
       ...encS(pathname), ...encS(search), spec ? 1 : 0],
       [encOut(SL.versionedPathForGame(own, gv, gid, vfp, pathname, search, spec))]);
+}
+
+// --- PatternDecoder scenario runner -------------------------------------------
+// Exercises the real PatternDecoder.ts decode + isPrimary through the shared
+// run_op runner. The base64url layer is not ported: bytes cross as
+// `[len, b0, ..]` and the capture encodes them to base64url so the actual TS
+// decodePatternData runs. kind 0 = construct (res `[0,h,w,scale,sh,sw]` or
+// `[code]`), kind 1 = isPrimary(bytes,x,y) (res `[0]`/`[1]`, or `[code]` for a
+// decode throw / `[4]` for the bounds throw). Codes: 1 too short, 2 bad
+// version, 3 too short for dimensions, 4 invalid pattern.
+const pdScenarios = [];
+function capturePD(name, kind, args, res) {
+  pdScenarios.push({ name, kind, args: args.flat().map(uenc), res: res.flat().map(uenc) });
+}
+const pdHeader = (scale, width, height) => {
+  const w = width - 2;
+  const h = height - 2;
+  return [0, (scale & 0x07) | ((w & 0x1f) << 3), ((h & 0x3f) << 2) | ((w >> 5) & 0x03)];
+};
+const pdBytesTok = (bytes) => [bytes.length, ...bytes];
+const pdDecode = (bytes) => {
+  const b64 = Buffer.from(bytes).toString("base64url");
+  return PD.decodePatternData(b64, (s) => new Uint8Array(Buffer.from(s, "base64url")));
+};
+// Map the real TS throw to the port's numeric code (message prefix match).
+const pdThrowCode = (e) => {
+  const m = String(e && e.message);
+  if (m.startsWith("Pattern data is too short to contain")) return 1;
+  if (m.startsWith("Unrecognized pattern version")) return 2;
+  if (m.startsWith("Pattern data is too short for the")) return 3;
+  if (m === "Invalid pattern") return 4;
+  throw e;
+};
+const pdRes0 = (bytes) => {
+  let d;
+  try {
+    d = pdDecode(bytes);
+  } catch (e) {
+    return [pdThrowCode(e)];
+  }
+  return [0, d.height, d.width, d.scale, d.height << d.scale, d.width << d.scale];
+};
+const pdRes1 = (bytes, x, y) => {
+  let dec;
+  try {
+    const b64 = Buffer.from(bytes).toString("base64url");
+    dec = new PD.PatternDecoder(
+      { patternData: b64 },
+      (s) => new Uint8Array(Buffer.from(s, "base64url")),
+    );
+  } catch (e) {
+    return [pdThrowCode(e)];
+  }
+  try {
+    return [dec.isPrimary(x, y) ? 1 : 0];
+  } catch (e) {
+    return [pdThrowCode(e)];
+  }
+};
+// kind 0: decode guards, header round-trips, scaled dims.
+{
+  let i = 0;
+  const k0cases = [
+    [], [0], [0, 1], [1, 0, 0], [2, 255, 255],
+    pdHeader(0, 2, 2),
+    [...pdHeader(0, 2, 2), 0],
+    [...pdHeader(3, 5, 4), 0, 0, 0],
+    [...pdHeader(7, 129, 65), ...new Array(1049).fill(0)],
+    [...pdHeader(0, 129, 65), ...new Array(1049).fill(0)],
+    [...pdHeader(1, 3, 3), 0, 0],
+    [...pdHeader(7, 2, 2), 0],
+    [...pdHeader(0, 2, 2), 0, 0, 0],
+    [...pdHeader(2, 5, 4), 0, 0],
+    [...pdHeader(0, 33, 33), ...new Array(137).fill(0)],
+    [...pdHeader(0, 34, 2), 0, 0, 0, 0, 0, 0, 0, 0, 0],
+  ];
+  for (const s of [0, 1, 2, 3, 4, 5, 6, 7])
+    k0cases.push([...pdHeader(s, 2, 2), 0]);
+  for (const bytes of k0cases) capturePD(`pd_dec_${i++}`, 0, [pdBytesTok(bytes)], pdRes0(bytes));
+}
+// kind 1: bit lookup, negative-index metadata reads, bounds throws, scale.
+{
+  let i = 0;
+  const D2 = [...pdHeader(0, 2, 2), 0b0000_0010];
+  const D34 = [...pdHeader(0, 2, 34), 0, 0, 0, 0, 0, 0, 0, 0, 0]; // byte2 = 128
+  const D33 = [...pdHeader(0, 33, 33), ...new Array(137).fill(0)];
+  const D3 = [...pdHeader(3, 4, 4), 0b0000_0010];
+  const k1cases = [
+    [D2, 0, 0], [D2, 1, 0], [D2, 0, 1], [D2, 1, 1],
+    [D2, -1, -1], [D2, -1, 0], [D2, 0, -1],
+    [D34, -1, 0], [D34, -2, 0],
+    [D33, -32, -32], [D33, 1e9, 1e9], [D33, 1e15, -1e15],
+    [D33, 16, -1], [D33, -17, 0],
+    [D2, 1.7, 0.2], [D2, -1.9, 0.5], [D2, NaN, 0], [D2, 0, NaN],
+    [D2, Infinity, 0], [D2, -Infinity, 1],
+    [D3, 8, 0], [D3, 0, 0], [D3, 15, 15], [D3, 31, 31],
+    [D3, -8, 0], [D2, -2147483648, 0], [D2, 2147483648, 0],
+    [D33, 1088, 0], [D33, 0, 1088], [D33, 1087, 0],
+  ];
+  for (const [bytes, x, y] of k1cases)
+    capturePD(`pd_ip_${i++}`, 1, [...pdBytesTok(bytes), x, y], pdRes1(bytes, x, y));
 }
 
 // --- AStar scenario runner ---------------------------------------------------
@@ -3551,6 +3653,7 @@ const structures = {
   anon: anonScenarios,
   close: closeScenarios,
   serverlist: slScenarios,
+  patterndecoder: pdScenarios,
   astar: asScenarios,
   rail: railScenarios,
   water: waterScenarios,
@@ -5276,6 +5379,31 @@ for (const s of structures.serverlist) {
 }
 L.push("pub const SL_SCENARIOS: &[SlScenario] = &[");
 for (const s of structures.serverlist) L.push(`    ${s.name.toUpperCase()},`);
+L.push("];");
+L.push("");
+
+L.push("/// PatternDecoder scenario: one `pattern_decoder::run_op(kind, args)` call.");
+L.push("/// `args` is `[len, b0, .., x, y]` (kind 1) or `[len, b0, ..]` (kind 0);");
+L.push("/// `res` is the flat result token stream (see `pattern_decoder::run_op`).");
+L.push("pub struct PdScenario {");
+L.push("    pub name: &'static str,");
+L.push("    pub kind: u8,");
+L.push("    pub args: &'static [f64],");
+L.push("    pub res: &'static [f64],");
+L.push("}");
+L.push("");
+for (const s of structures.patterndecoder) {
+  const id = s.name.toUpperCase();
+  L.push(`pub const ${id}: PdScenario = PdScenario {`);
+  L.push(`    name: "${s.name}",`);
+  L.push(`    kind: ${s.kind}u8,`);
+  L.push(`    args: &[${s.args.map(utilResLit).join(", ")}],`);
+  L.push(`    res: &[${s.res.map(utilResLit).join(", ")}],`);
+  L.push("};");
+  L.push("");
+}
+L.push("pub const PD_SCENARIOS: &[PdScenario] = &[");
+for (const s of structures.patterndecoder) L.push(`    ${s.name.toUpperCase()},`);
 L.push("];");
 L.push("");
 

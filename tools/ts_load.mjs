@@ -799,6 +799,12 @@ function prepare(rel) {
     );
   }
 
+  if (rel.endsWith("PatternDecoder.ts")) {
+    // PlayerPattern is a type-only import (a z.infer type from Schemas); strip
+    // mode cannot tell and would pull in the whole zod schema graph -> drop.
+    out = must(out, 'import { PlayerPattern } from "./Schemas";\n', "", "PatternDecoder Schemas import");
+  }
+
   if (rel.endsWith("ServerList.ts")) {
     // zod is only used by the wire-validation schemas (not ported — the pure
     // functions never touch them at runtime). Replace the import with an

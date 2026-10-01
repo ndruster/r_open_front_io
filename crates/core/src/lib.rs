@@ -38,6 +38,9 @@
 //!   filtering and `pickServerForBuild` clamping, `ownLetterIn` host match,
 //!   and the `/v/<commit>/` URL rewrites with hand-transcribed regexes and a
 //!   JS-accurate `decodeURIComponent`; the zod schemas are not ported)
+//! * [`pattern_decoder`] — `src/core/PatternDecoder.ts` (packed player-pattern
+//!   header decode and `isPrimary` bit lookup; the injected `base64urlDecode`
+//!   is not ported — the module takes the decoded bytes directly)
 //! * [`line`] — `src/core/utilities/Line.ts` (`DistanceBasedBezierCurve`:
 //!   fixed-point De Casteljau subdivision for MIRV trajectories)
 //! * [`veterancy`] — `src/core/game/Veterancy.ts` (`maxHealthWithVeterancy`:
@@ -93,6 +96,7 @@ pub mod jsnum;
 pub mod line;
 pub mod motion_plans;
 pub mod pathfinding;
+pub mod pattern_decoder;
 pub mod pseudo_random;
 pub mod server_list;
 pub mod team_assignment;

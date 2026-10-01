@@ -36,6 +36,9 @@ rust/
 │   │   ├── server_list.rs         port of ServerList.ts (commit/site
 │   │   │                          predicates + version routing; zod
 │   │   │                          schemas not ported)
+│   │   ├── pattern_decoder.rs     port of PatternDecoder.ts (packed-pattern
+│   │   │                          header decode + isPrimary bit lookup;
+│   │   │                          base64url layer not ported)
 │   │   ├── wasm_probe.rs          `extern "C"` surface, feature-gated
 │   │   └── pathfinding/
 │   │       ├── mod.rs
@@ -451,6 +454,20 @@ desync, not a rounding nit. Two things enforce that here:
     scenarios sweep the predicate edges, the prefix/identity matrix, the
     open/draining/fenced pick table with every clamp kind, the host/letter
     precedence, and the version-URL loop guards.
+28. **`PatternDecoder.ts`** (`pattern_decoder`) decodes the packed
+    player-cosmetic pattern header (version / scale / width / height guards)
+    and answers `isPrimary(x, y)` from the bitmap. The injected
+    `base64urlDecode` is external codec, **not** ported — the Rust twin takes
+    the decoded bytes directly and the capture encodes them to base64url so
+    the real TS runs. JS-isms pinned: `x >> scale` goes through `ToInt32`
+    both sides (huge / fractional / `NaN` / `±Infinity` coords wrap), `%`
+    keeps the sign of the dividend so negative cells read *backward* into the
+    3-byte header (e.g. `bytes[2]`), and only indices fully outside
+    `[0, len)` throw (`bytes[3 + byteIndex] === undefined`). The three decode
+    throws and the bounds throw are pinned as distinct codes 1–4. The 54
+    scenarios sweep the guard order, every `scale` value, the width/height
+    bit packing (incl. the 7-bit width high field), metadata-region negative
+    reads, and the `ToInt32` coordinate wrap edges.
 
 Regenerate whenever a ported source changes:
 
@@ -484,7 +501,7 @@ node rust/tools/run_wasm_parity.mjs
 
 `wasm-probe` exposes the ported functions through `extern "C"` scalar
 entrypoints (`src/wasm_probe.rs`); the runner imports `data/vectors.json` and
-compares every value. Last run: **33,572 comparisons, all bit-identical**.
+compares every value. Last run: **33,711 comparisons, all bit-identical**.
 
 ### Windows: the linker environment
 

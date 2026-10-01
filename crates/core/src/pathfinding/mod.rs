@@ -7,6 +7,7 @@
 //! desync, so these are transcriptions, not reimplementations.
 
 pub mod abstract_graph;
+pub mod abstract_graph_astar;
 pub mod a_star;
 pub mod bfs_grid;
 pub mod connected_components;

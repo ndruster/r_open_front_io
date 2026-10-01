@@ -44,6 +44,9 @@ for (const name of [
   "probe_ag_terrain_byte", "probe_ag_dirty_byte", "probe_ag_new", "probe_ag_op",
   "probe_ag_out_len", "probe_ag_out_at", "probe_ag_field",
   "probe_ag_arr_len", "probe_ag_arr_get",
+  "probe_aga_node", "probe_aga_edge", "probe_aga_new", "probe_aga_start",
+  "probe_aga_run", "probe_aga_path_len", "probe_aga_path_at", "probe_aga_stamp",
+  "probe_aga_qfield", "probe_aga_arr_len", "probe_aga_arr_get",
 ]) {
   if (typeof ex[name] !== "function") {
     console.error(`missing wasm export ${name} - rebuild with --features wasm-probe`);
@@ -906,6 +909,49 @@ for (const s of S.abstractgraph) {
       const want = tok === "u" ? NaN : numTok(tok);
       if (!Object.is(got, want))
         fail(`${s.name} field${field}[${j}]`, j, fmt(got), String(tok));
+    }
+  }
+}
+
+// --- AbstractGraphAStar --- (hand-built graph; per-query full state snapshot,
+// including the live MinHeap arrays — gScore/queue priorities as raw f32 bits)
+for (const s of S.abstractgraphastar) {
+  for (const v of s.nodes) ex.probe_aga_node(v);
+  for (const v of s.edges) ex.probe_aga_edge(v);
+  ex.probe_aga_new(s.numNodes, s.edgeCount, s.weight, s.maxIter);
+  for (const q of s.queries) {
+    for (const st of q.starts) ex.probe_aga_start(st);
+    const gotPath = ex.probe_aga_run(q.goal, q.isMulti) === 1;
+    checks++;
+    if (gotPath !== (q.path !== "u")) {
+      fail(`${s.name} q path presence`, 0, gotPath, q.path !== "u");
+    }
+    if (q.path !== "u") {
+      checks++;
+      if (ex.probe_aga_path_len() !== q.path.length) {
+        fail(`${s.name} q path length`, ex.probe_aga_path_len(), q.path.length, 0);
+      }
+      for (let i = 0; i < q.path.length; i++)
+        cmpBits(`${s.name} q path`, ex.probe_aga_path_at(i), toBits(q.path[i]), i);
+    }
+    cmpU32(`${s.name} q stamp`, Number(ex.probe_aga_stamp()), q.stampAfter, 0);
+    cmpU32(`${s.name} q size`, Number(ex.probe_aga_qfield(0)), q.qSize, 0);
+    cmpU32(`${s.name} q cap`, Number(ex.probe_aga_qfield(1)), q.qCap, 0);
+    const afields = [
+      [0, q.closed, "closedStamp"],
+      [1, q.gsStamp, "gScoreStamp"],
+      [2, q.gScoreBits, "gScoreBits"],
+      [3, q.cameFrom, "cameFrom"],
+      [4, q.startNode, "startNode"],
+      [5, q.qHeap, "queueHeap"],
+      [6, q.qPriBits, "queuePriBits"],
+    ];
+    for (const [f, want, label] of afields) {
+      checks++;
+      if (ex.probe_aga_arr_len(f) !== want.length)
+        fail(`${s.name} ${label} length`, ex.probe_aga_arr_len(f), want.length, 0);
+      for (let i = 0; i < want.length; i++)
+        cmpU32(`${s.name} ${label}`, Number(ex.probe_aga_arr_get(f, i)), want[i], i);
     }
   }
 }

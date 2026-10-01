@@ -44,6 +44,9 @@ rust/
 │   │       ├── abstract_graph.rs  port of algorithms/AbstractGraph.ts
 │   │       │                      (+ AbstractGraphBuilder: gateway nodes,
 │   │       │                       bounded-BFS edges, partial rebuild)
+│   │       ├── abstract_graph_astar.rs
+│   │       │                      port of algorithms/AStar.AbstractGraph.ts
+│   │       │                      (Float32Array gScore, startNode origins)
 │   │       └── connected_components.rs
 │   │                              port of algorithms/ConnectedComponents.ts
 │   └── tests/
@@ -211,6 +214,21 @@ desync, not a rounding nit. Two things enforce that here:
     returns the single clamped tile (`wb_inverted_bounds`). The magnitude
     curve also differs from `AStarWater` (`< 3` costs 300, not 1000), and the
     defaults are `heuristicWeight ?? 3` / `maxIterations ?? 100_000`.
+15. **`AStar.AbstractGraph.ts`** (`pathfinding::abstract_graph_astar`) is
+    pinned with ten scenarios over hand-built abstract graphs, snapshotting
+    the FULL engine state (stamp, five node arrays, live heap) after *every*
+    query. `gScore` is a **`Float32Array`** — stores round through f32 and the
+    relaxation comparison reads the rounded value, so `0.1+0.2` vs `0.2+0.1`
+    pick different winners than an f64 engine would (`aga_f32_round`); the
+    goal/start node checks run *before* `queue.clear()`, so a missing node
+    leaves the previous search's heap observable (the second query of both
+    `aga_f32_round` and `aga_missing_goal`); a single-element start array
+    delegates to the single-source path — stamp consumed, `startNode` never
+    written (`aga_multi_single`); an empty array returns `null` before the
+    stamp bump (`aga_multi_empty`); multi-source propagates each node's origin
+    start through `startNode` (`aga_multi_ring`). Defaults:
+    `heuristicWeight ?? 1` / `maxIterations ?? 100_000`; the heap is sized
+    `numNodes + edgeCount * 2`.
 
 Regenerate whenever a ported source changes:
 
@@ -244,7 +262,7 @@ node rust/tools/run_wasm_parity.mjs
 
 `wasm-probe` exposes the ported functions through `extern "C"` scalar
 entrypoints (`src/wasm_probe.rs`); the runner imports `data/vectors.json` and
-compares every value. Last run: **28,941 comparisons, all bit-identical**.
+compares every value. Last run: **29,581 comparisons, all bit-identical**.
 
 ### Windows: the linker environment
 

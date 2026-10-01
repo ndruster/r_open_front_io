@@ -53,6 +53,12 @@
 //!   four stamp arrays indexed by a clamped window-local id, the
 //!   `numLocalNodes` guard, the 3× shore penalty curve, and defaults
 //!   `heuristicWeight ?? 3` / `maxIterations ?? 100_000`)
+//! * [`pathfinding::abstract_graph_astar`] — `src/core/pathfinding/algorithms/AStar.AbstractGraph.ts`
+//!   (`AbstractGraphAStar`: A* over the abstract graph — `Float32Array`
+//!   g-scores (f32-rounded comparisons), multi-source origin tracking via
+//!   `startNode`, goal/start checks *before* `queue.clear()`, single-start
+//!   multi delegation, and the `buildPathFromGoal` out-of-range/over-long
+//!   null guards; defaults `heuristicWeight ?? 1` / `maxIterations ?? 100_000`)
 //!
 //! Two rules govern every future port into this crate:
 //!

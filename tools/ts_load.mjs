@@ -304,6 +304,22 @@ function prepare(rel) {
       "WaterBounded PQ import",
     );
   }
+  if (rel.endsWith("algorithms/AStar.AbstractGraph.ts")) {
+    // PathFinder (interface) and AbstractGraph (used only as a *type* here —
+    // the class never news it) are type-only -> dropped. MinHeap is the only
+    // value import; PriorityQueue is an interface -> dropped from the named
+    // import, the specifier redirected to the prepared copy.
+    out = must(out, 'import { PathFinder } from "../types";\n', "", "AGA types import");
+    out = must(out, 'import { AbstractGraph } from "./AbstractGraph";\n', "", "AGA graph import");
+    const pqRel = "src/core/pathfinding/algorithms/PriorityQueue.ts";
+    if (!prepared.has(pqRel)) prepare(pqRel);
+    out = must(
+      out,
+      'import { MinHeap, PriorityQueue } from "./PriorityQueue";',
+      `import { MinHeap } from "./${prepared.get(pqRel)}";`,
+      "AGA PQ import",
+    );
+  }
   if (rel.endsWith("algorithms/ConnectedComponents.ts")) {
     // GameMap/TileRef are type-only (interface + branded type) -> dropped; the
     // DebugSpan value import is redirected to its prepared copy. The ctor's two

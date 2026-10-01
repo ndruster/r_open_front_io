@@ -1966,3 +1966,172 @@ pub extern "C" fn probe_ag_arr_get(field: u32, i: usize) -> f64 {
         }
     })
 }
+
+// ---- AbstractGraphAStar ----
+// Hand-built graph (the P14 scenarios add nodes/edges directly, not via the
+// builder): node triples `id,x,y` and edge quadruples `id,nodeA,nodeB,cost`
+// are queued one field at a time before `probe_aga_new`, which news the
+// graph and the engine. Each query queues its starts, then `probe_aga_run`
+// dispatches on `is_multi` and returns 1/0 for path/null; the path lands in
+// `AGA_PATH`, the engine + heap state is read back field-wise.
+
+use crate::pathfinding::abstract_graph_astar::AbstractGraphAStar;
+
+thread_local! {
+    static AGA: std::cell::RefCell<Option<Box<AbstractGraphAStar>>> =
+        const { std::cell::RefCell::new(None) };
+    static AGA_GRAPH: std::cell::RefCell<Option<Box<AbstractGraph>>> =
+        const { std::cell::RefCell::new(None) };
+    static AGA_NODES: std::cell::RefCell<Vec<f64>> = const { std::cell::RefCell::new(Vec::new()) };
+    static AGA_EDGES: std::cell::RefCell<Vec<f64>> = const { std::cell::RefCell::new(Vec::new()) };
+    static AGA_STARTS: std::cell::RefCell<Vec<f64>> = const { std::cell::RefCell::new(Vec::new()) };
+    static AGA_PATH: std::cell::RefCell<Vec<f64>> = const { std::cell::RefCell::new(Vec::new()) };
+    /// Snapshot of `debug_queue()` refreshed after every run (heap, pri bits).
+    static AGA_QHEAP: std::cell::RefCell<Vec<i32>> = const { std::cell::RefCell::new(Vec::new()) };
+    static AGA_QPRI: std::cell::RefCell<Vec<u32>> = const { std::cell::RefCell::new(Vec::new()) };
+    static AGA_GBITS: std::cell::RefCell<Vec<u32>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
+/// Queue one node field (`id`, `x`, or `y`) for the next graph.
+#[no_mangle]
+pub extern "C" fn probe_aga_node(v: f64) {
+    AGA_NODES.with(|n| n.borrow_mut().push(v));
+}
+
+/// Queue one edge field (`id`, `nodeA`, `nodeB`, or `cost`).
+#[no_mangle]
+pub extern "C" fn probe_aga_edge(v: f64) {
+    AGA_EDGES.with(|e| e.borrow_mut().push(v));
+}
+
+/// Build the graph from the queued nodes/edges, then the engine sized to
+/// `num_nodes` / `edge_count` with the given weight and iteration cap.
+#[no_mangle]
+pub extern "C" fn probe_aga_new(num_nodes: f64, edge_count: f64, weight: f64, max_iter: f64) {
+    let nodes = AGA_NODES.with(|n| std::mem::take(&mut *n.borrow_mut()));
+    let edges = AGA_EDGES.with(|e| std::mem::take(&mut *e.borrow_mut()));
+    let mut graph = AbstractGraph::new(1, 1, 1);
+    for n in nodes.chunks(3) {
+        graph.add_node(AbstractNode {
+            id: n[0] as i64,
+            x: n[1] as i64,
+            y: n[2] as i64,
+            tile: 0.0,
+            component_id: 0,
+        });
+    }
+    for e in edges.chunks(4) {
+        graph.add_edge(AbstractEdge {
+            id: e[0] as i64,
+            node_a: e[1] as i64,
+            node_b: e[2] as i64,
+            cost: e[3],
+            cluster_x: 0,
+            cluster_y: 0,
+        });
+    }
+    let eng = AbstractGraphAStar::new(num_nodes, edge_count, Some(weight), Some(max_iter));
+    AGA_GRAPH.with(|g| *g.borrow_mut() = Some(Box::new(graph)));
+    AGA.with(|a| *a.borrow_mut() = Some(Box::new(eng)));
+}
+
+/// Queue one start id for the next query.
+#[no_mangle]
+pub extern "C" fn probe_aga_start(v: f64) {
+    AGA_STARTS.with(|s| s.borrow_mut().push(v));
+}
+
+/// Run one query. `is_multi` 1 = `findPath` with an array start (replayed as
+/// `find_path_multi`), 0 = scalar start (`find_path_single`, first queued
+/// start). Returns 1 when a path was found, 0 for the TS `null`. Refreshes
+/// the heap/gScore snapshots.
+#[no_mangle]
+pub extern "C" fn probe_aga_run(goal: f64, is_multi: u32) -> u8 {
+    let starts = AGA_STARTS.with(|s| std::mem::take(&mut *s.borrow_mut()));
+    let path = AGA.with(|a| {
+        let mut cell = a.borrow_mut();
+        let eng = cell.as_mut().expect("probe_aga_new must be called first");
+        AGA_GRAPH.with(|g| {
+            let graph = g.borrow();
+            let graph = graph.as_ref().unwrap();
+            if is_multi == 1 {
+                eng.find_path_multi(graph, &starts, goal)
+            } else {
+                eng.find_path_single(graph, starts[0], goal)
+            }
+        })
+    });
+    let found = path.is_some();
+    AGA_PATH.with(|p| *p.borrow_mut() = path.unwrap_or_default());
+    let (heap, pri, _size, _cap) = AGA.with(|a| a.borrow().as_ref().unwrap().debug_queue());
+    AGA_QHEAP.with(|h| *h.borrow_mut() = heap);
+    AGA_QPRI.with(|p| *p.borrow_mut() = pri);
+    let bits = AGA.with(|a| a.borrow().as_ref().unwrap().debug_g_score_bits());
+    AGA_GBITS.with(|b| *b.borrow_mut() = bits);
+    if found {
+        1
+    } else {
+        0
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn probe_aga_path_len() -> usize {
+    AGA_PATH.with(|p| p.borrow().len())
+}
+
+#[no_mangle]
+pub extern "C" fn probe_aga_path_at(i: usize) -> f64 {
+    AGA_PATH.with(|p| p.borrow()[i])
+}
+
+#[no_mangle]
+pub extern "C" fn probe_aga_stamp() -> u64 {
+    AGA.with(|a| a.borrow().as_ref().unwrap().debug_stamp())
+}
+
+/// Scalar queue field: 0 = size, 1 = capacity.
+#[no_mangle]
+pub extern "C" fn probe_aga_qfield(which: u32) -> f64 {
+    AGA.with(|a| {
+        let (_, _, size, cap) = a.borrow().as_ref().unwrap().debug_queue();
+        match which {
+            0 => size as f64,
+            _ => cap as f64,
+        }
+    })
+}
+
+/// Array field: 0=closedStamp, 1=gScoreStamp, 2=gScoreBits, 3=cameFrom,
+/// 4=startNode, 5=queueHeap, 6=queuePriBits.
+#[no_mangle]
+pub extern "C" fn probe_aga_arr_len(field: u32) -> usize {
+    match field {
+        0 | 1 | 3 | 4 => AGA.with(|a| {
+            let eng = a.borrow();
+            let eng = eng.as_ref().unwrap();
+            match field {
+                0 => eng.debug_closed_stamp().len(),
+                1 => eng.debug_g_score_stamp().len(),
+                3 => eng.debug_came_from().len(),
+                _ => eng.debug_start_node().len(),
+            }
+        }),
+        2 => AGA_GBITS.with(|b| b.borrow().len()),
+        5 => AGA_QHEAP.with(|h| h.borrow().len()),
+        _ => AGA_QPRI.with(|p| p.borrow().len()),
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn probe_aga_arr_get(field: u32, i: usize) -> f64 {
+    match field {
+        0 => AGA.with(|a| a.borrow().as_ref().unwrap().debug_closed_stamp()[i] as f64),
+        1 => AGA.with(|a| a.borrow().as_ref().unwrap().debug_g_score_stamp()[i] as f64),
+        2 => AGA_GBITS.with(|b| b.borrow()[i] as f64),
+        3 => AGA.with(|a| a.borrow().as_ref().unwrap().debug_came_from()[i] as f64),
+        4 => AGA.with(|a| a.borrow().as_ref().unwrap().debug_start_node()[i] as f64),
+        5 => AGA_QHEAP.with(|h| h.borrow()[i] as f64),
+        _ => AGA_QPRI.with(|p| p.borrow()[i] as f64),
+    }
+}

@@ -13853,3 +13853,614 @@ pub const AG_SCENARIOS: &[AgScenario] = &[
     AG_PARTIAL_REBUILD,
 ];
 
+/// One `findPath` query on the engine: the start (scalar ->
+/// `is_multi = 0`, array -> 1; a single-element array is recorded as
+/// the multi form and the Rust replays `find_path_multi`, matching
+/// the TS `Array.isArray` dispatch), the goal, the returned path
+/// (`None` = TS null) and the FULL engine state snapshotted after
+/// this query (stamp, the five node arrays with `gScore` as raw f32
+/// bits, and the live MinHeap arrays).
+pub struct AgaQuery {
+    pub is_multi: u8,
+    pub starts: &'static [f64],
+    pub goal: f64,
+    pub path: Option<&'static [f64]>,
+    pub stamp_after: u64,
+    pub closed: &'static [u32],
+    pub gs_stamp: &'static [u32],
+    pub g_score_bits: &'static [u32],
+    pub came_from: &'static [i32],
+    pub start_node: &'static [i32],
+    pub q_heap: &'static [i32],
+    pub q_pri_bits: &'static [u32],
+    pub q_size: i64,
+    pub q_cap: usize,
+}
+
+/// Hand-built abstract graph (node triples `id,x,y`; edge
+/// quadruples `id,nodeA,nodeB,cost`), the engine config, and the
+/// query script. Twin: `abstract_graph_astar::AbstractGraphAStar`.
+pub struct AbstractGraphAStarScenario {
+    pub name: &'static str,
+    pub num_nodes: f64,
+    pub edge_count: f64,
+    pub weight: f64,
+    pub max_iter: f64,
+    pub nodes: &'static [f64],
+    pub edges: &'static [f64],
+    pub queries: &'static [AgaQuery],
+}
+
+const AGA_LINE_Q0: AgaQuery = AgaQuery {
+    is_multi: 0u8,
+    starts: &[0f64],
+    goal: 2f64,
+    path: Some(&[0f64, 1f64, 2f64] as &[f64]),
+    stamp_after: 2u64,
+    closed: &[
+    2u32, 2u32, 2u32,
+],
+    gs_stamp: &[
+    2u32, 2u32, 2u32,
+],
+    g_score_bits: &[
+    0u32, 1065353216u32, 1073741824u32,
+],
+    came_from: &[
+    -1i32, 0i32, 1i32,
+],
+    start_node: &[
+    0i32, 0i32, 0i32,
+],
+    q_heap: &[
+    2i32, 0i32, 0i32, 0i32, 0i32, 0i32, 0i32,
+],
+    q_pri_bits: &[
+    1073741824u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32,
+],
+    q_size: 0i64,
+    q_cap: 7,
+};
+
+pub const AGA_LINE: AbstractGraphAStarScenario = AbstractGraphAStarScenario {
+    name: "aga_line",
+    num_nodes: 3f64,
+    edge_count: 2f64,
+    weight: 1f64,
+    max_iter: 100000f64,
+    nodes: &[
+    0f64, 0f64, 0f64, 1f64, 1f64, 0f64, 2f64, 2f64, 0f64,
+],
+    edges: &[
+    0f64, 0f64, 1f64, 1f64, 1f64, 1f64, 2f64, 1f64,
+],
+    queries: &[AGA_LINE_Q0],
+};
+
+const AGA_WEIGHT_Q0: AgaQuery = AgaQuery {
+    is_multi: 0u8,
+    starts: &[0f64],
+    goal: 2f64,
+    path: Some(&[0f64, 1f64, 2f64] as &[f64]),
+    stamp_after: 2u64,
+    closed: &[
+    2u32, 2u32, 2u32,
+],
+    gs_stamp: &[
+    2u32, 2u32, 2u32,
+],
+    g_score_bits: &[
+    0u32, 1065353216u32, 1073741824u32,
+],
+    came_from: &[
+    -1i32, 0i32, 1i32,
+],
+    start_node: &[
+    0i32, 0i32, 0i32,
+],
+    q_heap: &[
+    2i32, 0i32, 0i32, 0i32, 0i32, 0i32, 0i32,
+],
+    q_pri_bits: &[
+    1073741824u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32,
+],
+    q_size: 0i64,
+    q_cap: 7,
+};
+
+const AGA_WEIGHT_Q1: AgaQuery = AgaQuery {
+    is_multi: 0u8,
+    starts: &[2f64],
+    goal: 0f64,
+    path: Some(&[2f64, 1f64, 0f64] as &[f64]),
+    stamp_after: 3u64,
+    closed: &[
+    3u32, 3u32, 3u32,
+],
+    gs_stamp: &[
+    3u32, 3u32, 3u32,
+],
+    g_score_bits: &[
+    1073741824u32, 1065353216u32, 0u32,
+],
+    came_from: &[
+    1i32, 2i32, -1i32,
+],
+    start_node: &[
+    0i32, 0i32, 0i32,
+],
+    q_heap: &[
+    0i32, 0i32, 0i32, 0i32, 0i32, 0i32, 0i32,
+],
+    q_pri_bits: &[
+    1073741824u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32,
+],
+    q_size: 0i64,
+    q_cap: 7,
+};
+
+pub const AGA_WEIGHT: AbstractGraphAStarScenario = AbstractGraphAStarScenario {
+    name: "aga_weight",
+    num_nodes: 3f64,
+    edge_count: 2f64,
+    weight: 10f64,
+    max_iter: 100000f64,
+    nodes: &[
+    0f64, 0f64, 0f64, 1f64, 1f64, 0f64, 2f64, 2f64, 0f64,
+],
+    edges: &[
+    0f64, 0f64, 1f64, 1f64, 1f64, 1f64, 2f64, 1f64,
+],
+    queries: &[AGA_WEIGHT_Q0, AGA_WEIGHT_Q1],
+};
+
+const AGA_F32_ROUND_Q0: AgaQuery = AgaQuery {
+    is_multi: 0u8,
+    starts: &[0f64],
+    goal: 3f64,
+    path: Some(&[0f64, 1f64, 3f64] as &[f64]),
+    stamp_after: 2u64,
+    closed: &[
+    2u32, 2u32, 0u32, 2u32,
+],
+    gs_stamp: &[
+    2u32, 2u32, 2u32, 2u32,
+],
+    g_score_bits: &[
+    0u32, 1036831949u32, 1045220557u32, 1050253722u32,
+],
+    came_from: &[
+    -1i32, 0i32, 0i32, 1i32,
+],
+    start_node: &[
+    0i32, 0i32, 0i32, 0i32,
+],
+    q_heap: &[
+    2i32, 2i32, 0i32, 0i32, 0i32, 0i32, 0i32, 0i32, 0i32, 0i32, 0i32, 0i32,
+],
+    q_pri_bits: &[
+    1074580685u32, 1074580685u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32,
+],
+    q_size: 1i64,
+    q_cap: 12,
+};
+
+const AGA_F32_ROUND_Q1: AgaQuery = AgaQuery {
+    is_multi: 0u8,
+    starts: &[0f64],
+    goal: 99f64,
+    path: None,
+    stamp_after: 3u64,
+    closed: &[
+    2u32, 2u32, 0u32, 2u32,
+],
+    gs_stamp: &[
+    2u32, 2u32, 2u32, 2u32,
+],
+    g_score_bits: &[
+    0u32, 1036831949u32, 1045220557u32, 1050253722u32,
+],
+    came_from: &[
+    -1i32, 0i32, 0i32, 1i32,
+],
+    start_node: &[
+    0i32, 0i32, 0i32, 0i32,
+],
+    q_heap: &[
+    2i32, 2i32, 0i32, 0i32, 0i32, 0i32, 0i32, 0i32, 0i32, 0i32, 0i32, 0i32,
+],
+    q_pri_bits: &[
+    1074580685u32, 1074580685u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32,
+],
+    q_size: 1i64,
+    q_cap: 12,
+};
+
+pub const AGA_F32_ROUND: AbstractGraphAStarScenario = AbstractGraphAStarScenario {
+    name: "aga_f32_round",
+    num_nodes: 4f64,
+    edge_count: 4f64,
+    weight: 1f64,
+    max_iter: 100000f64,
+    nodes: &[
+    0f64, 0f64, 0f64, 1f64, 1f64, 0f64, 2f64, 1f64, 1f64, 3f64, 2f64, 0f64,
+],
+    edges: &[
+    0f64, 0f64, 1f64, 0.1f64, 1f64, 1f64, 3f64, 0.2f64, 2f64, 0f64, 2f64, 0.2f64,
+    3f64, 2f64, 3f64, 0.1f64,
+],
+    queries: &[AGA_F32_ROUND_Q0, AGA_F32_ROUND_Q1],
+};
+
+const AGA_MISSING_GOAL_Q0: AgaQuery = AgaQuery {
+    is_multi: 0u8,
+    starts: &[0f64],
+    goal: 2f64,
+    path: Some(&[0f64, 1f64, 2f64] as &[f64]),
+    stamp_after: 2u64,
+    closed: &[
+    2u32, 2u32, 2u32,
+],
+    gs_stamp: &[
+    2u32, 2u32, 2u32,
+],
+    g_score_bits: &[
+    0u32, 1065353216u32, 1073741824u32,
+],
+    came_from: &[
+    -1i32, 0i32, 1i32,
+],
+    start_node: &[
+    0i32, 0i32, 0i32,
+],
+    q_heap: &[
+    2i32, 0i32, 0i32, 0i32, 0i32, 0i32, 0i32,
+],
+    q_pri_bits: &[
+    1073741824u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32,
+],
+    q_size: 0i64,
+    q_cap: 7,
+};
+
+const AGA_MISSING_GOAL_Q1: AgaQuery = AgaQuery {
+    is_multi: 0u8,
+    starts: &[0f64],
+    goal: 99f64,
+    path: None,
+    stamp_after: 3u64,
+    closed: &[
+    2u32, 2u32, 2u32,
+],
+    gs_stamp: &[
+    2u32, 2u32, 2u32,
+],
+    g_score_bits: &[
+    0u32, 1065353216u32, 1073741824u32,
+],
+    came_from: &[
+    -1i32, 0i32, 1i32,
+],
+    start_node: &[
+    0i32, 0i32, 0i32,
+],
+    q_heap: &[
+    2i32, 0i32, 0i32, 0i32, 0i32, 0i32, 0i32,
+],
+    q_pri_bits: &[
+    1073741824u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32,
+],
+    q_size: 0i64,
+    q_cap: 7,
+};
+
+pub const AGA_MISSING_GOAL: AbstractGraphAStarScenario = AbstractGraphAStarScenario {
+    name: "aga_missing_goal",
+    num_nodes: 3f64,
+    edge_count: 2f64,
+    weight: 1f64,
+    max_iter: 100000f64,
+    nodes: &[
+    0f64, 0f64, 0f64, 1f64, 1f64, 0f64, 2f64, 2f64, 0f64,
+],
+    edges: &[
+    0f64, 0f64, 1f64, 1f64, 1f64, 1f64, 2f64, 1f64,
+],
+    queries: &[AGA_MISSING_GOAL_Q0, AGA_MISSING_GOAL_Q1],
+};
+
+const AGA_MISSING_START_Q0: AgaQuery = AgaQuery {
+    is_multi: 0u8,
+    starts: &[99f64],
+    goal: 2f64,
+    path: None,
+    stamp_after: 2u64,
+    closed: &[
+    0u32, 0u32, 0u32,
+],
+    gs_stamp: &[
+    0u32, 0u32, 0u32,
+],
+    g_score_bits: &[
+    0u32, 0u32, 0u32,
+],
+    came_from: &[
+    0i32, 0i32, 0i32,
+],
+    start_node: &[
+    0i32, 0i32, 0i32,
+],
+    q_heap: &[
+    0i32, 0i32, 0i32, 0i32, 0i32, 0i32, 0i32,
+],
+    q_pri_bits: &[
+    0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32,
+],
+    q_size: 0i64,
+    q_cap: 7,
+};
+
+pub const AGA_MISSING_START: AbstractGraphAStarScenario = AbstractGraphAStarScenario {
+    name: "aga_missing_start",
+    num_nodes: 3f64,
+    edge_count: 2f64,
+    weight: 1f64,
+    max_iter: 100000f64,
+    nodes: &[
+    0f64, 0f64, 0f64, 1f64, 1f64, 0f64, 2f64, 2f64, 0f64,
+],
+    edges: &[
+    0f64, 0f64, 1f64, 1f64, 1f64, 1f64, 2f64, 1f64,
+],
+    queries: &[AGA_MISSING_START_Q0],
+};
+
+const AGA_MULTI_RING_Q0: AgaQuery = AgaQuery {
+    is_multi: 1u8,
+    starts: &[0f64, 4f64],
+    goal: 2f64,
+    path: Some(&[0f64, 1f64, 2f64] as &[f64]),
+    stamp_after: 2u64,
+    closed: &[
+    2u32, 2u32, 2u32, 2u32, 2u32,
+],
+    gs_stamp: &[
+    2u32, 2u32, 2u32, 2u32, 2u32,
+],
+    g_score_bits: &[
+    0u32, 1065353216u32, 1073741824u32, 1065353216u32, 0u32,
+],
+    came_from: &[
+    -1i32, 0i32, 1i32, 4i32, -1i32,
+],
+    start_node: &[
+    0i32, 0i32, 0i32, 4i32, 4i32,
+],
+    q_heap: &[
+    2i32, 2i32, 0i32, 0i32, 0i32, 0i32, 0i32, 0i32, 0i32, 0i32, 0i32, 0i32, 0i32,
+],
+    q_pri_bits: &[
+    1073741824u32, 1073741824u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32,
+    0u32,
+],
+    q_size: 0i64,
+    q_cap: 13,
+};
+
+pub const AGA_MULTI_RING: AbstractGraphAStarScenario = AbstractGraphAStarScenario {
+    name: "aga_multi_ring",
+    num_nodes: 5f64,
+    edge_count: 4f64,
+    weight: 1f64,
+    max_iter: 100000f64,
+    nodes: &[
+    0f64, 0f64, 0f64, 1f64, 1f64, 0f64, 2f64, 2f64, 0f64, 3f64, 3f64, 0f64,
+    4f64, 4f64, 0f64,
+],
+    edges: &[
+    0f64, 0f64, 1f64, 1f64, 1f64, 1f64, 2f64, 1f64, 2f64, 2f64, 3f64, 1f64,
+    3f64, 3f64, 4f64, 1f64,
+],
+    queries: &[AGA_MULTI_RING_Q0],
+};
+
+const AGA_MULTI_SINGLE_Q0: AgaQuery = AgaQuery {
+    is_multi: 1u8,
+    starts: &[0f64],
+    goal: 2f64,
+    path: Some(&[0f64, 1f64, 2f64] as &[f64]),
+    stamp_after: 2u64,
+    closed: &[
+    2u32, 2u32, 2u32,
+],
+    gs_stamp: &[
+    2u32, 2u32, 2u32,
+],
+    g_score_bits: &[
+    0u32, 1065353216u32, 1073741824u32,
+],
+    came_from: &[
+    -1i32, 0i32, 1i32,
+],
+    start_node: &[
+    0i32, 0i32, 0i32,
+],
+    q_heap: &[
+    2i32, 0i32, 0i32, 0i32, 0i32, 0i32, 0i32,
+],
+    q_pri_bits: &[
+    1073741824u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32,
+],
+    q_size: 0i64,
+    q_cap: 7,
+};
+
+pub const AGA_MULTI_SINGLE: AbstractGraphAStarScenario = AbstractGraphAStarScenario {
+    name: "aga_multi_single",
+    num_nodes: 3f64,
+    edge_count: 2f64,
+    weight: 1f64,
+    max_iter: 100000f64,
+    nodes: &[
+    0f64, 0f64, 0f64, 1f64, 1f64, 0f64, 2f64, 2f64, 0f64,
+],
+    edges: &[
+    0f64, 0f64, 1f64, 1f64, 1f64, 1f64, 2f64, 1f64,
+],
+    queries: &[AGA_MULTI_SINGLE_Q0],
+};
+
+const AGA_MULTI_EMPTY_Q0: AgaQuery = AgaQuery {
+    is_multi: 1u8,
+    starts: &[],
+    goal: 2f64,
+    path: None,
+    stamp_after: 1u64,
+    closed: &[
+    0u32, 0u32, 0u32,
+],
+    gs_stamp: &[
+    0u32, 0u32, 0u32,
+],
+    g_score_bits: &[
+    0u32, 0u32, 0u32,
+],
+    came_from: &[
+    0i32, 0i32, 0i32,
+],
+    start_node: &[
+    0i32, 0i32, 0i32,
+],
+    q_heap: &[
+    0i32, 0i32, 0i32, 0i32, 0i32, 0i32, 0i32,
+],
+    q_pri_bits: &[
+    0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32,
+],
+    q_size: 0i64,
+    q_cap: 7,
+};
+
+pub const AGA_MULTI_EMPTY: AbstractGraphAStarScenario = AbstractGraphAStarScenario {
+    name: "aga_multi_empty",
+    num_nodes: 3f64,
+    edge_count: 2f64,
+    weight: 1f64,
+    max_iter: 100000f64,
+    nodes: &[
+    0f64, 0f64, 0f64, 1f64, 1f64, 0f64, 2f64, 2f64, 0f64,
+],
+    edges: &[
+    0f64, 0f64, 1f64, 1f64, 1f64, 1f64, 2f64, 1f64,
+],
+    queries: &[AGA_MULTI_EMPTY_Q0],
+};
+
+const AGA_CAPPED_Q0: AgaQuery = AgaQuery {
+    is_multi: 0u8,
+    starts: &[0f64],
+    goal: 5f64,
+    path: None,
+    stamp_after: 2u64,
+    closed: &[
+    2u32, 0u32, 0u32, 0u32, 0u32, 0u32,
+],
+    gs_stamp: &[
+    2u32, 2u32, 0u32, 0u32, 0u32, 0u32,
+],
+    g_score_bits: &[
+    0u32, 1065353216u32, 0u32, 0u32, 0u32, 0u32,
+],
+    came_from: &[
+    -1i32, 0i32, 0i32, 0i32, 0i32, 0i32,
+],
+    start_node: &[
+    0i32, 0i32, 0i32, 0i32, 0i32, 0i32,
+],
+    q_heap: &[
+    1i32, 0i32, 0i32, 0i32, 0i32, 0i32, 0i32, 0i32, 0i32, 0i32, 0i32, 0i32, 0i32, 0i32, 0i32, 0i32,
+],
+    q_pri_bits: &[
+    1084227584u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32,
+    0u32, 0u32, 0u32, 0u32,
+],
+    q_size: 1i64,
+    q_cap: 16,
+};
+
+pub const AGA_CAPPED: AbstractGraphAStarScenario = AbstractGraphAStarScenario {
+    name: "aga_capped",
+    num_nodes: 6f64,
+    edge_count: 5f64,
+    weight: 1f64,
+    max_iter: 2f64,
+    nodes: &[
+    0f64, 0f64, 0f64, 1f64, 1f64, 0f64, 2f64, 2f64, 0f64, 3f64, 3f64, 0f64,
+    4f64, 4f64, 0f64, 5f64, 5f64, 0f64,
+],
+    edges: &[
+    0f64, 0f64, 1f64, 1f64, 1f64, 1f64, 2f64, 1f64, 2f64, 2f64, 3f64, 1f64,
+    3f64, 3f64, 4f64, 1f64, 4f64, 4f64, 5f64, 1f64,
+],
+    queries: &[AGA_CAPPED_Q0],
+};
+
+const AGA_UNREACHABLE_Q0: AgaQuery = AgaQuery {
+    is_multi: 0u8,
+    starts: &[0f64],
+    goal: 3f64,
+    path: None,
+    stamp_after: 2u64,
+    closed: &[
+    2u32, 2u32, 0u32, 0u32,
+],
+    gs_stamp: &[
+    2u32, 2u32, 0u32, 0u32,
+],
+    g_score_bits: &[
+    0u32, 1065353216u32, 0u32, 0u32,
+],
+    came_from: &[
+    -1i32, 0i32, 0i32, 0i32,
+],
+    start_node: &[
+    0i32, 0i32, 0i32, 0i32,
+],
+    q_heap: &[
+    1i32, 0i32, 0i32, 0i32, 0i32, 0i32, 0i32, 0i32,
+],
+    q_pri_bits: &[
+    1093664768u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32,
+],
+    q_size: 0i64,
+    q_cap: 8,
+};
+
+pub const AGA_UNREACHABLE: AbstractGraphAStarScenario = AbstractGraphAStarScenario {
+    name: "aga_unreachable",
+    num_nodes: 4f64,
+    edge_count: 2f64,
+    weight: 1f64,
+    max_iter: 100000f64,
+    nodes: &[
+    0f64, 0f64, 0f64, 1f64, 1f64, 0f64, 2f64, 5f64, 5f64, 3f64, 6f64, 5f64,
+],
+    edges: &[
+    0f64, 0f64, 1f64, 1f64, 1f64, 2f64, 3f64, 1f64,
+],
+    queries: &[AGA_UNREACHABLE_Q0],
+};
+
+pub const ABSTRACT_GRAPH_ASTAR_SCENARIOS: &[AbstractGraphAStarScenario] = &[
+    AGA_LINE,
+    AGA_WEIGHT,
+    AGA_F32_ROUND,
+    AGA_MISSING_GOAL,
+    AGA_MISSING_START,
+    AGA_MULTI_RING,
+    AGA_MULTI_SINGLE,
+    AGA_MULTI_EMPTY,
+    AGA_CAPPED,
+    AGA_UNREACHABLE,
+];
+

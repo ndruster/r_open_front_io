@@ -15,7 +15,10 @@ use vectors::Op;
 use vectors::Res;
 
 use openfront_core::game_map::GameMap;
-use openfront_core::pathfinding::abstract_graph::{AbstractGraph, AbstractGraphBuilder};
+use openfront_core::pathfinding::abstract_graph::{
+    AbstractEdge, AbstractGraph, AbstractGraphBuilder, AbstractNode,
+};
+use openfront_core::pathfinding::abstract_graph_astar::AbstractGraphAStar;
 use openfront_core::pathfinding::a_star::{AStar, GridAdapter};
 use openfront_core::pathfinding::bfs_grid::{BfsGrid, Visit};
 use openfront_core::pathfinding::connected_components::ConnectedComponents;
@@ -1260,5 +1263,72 @@ fn replay_abstract_graph_scenarios() {
 
         built.push(graph);
         let _ = si;
+    }
+}
+
+// ------------------------------------------------- AbstractGraphAStar (P14)
+// Replays the query scripts the real TS `AbstractGraphAStar` ran over a
+// hand-built graph, asserting the returned path AND the full engine state
+// (stamp, the five node arrays, the live heap) after EVERY query — the
+// multi-query scenarios pin stamp reuse and the queue-before-clear ordering.
+#[test]
+fn replay_abstract_graph_astar_scenarios() {
+    for s in vectors::ABSTRACT_GRAPH_ASTAR_SCENARIOS {
+        let mut graph = AbstractGraph::new(1, 1, 1);
+        for n in s.nodes.chunks(3) {
+            graph.add_node(AbstractNode {
+                id: n[0] as i64,
+                x: n[1] as i64,
+                y: n[2] as i64,
+                tile: 0.0,
+                component_id: 0,
+            });
+        }
+        for e in s.edges.chunks(4) {
+            graph.add_edge(AbstractEdge {
+                id: e[0] as i64,
+                node_a: e[1] as i64,
+                node_b: e[2] as i64,
+                cost: e[3],
+                cluster_x: 0,
+                cluster_y: 0,
+            });
+        }
+        assert_eq!(graph.node_count(), s.num_nodes, "{} nodeCount", s.name);
+        assert_eq!(graph.edge_count(), s.edge_count, "{} edgeCount", s.name);
+
+        let mut eng = AbstractGraphAStar::new(
+            s.num_nodes,
+            s.edge_count,
+            Some(s.weight),
+            Some(s.max_iter),
+        );
+
+        for (qi, q) in s.queries.iter().enumerate() {
+            let ctx = || format!("{} q#{qi}", s.name);
+            let path = if q.is_multi == 1 {
+                eng.find_path_multi(&graph, q.starts, q.goal)
+            } else {
+                eng.find_path_single(&graph, q.starts[0], q.goal)
+            };
+            match (q.path, &path) {
+                (None, None) => {}
+                (Some(want), Some(got)) => {
+                    assert_eq!(got.as_slice(), want, "{} path", ctx());
+                }
+                _ => panic!("{} path: got {:?} want {:?}", ctx(), path, q.path),
+            }
+            assert_eq!(eng.debug_stamp(), q.stamp_after, "{} stamp", ctx());
+            assert_eq!(eng.debug_closed_stamp(), q.closed, "{} closedStamp", ctx());
+            assert_eq!(eng.debug_g_score_stamp(), q.gs_stamp, "{} gScoreStamp", ctx());
+            assert_eq!(eng.debug_g_score_bits(), q.g_score_bits, "{} gScore bits", ctx());
+            assert_eq!(eng.debug_came_from(), q.came_from, "{} cameFrom", ctx());
+            assert_eq!(eng.debug_start_node(), q.start_node, "{} startNode", ctx());
+            let (heap, pri, size, cap) = eng.debug_queue();
+            assert_eq!(heap, q.q_heap, "{} queue heap", ctx());
+            assert_eq!(pri, q.q_pri_bits, "{} queue pri bits", ctx());
+            assert_eq!(size, q.q_size, "{} queue size", ctx());
+            assert_eq!(cap, q.q_cap, "{} queue capacity", ctx());
+        }
     }
 }

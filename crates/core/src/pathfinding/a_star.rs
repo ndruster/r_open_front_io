@@ -25,7 +25,7 @@
 //! zeroes both stamp arrays. Reusing an instance across calls is covered by the
 //! recorded per-call traces.
 
-use crate::jsnum::{to_int32, to_uint32};
+use crate::jsnum::{to_float32, to_int32, to_uint32};
 use crate::pathfinding::priority_queue::{BucketQueue, PriorityQueue};
 
 /// The `AStarAdapter` interface of the TS source. All node values travel as
@@ -100,6 +100,20 @@ pub(crate) fn set_i32(arr: &mut [i32], i: f64, v: f64) {
     if let Some(j) = index_of(i) {
         if j < arr.len() {
             arr[j] = to_int32(v);
+        }
+    }
+}
+
+#[inline]
+pub(crate) fn get_f32(arr: &[f32], i: f64) -> Option<f64> {
+    index_of(i).and_then(|j| arr.get(j)).map(|&v| f64::from(v))
+}
+
+#[inline]
+pub(crate) fn set_f32(arr: &mut [f32], i: f64, v: f64) {
+    if let Some(j) = index_of(i) {
+        if j < arr.len() {
+            arr[j] = to_float32(v);
         }
     }
 }

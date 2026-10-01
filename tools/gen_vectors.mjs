@@ -172,6 +172,9 @@ const { TerrainSearchMap } = await loadTs("src/core/game/TerrainSearchMap.ts");
 const { AbstractGraph, AbstractGraphBuilder } = await loadTs(
   "src/core/pathfinding/algorithms/AbstractGraph.ts",
 );
+const { AbstractGraphAStar } = await loadTs(
+  "src/core/pathfinding/algorithms/AStar.AbstractGraph.ts",
+);
 
 // enc() maps JS-only values JSON cannot carry: undefined -> "u", NaN -> "n",
 // booleans -> 1/0, and -0 -> "-0" (JSON collapses -0 to 0, yet the f32 bit
@@ -720,6 +723,164 @@ captureWB("wb_clamped_goal", ["wwwww", "wwwww", "wwwww", "wwwww", "wwwww"], [0],
 captureWB("wb_inverted_bounds", ["www", "www", "www"], [0], 4, {
   bounds: [2, 0, 2, 0],
 });
+
+// --- AbstractGraphAStar scenario runner --------------------------------------
+// Runs the real `AbstractGraphAStar` over a hand-built `AbstractGraph` (via the
+// underscore-prefixed `_addNode`/`_addEdge`) and records, after EVERY query,
+// the returned path plus the engine's full stamp-tracked state and the live
+// MinHeap. Multi-query scenarios pin the stamp-reuse and the "queue is not
+// cleared before the missing-node early return" observations. The Rust twin is
+// `abstract_graph_astar::AbstractGraphAStar`.
+const agaScenarios = [];
+const f32bits = (a) =>
+  Array.from(a, (v) => {
+    dv.setFloat32(0, v);
+    return dv.getUint32(0);
+  });
+function mkAgaGraph(nodes, edges) {
+  const g = new AbstractGraph(1, 1, 1);
+  for (const n of nodes) g._addNode({ id: n.id, x: n.x, y: n.y, tile: 0, componentId: 0 });
+  for (const e of edges)
+    g._addEdge({ id: e.id, nodeA: e.a, nodeB: e.b, cost: e.cost, clusterX: 0, clusterY: 0 });
+  return g;
+}
+function captureAGA(name, spec, queries) {
+  const { weight = null, maxIter = null } = spec;
+  const graph = mkAgaGraph(spec.nodes, spec.edges);
+  const cfg = {};
+  if (weight !== null) cfg.heuristicWeight = weight;
+  if (maxIter !== null) cfg.maxIterations = maxIter;
+  const eng = new AbstractGraphAStar(graph, Object.keys(cfg).length ? cfg : undefined);
+  const snap = () => ({
+    stampAfter: eng.stamp,
+    closed: Array.from(eng.closedStamp),
+    gsStamp: Array.from(eng.gScoreStamp),
+    gScoreBits: f32bits(eng.gScore),
+    cameFrom: Array.from(eng.cameFrom),
+    startNode: Array.from(eng.startNode),
+    qHeap: Array.from(eng.queue.heap),
+    qPriBits: f32bits(eng.queue.priorities),
+    qSize: eng.queue.size,
+    qCap: eng.queue.capacity,
+  });
+  const qs = queries.map((q) => {
+    const isMulti = Array.isArray(q.start);
+    const path = eng.findPath(q.start, q.goal);
+    return {
+      isMulti: isMulti ? 1 : 0,
+      starts: isMulti ? q.start.slice() : [q.start],
+      goal: q.goal,
+      path: path === null ? "u" : Array.from(path),
+      ...snap(),
+    };
+  });
+  agaScenarios.push({
+    name,
+    numNodes: graph.nodeCount,
+    edgeCount: graph.edgeCount,
+    weight: weight ?? 1,
+    maxIter: maxIter ?? 100000,
+    nodes: spec.nodes.flatMap((n) => [n.id, n.x, n.y]),
+    edges: spec.edges.flatMap((e) => [e.id, e.a, e.b, e.cost]),
+    queries: qs,
+  });
+}
+
+// Straight 3-node chain: the canonical happy path.
+captureAGA(
+  "aga_line",
+  { nodes: [{ id: 0, x: 0, y: 0 }, { id: 1, x: 1, y: 0 }, { id: 2, x: 2, y: 0 }],
+    edges: [{ id: 0, a: 0, b: 1, cost: 1 }, { id: 1, a: 1, b: 2, cost: 1 }] },
+  [{ start: 0, goal: 2 }],
+);
+// Weight-10 heuristic rescales every priority: exercises the heap ordering and
+// a reverse query on the same engine (stamp reuse).
+captureAGA(
+  "aga_weight",
+  { nodes: [{ id: 0, x: 0, y: 0 }, { id: 1, x: 1, y: 0 }, { id: 2, x: 2, y: 0 }],
+    edges: [{ id: 0, a: 0, b: 1, cost: 1 }, { id: 1, a: 1, b: 2, cost: 1 }],
+    weight: 10 },
+  [{ start: 0, goal: 2 }, { start: 2, goal: 0 }],
+);
+// Two routes to the goal that differ only in Float32Array gScore rounding:
+// 0.1+0.2 vs 0.2+0.1 accumulate to different f32 values, so the relaxation
+// comparison `tentativeG < gScore[n]` (reading the f32-rounded store) picks the
+// path the f64 sum alone would not.
+captureAGA(
+  "aga_f32_round",
+  { nodes: [{ id: 0, x: 0, y: 0 }, { id: 1, x: 1, y: 0 }, { id: 2, x: 1, y: 1 }, { id: 3, x: 2, y: 0 }],
+    edges: [
+      { id: 0, a: 0, b: 1, cost: 0.1 },
+      { id: 1, a: 1, b: 3, cost: 0.2 },
+      { id: 2, a: 0, b: 2, cost: 0.2 },
+      { id: 3, a: 2, b: 3, cost: 0.1 },
+    ] },
+  // Query 1 reaches the goal while node 2 is still in the heap (qsize 1).
+  // Query 2 has a missing goal: the early return happens BEFORE queue.clear(),
+  // so the heap must still hold node 2 — pinning the check ordering.
+  [{ start: 0, goal: 3 }, { start: 0, goal: 99 }],
+);
+// Missing goal AFTER a successful search: the goal-node check runs before
+// `queue.clear()`, so the second query's null return leaves the first query's
+// queue state observable.
+captureAGA(
+  "aga_missing_goal",
+  { nodes: [{ id: 0, x: 0, y: 0 }, { id: 1, x: 1, y: 0 }, { id: 2, x: 2, y: 0 }],
+    edges: [{ id: 0, a: 0, b: 1, cost: 1 }, { id: 1, a: 1, b: 2, cost: 1 }] },
+  [{ start: 0, goal: 2 }, { start: 0, goal: 99 }],
+);
+// Missing start: the stamp is consumed (bump happens first), then the start
+// lookup returns null before any queue mutation.
+captureAGA(
+  "aga_missing_start",
+  { nodes: [{ id: 0, x: 0, y: 0 }, { id: 1, x: 1, y: 0 }, { id: 2, x: 2, y: 0 }],
+    edges: [{ id: 0, a: 0, b: 1, cost: 1 }, { id: 1, a: 1, b: 2, cost: 1 }] },
+  [{ start: 99, goal: 2 }],
+);
+// Multi-source from both ends of a 5-line toward the middle: the two equal
+// routes tie-break through the heap, and `startNode` records the origin.
+captureAGA(
+  "aga_multi_ring",
+  { nodes: [{ id: 0, x: 0, y: 0 }, { id: 1, x: 1, y: 0 }, { id: 2, x: 2, y: 0 }, { id: 3, x: 3, y: 0 }, { id: 4, x: 4, y: 0 }],
+    edges: [
+      { id: 0, a: 0, b: 1, cost: 1 },
+      { id: 1, a: 1, b: 2, cost: 1 },
+      { id: 2, a: 2, b: 3, cost: 1 },
+      { id: 3, a: 3, b: 4, cost: 1 },
+    ] },
+  [{ start: [0, 4], goal: 2 }],
+);
+// A single-element start array delegates to findPathSingle: it consumes a
+// stamp but never writes `startNode` (stays all-zero).
+captureAGA(
+  "aga_multi_single",
+  { nodes: [{ id: 0, x: 0, y: 0 }, { id: 1, x: 1, y: 0 }, { id: 2, x: 2, y: 0 }],
+    edges: [{ id: 0, a: 0, b: 1, cost: 1 }, { id: 1, a: 1, b: 2, cost: 1 }] },
+  [{ start: [0], goal: 2 }],
+);
+// Empty start array: null returned BEFORE the stamp bump (stamp stays at 1).
+captureAGA(
+  "aga_multi_empty",
+  { nodes: [{ id: 0, x: 0, y: 0 }, { id: 1, x: 1, y: 0 }, { id: 2, x: 2, y: 0 }],
+    edges: [{ id: 0, a: 0, b: 1, cost: 1 }, { id: 1, a: 1, b: 2, cost: 1 }] },
+  [{ start: [], goal: 2 }],
+);
+// Iteration cap of 2 on a 6-node chain: the search gives up before reaching
+// the far goal.
+captureAGA(
+  "aga_capped",
+  { nodes: [0, 1, 2, 3, 4, 5].map((i) => ({ id: i, x: i, y: 0 })),
+    edges: [0, 1, 2, 3, 4].map((i) => ({ id: i, a: i, b: i + 1, cost: 1 })),
+    maxIter: 2 },
+  [{ start: 0, goal: 5 }],
+);
+// Disconnected goal: the queue drains without ever popping the goal -> null.
+captureAGA(
+  "aga_unreachable",
+  { nodes: [{ id: 0, x: 0, y: 0 }, { id: 1, x: 1, y: 0 }, { id: 2, x: 5, y: 5 }, { id: 3, x: 6, y: 5 }],
+    edges: [{ id: 0, a: 0, b: 1, cost: 1 }, { id: 1, a: 2, b: 3, cost: 1 }] },
+  [{ start: 0, goal: 3 }],
+);
 
 // --- GameMap scenario runner -------------------------------------------------
 // Replays a scripted op stream against the real `GameMapImpl` and records every
@@ -2059,6 +2220,7 @@ const structures = {
   connectedcomponents: ccScenarios,
   terrainsearchmap: tsmScenarios,
   abstractgraph: agScenarios,
+  abstractgraphastar: agaScenarios,
 };
 
 // ================================================================ JSON
@@ -3165,6 +3327,105 @@ for (const s of structures.abstractgraph) {
 }
 L.push("pub const AG_SCENARIOS: &[AgScenario] = &[");
 for (const s of structures.abstractgraph) L.push(`    ${s.name.toUpperCase()},`);
+L.push("];");
+L.push("");
+
+L.push("/// One `findPath` query on the engine: the start (scalar ->");
+L.push("/// `is_multi = 0`, array -> 1; a single-element array is recorded as");
+L.push("/// the multi form and the Rust replays `find_path_multi`, matching");
+L.push("/// the TS `Array.isArray` dispatch), the goal, the returned path");
+L.push("/// (`None` = TS null) and the FULL engine state snapshotted after");
+L.push("/// this query (stamp, the five node arrays with `gScore` as raw f32");
+L.push("/// bits, and the live MinHeap arrays).");
+L.push("pub struct AgaQuery {");
+L.push("    pub is_multi: u8,");
+L.push("    pub starts: &'static [f64],");
+L.push("    pub goal: f64,");
+L.push("    pub path: Option<&'static [f64]>,");
+L.push("    pub stamp_after: u64,");
+L.push("    pub closed: &'static [u32],");
+L.push("    pub gs_stamp: &'static [u32],");
+L.push("    pub g_score_bits: &'static [u32],");
+L.push("    pub came_from: &'static [i32],");
+L.push("    pub start_node: &'static [i32],");
+L.push("    pub q_heap: &'static [i32],");
+L.push("    pub q_pri_bits: &'static [u32],");
+L.push("    pub q_size: i64,");
+L.push("    pub q_cap: usize,");
+L.push("}");
+L.push("");
+L.push("/// Hand-built abstract graph (node triples `id,x,y`; edge");
+L.push("/// quadruples `id,nodeA,nodeB,cost`), the engine config, and the");
+L.push("/// query script. Twin: `abstract_graph_astar::AbstractGraphAStar`.");
+L.push("pub struct AbstractGraphAStarScenario {");
+L.push("    pub name: &'static str,");
+L.push("    pub num_nodes: f64,");
+L.push("    pub edge_count: f64,");
+L.push("    pub weight: f64,");
+L.push("    pub max_iter: f64,");
+L.push("    pub nodes: &'static [f64],");
+L.push("    pub edges: &'static [f64],");
+L.push("    pub queries: &'static [AgaQuery],");
+L.push("}");
+L.push("");
+for (const s of structures.abstractgraphastar) {
+  const id = s.name.toUpperCase();
+  const qNames = [];
+  s.queries.forEach((q, qi) => {
+    const qn = `${id}_Q${qi}`;
+    qNames.push(qn);
+    L.push(`const ${qn}: AgaQuery = AgaQuery {`);
+    L.push(`    is_multi: ${q.isMulti}u8,`);
+    L.push(`    starts: &[${q.starts.map(f64).join(", ")}],`);
+    L.push(`    goal: ${f64(q.goal)},`);
+    L.push(
+      `    path: ${q.path === "u" ? "None" : `Some(&[${q.path.map(f64).join(", ")}] as &[f64])`},`,
+    );
+    L.push(`    stamp_after: ${q.stampAfter}u64,`);
+    L.push("    closed: &[");
+    L.push(...numArr(q.closed, "u32", 16));
+    L.push("],");
+    L.push("    gs_stamp: &[");
+    L.push(...numArr(q.gsStamp, "u32", 16));
+    L.push("],");
+    L.push("    g_score_bits: &[");
+    L.push(...numArr(q.gScoreBits, "u32", 12));
+    L.push("],");
+    L.push("    came_from: &[");
+    L.push(...numArr(q.cameFrom, "i32", 16));
+    L.push("],");
+    L.push("    start_node: &[");
+    L.push(...numArr(q.startNode, "i32", 16));
+    L.push("],");
+    L.push("    q_heap: &[");
+    L.push(...numArr(q.qHeap, "i32", 16));
+    L.push("],");
+    L.push("    q_pri_bits: &[");
+    L.push(...numArr(q.qPriBits, "u32", 12));
+    L.push("],");
+    L.push(`    q_size: ${q.qSize}i64,`);
+    L.push(`    q_cap: ${q.qCap},`);
+    L.push("};");
+    L.push("");
+  });
+  L.push(`pub const ${id}: AbstractGraphAStarScenario = AbstractGraphAStarScenario {`);
+  L.push(`    name: "${s.name}",`);
+  L.push(`    num_nodes: ${f64(s.numNodes)},`);
+  L.push(`    edge_count: ${f64(s.edgeCount)},`);
+  L.push(`    weight: ${f64(s.weight)},`);
+  L.push(`    max_iter: ${f64(s.maxIter)},`);
+  L.push("    nodes: &[");
+  L.push(...numArr(s.nodes, "f64", 12));
+  L.push("],");
+  L.push("    edges: &[");
+  L.push(...numArr(s.edges, "f64", 12));
+  L.push("],");
+  L.push(`    queries: &[${qNames.join(", ")}],`);
+  L.push("};");
+  L.push("");
+}
+L.push("pub const ABSTRACT_GRAPH_ASTAR_SCENARIOS: &[AbstractGraphAStarScenario] = &[");
+for (const s of structures.abstractgraphastar) L.push(`    ${s.name.toUpperCase()},`);
 L.push("];");
 L.push("");
 

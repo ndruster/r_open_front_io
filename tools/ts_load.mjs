@@ -1085,6 +1085,38 @@ function prepare(rel) {
     );
   }
 
+  if (rel.endsWith("game/RailroadSpatialGrid.ts")) {
+    // GameMap / TileRef / Railroad are type-only here (the grid only calls
+    // game.x/y and stores rails by reference; strip mode drops the type
+    // annotations anyway, but the imports would pull the GameMap value graph
+    // -> drop them). The ctor uses parameter properties -> expand.
+    out = must(
+      out,
+      'import { GameMap, TileRef } from "./GameMap";\n',
+      "",
+      "RailSpatialGrid GameMap import",
+    );
+    out = must(
+      out,
+      'import { Railroad } from "./Railroad";\n',
+      "",
+      "RailSpatialGrid Railroad import",
+    );
+    out = must(
+      out,
+      "  constructor(\n" +
+        "    private game: GameMap,\n" +
+        "    private cellSize: number,\n" +
+        "  ) {",
+      "  private game: GameMap;\n" +
+        "  private cellSize: number;\n\n" +
+        "  constructor(game: GameMap, cellSize: number) {\n" +
+        "    this.game = game;\n" +
+        "    this.cellSize = cellSize;",
+      "RailSpatialGrid ctor",
+    );
+  }
+
   if (rel.endsWith("PatternDecoder.ts")) {
     // PlayerPattern is a type-only import (a z.infer type from Schemas); strip
     // mode cannot tell and would pull in the whole zod schema graph -> drop.

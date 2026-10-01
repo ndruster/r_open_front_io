@@ -55,6 +55,10 @@ rust/
 │   │   │                          index geometry, oriented-railroad lookup
 │   │   │                          + reversal, delete's update/call sequence;
 │   │   │                          stations and rails cross by refid)
+│   │   ├── railroad_spatial_grid.rs port of game/RailroadSpatialGrid.ts
+│   │   │                          (cellSize buckets keyed by `${cx}:${cy}`;
+│   │   │                          register/unregister/query + insertion-ordered
+│   │   │                          Map/Set dumps, rails keyed by refid)
 │   │   ├── wasm_probe.rs          `extern "C"` surface, feature-gated
 │   │   └── pathfinding/
 │   │       ├── mod.rs
@@ -561,6 +565,21 @@ desync, not a rounding nit. Two things enforce that here:
     port), so the parity surface is the call sequence. 20 scenarios cover
     empty / tie / NaN / ±Inf geometry, forward / backward / missing /
     parallel-rail orientation, and self-loop / negative-id deletes.
+34. **`game/RailroadSpatialGrid.ts`** (`railroad_spatial_grid`) —
+    `RailSpatialGrid`: a `cellSize x cellSize` spatial index over rail tiles,
+    cells keyed by the `` `${cx}:${cy}` `` template string (`js_int_str`
+    reproduces `String(Number)` — `-0`→`"0"`, `NaN`/`±Infinity` print their
+    JS spellings). `register` (defensive `unregister` first, per-rail cell
+    dedup, empty-tile rails left untracked), `unregister` (emptied cells are
+    pruned, survivor order preserved) and `query` (nested `cx`-then-`cy`
+    scan over the `[x±radius, y±radius]` box, union in insertion order) all
+    ride on JS `Map`/`Set` insertion-order + object-identity semantics,
+    modelled with ordered Vec/HashMap pairs keyed by capture refids. The
+    constructor's `cellSize <= 0` throw is recorded as a `[1]` construct
+    result (NaN does *not* throw — every cell collapses to `"NaN:NaN"`). 11
+    scenarios cover the dumps (`debug_cells` / `debug_rail_cells`), re-
+    registration, shared-cell ordering, cell sizes 1 / 2.5 / 100, and
+    negative-radius empty queries.
 
 Regenerate whenever a ported source changes:
 
@@ -594,7 +613,7 @@ node rust/tools/run_wasm_parity.mjs
 
 `wasm-probe` exposes the ported functions through `extern "C"` scalar
 entrypoints (`src/wasm_probe.rs`); the runner imports `data/vectors.json` and
-compares every value. Last run: **39,484 comparisons, all bit-identical**.
+compares every value. Last run: **39,653 comparisons, all bit-identical**.
 
 ### Windows: the linker environment
 

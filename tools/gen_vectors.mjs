@@ -161,6 +161,7 @@ const EU = await loadTs("src/core/execution/Util.ts");
 const WM = await loadTs("src/core/game/WaterManager.ts");
 const GUU = await loadTs("src/core/game/GameUpdateUtils.ts");
 const RR = await loadTs("src/core/game/Railroad.ts");
+const RSG = await loadTs("src/core/game/RailroadSpatialGrid.ts");
 const { AStar } = await loadTs("src/core/pathfinding/algorithms/AStar.ts");
 const { AStarRail } = await loadTs("src/core/pathfinding/algorithms/AStar.Rail.ts");
 const { AStarWater } = await loadTs("src/core/pathfinding/algorithms/AStar.Water.ts");
@@ -1243,6 +1244,167 @@ function rrDelete(name, rail) {
   const A = rrStation(10), B = rrStation(20);
   rrDelete("rr_del_negid", rrRail(A, B, [5], -3));
 }
+
+// --- RailSpatialGrid scenario runner -----------------------------------------
+// Exercises the real RailroadSpatialGrid.ts through a stateful op stream. Rails
+// are duck-typed `{ tiles, __refid }` (the grid keys them by object identity;
+// refids cross in the token stream). `game` is a real GameMapImpl (all-land).
+// kind 0 = construct `[cellSize]` -> `[0]` ok / `[1]` throw; 1 = register
+// `[refid, n, tiles…]` -> `[]`; 2 = unregister `[refid]` -> `[]`; 3 = query
+// `[tile, radius]` -> `[len, refids…]`; 4 = dump cells -> `[ncells, (klen,
+// bytes…, m, refids…)*]`; 5 = dump railToCells -> `[nrails, (refid, m, (klen,
+// bytes…)*m)*]`.
+const rsgScenarios = [];
+let rsgIdx = 0;
+function runRSG(name, width, height, ops) {
+  const game = new GameMapImpl(width, height, new Uint8Array(width * height), width * height);
+  const played = [];
+  let grid = null;
+  // JS Map/Set key on object identity: one persistent rail object per refid
+  // (register with the same refid reuses the object, exactly like re-registering
+  // the same Railroad instance; unregister must pass the same object).
+  const rails = new Map();
+  const railOf = (refid, tiles) => {
+    let r = rails.get(refid);
+    if (!r) {
+      r = { tiles, __refid: refid };
+      rails.set(refid, r);
+    } else {
+      r.tiles = tiles;
+    }
+    return r;
+  };
+  for (const [k, ...a] of ops) {
+    let args, res;
+    if (k === 0) {
+      args = [width, height, a[0]];
+      try {
+        grid = new RSG.RailSpatialGrid(game, a[0]);
+        res = [0];
+      } catch {
+        grid = null;
+        res = [1];
+      }
+    } else if (k === 1) {
+      const [refid, tiles] = a;
+      args = [refid, tiles.length, ...tiles];
+      grid.register(railOf(refid, tiles));
+      res = [];
+    } else if (k === 2) {
+      args = [a[0]];
+      grid.unregister(railOf(a[0], []));
+      res = [];
+    } else if (k === 3) {
+      args = [a[0], a[1]];
+      const r = [...grid.query(a[0], a[1])].map((x) => x.__refid);
+      res = [r.length, ...r];
+    } else if (k === 4) {
+      args = [];
+      res = [grid.cells.size];
+      for (const [key, set] of grid.cells) {
+        res.push(key.length, ...[...key].map((c) => c.charCodeAt(0)));
+        res.push(set.size, ...[...set].map((x) => x.__refid));
+      }
+    } else {
+      args = [];
+      res = [grid.railToCells.size];
+      for (const [rail, keys] of grid.railToCells) {
+        res.push(rail.__refid, keys.size);
+        for (const key of keys) res.push(key.length, ...[...key].map((c) => c.charCodeAt(0)));
+      }
+    }
+    played.push({ kind: k, args: args.flat().map(uenc), res: res.flat().map(uenc) });
+  }
+  rsgScenarios.push({ name: `${name}_${rsgIdx++}`, width, height, ops: played });
+}
+
+// 1. Basic register + query + dumps (cellSize 5 over a 10x10 map).
+runRSG("rsg_basic", 10, 10, [
+  [0, 5],
+  [1, 1, [22, 77]], // rail 1: (2,2) -> "0:0", (7,7) -> "1:1"
+  [1, 2, [16]],     // rail 2: (6,1) -> "1:0"
+  [4],
+  [5],
+  [3, 22, 0],       // exact cell "0:0" -> [1]
+  [3, 16, 0],       // "1:0" -> [2]
+  [3, 77, 0],       // "1:1" -> [1]
+  [3, 5, 6],        // wide box -> [1, 2] in scan order
+  [2, 1],           // unregister rail 1 -> cells "1:1" pruned
+  [4],
+  [3, 77, 0],       // now empty
+]);
+
+// 2. Double-register replaces (defensive unregister first).
+runRSG("rsg_re_register", 10, 10, [
+  [0, 5],
+  [1, 1, [22]],
+  [1, 1, [77]],
+  [4],
+  [5],
+]);
+
+// 3. Empty-tiles rail is not tracked in railToCells.
+runRSG("rsg_empty_tiles", 10, 10, [
+  [0, 5],
+  [1, 1, []],
+  [4],
+  [5],
+]);
+
+// 4. Shared cell: two rails in one cell keep insertion order.
+runRSG("rsg_shared_cell", 10, 10, [
+  [0, 5],
+  [1, 1, [0]],
+  [1, 2, [1]],
+  [1, 3, [2]],
+  [4],
+  [3, 0, 0],
+  [2, 2],
+  [4],
+  [3, 0, 0],
+]);
+
+// 5. cellSize 0 / negative throw at construct; NaN collapses to "NaN:NaN".
+runRSG("rsg_ctor_throw0", 10, 10, [[0, 0]]);
+runRSG("rsg_ctor_throwneg", 10, 10, [[0, -5]]);
+runRSG("rsg_ctor_nan", 10, 10, [
+  [0, NaN],
+  [1, 1, [22]],
+  [4],
+  [5],
+]);
+
+// 6. cellSize 1: every tile is its own cell.
+runRSG("rsg_cell1", 10, 10, [
+  [0, 1],
+  [1, 1, [23, 41]],
+  [4],
+  [3, 23, 0],
+  [3, 23, 1],
+]);
+
+// 7. cellSize larger than the map: single cell.
+runRSG("rsg_cellbig", 10, 10, [
+  [0, 100],
+  [1, 1, [0, 99]],
+  [4],
+  [3, 50, 0],
+]);
+
+// 8. Negative-radius query: box inverts -> empty.
+runRSG("rsg_neg_radius", 10, 10, [
+  [0, 5],
+  [1, 1, [22]],
+  [3, 22, -1],
+]);
+
+// 9. Fractional cellSize: floor division.
+runRSG("rsg_frac_cell", 10, 10, [
+  [0, 2.5],
+  [1, 1, [22, 77]], // (2,2)/2.5=0.8->0, (7,7)/2.5=2.8->2
+  [4],
+  [3, 22, 0],
+]);
 
 // --- PatternDecoder scenario runner -------------------------------------------
 // Exercises the real PatternDecoder.ts decode + isPrimary through the shared
@@ -4530,6 +4692,7 @@ const structures = {
   watermanager: wmScenarios,
   gameupdateutils: guScenarios,
   railroad: rrScenarios,
+  railgrid: rsgScenarios,
   astar: asScenarios,
   rail: railScenarios,
   water: waterScenarios,
@@ -6455,6 +6618,43 @@ for (const s of structures.railroad) {
 }
 L.push("pub const RR_SCENARIOS: &[RrScenario] = &[");
 for (const s of structures.railroad) L.push(`    ${s.name.toUpperCase()},`);
+L.push("];");
+L.push("");
+
+L.push("/// One `RailroadSpatialGrid.ts` op: `kind` + flat `args` / `res` token");
+L.push("/// streams (see the Rust `RigHarness::run_op` docs).");
+L.push("pub struct RsgOp {");
+L.push("    pub kind: u8,");
+L.push("    pub args: &'static [f64],");
+L.push("    pub res: &'static [f64],");
+L.push("}");
+L.push("/// One grid scenario: an all-land `width x height` GameMap and the op");
+L.push("/// stream replayed against it (kind 0 constructs the grid).");
+L.push("pub struct RsgScenario {");
+L.push("    pub name: &'static str,");
+L.push("    pub width: f64,");
+L.push("    pub height: f64,");
+L.push("    pub ops: &'static [RsgOp],");
+L.push("}");
+L.push("");
+for (const s of structures.railgrid) {
+  const id = s.name.toUpperCase();
+  L.push(`const ${id}_OPS: &[RsgOp] = &[`);
+  for (const o of s.ops)
+    L.push(
+      `    RsgOp { kind: ${o.kind}, args: &[${o.args.map(utilResLit).join(", ")}], res: &[${o.res.map(utilResLit).join(", ")}] },`,
+    );
+  L.push("];");
+  L.push(`pub const ${id}: RsgScenario = RsgScenario {`);
+  L.push(`    name: "${s.name}",`);
+  L.push(`    width: ${f64(s.width)},`);
+  L.push(`    height: ${f64(s.height)},`);
+  L.push(`    ops: ${id}_OPS,`);
+  L.push("};");
+  L.push("");
+}
+L.push("pub const RSG_SCENARIOS: &[RsgScenario] = &[");
+for (const s of structures.railgrid) L.push(`    ${s.name.toUpperCase()},`);
 L.push("];");
 L.push("");
 

@@ -70,6 +70,11 @@
 //!   observable destruction-update / `removeRailroad` call sequence; station
 //!   identity rides in as capture refids — the `TrainStation` internals are a
 //!   later port)
+//! * [`railroad_spatial_grid`] — `src/core/game/RailroadSpatialGrid.ts`
+//!   (`RailSpatialGrid`: `cellSize x cellSize` spatial buckets keyed by the
+//!   `` `${cx}:${cy}` `` template string; register / unregister / query over
+//!   `game.x/y`-decoded rail tiles, rails keyed by capture refid, insertion-
+//!   ordered `Map`/`Set` semantics preserved)
 //! * [`line`] — `src/core/utilities/Line.ts` (`DistanceBasedBezierCurve`:
 //!   fixed-point De Casteljau subdivision for MIRV trajectories)
 //! * [`veterancy`] — `src/core/game/Veterancy.ts` (`maxHealthWithVeterancy`:
@@ -131,6 +136,7 @@ pub mod pathfinding;
 pub mod pattern_decoder;
 pub mod pseudo_random;
 pub mod railroad;
+pub mod railroad_spatial_grid;
 pub mod server_list;
 pub mod team_assignment;
 pub mod terrain_search_map;

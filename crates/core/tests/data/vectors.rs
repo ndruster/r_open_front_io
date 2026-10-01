@@ -32452,3 +32452,184 @@ pub const RR_SCENARIOS: &[RrScenario] = &[
     RR_DEL_NEGID,
 ];
 
+/// One `RailroadSpatialGrid.ts` op: `kind` + flat `args` / `res` token
+/// streams (see the Rust `RigHarness::run_op` docs).
+pub struct RsgOp {
+    pub kind: u8,
+    pub args: &'static [f64],
+    pub res: &'static [f64],
+}
+/// One grid scenario: an all-land `width x height` GameMap and the op
+/// stream replayed against it (kind 0 constructs the grid).
+pub struct RsgScenario {
+    pub name: &'static str,
+    pub width: f64,
+    pub height: f64,
+    pub ops: &'static [RsgOp],
+}
+
+const RSG_BASIC_0_OPS: &[RsgOp] = &[
+    RsgOp { kind: 0, args: &[10f64, 10f64, 5f64], res: &[0f64] },
+    RsgOp { kind: 1, args: &[1f64, 2f64, 22f64, 77f64], res: &[] },
+    RsgOp { kind: 1, args: &[2f64, 1f64, 16f64], res: &[] },
+    RsgOp { kind: 4, args: &[], res: &[3f64, 3f64, 48f64, 58f64, 48f64, 1f64, 1f64, 3f64, 49f64, 58f64, 49f64, 1f64, 1f64, 3f64, 49f64, 58f64, 48f64, 1f64, 2f64] },
+    RsgOp { kind: 5, args: &[], res: &[2f64, 1f64, 2f64, 3f64, 48f64, 58f64, 48f64, 3f64, 49f64, 58f64, 49f64, 2f64, 1f64, 3f64, 49f64, 58f64, 48f64] },
+    RsgOp { kind: 3, args: &[22f64, 0f64], res: &[1f64, 1f64] },
+    RsgOp { kind: 3, args: &[16f64, 0f64], res: &[1f64, 2f64] },
+    RsgOp { kind: 3, args: &[77f64, 0f64], res: &[1f64, 1f64] },
+    RsgOp { kind: 3, args: &[5f64, 6f64], res: &[2f64, 1f64, 2f64] },
+    RsgOp { kind: 2, args: &[1f64], res: &[] },
+    RsgOp { kind: 4, args: &[], res: &[1f64, 3f64, 49f64, 58f64, 48f64, 1f64, 2f64] },
+    RsgOp { kind: 3, args: &[77f64, 0f64], res: &[0f64] },
+];
+pub const RSG_BASIC_0: RsgScenario = RsgScenario {
+    name: "rsg_basic_0",
+    width: 10f64,
+    height: 10f64,
+    ops: RSG_BASIC_0_OPS,
+};
+
+const RSG_RE_REGISTER_1_OPS: &[RsgOp] = &[
+    RsgOp { kind: 0, args: &[10f64, 10f64, 5f64], res: &[0f64] },
+    RsgOp { kind: 1, args: &[1f64, 1f64, 22f64], res: &[] },
+    RsgOp { kind: 1, args: &[1f64, 1f64, 77f64], res: &[] },
+    RsgOp { kind: 4, args: &[], res: &[1f64, 3f64, 49f64, 58f64, 49f64, 1f64, 1f64] },
+    RsgOp { kind: 5, args: &[], res: &[1f64, 1f64, 1f64, 3f64, 49f64, 58f64, 49f64] },
+];
+pub const RSG_RE_REGISTER_1: RsgScenario = RsgScenario {
+    name: "rsg_re_register_1",
+    width: 10f64,
+    height: 10f64,
+    ops: RSG_RE_REGISTER_1_OPS,
+};
+
+const RSG_EMPTY_TILES_2_OPS: &[RsgOp] = &[
+    RsgOp { kind: 0, args: &[10f64, 10f64, 5f64], res: &[0f64] },
+    RsgOp { kind: 1, args: &[1f64, 0f64], res: &[] },
+    RsgOp { kind: 4, args: &[], res: &[0f64] },
+    RsgOp { kind: 5, args: &[], res: &[0f64] },
+];
+pub const RSG_EMPTY_TILES_2: RsgScenario = RsgScenario {
+    name: "rsg_empty_tiles_2",
+    width: 10f64,
+    height: 10f64,
+    ops: RSG_EMPTY_TILES_2_OPS,
+};
+
+const RSG_SHARED_CELL_3_OPS: &[RsgOp] = &[
+    RsgOp { kind: 0, args: &[10f64, 10f64, 5f64], res: &[0f64] },
+    RsgOp { kind: 1, args: &[1f64, 1f64, 0f64], res: &[] },
+    RsgOp { kind: 1, args: &[2f64, 1f64, 1f64], res: &[] },
+    RsgOp { kind: 1, args: &[3f64, 1f64, 2f64], res: &[] },
+    RsgOp { kind: 4, args: &[], res: &[1f64, 3f64, 48f64, 58f64, 48f64, 3f64, 1f64, 2f64, 3f64] },
+    RsgOp { kind: 3, args: &[0f64, 0f64], res: &[3f64, 1f64, 2f64, 3f64] },
+    RsgOp { kind: 2, args: &[2f64], res: &[] },
+    RsgOp { kind: 4, args: &[], res: &[1f64, 3f64, 48f64, 58f64, 48f64, 2f64, 1f64, 3f64] },
+    RsgOp { kind: 3, args: &[0f64, 0f64], res: &[2f64, 1f64, 3f64] },
+];
+pub const RSG_SHARED_CELL_3: RsgScenario = RsgScenario {
+    name: "rsg_shared_cell_3",
+    width: 10f64,
+    height: 10f64,
+    ops: RSG_SHARED_CELL_3_OPS,
+};
+
+const RSG_CTOR_THROW0_4_OPS: &[RsgOp] = &[
+    RsgOp { kind: 0, args: &[10f64, 10f64, 0f64], res: &[1f64] },
+];
+pub const RSG_CTOR_THROW0_4: RsgScenario = RsgScenario {
+    name: "rsg_ctor_throw0_4",
+    width: 10f64,
+    height: 10f64,
+    ops: RSG_CTOR_THROW0_4_OPS,
+};
+
+const RSG_CTOR_THROWNEG_5_OPS: &[RsgOp] = &[
+    RsgOp { kind: 0, args: &[10f64, 10f64, -5f64], res: &[1f64] },
+];
+pub const RSG_CTOR_THROWNEG_5: RsgScenario = RsgScenario {
+    name: "rsg_ctor_throwneg_5",
+    width: 10f64,
+    height: 10f64,
+    ops: RSG_CTOR_THROWNEG_5_OPS,
+};
+
+const RSG_CTOR_NAN_6_OPS: &[RsgOp] = &[
+    RsgOp { kind: 0, args: &[10f64, 10f64, f64::NAN], res: &[0f64] },
+    RsgOp { kind: 1, args: &[1f64, 1f64, 22f64], res: &[] },
+    RsgOp { kind: 4, args: &[], res: &[1f64, 7f64, 78f64, 97f64, 78f64, 58f64, 78f64, 97f64, 78f64, 1f64, 1f64] },
+    RsgOp { kind: 5, args: &[], res: &[1f64, 1f64, 1f64, 7f64, 78f64, 97f64, 78f64, 58f64, 78f64, 97f64, 78f64] },
+];
+pub const RSG_CTOR_NAN_6: RsgScenario = RsgScenario {
+    name: "rsg_ctor_nan_6",
+    width: 10f64,
+    height: 10f64,
+    ops: RSG_CTOR_NAN_6_OPS,
+};
+
+const RSG_CELL1_7_OPS: &[RsgOp] = &[
+    RsgOp { kind: 0, args: &[10f64, 10f64, 1f64], res: &[0f64] },
+    RsgOp { kind: 1, args: &[1f64, 2f64, 23f64, 41f64], res: &[] },
+    RsgOp { kind: 4, args: &[], res: &[2f64, 3f64, 51f64, 58f64, 50f64, 1f64, 1f64, 3f64, 49f64, 58f64, 52f64, 1f64, 1f64] },
+    RsgOp { kind: 3, args: &[23f64, 0f64], res: &[1f64, 1f64] },
+    RsgOp { kind: 3, args: &[23f64, 1f64], res: &[1f64, 1f64] },
+];
+pub const RSG_CELL1_7: RsgScenario = RsgScenario {
+    name: "rsg_cell1_7",
+    width: 10f64,
+    height: 10f64,
+    ops: RSG_CELL1_7_OPS,
+};
+
+const RSG_CELLBIG_8_OPS: &[RsgOp] = &[
+    RsgOp { kind: 0, args: &[10f64, 10f64, 100f64], res: &[0f64] },
+    RsgOp { kind: 1, args: &[1f64, 2f64, 0f64, 99f64], res: &[] },
+    RsgOp { kind: 4, args: &[], res: &[1f64, 3f64, 48f64, 58f64, 48f64, 1f64, 1f64] },
+    RsgOp { kind: 3, args: &[50f64, 0f64], res: &[1f64, 1f64] },
+];
+pub const RSG_CELLBIG_8: RsgScenario = RsgScenario {
+    name: "rsg_cellbig_8",
+    width: 10f64,
+    height: 10f64,
+    ops: RSG_CELLBIG_8_OPS,
+};
+
+const RSG_NEG_RADIUS_9_OPS: &[RsgOp] = &[
+    RsgOp { kind: 0, args: &[10f64, 10f64, 5f64], res: &[0f64] },
+    RsgOp { kind: 1, args: &[1f64, 1f64, 22f64], res: &[] },
+    RsgOp { kind: 3, args: &[22f64, -1f64], res: &[1f64, 1f64] },
+];
+pub const RSG_NEG_RADIUS_9: RsgScenario = RsgScenario {
+    name: "rsg_neg_radius_9",
+    width: 10f64,
+    height: 10f64,
+    ops: RSG_NEG_RADIUS_9_OPS,
+};
+
+const RSG_FRAC_CELL_10_OPS: &[RsgOp] = &[
+    RsgOp { kind: 0, args: &[10f64, 10f64, 2.5f64], res: &[0f64] },
+    RsgOp { kind: 1, args: &[1f64, 2f64, 22f64, 77f64], res: &[] },
+    RsgOp { kind: 4, args: &[], res: &[2f64, 3f64, 48f64, 58f64, 48f64, 1f64, 1f64, 3f64, 50f64, 58f64, 50f64, 1f64, 1f64] },
+    RsgOp { kind: 3, args: &[22f64, 0f64], res: &[1f64, 1f64] },
+];
+pub const RSG_FRAC_CELL_10: RsgScenario = RsgScenario {
+    name: "rsg_frac_cell_10",
+    width: 10f64,
+    height: 10f64,
+    ops: RSG_FRAC_CELL_10_OPS,
+};
+
+pub const RSG_SCENARIOS: &[RsgScenario] = &[
+    RSG_BASIC_0,
+    RSG_RE_REGISTER_1,
+    RSG_EMPTY_TILES_2,
+    RSG_SHARED_CELL_3,
+    RSG_CTOR_THROW0_4,
+    RSG_CTOR_THROWNEG_5,
+    RSG_CTOR_NAN_6,
+    RSG_CELL1_7,
+    RSG_CELLBIG_8,
+    RSG_NEG_RADIUS_9,
+    RSG_FRAC_CELL_10,
+];
+

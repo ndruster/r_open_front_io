@@ -3712,3 +3712,40 @@ pub extern "C" fn probe_rr_op(kind: u32) -> usize {
 pub extern "C" fn probe_rr_out_at(i: usize) -> f64 {
     RR_OUT.with(|o| o.borrow()[i])
 }
+
+// ================= P32: game/RailroadSpatialGrid.ts (railroad_spatial_grid) ==
+
+thread_local! {
+    static RSG_HARNESS: std::cell::RefCell<crate::railroad_spatial_grid::RigHarness> =
+        std::cell::RefCell::new(crate::railroad_spatial_grid::RigHarness::new());
+    static RSG_ARGS: std::cell::RefCell<Vec<f64>> = const { std::cell::RefCell::new(Vec::new()) };
+    static RSG_OUT: std::cell::RefCell<Vec<f64>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
+/// Drop the current grid (one scenario's op stream ends; the next begins with
+/// a construct op).
+#[no_mangle]
+pub extern "C" fn probe_rsg_reset() {
+    RSG_HARNESS.with(|h| h.borrow_mut().reset());
+}
+
+/// Push one flat token of the op's arg stream.
+#[no_mangle]
+pub extern "C" fn probe_rsg_arg(v: f64) {
+    RSG_ARGS.with(|t| t.borrow_mut().push(v));
+}
+
+/// Run `RigHarness::run_op(kind, args)`; returns the result-stream length.
+#[no_mangle]
+pub extern "C" fn probe_rsg_op(kind: u32) -> usize {
+    let a = RSG_ARGS.with(|t| std::mem::take(&mut *t.borrow_mut()));
+    let out = RSG_HARNESS.with(|h| h.borrow_mut().run_op(kind as u8, &a));
+    let len = out.len();
+    RSG_OUT.with(|o| *o.borrow_mut() = out);
+    len
+}
+
+#[no_mangle]
+pub extern "C" fn probe_rsg_out_at(i: usize) -> f64 {
+    RSG_OUT.with(|o| o.borrow()[i])
+}

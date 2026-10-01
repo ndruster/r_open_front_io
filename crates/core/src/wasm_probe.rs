@@ -3024,3 +3024,144 @@ pub extern "C" fn probe_sct_seen_at(i: usize) -> f64 {
 pub extern "C" fn probe_sct_seen_goal() -> f64 {
     SCT_SEEN.with(|s| s.borrow().as_ref().unwrap().2)
 }
+
+// ========================= P20: SmoothingWaterTransformer =====================
+// No throws (the stub cannot); terrain reads are in-bounds for the scripted
+// maps. Observables: the PathStart `inner` received (the union forwarded
+// untouched) and the smoothed output path.
+
+use crate::pathfinding::smoothing_water_transformer::{
+    SmoothingWaterTransformer, WaterTraversable,
+};
+
+thread_local! {
+    static SWT_MAP: std::cell::RefCell<Option<&'static GameMap>> =
+        const { std::cell::RefCell::new(None) };
+    static SWT_CELLS: std::cell::RefCell<Vec<f64>> = const { std::cell::RefCell::new(Vec::new()) };
+    static SWT_FROM: std::cell::RefCell<Vec<f64>> = const { std::cell::RefCell::new(Vec::new()) };
+    static SWT_INNER: std::cell::RefCell<Vec<f64>> = const { std::cell::RefCell::new(Vec::new()) };
+    static SWT_OUT: std::cell::RefCell<Vec<f64>> = const { std::cell::RefCell::new(Vec::new()) };
+    static SWT_SEEN: std::cell::RefCell<Option<(bool, Vec<f64>, f64)>> =
+        const { std::cell::RefCell::new(None) };
+}
+
+/// Clear the pending cell buffer.
+#[no_mangle]
+pub extern "C" fn probe_swt_cell_reset() {
+    SWT_CELLS.with(|c| c.borrow_mut().clear());
+}
+
+/// Append one `[x, y, byte]` terrain override (consumed by `probe_swt_new`).
+#[no_mangle]
+pub extern "C" fn probe_swt_cell(x: f64, y: f64, b: f64) {
+    SWT_CELLS.with(|c| {
+        c.borrow_mut().push(x);
+        c.borrow_mut().push(y);
+        c.borrow_mut().push(b);
+    });
+}
+
+/// Build the water map (default 0x83 land, queued cells -> explicit bytes)
+/// and leak it.
+#[no_mangle]
+pub extern "C" fn probe_swt_new(w: f64, h: f64) {
+    let cells = SWT_CELLS.with(|c| c.borrow().clone());
+    let mut data = vec![0x83u8; (w * h) as usize];
+    for t in cells.chunks(3) {
+        data[t[1] as usize * w as usize + t[0] as usize] = t[2] as u8;
+    }
+    let land = data.iter().filter(|b| *b & 0x80 != 0).count() as f64;
+    let gm: &'static GameMap = Box::leak(Box::new(GameMap::new(w, h, data, land)));
+    SWT_MAP.with(|m| *m.borrow_mut() = Some(gm));
+}
+
+/// Clear the per-query start / inner / seen buffers.
+#[no_mangle]
+pub extern "C" fn probe_swt_reset() {
+    SWT_FROM.with(|f| f.borrow_mut().clear());
+    SWT_INNER.with(|i| i.borrow_mut().clear());
+    SWT_SEEN.with(|s| *s.borrow_mut() = None);
+}
+
+/// Queue one start ref.
+#[no_mangle]
+pub extern "C" fn probe_swt_from(v: f64) {
+    SWT_FROM.with(|f| f.borrow_mut().push(v));
+}
+
+/// Queue one inner result tile ref.
+#[no_mangle]
+pub extern "C" fn probe_swt_inner(v: f64) {
+    SWT_INNER.with(|i| i.borrow_mut().push(v));
+}
+
+/// Run one query. `inner_mode` 0 = null, 1 = empty, 2 = queued tiles. Returns
+/// 0 = null, 2 = path (`probe_swt_out_*`). Inner observation via
+/// `probe_swt_seen_*`.
+#[no_mangle]
+pub extern "C" fn probe_swt_run(to: f64, from_is_array: u32, inner_mode: u32) -> u8 {
+    let gm = SWT_MAP.with(|m| m.borrow().unwrap());
+    let from = SWT_FROM.with(|f| f.borrow().clone());
+    let inner = SWT_INNER.with(|i| i.borrow().clone());
+    let mut stub = ScriptedFinder::default();
+    stub.push_path(match inner_mode {
+        0 => None,
+        1 => Some(vec![]),
+        _ => Some(inner),
+    });
+    let starts = if from_is_array == 1 {
+        PathStart::Multi(&from)
+    } else {
+        PathStart::Single(from[0])
+    };
+    let r = {
+        let mut tr = SmoothingWaterTransformer::new(&mut stub, gm, WaterTraversable(gm));
+        tr.find_path(starts, to)
+    };
+    SWT_SEEN.with(|s| *s.borrow_mut() = stub.last_seen);
+    match r {
+        None => {
+            SWT_OUT.with(|o| o.borrow_mut().clear());
+            0
+        }
+        Some(v) => {
+            SWT_OUT.with(|o| *o.borrow_mut() = v);
+            2
+        }
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn probe_swt_out_len() -> usize {
+    SWT_OUT.with(|o| o.borrow().len())
+}
+
+#[no_mangle]
+pub extern "C" fn probe_swt_out_at(i: usize) -> f64 {
+    SWT_OUT.with(|o| o.borrow()[i])
+}
+
+#[no_mangle]
+pub extern "C" fn probe_swt_seen_flag() -> u8 {
+    SWT_SEEN.with(|s| s.borrow().is_some() as u8)
+}
+
+#[no_mangle]
+pub extern "C" fn probe_swt_seen_multi() -> u8 {
+    SWT_SEEN.with(|s| s.borrow().as_ref().map_or(0, |(m, _, _)| *m as u8))
+}
+
+#[no_mangle]
+pub extern "C" fn probe_swt_seen_len() -> usize {
+    SWT_SEEN.with(|s| s.borrow().as_ref().map_or(0, |(_, t, _)| t.len()))
+}
+
+#[no_mangle]
+pub extern "C" fn probe_swt_seen_at(i: usize) -> f64 {
+    SWT_SEEN.with(|s| s.borrow().as_ref().unwrap().1[i])
+}
+
+#[no_mangle]
+pub extern "C" fn probe_swt_seen_goal() -> f64 {
+    SWT_SEEN.with(|s| s.borrow().as_ref().unwrap().2)
+}

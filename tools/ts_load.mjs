@@ -716,6 +716,56 @@ function prepare(rel) {
       "SCT ctor",
     );
   }
+  if (rel.endsWith("pathfinding/transformers/SmoothingWaterTransformer.ts")) {
+    // GameMap/TileRef/PathFinder are type-only and the extensionless
+    // specifiers are unloadable -> dropped. DebugSpan is a value import
+    // redirected to the prepared copy; AStarWaterBounded is redirected too
+    // and SearchBounds (an interface) is erased from the named import. The
+    // ctor's two parameter properties are expanded; the default predicate
+    // `(t) => map.isWater(t)` captures the *parameter* `map`, which the
+    // expansion keeps in scope.
+    out = must(
+      out,
+      'import { GameMap, TileRef } from "../../game/GameMap";\n',
+      "",
+      "SWT GameMap import",
+    );
+    out = must(out, 'import { PathFinder } from "../types";\n', "", "SWT types import");
+    const dbgRel = "src/core/utilities/DebugSpan.ts";
+    if (!prepared.has(dbgRel)) prepare(dbgRel);
+    out = must(
+      out,
+      'import { DebugSpan } from "../../utilities/DebugSpan";',
+      `import { DebugSpan } from "./${prepared.get(dbgRel)}";`,
+      "SWT DebugSpan import",
+    );
+    const wbRel = "src/core/pathfinding/algorithms/AStar.WaterBounded.ts";
+    if (!prepared.has(wbRel)) prepare(wbRel);
+    out = must(
+      out,
+      "import {\n  AStarWaterBounded,\n  SearchBounds,\n} from \"../algorithms/AStar.WaterBounded\";",
+      `import { AStarWaterBounded } from "./${prepared.get(wbRel)}";`,
+      "SWT WB import",
+    );
+    out = must(
+      out,
+      "  constructor(\n" +
+        "    private inner: PathFinder<TileRef>,\n" +
+        "    private map: GameMap,\n" +
+        "    isTraversable: (tile: TileRef) => boolean = (t) => map.isWater(t),\n" +
+        "  ) {",
+      "  private inner: PathFinder<TileRef>;\n" +
+        "  private map: GameMap;\n\n" +
+        "  constructor(\n" +
+        "    inner: PathFinder<TileRef>,\n" +
+        "    map: GameMap,\n" +
+        "    isTraversable: (tile: TileRef) => boolean = (t) => map.isWater(t),\n" +
+        "  ) {\n" +
+        "    this.inner = inner;\n" +
+        "    this.map = map;",
+      "SWT ctor",
+    );
+  }
 
   mkdirSync(cacheDir, { recursive: true });
   const hash = createHash("sha1").update(out).digest("hex").slice(0, 10);

@@ -2970,6 +2970,156 @@ captureSCT("sct_goal", 10, 10, SCT_WATER, [
   { from: [[7, 3]], scalar: true, to: [7, 2], inner: [[7, 2]] },
 ]);
 
+// --- SmoothingWaterTransformer (SmoothingWaterTransformer.ts) runner ---------
+// Runs the real transformer over a hand-built water map with a queue-backed
+// inner stub. Map is `w x h`, default land (0x83); `cells` is a list of
+// [x, y, byte] setting explicit terrain magnitudes (deep 0x0B = mag 11,
+// shallow 0x02 = mag 2, very-shallow 0x03 = mag 3). Group encoding matches
+// the SCT runner:
+// [is_multi, from_len, from_refs..., to, inner_mode, inner_len, inner_refs...,
+//  seen_flag, [seen_multi, seen_len, seen_refs..., seen_goal], out_mode,
+//  [out_len, out_refs...]]
+// inner_mode 0 = null, 1 = [], 2 = list; seen_flag 0 = inner never called;
+// out_mode 0 = null, 2 = path.
+const swtScenarios = [];
+const { SmoothingWaterTransformer } = await loadTs(
+  "src/core/pathfinding/transformers/SmoothingWaterTransformer.ts",
+);
+
+function captureSWT(name, w, h, cells, queries) {
+  const data = new Uint8Array(w * h).fill(0x83);
+  for (const [x, y, b] of cells) data[y * w + x] = b;
+  const landCount = data.reduce((n, byte) => n + (byte & 0x80 ? 1 : 0), 0);
+  const gm = new GameMapImpl(w, h, data, landCount);
+  const R = (xy) => gm.ref(xy[0], xy[1]);
+  const stub = {
+    next: null,
+    last: null,
+    findPath(from, to) {
+      this.last = { from, to };
+      return this.next;
+    },
+  };
+  const tr = new SmoothingWaterTransformer(stub, gm);
+  const groups = [];
+  for (const q of queries) {
+    const fromRefs = q.from.map(R);
+    const fromArg = q.scalar ? fromRefs[0] : fromRefs;
+    const toRef = R(q.to);
+    const innerMode = q.inner === null ? 0 : q.inner.length === 0 ? 1 : 2;
+    const innerRefs = (q.inner ?? []).map(R);
+    stub.next = innerMode === 0 ? null : innerMode === 1 ? [] : innerRefs;
+    stub.last = null;
+    const p = tr.findPath(fromArg, toRef);
+    const g = [q.scalar ? 0 : 1, fromRefs.length, ...fromRefs, toRef];
+    g.push(innerMode, innerRefs.length, ...innerRefs);
+    if (stub.last === null) {
+      g.push(0);
+    } else {
+      const f = stub.last.from;
+      const m = Array.isArray(f) ? 1 : 0;
+      const tiles = Array.isArray(f) ? f : [f];
+      g.push(1, m, tiles.length, ...tiles, stub.last.to);
+    }
+    if (p === null) g.push(0);
+    else g.push(2, p.length, ...p);
+    groups.push(g);
+  }
+  swtScenarios.push({ name, w, h, cells, groups });
+}
+
+// Deep-water row y=5 x=2..9 (mag 11). Covers: inner null / empty / length-2
+// passthrough, the straight-line LOS collapse + endpoint refinement that
+// re-runs the whole path through the local bounded A*, and the multi-start
+// union forwarded untouched to `inner`.
+const SWT_DEEP_ROW = [];
+for (let x = 2; x <= 9; x++) SWT_DEEP_ROW.push([x, 5, 0x0b]);
+captureSWT("swt_straight", 12, 12, SWT_DEEP_ROW, [
+  { from: [[2, 5]], scalar: true, to: [9, 5], inner: null },
+  { from: [[2, 5]], scalar: true, to: [9, 5], inner: [] },
+  { from: [[2, 5]], scalar: true, to: [9, 5], inner: [[2, 5], [9, 5]] },
+  {
+    from: [[2, 5]],
+    scalar: true,
+    to: [9, 5],
+    inner: [[2, 5], [3, 5], [4, 5], [5, 5], [6, 5], [7, 5], [8, 5], [9, 5]],
+  },
+  {
+    from: [[2, 5], [3, 5]],
+    scalar: false,
+    to: [9, 5],
+    inner: [[2, 5], [3, 5], [4, 5], [5, 5], [6, 5], [7, 5], [8, 5], [9, 5]],
+  },
+]);
+
+// Same row but x=5,6 are shallow (mag 2): pass-1 LOS (min 2) sees straight
+// through, pass-3 LOS (min 3) refuses the shallow band, so the endpoint
+// refinement (bounded A* traverses any water) is what stitches the result.
+const SWT_SHALLOW_ROW = SWT_DEEP_ROW.map(([x, y, b]) =>
+  y === 5 && (x === 5 || x === 6) ? [x, y, 0x02] : [x, y, b],
+);
+captureSWT("swt_shallow", 12, 12, SWT_SHALLOW_ROW, [
+  {
+    from: [[2, 5]],
+    scalar: true,
+    to: [9, 5],
+    inner: [[2, 5], [3, 5], [4, 5], [5, 5], [6, 5], [7, 5], [8, 5], [9, 5]],
+  },
+]);
+
+// Three isolated deep tiles (no connecting water): LOS cannot collapse any
+// pair, and the endpoint refinement's bounded A* finds no route, so both
+// refine passes return null and the inner path survives verbatim.
+captureSWT("swt_isolated", 12, 12, [[2, 2, 0x0b], [5, 5, 0x0b], [9, 9, 0x0b]], [
+  { from: [[2, 2]], scalar: true, to: [9, 9], inner: [[2, 2], [5, 5], [9, 9]] },
+]);
+
+// A staircase of deep tiles joined by a shallow (mag 2) neck: pass-1 LOS
+// threads the neck, the refinement reroutes, pass-3 LOS (min 3) splits at the
+// neck again — exercising tracePath's diagonal detour and the splice slice.
+const SWT_STAIR = [
+  [2, 2, 0x0b], [3, 3, 0x0b], [4, 4, 0x0b], [5, 4, 0x02],
+  [6, 4, 0x0b], [7, 5, 0x0b], [8, 6, 0x0b], [9, 7, 0x0b],
+];
+captureSWT("swt_stair", 12, 12, SWT_STAIR, [
+  {
+    from: [[2, 2]],
+    scalar: true,
+    to: [9, 7],
+    inner: [[2, 2], [3, 3], [4, 4], [5, 4], [6, 4], [7, 5], [8, 6], [9, 7]],
+  },
+]);
+
+// Open deep-water pool (2..10 x 2..6) with a zig-zagging inner path: LOS
+// pass 1 collapses the staircase onto a straight Bresenham trace, the local
+// A* refinement returns its own tie-broken route, and pass 3 smooths again —
+// the output differs from the input.
+const SWT_POOL = [];
+for (let x = 2; x <= 10; x++) for (let y = 2; y <= 6; y++) SWT_POOL.push([x, y, 0x0b]);
+captureSWT("swt_zigzag", 12, 12, SWT_POOL, [
+  {
+    from: [[2, 2]],
+    scalar: true,
+    to: [10, 6],
+    inner: [
+      [2, 2], [2, 3], [3, 3], [3, 4], [4, 4], [4, 5], [5, 5], [5, 6],
+      [6, 6], [7, 6], [8, 6], [9, 6], [10, 6],
+    ],
+  },
+]);
+
+// Long corridor (> 50 manhattan tiles): the endpoint refinement only covers
+// the first/last ~50 tiles, so the middle of the LOS-collapsed path survives
+// the splice unchanged — pins findTileAtDistance's early stop and the
+// slice/re-join arithmetic.
+const SWT_LONG = [];
+for (let x = 2; x <= 58; x++) for (let y = 4; y <= 6; y++) SWT_LONG.push([x, y, 0x0b]);
+const SWT_LONG_PATH = [];
+for (let x = 2; x <= 58; x++) SWT_LONG_PATH.push([x, x % 2 === 0 ? 4 : 6]);
+captureSWT("swt_long", 64, 12, SWT_LONG, [
+  { from: [[2, 4]], scalar: true, to: [58, 6], inner: SWT_LONG_PATH },
+]);
+
 const structures = {
   minheap: mhScenarios,
   bucket: bqScenarios,
@@ -2996,6 +3146,7 @@ const structures = {
   stepper: stepperScenarios,
   componentcheck: ccTScenarios,
   shorecoercing: sctScenarios,
+  smoothingwater: swtScenarios,
 };
 
 // ================================================================ JSON
@@ -4471,6 +4622,41 @@ for (const s of structures.shorecoercing) {
 }
 L.push("pub const SHORE_COERCING_SCENARIOS: &[ShoreCoercingScenario] = &[");
 for (const s of structures.shorecoercing) L.push(`    ${s.name.toUpperCase()},`);
+L.push("];");
+L.push("");
+
+L.push("/// SmoothingWaterTransformer scenario (SmoothingWaterTransformer.ts).");
+L.push("/// Map is `w x h`, default land (0x83); `cells` is a flat [x, y, byte]");
+L.push("/// list setting explicit terrain magnitudes (deep 0x0B = mag 11, shallow");
+L.push("/// 0x02 = mag 2). `groups` uses the same flat script as ShoreCoercing:");
+L.push("/// [is_multi, from_len, from_refs..., to, inner_mode, inner_len,");
+L.push("/// inner_refs..., seen_flag, [seen_multi, seen_len, seen_refs...,");
+L.push("/// seen_goal], out_mode, [out_len, out_refs...]].");
+L.push("pub struct SmoothingWaterScenario {");
+L.push("    pub name: &'static str,");
+L.push("    pub w: f64,");
+L.push("    pub h: f64,");
+L.push("    pub cells: &'static [f64],");
+L.push("    pub groups: &'static [f64],");
+L.push("}");
+L.push("");
+for (const s of structures.smoothingwater) {
+  const id = s.name.toUpperCase();
+  L.push(`pub const ${id}: SmoothingWaterScenario = SmoothingWaterScenario {`);
+  L.push(`    name: "${s.name}",`);
+  L.push(`    w: ${s.w}f64,`);
+  L.push(`    h: ${s.h}f64,`);
+  L.push("    cells: &[");
+  L.push(...numArr(s.cells.flat(), "f64", 10));
+  L.push("],");
+  L.push("    groups: &[");
+  L.push(...numArr(s.groups.flat(), "f64", 10));
+  L.push("],");
+  L.push("};");
+  L.push("");
+}
+L.push("pub const SMOOTHING_WATER_SCENARIOS: &[SmoothingWaterScenario] = &[");
+for (const s of structures.smoothingwater) L.push(`    ${s.name.toUpperCase()},`);
 L.push("];");
 L.push("");
 

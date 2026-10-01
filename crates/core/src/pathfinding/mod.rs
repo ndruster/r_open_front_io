@@ -18,6 +18,7 @@ pub mod parabola;
 pub mod priority_queue;
 pub mod rail;
 pub mod shore_coercing_transformer;
+pub mod smoothing_water_transformer;
 pub mod stepper;
 pub mod water;
 pub mod water_bounded;

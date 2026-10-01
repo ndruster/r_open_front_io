@@ -67,6 +67,9 @@ rust/
 │   │       ├── shore_coercing_transformer.rs
 │   │       │                      port of transformers/ShoreCoercingTransformer.ts
 │   │       │                      (shore->water coercion + endpoint restore)
+│   │       ├── smoothing_water_transformer.rs
+│   │       │                      port of transformers/SmoothingWaterTransformer.ts
+│   │       │                      (LOS smoothing + local-A* endpoint refinement)
 │   │       └── connected_components.rs
 │   │                              port of algorithms/ConnectedComponents.ts
 │   └── tests/
@@ -348,6 +351,26 @@ desync, not a rounding nit. Two things enforce that here:
     water tile overwrite (last write wins) — both leaving duplicate starts
     visible to `inner`; the single-water-source scalar collapse; and the
     `!path || path.length === 0` → `null` short-circuit.
+22. **`SmoothingWaterTransformer.ts`** (`pathfinding::smoothing_water_transformer`)
+    is the water-route smoother decorator: `inner`'s path goes through three
+    passes — LOS binary-search smoothing (min magnitude 2), endpoint
+    refinement via a local `AStarWaterBounded` over the first/last ~50
+    manhattan tiles (padded 10-tile window), and LOS smoothing again (min
+    magnitude 3). JS-isms pinned: the empty-inner result is truthy so `[]`
+    flows through `smooth` (length `<= 2` early return) instead of becoming
+    `null`; `terrain[tile] & 0x1f` reads the packed buffer with `Uint8Array`
+    OOB semantics (undefined → magnitude 0, failing every gate); the
+    diagonal Bresenham step validates the intermediate tile and rolls back to
+    the alternative on failure — `canSee` gates both traversable *and*
+    magnitude, `tracePath` only traversable (pushing the detour tile it
+    validated); `refineSegment` clamps its window with NaN-propagating
+    `js_max`/`js_min`; the injected `(tile) => boolean` predicate is a trait
+    (`WaterTraversable` mirrors the `map.isWater` default). The six scenarios
+    pin the LOS collapse + trace splice, the refinement hit (a rerouted
+    zig-zag) and miss (isolated tiles keep the inner path verbatim), the
+    >50-tile partial splice, and the pass-3 subtlety where a failing
+    `canSee` still leaves `farthest` at its `lo` initialisation — so a
+    shallow band blocks smoothing without shortening the path.
 
 Regenerate whenever a ported source changes:
 
@@ -381,7 +404,7 @@ node rust/tools/run_wasm_parity.mjs
 
 `wasm-probe` exposes the ported functions through `extern "C"` scalar
 entrypoints (`src/wasm_probe.rs`); the runner imports `data/vectors.json` and
-compares every value. Last run: **31,017 comparisons, all bit-identical**.
+compares every value. Last run: **31,194 comparisons, all bit-identical**.
 
 ### Windows: the linker environment
 

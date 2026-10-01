@@ -74,6 +74,11 @@ for (const name of [
   "probe_sct_out_len", "probe_sct_out_at", "probe_sct_seen_flag",
   "probe_sct_seen_multi", "probe_sct_seen_len", "probe_sct_seen_at",
   "probe_sct_seen_goal",
+  "probe_swt_cell_reset", "probe_swt_cell", "probe_swt_new",
+  "probe_swt_reset", "probe_swt_from", "probe_swt_inner", "probe_swt_run",
+  "probe_swt_out_len", "probe_swt_out_at", "probe_swt_seen_flag",
+  "probe_swt_seen_multi", "probe_swt_seen_len", "probe_swt_seen_at",
+  "probe_swt_seen_goal",
 ]) {
   if (typeof ex[name] !== "function") {
     console.error(`missing wasm export ${name} - rebuild with --features wasm-probe`);
@@ -1355,6 +1360,62 @@ for (const s of S.shorecoercing) {
       for (let i = 0; i < seen.tiles.length; i++)
         cmpBits(`${s.name} q${qi} seen`, ex.probe_sct_seen_at(i), toBits(seen.tiles[i]), i);
       cmpBits(`${s.name} q${qi} seen goal`, ex.probe_sct_seen_goal(), toBits(seen.goal), qi);
+    }
+  }
+}
+
+// --- SmoothingWaterTransformer (SmoothingWaterTransformer.ts) ----------------
+// Replays each query: build the water map from the [x, y, byte] cell list,
+// queue the start refs + inner tiles, run, and compare the PathStart the
+// inner stub received and the smoothed output path bit-exactly.
+for (const s of S.smoothingwater) {
+  ex.probe_swt_cell_reset();
+  for (const [x, y, b] of s.cells) ex.probe_swt_cell(x, y, b);
+  ex.probe_swt_new(s.w, s.h);
+  for (let qi = 0; qi < s.groups.length; qi++) {
+    const g = s.groups[qi];
+    let j = 0;
+    const fromIsArray = g[j++];
+    const fromLen = g[j++];
+    const fromTiles = g.slice(j, j + fromLen);
+    j += fromLen;
+    const to = g[j++];
+    const innerMode = g[j++];
+    const innerLen = g[j++];
+    const innerTiles = g.slice(j, j + innerLen);
+    j += innerLen;
+    const seenFlag = g[j++];
+    let seen = null;
+    if (seenFlag === 1) {
+      const m = g[j++];
+      const l = g[j++];
+      seen = { m, tiles: g.slice(j, j + l), goal: g[j + l] };
+      j += l + 1;
+    }
+    const outMode = g[j++];
+    const outTiles = outMode === 2 ? g.slice(j + 1, j + 1 + g[j]) : [];
+
+    ex.probe_swt_reset();
+    for (const t of fromTiles) ex.probe_swt_from(t);
+    for (const t of innerTiles) ex.probe_swt_inner(t);
+    const got = ex.probe_swt_run(to, fromIsArray, innerMode);
+    cmpU32(`${s.name} q${qi} out mode`, got, outMode, qi);
+    if (outMode === 2) {
+      checks++;
+      if (Number(ex.probe_swt_out_len()) !== outTiles.length)
+        fail(`${s.name} q${qi} out length`, Number(ex.probe_swt_out_len()), outTiles.length, qi);
+      for (let i = 0; i < outTiles.length; i++)
+        cmpBits(`${s.name} q${qi} out`, ex.probe_swt_out_at(i), toBits(outTiles[i]), i);
+    }
+    cmpU32(`${s.name} q${qi} seen flag`, ex.probe_swt_seen_flag(), seen ? 1 : 0, qi);
+    if (seen) {
+      cmpU32(`${s.name} q${qi} seen multi`, ex.probe_swt_seen_multi(), seen.m, qi);
+      checks++;
+      if (Number(ex.probe_swt_seen_len()) !== seen.tiles.length)
+        fail(`${s.name} q${qi} seen length`, Number(ex.probe_swt_seen_len()), seen.tiles.length, qi);
+      for (let i = 0; i < seen.tiles.length; i++)
+        cmpBits(`${s.name} q${qi} seen`, ex.probe_swt_seen_at(i), toBits(seen.tiles[i]), i);
+      cmpBits(`${s.name} q${qi} seen goal`, ex.probe_swt_seen_goal(), toBits(seen.goal), qi);
     }
   }
 }

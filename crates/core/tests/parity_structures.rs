@@ -2183,3 +2183,17 @@ fn replay_anon_scenarios() {
         assert_eq!(got.as_deref(), s.res, "{} handle", s.name);
     }
 }
+
+// CloseCodes.ts: replay both predicates over every declared value plus the
+// boundary / non-finite / case-mismatch edges and compare the verdicts.
+#[test]
+fn replay_close_scenarios() {
+    use openfront_core::close_codes::{is_close_reason, is_terminal_close};
+    for s in vectors::CLOSE_SCENARIOS {
+        let got = match s.kind {
+            0 => is_terminal_close(s.code),
+            _ => is_close_reason(s.val),
+        };
+        assert_eq!(got, s.res, "{} verdict", s.name);
+    }
+}

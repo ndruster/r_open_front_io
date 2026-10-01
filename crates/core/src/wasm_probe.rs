@@ -3384,3 +3384,33 @@ pub extern "C" fn probe_anon_run(slot: f64, offset: f64, has: u32) -> i32 {
 pub extern "C" fn probe_anon_out_at(i: usize) -> f64 {
     ANON_OUT.with(|o| o.borrow()[i] as f64)
 }
+
+// ========================= P24: CloseCodes (CloseCodes.ts) ====================
+
+thread_local! {
+    static CLOSE_ARGS: std::cell::RefCell<Vec<f64>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
+/// Push one argument: kind 0 pushes the code f64; kind 1 pushes
+/// `[len, u0, .. u(len-1)]` (UTF-16 code units), same layout as the team
+/// probe's strings.
+#[no_mangle]
+pub extern "C" fn probe_close_arg(v: f64) {
+    CLOSE_ARGS.with(|t| t.borrow_mut().push(v));
+}
+
+/// Run one predicate over the pushed args. Returns the verdict (0/1).
+#[no_mangle]
+pub extern "C" fn probe_close_op(kind: u32) -> u8 {
+    use crate::close_codes as cc;
+    let a = CLOSE_ARGS.with(|t| std::mem::take(&mut *t.borrow_mut()));
+    match kind {
+        0 => u8::from(cc::is_terminal_close(a[0])),
+        _ => {
+            let len = a[0] as usize;
+            let units: Vec<u16> = (0..len).map(|i| a[1 + i] as u16).collect();
+            let s = String::from_utf16_lossy(&units);
+            u8::from(cc::is_close_reason(&s))
+        }
+    }
+}

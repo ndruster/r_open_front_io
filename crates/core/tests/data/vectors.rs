@@ -17632,3 +17632,529 @@ pub const ANON_SCENARIOS: &[AnonScenario] = &[
     ANON_2P53,
 ];
 
+/// CloseCodes scenario. `kind`: 0 isTerminalClose(`code`),
+/// 1 isCloseReason(`val`). `res` is the boolean verdict.
+pub struct CloseScenario {
+    pub name: &'static str,
+    pub kind: u8,
+    pub code: f64,
+    pub val: &'static str,
+    pub res: bool,
+}
+
+pub const CC_NORMAL: CloseScenario = CloseScenario {
+    name: "cc_Normal",
+    kind: 0u8,
+    code: 1000f64,
+    val: "",
+    res: true,
+};
+
+pub const CC_PROTOCOLERROR: CloseScenario = CloseScenario {
+    name: "cc_ProtocolError",
+    kind: 0u8,
+    code: 1002f64,
+    val: "",
+    res: true,
+};
+
+pub const CC_INTERNALERROR: CloseScenario = CloseScenario {
+    name: "cc_InternalError",
+    kind: 0u8,
+    code: 1011f64,
+    val: "",
+    res: false,
+};
+
+pub const CC_TRYAGAINLATER: CloseScenario = CloseScenario {
+    name: "cc_TryAgainLater",
+    kind: 0u8,
+    code: 1013f64,
+    val: "",
+    res: false,
+};
+
+pub const CC_BADREQUEST: CloseScenario = CloseScenario {
+    name: "cc_BadRequest",
+    kind: 0u8,
+    code: 4000f64,
+    val: "",
+    res: true,
+};
+
+pub const CC_UNAUTHORIZED: CloseScenario = CloseScenario {
+    name: "cc_Unauthorized",
+    kind: 0u8,
+    code: 4001f64,
+    val: "",
+    res: true,
+};
+
+pub const CC_FORBIDDEN: CloseScenario = CloseScenario {
+    name: "cc_Forbidden",
+    kind: 0u8,
+    code: 4002f64,
+    val: "",
+    res: true,
+};
+
+pub const CC_BANNED: CloseScenario = CloseScenario {
+    name: "cc_Banned",
+    kind: 0u8,
+    code: 4003f64,
+    val: "",
+    res: true,
+};
+
+pub const CC_GAMENOTFOUND: CloseScenario = CloseScenario {
+    name: "cc_GameNotFound",
+    kind: 0u8,
+    code: 4004f64,
+    val: "",
+    res: true,
+};
+
+pub const CC_GAMECLOSED: CloseScenario = CloseScenario {
+    name: "cc_GameClosed",
+    kind: 0u8,
+    code: 4005f64,
+    val: "",
+    res: true,
+};
+
+pub const CC_LOBBYFULL: CloseScenario = CloseScenario {
+    name: "cc_LobbyFull",
+    kind: 0u8,
+    code: 4006f64,
+    val: "",
+    res: true,
+};
+
+pub const CC_WRONGWORKER: CloseScenario = CloseScenario {
+    name: "cc_WrongWorker",
+    kind: 0u8,
+    code: 4007f64,
+    val: "",
+    res: true,
+};
+
+pub const CC_GAMESTARTED: CloseScenario = CloseScenario {
+    name: "cc_GameStarted",
+    kind: 0u8,
+    code: 4008f64,
+    val: "",
+    res: true,
+};
+
+pub const CC_RANKEDLIMITREACHED: CloseScenario = CloseScenario {
+    name: "cc_RankedLimitReached",
+    kind: 0u8,
+    code: 4100f64,
+    val: "",
+    res: true,
+};
+
+pub const CC_INVALIDCLAN: CloseScenario = CloseScenario {
+    name: "cc_InvalidClan",
+    kind: 0u8,
+    code: 4101f64,
+    val: "",
+    res: true,
+};
+
+pub const CC_CLANVERIFICATIONFAILED: CloseScenario = CloseScenario {
+    name: "cc_ClanVerificationFailed",
+    kind: 0u8,
+    code: 4102f64,
+    val: "",
+    res: true,
+};
+
+pub const CC_BELOW_MIN: CloseScenario = CloseScenario {
+    name: "cc_below_min",
+    kind: 0u8,
+    code: 3999f64,
+    val: "",
+    res: false,
+};
+
+pub const CC_RANGE_MIN: CloseScenario = CloseScenario {
+    name: "cc_range_min",
+    kind: 0u8,
+    code: 4000f64,
+    val: "",
+    res: true,
+};
+
+pub const CC_RANGE_MAX: CloseScenario = CloseScenario {
+    name: "cc_range_max",
+    kind: 0u8,
+    code: 4999f64,
+    val: "",
+    res: true,
+};
+
+pub const CC_ABOVE_MAX: CloseScenario = CloseScenario {
+    name: "cc_above_max",
+    kind: 0u8,
+    code: 5000f64,
+    val: "",
+    res: false,
+};
+
+pub const CC_FRAC_MIN: CloseScenario = CloseScenario {
+    name: "cc_frac_min",
+    kind: 0u8,
+    code: 4000.5f64,
+    val: "",
+    res: true,
+};
+
+pub const CC_FRAC_MAX: CloseScenario = CloseScenario {
+    name: "cc_frac_max",
+    kind: 0u8,
+    code: 4998.75f64,
+    val: "",
+    res: true,
+};
+
+pub const CC_FRAC_1000: CloseScenario = CloseScenario {
+    name: "cc_frac_1000",
+    kind: 0u8,
+    code: 1000.5f64,
+    val: "",
+    res: false,
+};
+
+pub const CC_ZERO: CloseScenario = CloseScenario {
+    name: "cc_zero",
+    kind: 0u8,
+    code: 0f64,
+    val: "",
+    res: false,
+};
+
+pub const CC_NEG_ZERO: CloseScenario = CloseScenario {
+    name: "cc_neg_zero",
+    kind: 0u8,
+    code: -0.0f64,
+    val: "",
+    res: false,
+};
+
+pub const CC_NEG: CloseScenario = CloseScenario {
+    name: "cc_neg",
+    kind: 0u8,
+    code: -1000f64,
+    val: "",
+    res: false,
+};
+
+pub const CC_NAN: CloseScenario = CloseScenario {
+    name: "cc_nan",
+    kind: 0u8,
+    code: f64::NAN,
+    val: "",
+    res: false,
+};
+
+pub const CC_INF: CloseScenario = CloseScenario {
+    name: "cc_inf",
+    kind: 0u8,
+    code: f64::INFINITY,
+    val: "",
+    res: false,
+};
+
+pub const CC_NINF: CloseScenario = CloseScenario {
+    name: "cc_ninf",
+    kind: 0u8,
+    code: f64::NEG_INFINITY,
+    val: "",
+    res: false,
+};
+
+pub const CR_CLOSE_REASON_INVALID_MESSAGE: CloseScenario = CloseScenario {
+    name: "cr_close_reason_invalid_message",
+    kind: 1u8,
+    code: 0.0f64,
+    val: "close_reason.invalid_message",
+    res: true,
+};
+
+pub const CR_CLOSE_REASON_INVALID_TOKEN: CloseScenario = CloseScenario {
+    name: "cr_close_reason_invalid_token",
+    kind: 1u8,
+    code: 0.0f64,
+    val: "close_reason.invalid_token",
+    res: true,
+};
+
+pub const CR_CLOSE_REASON_BANNED: CloseScenario = CloseScenario {
+    name: "cr_close_reason_banned",
+    kind: 1u8,
+    code: 0.0f64,
+    val: "close_reason.banned",
+    res: true,
+};
+
+pub const CR_CLOSE_REASON_TURNSTILE_FAILED: CloseScenario = CloseScenario {
+    name: "cr_close_reason_turnstile_failed",
+    kind: 1u8,
+    code: 0.0f64,
+    val: "close_reason.turnstile_failed",
+    res: true,
+};
+
+pub const CR_CLOSE_REASON_LOGIN_REQUIRED: CloseScenario = CloseScenario {
+    name: "cr_close_reason_login_required",
+    kind: 1u8,
+    code: 0.0f64,
+    val: "close_reason.login_required",
+    res: true,
+};
+
+pub const CR_CLOSE_REASON_ACCOUNT_LOOKUP_FAILED: CloseScenario = CloseScenario {
+    name: "cr_close_reason_account_lookup_failed",
+    kind: 1u8,
+    code: 0.0f64,
+    val: "close_reason.account_lookup_failed",
+    res: true,
+};
+
+pub const CR_CLOSE_REASON_FORBIDDEN: CloseScenario = CloseScenario {
+    name: "cr_close_reason_forbidden",
+    kind: 1u8,
+    code: 0.0f64,
+    val: "close_reason.forbidden",
+    res: true,
+};
+
+pub const CR_CLOSE_REASON_COSMETICS_FORBIDDEN: CloseScenario = CloseScenario {
+    name: "cr_close_reason_cosmetics_forbidden",
+    kind: 1u8,
+    code: 0.0f64,
+    val: "close_reason.cosmetics_forbidden",
+    res: true,
+};
+
+pub const CR_CLOSE_REASON_GAME_NOT_FOUND: CloseScenario = CloseScenario {
+    name: "cr_close_reason_game_not_found",
+    kind: 1u8,
+    code: 0.0f64,
+    val: "close_reason.game_not_found",
+    res: true,
+};
+
+pub const CR_CLOSE_REASON_CANNOT_JOIN: CloseScenario = CloseScenario {
+    name: "cr_close_reason_cannot_join",
+    kind: 1u8,
+    code: 0.0f64,
+    val: "close_reason.cannot_join",
+    res: true,
+};
+
+pub const CR_CLOSE_REASON_NOT_ALLOWLISTED: CloseScenario = CloseScenario {
+    name: "cr_close_reason_not_allowlisted",
+    kind: 1u8,
+    code: 0.0f64,
+    val: "close_reason.not_allowlisted",
+    res: true,
+};
+
+pub const CR_CLOSE_REASON_NOT_TRUSTED: CloseScenario = CloseScenario {
+    name: "cr_close_reason_not_trusted",
+    kind: 1u8,
+    code: 0.0f64,
+    val: "close_reason.not_trusted",
+    res: true,
+};
+
+pub const CR_CLOSE_REASON_LOBBY_FULL: CloseScenario = CloseScenario {
+    name: "cr_close_reason_lobby_full",
+    kind: 1u8,
+    code: 0.0f64,
+    val: "close_reason.lobby_full",
+    res: true,
+};
+
+pub const CR_CLOSE_REASON_WRONG_WORKER: CloseScenario = CloseScenario {
+    name: "cr_close_reason_wrong_worker",
+    kind: 1u8,
+    code: 0.0f64,
+    val: "close_reason.wrong_worker",
+    res: true,
+};
+
+pub const CR_CLOSE_REASON_INTERNAL_ERROR: CloseScenario = CloseScenario {
+    name: "cr_close_reason_internal_error",
+    kind: 1u8,
+    code: 0.0f64,
+    val: "close_reason.internal_error",
+    res: true,
+};
+
+pub const CR_CLOSE_REASON_PROTOCOL_ERROR: CloseScenario = CloseScenario {
+    name: "cr_close_reason_protocol_error",
+    kind: 1u8,
+    code: 0.0f64,
+    val: "close_reason.protocol_error",
+    res: true,
+};
+
+pub const CR_CLOSE_REASON_NO_HEARTBEAT: CloseScenario = CloseScenario {
+    name: "cr_close_reason_no_heartbeat",
+    kind: 1u8,
+    code: 0.0f64,
+    val: "close_reason.no_heartbeat",
+    res: true,
+};
+
+pub const CR_CLOSE_REASON_GAME_ENDED: CloseScenario = CloseScenario {
+    name: "cr_close_reason_game_ended",
+    kind: 1u8,
+    code: 0.0f64,
+    val: "close_reason.game_ended",
+    res: true,
+};
+
+pub const CR_CLOSE_REASON_GAME_STARTED: CloseScenario = CloseScenario {
+    name: "cr_close_reason_game_started",
+    kind: 1u8,
+    code: 0.0f64,
+    val: "close_reason.game_started",
+    res: true,
+};
+
+pub const CR_CLOSE_REASON_RANKED_LIMIT_REACHED: CloseScenario = CloseScenario {
+    name: "cr_close_reason_ranked_limit_reached",
+    kind: 1u8,
+    code: 0.0f64,
+    val: "close_reason.ranked_limit_reached",
+    res: true,
+};
+
+pub const CR_CLOSE_REASON_INVALID_CLAN: CloseScenario = CloseScenario {
+    name: "cr_close_reason_invalid_clan",
+    kind: 1u8,
+    code: 0.0f64,
+    val: "close_reason.invalid_clan",
+    res: true,
+};
+
+pub const CR_CLOSE_REASON_CLAN_VERIFICATION_FAILED: CloseScenario = CloseScenario {
+    name: "cr_close_reason_clan_verification_failed",
+    kind: 1u8,
+    code: 0.0f64,
+    val: "close_reason.clan_verification_failed",
+    res: true,
+};
+
+pub const CR_CLOSE_REASON_UNKNOWN: CloseScenario = CloseScenario {
+    name: "cr_close_reason_unknown",
+    kind: 1u8,
+    code: 0.0f64,
+    val: "close_reason.unknown",
+    res: true,
+};
+
+pub const CR_EMPTY: CloseScenario = CloseScenario {
+    name: "cr_empty",
+    kind: 1u8,
+    code: 0.0f64,
+    val: "",
+    res: false,
+};
+
+pub const CR_CASE: CloseScenario = CloseScenario {
+    name: "cr_case",
+    kind: 1u8,
+    code: 0.0f64,
+    val: "Close_Reason.Unknown",
+    res: false,
+};
+
+pub const CR_PREFIX: CloseScenario = CloseScenario {
+    name: "cr_prefix",
+    kind: 1u8,
+    code: 0.0f64,
+    val: "close_reason",
+    res: false,
+};
+
+pub const CR_SUFFIX: CloseScenario = CloseScenario {
+    name: "cr_suffix",
+    kind: 1u8,
+    code: 0.0f64,
+    val: "close_reason.unknown ",
+    res: false,
+};
+
+pub const CR_UNKNOWN_WORD: CloseScenario = CloseScenario {
+    name: "cr_unknown_word",
+    kind: 1u8,
+    code: 0.0f64,
+    val: "close_reason.does_not_exist",
+    res: false,
+};
+
+pub const CLOSE_SCENARIOS: &[CloseScenario] = &[
+    CC_NORMAL,
+    CC_PROTOCOLERROR,
+    CC_INTERNALERROR,
+    CC_TRYAGAINLATER,
+    CC_BADREQUEST,
+    CC_UNAUTHORIZED,
+    CC_FORBIDDEN,
+    CC_BANNED,
+    CC_GAMENOTFOUND,
+    CC_GAMECLOSED,
+    CC_LOBBYFULL,
+    CC_WRONGWORKER,
+    CC_GAMESTARTED,
+    CC_RANKEDLIMITREACHED,
+    CC_INVALIDCLAN,
+    CC_CLANVERIFICATIONFAILED,
+    CC_BELOW_MIN,
+    CC_RANGE_MIN,
+    CC_RANGE_MAX,
+    CC_ABOVE_MAX,
+    CC_FRAC_MIN,
+    CC_FRAC_MAX,
+    CC_FRAC_1000,
+    CC_ZERO,
+    CC_NEG_ZERO,
+    CC_NEG,
+    CC_NAN,
+    CC_INF,
+    CC_NINF,
+    CR_CLOSE_REASON_INVALID_MESSAGE,
+    CR_CLOSE_REASON_INVALID_TOKEN,
+    CR_CLOSE_REASON_BANNED,
+    CR_CLOSE_REASON_TURNSTILE_FAILED,
+    CR_CLOSE_REASON_LOGIN_REQUIRED,
+    CR_CLOSE_REASON_ACCOUNT_LOOKUP_FAILED,
+    CR_CLOSE_REASON_FORBIDDEN,
+    CR_CLOSE_REASON_COSMETICS_FORBIDDEN,
+    CR_CLOSE_REASON_GAME_NOT_FOUND,
+    CR_CLOSE_REASON_CANNOT_JOIN,
+    CR_CLOSE_REASON_NOT_ALLOWLISTED,
+    CR_CLOSE_REASON_NOT_TRUSTED,
+    CR_CLOSE_REASON_LOBBY_FULL,
+    CR_CLOSE_REASON_WRONG_WORKER,
+    CR_CLOSE_REASON_INTERNAL_ERROR,
+    CR_CLOSE_REASON_PROTOCOL_ERROR,
+    CR_CLOSE_REASON_NO_HEARTBEAT,
+    CR_CLOSE_REASON_GAME_ENDED,
+    CR_CLOSE_REASON_GAME_STARTED,
+    CR_CLOSE_REASON_RANKED_LIMIT_REACHED,
+    CR_CLOSE_REASON_INVALID_CLAN,
+    CR_CLOSE_REASON_CLAN_VERIFICATION_FAILED,
+    CR_CLOSE_REASON_UNKNOWN,
+    CR_EMPTY,
+    CR_CASE,
+    CR_PREFIX,
+    CR_SUFFIX,
+    CR_UNKNOWN_WORD,
+];
+

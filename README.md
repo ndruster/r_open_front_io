@@ -31,6 +31,8 @@ rust/
 │   │   │                          (SearchMapTileType + node / neighbors)
 │   │   ├── anon_names.rs          port of AnonNames.ts (ANON_WORDS +
 │   │   │                          anonWordName)
+│   │   ├── close_codes.rs         port of CloseCodes.ts (tables +
+│   │   │                          isTerminalClose / isCloseReason)
 │   │   ├── wasm_probe.rs          `extern "C"` surface, feature-gated
 │   │   └── pathfinding/
 │   │       ├── mod.rs
@@ -418,6 +420,17 @@ desync, not a rounding nit. Two things enforce that here:
     The 165 scenarios sweep the full bank, round suffixes, negative/fractional
     slots and offsets, every non-finite combination, and huge slots up to
     `2^53`.
+26. **`CloseCodes.ts`** (`close_codes`) is the WebSocket close-code /
+    close-reason vocabulary: the 16-entry `CloseCode` table and 23-entry
+    `CloseReason` table (declaration order pinned) plus the two predicates.
+    JS-isms pinned: `isTerminalClose` is raw IEEE `f64` comparison — `NaN`
+    and `±Infinity` are never terminal, `-0` is `==` to `0` but matches no
+    listed code, and a **fractional** code inside `[4000, 4999]` (e.g.
+    `4000.5`) *is* terminal because the range test never casts to integer;
+    `isCloseReason` is `Set#has` string equality, so case and whitespace
+    near-misses are `false`. The 57 scenarios sweep every declared value,
+    the range boundaries, the fractional / zero / negative / non-finite code
+    edges, and the reason membership edges.
 
 Regenerate whenever a ported source changes:
 
@@ -451,7 +464,7 @@ node rust/tools/run_wasm_parity.mjs
 
 `wasm-probe` exposes the ported functions through `extern "C"` scalar
 entrypoints (`src/wasm_probe.rs`); the runner imports `data/vectors.json` and
-compares every value. Last run: **32,944 comparisons, all bit-identical**.
+compares every value. Last run: **33,001 comparisons, all bit-identical**.
 
 ### Windows: the linker environment
 

@@ -85,6 +85,7 @@ for (const name of [
   "probe_bfs_result_flag", "probe_bfs_result",
   "probe_air_new", "probe_air_run", "probe_air_path_len", "probe_air_path_at",
   "probe_anon_run", "probe_anon_out_at",
+  "probe_close_arg", "probe_close_op",
 ]) {
   if (typeof ex[name] !== "function") {
     console.error(`missing wasm export ${name} - rebuild with --features wasm-probe`);
@@ -1492,6 +1493,21 @@ for (const s of S.anon) {
     got += String.fromCharCode(ex.probe_anon_out_at(i));
   }
   if (got !== s.res) fail(`${s.name} handle`, 0, got, s.res);
+}
+
+// --- CloseCodes (CloseCodes.ts) -----------------------------------------------
+// Replays both predicates; kind 0 pushes the code, kind 1 the UTF-16 string.
+for (const s of S.close) {
+  if (s.kind === 0) {
+    ex.probe_close_arg(numTok(s.code));
+  } else {
+    ex.probe_close_arg(s.val.length);
+    for (let i = 0; i < s.val.length; i++) ex.probe_close_arg(s.val.charCodeAt(i));
+  }
+  checks++;
+  const got = Number(ex.probe_close_op(s.kind));
+  if (got !== (s.res ? 1 : 0))
+    fail(`${s.name} verdict`, 0, got, s.res ? 1 : 0);
 }
 
 console.log(`${checks} vector comparisons executed against wasm build`);

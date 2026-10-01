@@ -153,6 +153,7 @@ const { BFSGrid } = await loadTs("src/core/pathfinding/algorithms/BFS.Grid.ts");
 const { BFS } = await loadTs("src/core/pathfinding/algorithms/BFS.ts");
 const { AirPathFinder } = await loadTs("src/core/pathfinding/PathFinder.Air.ts");
 const { anonWordName } = await loadTs("src/core/AnonNames.ts");
+const CloseCodes = await loadTs("src/core/CloseCodes.ts");
 const { AStar } = await loadTs("src/core/pathfinding/algorithms/AStar.ts");
 const { AStarRail } = await loadTs("src/core/pathfinding/algorithms/AStar.Rail.ts");
 const { AStarWater } = await loadTs("src/core/pathfinding/algorithms/AStar.Water.ts");
@@ -618,6 +619,54 @@ captureAnon("anon_1e20", 1e20, undefined);
 captureAnon("anon_5_1e18", 5, 1e18);
 captureAnon("anon_2p53m1", 9007199254740991, undefined);
 captureAnon("anon_2p53", 9007199254740992, undefined);
+
+// --- CloseCodes scenario runner -----------------------------------------------
+// Exercises the real CloseCodes.ts predicates. kind 0 = isTerminalClose(code)
+// with `code` as a uenc token; kind 1 = isCloseReason(value) with `val`.
+// The Rust twin is `close_codes::{is_terminal_close, is_close_reason}`.
+const closeScenarios = [];
+function captureCloseCode(name, code) {
+  closeScenarios.push({
+    name,
+    kind: 0,
+    code: uenc(code),
+    val: "",
+    res: CloseCodes.isTerminalClose(code),
+  });
+}
+function captureCloseReason(name, val) {
+  closeScenarios.push({
+    name,
+    kind: 1,
+    code: 0,
+    val,
+    res: CloseCodes.isCloseReason(val),
+  });
+}
+// Every declared code, plus the range boundaries and the JS-ism edges.
+for (const [k, v] of Object.entries(CloseCodes.CloseCode)) captureCloseCode(`cc_${k}`, v);
+captureCloseCode("cc_below_min", 3999);
+captureCloseCode("cc_range_min", 4000);
+captureCloseCode("cc_range_max", 4999);
+captureCloseCode("cc_above_max", 5000);
+captureCloseCode("cc_frac_min", 4000.5);
+captureCloseCode("cc_frac_max", 4998.75);
+captureCloseCode("cc_frac_1000", 1000.5);
+captureCloseCode("cc_zero", 0);
+captureCloseCode("cc_neg_zero", -0);
+captureCloseCode("cc_neg", -1000);
+captureCloseCode("cc_nan", NaN);
+captureCloseCode("cc_inf", Infinity);
+captureCloseCode("cc_ninf", -Infinity);
+// Every declared reason, plus membership edges. (Scenario names double as the
+// Rust const ids, so the dots become underscores.)
+for (const r of Object.values(CloseCodes.CloseReason))
+  captureCloseReason(`cr_${r.replace(/\./g, "_")}`, r);
+captureCloseReason("cr_empty", "");
+captureCloseReason("cr_case", "Close_Reason.Unknown");
+captureCloseReason("cr_prefix", "close_reason");
+captureCloseReason("cr_suffix", "close_reason.unknown ");
+captureCloseReason("cr_unknown_word", "close_reason.does_not_exist");
 
 // --- AStar scenario runner ---------------------------------------------------
 // The grid adapter below is the *twin* of `pathfinding::a_star::GridAdapter`
@@ -3326,6 +3375,7 @@ const structures = {
   bfs: bfsScenarios,
   air: airScenarios,
   anon: anonScenarios,
+  close: closeScenarios,
   astar: asScenarios,
   rail: railScenarios,
   water: waterScenarios,
@@ -4993,6 +5043,39 @@ for (const s of structures.anon) {
 }
 L.push("pub const ANON_SCENARIOS: &[AnonScenario] = &[");
 for (const s of structures.anon) L.push(`    ${s.name.toUpperCase()},`);
+L.push("];");
+L.push("");
+
+L.push("/// CloseCodes scenario. `kind`: 0 isTerminalClose(`code`),");
+L.push("/// 1 isCloseReason(`val`). `res` is the boolean verdict.");
+L.push("pub struct CloseScenario {");
+L.push("    pub name: &'static str,");
+L.push("    pub kind: u8,");
+L.push("    pub code: f64,");
+L.push("    pub val: &'static str,");
+L.push("    pub res: bool,");
+L.push("}");
+L.push("");
+const closeTok = (v) => {
+  if (v === "n") return "f64::NAN";
+  if (v === "-0") return "-0.0f64";
+  if (v === "i") return "f64::INFINITY";
+  if (v === "-i") return "f64::NEG_INFINITY";
+  return f64(v);
+};
+for (const s of structures.close) {
+  const id = s.name.toUpperCase();
+  L.push(`pub const ${id}: CloseScenario = CloseScenario {`);
+  L.push(`    name: "${s.name}",`);
+  L.push(`    kind: ${s.kind}u8,`);
+  L.push(`    code: ${s.kind === 0 ? closeTok(s.code) : "0.0f64"},`);
+  L.push(`    val: ${JSON.stringify(s.val)},`);
+  L.push(`    res: ${s.res},`);
+  L.push("};");
+  L.push("");
+}
+L.push("pub const CLOSE_SCENARIOS: &[CloseScenario] = &[");
+for (const s of structures.close) L.push(`    ${s.name.toUpperCase()},`);
 L.push("];");
 L.push("");
 

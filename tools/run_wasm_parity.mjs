@@ -50,6 +50,9 @@ for (const name of [
   "probe_wh_terrain_byte", "probe_wh_new", "probe_wh_start", "probe_wh_run",
   "probe_wh_path_len", "probe_wh_path_at", "probe_wh_stamp",
   "probe_wh_cache_len", "probe_wh_cache_at",
+  "probe_pb_new", "probe_pb_cp", "probe_pb_cp_at", "probe_pb_find",
+  "probe_pb_path_len", "probe_pb_path_at", "probe_pb_next", "probe_pb_node",
+  "probe_pb_invalidate", "probe_pb_index",
 ]) {
   if (typeof ex[name] !== "function") {
     console.error(`missing wasm export ${name} - rebuild with --features wasm-probe`);
@@ -992,6 +995,58 @@ for (const s of S.waterhierarchical) {
         fail(`${s.name} q cache length`, ex.probe_wh_cache_len(), q.cache.length, 0);
       for (let i = 0; i < q.cache.length; i++)
         cmpBits(`${s.name} q cache`, ex.probe_wh_cache_at(i), toBits(q.cache[i]), i);
+    }
+  }
+}
+
+// --- Parabola (PathFinder.Parabola.ts) ----------------------------------------
+// One all-land map + finder per scenario. Replays the control-point reads,
+// the findPath script and the single-instance next/invalidate/currentIndex
+// walk; the out-of-bounds throw is compared via the would-throw flag.
+for (const s of S.parabola) {
+  const o = s.opt ?? {};
+  const tri = (v) => (v === undefined || v === null ? 0 : v ? 2 : 1);
+  ex.probe_pb_new(
+    s.w,
+    s.h,
+    o.increment === undefined ? -1 : o.increment,
+    tri(o.distanceBasedHeight),
+    tri(o.directionUp),
+    tri(o.ignoreMapBounds),
+  );
+  for (const g of s.cps) {
+    ex.probe_pb_cp(g[0], g[1]);
+    for (let i = 0; i < 8; i++) cmpBits(`${s.name} cp`, ex.probe_pb_cp_at(i), toBits(g[2 + i]), i);
+  }
+  for (const g of s.finds) {
+    const from = g[0];
+    const to = g[1];
+    const len = g[2];
+    const got = ex.probe_pb_find(from, to) === 1;
+    checks++;
+    if (got !== (len >= 0)) fail(`${s.name} find presence`, 0, got, len >= 0);
+    if (len >= 0) {
+      const want = g.slice(3);
+      checks++;
+      if (ex.probe_pb_path_len() !== want.length)
+        fail(`${s.name} find length`, ex.probe_pb_path_len(), want.length, 0);
+      for (let i = 0; i < want.length; i++)
+        cmpBits(`${s.name} find path`, ex.probe_pb_path_at(i), toBits(want[i]), i);
+    }
+  }
+  for (const g of s.walk) {
+    const [kind, from, to, hasSpeed, speed, status, node, index] = g;
+    if (kind === 0 || kind === 1) {
+      const got = ex.probe_pb_next(from, to, hasSpeed ? speed : -1);
+      checks++;
+      const want = kind === 1 ? 1 : status;
+      if (got !== want) fail(`${s.name} next status`, 0, got, want);
+      if (kind === 0) cmpBits(`${s.name} next node`, ex.probe_pb_node(), toBits(node), 0);
+      cmpU32(`${s.name} next index`, Number(ex.probe_pb_index()), index, 0);
+    } else if (kind === 2) {
+      ex.probe_pb_invalidate();
+    } else {
+      cmpU32(`${s.name} idx read`, Number(ex.probe_pb_index()), index, 0);
     }
   }
 }

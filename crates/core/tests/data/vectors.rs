@@ -15076,3 +15076,198 @@ pub const WATER_HIERARCHICAL_SCENARIOS: &[WaterHierarchicalScenario] = &[
     WH_SETGRAPH,
 ];
 
+/// Parabola scenario (PathFinder.Parabola.ts). Option fields are
+/// tri-state u8: 0 = absent (undefined), 1 = false, 2 = true;
+/// `increment` -1 = absent. `cps` is groups of 10: [from, to,
+/// p0x,p0y,p1x,p1y,p2x,p2y,p3x,p3y]. `finds` is variable groups
+/// [from, to, len, tiles...] (len -1 = threw out of bounds). `walk`
+/// is 8-slot groups: [kind, from, to, has_speed, speed, status,
+/// node, index]; kind 0 = next ok, 1 = next threw (script ends),
+/// 2 = invalidate, 3 = currentIndex read.
+pub struct ParabolaScenario {
+    pub name: &'static str,
+    pub w: f64,
+    pub h: f64,
+    pub increment: f64,
+    pub distance_based_height: u8,
+    pub direction_up: u8,
+    pub ignore_map_bounds: u8,
+    pub cps: &'static [f64],
+    pub finds: &'static [f64],
+    pub walk: &'static [f64],
+}
+
+pub const PB_DEFAULT: ParabolaScenario = ParabolaScenario {
+    name: "pb_default",
+    w: 40f64,
+    h: 30f64,
+    increment: -1.0f64,
+    distance_based_height: 0u8,
+    direction_up: 0u8,
+    ignore_map_bounds: 0u8,
+    cps: &[
+    203f64, 1030f64, 3f64, 5f64, 9.75f64, 0f64, 23.25f64, 0f64, 30f64, 25f64,
+    0f64, 1199f64, 0f64, 0f64, 9.75f64, 0f64, 29.25f64, 0f64, 39f64, 29f64,
+],
+    finds: &[
+    203f64, 1030f64, 15f64, 203f64, 126f64, 129f64, 92f64, 135f64, 177f64, 260f64,
+    342f64, 464f64, 545f64, 667f64, 788f64, 909f64, 990f64, 1030f64, 0f64, 1199f64,
+    19f64, 0f64, 3f64, 6f64, 50f64, 52f64, 95f64, 138f64, 181f64, 263f64,
+    346f64, 428f64, 510f64, 592f64, 713f64, 795f64, 916f64, 1038f64, 1159f64, 1199f64,
+],
+    walk: &[
+    0f64, 203f64, 1030f64, 0f64, 0f64, 0f64, 203f64, 0f64,
+    0f64, 203f64, 1030f64, 0f64, 0f64, 0f64, 203f64, 0f64,
+    0f64, 203f64, 1030f64, 0f64, 0f64, 0f64, 126f64, 1f64,
+    0f64, 203f64, 1030f64, 0f64, 0f64, 0f64, 126f64, 1f64,
+    0f64, 203f64, 1030f64, 0f64, 0f64, 0f64, 126f64, 1f64,
+    0f64, 203f64, 1030f64, 0f64, 0f64, 0f64, 129f64, 2f64,
+    0f64, 203f64, 1030f64, 0f64, 0f64, 0f64, 129f64, 2f64,
+    0f64, 203f64, 1030f64, 0f64, 0f64, 0f64, 129f64, 2f64,
+    0f64, 203f64, 1030f64, 0f64, 0f64, 0f64, 92f64, 3f64,
+    0f64, 203f64, 1030f64, 0f64, 0f64, 0f64, 92f64, 3f64,
+    0f64, 203f64, 1030f64, 0f64, 0f64, 0f64, 92f64, 3f64,
+    0f64, 203f64, 1030f64, 0f64, 0f64, 0f64, 135f64, 4f64,
+    0f64, 203f64, 1030f64, 0f64, 0f64, 0f64, 135f64, 4f64,
+    0f64, 203f64, 1030f64, 0f64, 0f64, 0f64, 135f64, 4f64,
+    0f64, 203f64, 1030f64, 0f64, 0f64, 0f64, 177f64, 5f64,
+    0f64, 203f64, 1030f64, 0f64, 0f64, 0f64, 177f64, 5f64,
+    0f64, 203f64, 1030f64, 0f64, 0f64, 0f64, 177f64, 5f64,
+    0f64, 203f64, 1030f64, 0f64, 0f64, 0f64, 260f64, 6f64,
+    0f64, 203f64, 1030f64, 0f64, 0f64, 0f64, 260f64, 6f64,
+    0f64, 203f64, 1030f64, 0f64, 0f64, 0f64, 260f64, 6f64,
+    0f64, 203f64, 1030f64, 0f64, 0f64, 0f64, 342f64, 7f64,
+    0f64, 203f64, 1030f64, 0f64, 0f64, 0f64, 342f64, 7f64,
+    0f64, 203f64, 1030f64, 0f64, 0f64, 0f64, 342f64, 7f64,
+    0f64, 203f64, 1030f64, 0f64, 0f64, 0f64, 464f64, 8f64,
+    0f64, 203f64, 1030f64, 0f64, 0f64, 0f64, 464f64, 8f64,
+    0f64, 203f64, 1030f64, 0f64, 0f64, 0f64, 464f64, 8f64,
+    0f64, 203f64, 1030f64, 0f64, 0f64, 0f64, 545f64, 9f64,
+    0f64, 203f64, 1030f64, 0f64, 0f64, 0f64, 545f64, 9f64,
+    0f64, 203f64, 1030f64, 0f64, 0f64, 0f64, 545f64, 9f64,
+    0f64, 203f64, 1030f64, 0f64, 0f64, 0f64, 667f64, 10f64,
+    0f64, 203f64, 1030f64, 0f64, 0f64, 0f64, 667f64, 10f64,
+    0f64, 203f64, 1030f64, 0f64, 0f64, 0f64, 667f64, 10f64,
+    0f64, 203f64, 1030f64, 0f64, 0f64, 0f64, 788f64, 11f64,
+    0f64, 203f64, 1030f64, 0f64, 0f64, 0f64, 788f64, 11f64,
+    0f64, 203f64, 1030f64, 0f64, 0f64, 0f64, 788f64, 11f64,
+    0f64, 203f64, 1030f64, 0f64, 0f64, 0f64, 909f64, 12f64,
+    0f64, 203f64, 1030f64, 0f64, 0f64, 0f64, 909f64, 12f64,
+    0f64, 203f64, 1030f64, 0f64, 0f64, 0f64, 909f64, 12f64,
+    0f64, 203f64, 1030f64, 0f64, 0f64, 0f64, 990f64, 13f64,
+    0f64, 203f64, 1030f64, 0f64, 0f64, 0f64, 990f64, 13f64,
+    0f64, 203f64, 1030f64, 0f64, 0f64, 0f64, 990f64, 13f64,
+    0f64, 203f64, 1030f64, 0f64, 0f64, 2f64, 1030f64, 14f64,
+    0f64, 203f64, 1030f64, 0f64, 0f64, 2f64, 1030f64, 14f64,
+    0f64, 203f64, 1030f64, 0f64, 0f64, 2f64, 1030f64, 14f64,
+    0f64, 203f64, 1030f64, 0f64, 0f64, 2f64, 1030f64, 14f64,
+],
+};
+
+pub const PB_OPTIONS: ParabolaScenario = ParabolaScenario {
+    name: "pb_options",
+    w: 40f64,
+    h: 30f64,
+    increment: 1f64,
+    distance_based_height: 1u8,
+    direction_up: 1u8,
+    ignore_map_bounds: 0u8,
+    cps: &[
+    203f64, 1030f64, 3f64, 5f64, 9.75f64, 10f64, 23.25f64, 20f64, 30f64, 25f64,
+],
+    finds: &[
+    203f64, 1030f64, 34f64, 203f64, 244f64, 245f64, 285f64, 286f64, 327f64, 368f64,
+    369f64, 410f64, 451f64, 451f64, 492f64, 493f64, 534f64, 575f64, 576f64, 616f64,
+    617f64, 658f64, 658f64, 699f64, 740f64, 741f64, 782f64, 782f64, 823f64, 864f64,
+    865f64, 906f64, 947f64, 947f64, 988f64, 989f64, 1030f64,
+],
+    walk: &[
+    0f64, 203f64, 1030f64, 1f64, 10f64, 0f64, 451f64, 10f64,
+    0f64, 203f64, 1030f64, 1f64, 0.5f64, 0f64, 451f64, 10f64,
+    0f64, 203f64, 1030f64, 1f64, 3f64, 0f64, 534f64, 13f64,
+    0f64, 203f64, 1030f64, 1f64, 1f64, 0f64, 575f64, 14f64,
+    0f64, 203f64, 1030f64, 1f64, 1f64, 0f64, 576f64, 15f64,
+    0f64, 203f64, 1030f64, 1f64, 1f64, 0f64, 616f64, 16f64,
+    0f64, 203f64, 1030f64, 1f64, 25f64, 2f64, 1030f64, 33f64,
+    0f64, 203f64, 1030f64, 1f64, 1f64, 2f64, 1030f64, 33f64,
+    0f64, 203f64, 1030f64, 1f64, 1f64, 2f64, 1030f64, 33f64,
+    0f64, 203f64, 1030f64, 1f64, 1f64, 2f64, 1030f64, 33f64,
+],
+};
+
+pub const PB_IGNORE_OOB: ParabolaScenario = ParabolaScenario {
+    name: "pb_ignore_oob",
+    w: 20f64,
+    h: 10f64,
+    increment: -1.0f64,
+    distance_based_height: 0u8,
+    direction_up: 0u8,
+    ignore_map_bounds: 2u8,
+    cps: &[
+    22f64, 198f64, 2f64, 1f64, 6f64, -47f64, 14f64, -43f64, 18f64, 9f64,
+],
+    finds: &[
+    22f64, 198f64, -1f64,
+],
+    walk: &[
+    0f64, 22f64, 198f64, 0f64, 0f64, 0f64, 22f64, 0f64,
+    0f64, 22f64, 198f64, 0f64, 0f64, 0f64, 22f64, 0f64,
+    1f64, 22f64, 198f64, 0f64, 0f64, 0f64, 0f64, 1f64,
+],
+};
+
+pub const PB_SAME_POINT: ParabolaScenario = ParabolaScenario {
+    name: "pb_same_point",
+    w: 40f64,
+    h: 30f64,
+    increment: -1.0f64,
+    distance_based_height: 0u8,
+    direction_up: 0u8,
+    ignore_map_bounds: 0u8,
+    cps: &[
+    203f64, 203f64, 3f64, 5f64, 3f64, 0f64, 3f64, 0f64, 3f64, 5f64,
+],
+    finds: &[
+    203f64, 203f64, 4f64, 203f64, 43f64, 163f64, 203f64,
+],
+    walk: &[
+    0f64, 203f64, 203f64, 0f64, 0f64, 0f64, 203f64, 0f64,
+    0f64, 203f64, 203f64, 0f64, 0f64, 0f64, 203f64, 0f64,
+    0f64, 203f64, 203f64, 0f64, 0f64, 0f64, 43f64, 1f64,
+],
+};
+
+pub const PB_REBUILD: ParabolaScenario = ParabolaScenario {
+    name: "pb_rebuild",
+    w: 40f64,
+    h: 30f64,
+    increment: -1.0f64,
+    distance_based_height: 0u8,
+    direction_up: 0u8,
+    ignore_map_bounds: 0u8,
+    cps: &[
+],
+    finds: &[
+],
+    walk: &[
+    0f64, 203f64, 1030f64, 0f64, 0f64, 0f64, 203f64, 0f64,
+    0f64, 203f64, 1030f64, 0f64, 0f64, 0f64, 203f64, 0f64,
+    0f64, 203f64, 1030f64, 0f64, 0f64, 0f64, 126f64, 1f64,
+    3f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 1f64,
+    0f64, 203f64, 41f64, 0f64, 0f64, 0f64, 203f64, 0f64,
+    0f64, 203f64, 41f64, 0f64, 0f64, 0f64, 203f64, 0f64,
+    0f64, 203f64, 1030f64, 0f64, 0f64, 0f64, 203f64, 0f64,
+    2f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64,
+    3f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64,
+    0f64, 203f64, 1030f64, 0f64, 0f64, 0f64, 203f64, 0f64,
+],
+};
+
+pub const PARABOLA_SCENARIOS: &[ParabolaScenario] = &[
+    PB_DEFAULT,
+    PB_OPTIONS,
+    PB_IGNORE_OOB,
+    PB_SAME_POINT,
+    PB_REBUILD,
+];
+

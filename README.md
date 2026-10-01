@@ -51,6 +51,9 @@ rust/
 │   │       │                      port of algorithms/AStar.WaterHierarchical.ts
 │   │       │                      (orchestrator: early exit / node lookup /
 │   │       │                       abstract stitch / multi-source dispatch)
+│   │       ├── parabola.rs
+│   │       │                      port of PathFinder.Parabola.ts
+│   │       │                      (control points + curve-cached stepping)
 │   │       └── connected_components.rs
 │   │                              port of algorithms/ConnectedComponents.ts
 │   └── tests/
@@ -262,6 +265,23 @@ desync, not a rounding nit. Two things enforce that here:
     resets to 1 while the map-sized engines keep counting (`wh_setgraph` q2).
     The `DebugSpan` instrumentation is disabled in the capture (a transparent
     `wrap`), so it is omitted here.
+17. **`PathFinder.Parabola.ts`** (`pathfinding::parabola`) is the ballistic
+    arc pathfinder. `getParabolaControlPoints` lifts the two middle control
+    points by `heightMult * max(distance/3, 50)` and clamps them into the map
+    with the NaN-propagating `within` — unless `ignoreMapBounds` lets them
+    escape, in which case the *emission* `gameMap.ref(floor(x), floor(y))`
+    throws in TS / panics in Rust (pinned by `pb_ignore_oob`: findPath throws
+    on the first point, `next` throws at step 2 with the partial curve index
+    recorded). `ParabolaUniversalPathFinder` caches one curve keyed by
+    `lastTo`: every scenario drives ONE finder instance, so goal switches
+    rebuild (`pb_rebuild` pins the index reset), `invalidate` drops the curve
+    (`currentIndex` → 0 until the next call rebuilds), and a drained walk
+    plateaus at `COMPLETE` forever (`pb_default`'s 45-step tail). `speed`
+    defaults to 1 and feeds `DistanceBasedBezierCurve.increment`'s fixed-point
+    accumulator (`pb_options` pins 0.5 rounding up to a full step and 25
+    jumping several indices). The array-`from` `findPath` throw is a
+    signature-level guard the Rust API cannot express (single-ref parameter),
+    so it is not captured.
 
 Regenerate whenever a ported source changes:
 
@@ -295,7 +315,7 @@ node rust/tools/run_wasm_parity.mjs
 
 `wasm-probe` exposes the ported functions through `extern "C"` scalar
 entrypoints (`src/wasm_probe.rs`); the runner imports `data/vectors.json` and
-compares every value. Last run: **30,168 comparisons, all bit-identical**.
+compares every value. Last run: **30,494 comparisons, all bit-identical**.
 
 ### Windows: the linker environment
 

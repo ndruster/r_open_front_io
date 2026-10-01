@@ -1379,3 +1379,107 @@ fn replay_water_hierarchical_scenarios() {
         }
     }
 }
+
+// --- Parabola (PathFinder.Parabola.ts) ----------------------------------------
+// Replays the control-point reads, findPath script and single-instance
+// next()/invalidate()/currentIndex walk against the Rust port. Out-of-bounds
+// `ref` throws in TS and panics in Rust; those steps are asserted via
+// catch_unwind, and the partial curve state at the throw (increment already
+// ran) is pinned by the recorded index.
+#[test]
+fn replay_parabola_scenarios() {
+    use openfront_core::pathfinding::parabola::{
+        get_parabola_control_points, ParabolaOptions, ParabolaUniversalPathFinder, PathResult,
+    };
+    let tri = |v: u8| match v {
+        0 => None,
+        1 => Some(false),
+        _ => Some(true),
+    };
+    for s in vectors::PARABOLA_SCENARIOS {
+        let gm = GameMap::new(
+            s.w,
+            s.h,
+            vec![0x03; (s.w * s.h) as usize],
+            s.w * s.h,
+        );
+        let opt = ParabolaOptions {
+            increment: if s.increment < 0.0 { None } else { Some(s.increment) },
+            distance_based_height: tri(s.distance_based_height),
+            direction_up: tri(s.direction_up),
+            ignore_map_bounds: tri(s.ignore_map_bounds),
+        };
+
+        for (i, g) in s.cps.chunks_exact(10).enumerate() {
+            let got = get_parabola_control_points(&gm, g[0], g[1], Some(&opt));
+            let flat: Vec<f64> = got.iter().flat_map(|p| [p.x, p.y]).collect();
+            assert_eq!(&flat[..], &g[2..], "{} cps#{} coords", s.name, i);
+        }
+
+        let pf = ParabolaUniversalPathFinder::new(&gm, Some(opt));
+        let mut fi = 0;
+        let mut k = 0;
+        while k < s.finds.len() {
+            let (from, to, len) = (s.finds[k], s.finds[k + 1], s.finds[k + 2] as i64);
+            if len < 0 {
+                let threw = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    pf.find_path(from, to)
+                }))
+                .is_err();
+                assert!(threw, "{} find#{} expected panic", s.name, fi);
+                k += 3;
+            } else {
+                let n = len as usize;
+                let want = &s.finds[k + 3..k + 3 + n];
+                let got = pf.find_path(from, to);
+                assert_eq!(got.as_slice(), want, "{} find#{} path", s.name, fi);
+                k += 3 + n;
+            }
+            fi += 1;
+        }
+
+        let mut pf = pf;
+        for (j, g) in s.walk.chunks_exact(8).enumerate() {
+            let (kind, from, to, has_speed, speed, status, node, index) = (
+                g[0] as i64,
+                g[1],
+                g[2],
+                g[3] as i64,
+                g[4],
+                g[5] as i64,
+                g[6],
+                g[7] as usize,
+            );
+            let sp = if has_speed == 1 { Some(speed) } else { None };
+            match kind {
+                0 => {
+                    let r = pf.next(from, to, sp);
+                    match (&r, status) {
+                        (PathResult::Next { node: n, .. }, 0) => {
+                            assert_eq!(*n, node, "{} walk#{} node", s.name, j)
+                        }
+                        (PathResult::Complete { node: n, .. }, 2) => {
+                            assert_eq!(*n, node, "{} walk#{} node", s.name, j)
+                        }
+                        _ => panic!(
+                            "{} walk#{} status: got {r:?} want {status}",
+                            s.name, j
+                        ),
+                    }
+                    assert_eq!(pf.current_index(), index, "{} walk#{} index", s.name, j);
+                }
+                1 => {
+                    let threw = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                        pf.next(from, to, sp)
+                    }))
+                    .is_err();
+                    assert!(threw, "{} walk#{} expected panic", s.name, j);
+                    assert_eq!(pf.current_index(), index, "{} walk#{} index", s.name, j);
+                }
+                2 => pf.invalidate(),
+                3 => assert_eq!(pf.current_index(), index, "{} walk#{} index read", s.name, j),
+                other => panic!("{} unknown walk kind {other}", s.name),
+            }
+        }
+    }
+}

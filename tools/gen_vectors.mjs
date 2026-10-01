@@ -2342,6 +2342,157 @@ captureWH("wh_setgraph", 12, 12, 4, Array(12).fill(WHW), false, [
   { starts: [143], goal: 0, rebuildBefore: 1 },
 ]);
 
+// --- Parabola (PathFinder.Parabola.ts) scenario runner ------------------------
+// Exercises the real getParabolaControlPoints and ParabolaUniversalPathFinder
+// over a real GameMapImpl. Control points and findPath tile lists are
+// recorded as raw doubles; the walk is one flat 8-slot-per-step script over a
+// single finder instance, so the curve/lastTo cache state evolves exactly as
+// in production. The wasm probe compares everything bit-exactly. The Rust
+// twin is `pathfinding::parabola`.
+//
+// Walk step kinds: [0,from,to,hasSpeed,speed,status,node,index] next ok;
+// [1,from,to,hasSpeed,speed,_,_,index] next threw (out-of-bounds floor ->
+// TS `Invalid coordinates`; the script ends there); [2,0...] invalidate;
+// [3,index,...] currentIndex read.
+const parabolaScenarios = [];
+const {
+  getParabolaControlPoints,
+  ParabolaUniversalPathFinder,
+} = await loadTs("src/core/pathfinding/PathFinder.Parabola.ts");
+
+function pbLandMap(w, h) {
+  const data = new Uint8Array(w * h).fill(0x03);
+  return new GameMapImpl(w, h, data, w * h);
+}
+
+function capturePB(name, w, h, opt, cpPairs, findPairs, walkScript) {
+  const gm = pbLandMap(w, h);
+  const o = opt === null ? undefined : opt;
+  const R = ([x, y]) => gm.ref(x, y);
+  const cps = cpPairs.map(([f, t]) =>
+    [R(f), R(t)].concat(
+      getParabolaControlPoints(gm, R(f), R(t), o).flatMap((p) => [p.x, p.y]),
+    ),
+  );
+  const pf = new ParabolaUniversalPathFinder(gm, o);
+  const finds = findPairs.map(([f, t]) => {
+    try {
+      const p = Array.from(pf.findPath(R(f), R(t)));
+      return [R(f), R(t), p.length, ...p];
+    } catch {
+      return [R(f), R(t), -1];
+    }
+  });
+  const walk = [];
+  for (const step of walkScript) {
+    if (step[0] === "next") {
+      const [, f, t, sp] = step;
+      const hasSpeed = sp === undefined ? 0 : 1;
+      try {
+        const r = pf.next(R(f), R(t), sp);
+        walk.push([0, R(f), R(t), hasSpeed, sp ?? 0, r.status, r.node === undefined ? 0 : r.node, pf.currentIndex()]);
+      } catch {
+        walk.push([1, R(f), R(t), hasSpeed, sp ?? 0, 0, 0, pf.currentIndex()]);
+        break;
+      }
+    } else if (step[0] === "inv") {
+      pf.invalidate();
+      walk.push([2, 0, 0, 0, 0, 0, 0, 0]);
+    } else {
+      walk.push([3, 0, 0, 0, 0, 0, 0, pf.currentIndex()]);
+    }
+  }
+  parabolaScenarios.push({ name, w, h, opt, cps, finds, walk });
+}
+
+// 40x30 all-land map, default options (increment 3, distanceBasedHeight,
+// directionUp, bounds clamp). Pins: clamped control points (p1/p2 y hit 0),
+// the 15-tile findPath, and a 45-step drain to COMPLETE + plateau.
+capturePB(
+  "pb_default",
+  40,
+  30,
+  null,
+  [
+    [[3, 5], [30, 25]],
+    [[0, 0], [39, 29]],
+  ],
+  [
+    [[3, 5], [30, 25]],
+    [[0, 0], [39, 29]],
+  ],
+  Array.from({ length: 45 }, () => ["next", [3, 5], [30, 25]]),
+);
+
+// Explicit options: increment 1, flat arc (no distanceBasedHeight), arcing
+// downward. The speed script pins the fixed-point increment accumulation
+// (0.5 rounds up to a full step, 25 jumps several indices at once).
+capturePB(
+  "pb_options",
+  40,
+  30,
+  { increment: 1, distanceBasedHeight: false, directionUp: false },
+  [[[3, 5], [30, 25]]],
+  [[[3, 5], [30, 25]]],
+  [10, 0.5, 3, 1, 1, 1, 25, 1, 1, 1].map((sp) => ["next", [3, 5], [30, 25], sp]),
+);
+
+// ignoreMapBounds on a 20x10 map: the upward arc escapes the map (p1y=-47),
+// so findPath throws on the first floored point and next throws at step 2 —
+// the throw marker pins the partial walk state (index 1).
+capturePB(
+  "pb_ignore_oob",
+  20,
+  10,
+  { ignoreMapBounds: true },
+  [[[2, 1], [18, 9]]],
+  [[[2, 1], [18, 9]]],
+  [
+    ["next", [2, 1], [18, 9]],
+    ["next", [2, 1], [18, 9]],
+    ["next", [2, 1], [18, 9]],
+    ["idx"],
+  ],
+);
+
+// Degenerate from === to: the curve still has 4 points, and next() plateaus
+// at index 0 forever (accumulated distance never reaches the spacing).
+capturePB(
+  "pb_same_point",
+  40,
+  30,
+  null,
+  [[[3, 5], [3, 5]]],
+  [[[3, 5], [3, 5]]],
+  Array.from({ length: 3 }, () => ["next", [3, 5], [3, 5]]),
+);
+
+// Goal switching + invalidate on one finder instance: three steps toward
+// (30,25), a currentIndex read, then switching the goal rebuilds the curve
+// (index resets), switching back rebuilds again — the lastTo cache never
+// resumes a stale curve. invalidate() drops the curve (currentIndex -> 0)
+// and the next call rebuilds.
+capturePB(
+  "pb_rebuild",
+  40,
+  30,
+  null,
+  [],
+  [],
+  [
+    ["next", [3, 5], [30, 25]],
+    ["next", [3, 5], [30, 25]],
+    ["next", [3, 5], [30, 25]],
+    ["idx"],
+    ["next", [3, 5], [1, 1]],
+    ["next", [3, 5], [1, 1]],
+    ["next", [3, 5], [30, 25]],
+    ["inv"],
+    ["idx"],
+    ["next", [3, 5], [30, 25]],
+  ],
+);
+
 const structures = {
   minheap: mhScenarios,
   bucket: bqScenarios,
@@ -2363,6 +2514,7 @@ const structures = {
   abstractgraph: agScenarios,
   abstractgraphastar: agaScenarios,
   waterhierarchical: whScenarios,
+  parabola: parabolaScenarios,
 };
 
 // ================================================================ JSON
@@ -3646,6 +3798,56 @@ for (const s of structures.waterhierarchical) {
 }
 L.push("pub const WATER_HIERARCHICAL_SCENARIOS: &[WaterHierarchicalScenario] = &[");
 for (const s of structures.waterhierarchical) L.push(`    ${s.name.toUpperCase()},`);
+L.push("];");
+L.push("");
+
+L.push("/// Parabola scenario (PathFinder.Parabola.ts). Option fields are");
+L.push("/// tri-state u8: 0 = absent (undefined), 1 = false, 2 = true;");
+L.push("/// `increment` -1 = absent. `cps` is groups of 10: [from, to,");
+L.push("/// p0x,p0y,p1x,p1y,p2x,p2y,p3x,p3y]. `finds` is variable groups");
+L.push("/// [from, to, len, tiles...] (len -1 = threw out of bounds). `walk`");
+L.push("/// is 8-slot groups: [kind, from, to, has_speed, speed, status,");
+L.push("/// node, index]; kind 0 = next ok, 1 = next threw (script ends),");
+L.push("/// 2 = invalidate, 3 = currentIndex read.");
+L.push("pub struct ParabolaScenario {");
+L.push("    pub name: &'static str,");
+L.push("    pub w: f64,");
+L.push("    pub h: f64,");
+L.push("    pub increment: f64,");
+L.push("    pub distance_based_height: u8,");
+L.push("    pub direction_up: u8,");
+L.push("    pub ignore_map_bounds: u8,");
+L.push("    pub cps: &'static [f64],");
+L.push("    pub finds: &'static [f64],");
+L.push("    pub walk: &'static [f64],");
+L.push("}");
+L.push("");
+const tri = (v) => (v === undefined || v === null ? 0 : v ? 2 : 1);
+for (const s of structures.parabola) {
+  const id = s.name.toUpperCase();
+  const o = s.opt ?? {};
+  L.push(`pub const ${id}: ParabolaScenario = ParabolaScenario {`);
+  L.push(`    name: "${s.name}",`);
+  L.push(`    w: ${f64(s.w)},`);
+  L.push(`    h: ${f64(s.h)},`);
+  L.push(`    increment: ${o.increment === undefined ? "-1.0f64" : f64(o.increment)},`);
+  L.push(`    distance_based_height: ${tri(o.distanceBasedHeight)}u8,`);
+  L.push(`    direction_up: ${tri(o.directionUp)}u8,`);
+  L.push(`    ignore_map_bounds: ${tri(o.ignoreMapBounds)}u8,`);
+  L.push("    cps: &[");
+  L.push(...numArr(s.cps.flat(), "f64", 10));
+  L.push("],");
+  L.push("    finds: &[");
+  L.push(...numArr(s.finds.flat(), "f64", 10));
+  L.push("],");
+  L.push("    walk: &[");
+  L.push(...numArr(s.walk.flat(), "f64", 8));
+  L.push("],");
+  L.push("};");
+  L.push("");
+}
+L.push("pub const PARABOLA_SCENARIOS: &[ParabolaScenario] = &[");
+for (const s of structures.parabola) L.push(`    ${s.name.toUpperCase()},`);
 L.push("];");
 L.push("");
 

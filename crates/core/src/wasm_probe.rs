@@ -2249,3 +2249,145 @@ pub extern "C" fn probe_wh_cache_len() -> usize {
 pub extern "C" fn probe_wh_cache_at(i: usize) -> f64 {
     WH_CACHE.with(|c| c.borrow()[i])
 }
+
+// --- Parabola (PathFinder.Parabola.ts) probe ----------------------------------
+// One all-land GameMap + one ParabolaUniversalPathFinder per scenario. The
+// host drives the recorded op script: control-point reads, findPath (the
+// out-of-bounds throw observed via the would-throw convention — the wasm
+// instance aborts on panic), and the single-instance next/invalidate/
+// currentIndex walk. All doubles are compared bit-exactly by the host.
+
+use crate::pathfinding::parabola::{
+    get_parabola_control_points, DebugNext, ParabolaOptions, ParabolaUniversalPathFinder,
+};
+
+thread_local! {
+    static PB: std::cell::RefCell<Option<ParabolaUniversalPathFinder<'static>>> =
+        const { std::cell::RefCell::new(None) };
+    static PB_KEEP: std::cell::RefCell<Option<&'static GameMap>> =
+        const { std::cell::RefCell::new(None) };
+    static PB_OPT: std::cell::RefCell<Option<ParabolaOptions>> =
+        const { std::cell::RefCell::new(None) };
+    static PB_CP: std::cell::RefCell<[f64; 8]> = const { std::cell::RefCell::new([0.0; 8]) };
+    static PB_PATH: std::cell::RefCell<Vec<f64>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
+/// Leak a fresh all-land GameMap and build the finder with tri-state options
+/// (0 = absent, 1 = false, 2 = true; increment < 0 = absent). The leak is
+/// bounded by the scenario count and keeps the probe signatures `Copy`.
+#[no_mangle]
+pub extern "C" fn probe_pb_new(
+    w: f64,
+    h: f64,
+    increment: f64,
+    dbh: u32,
+    up: u32,
+    ignore: u32,
+) {
+    let tri = |v: u32| match v {
+        0 => None,
+        1 => Some(false),
+        _ => Some(true),
+    };
+    let opt = ParabolaOptions {
+        increment: if increment < 0.0 { None } else { Some(increment) },
+        distance_based_height: tri(dbh),
+        direction_up: tri(up),
+        ignore_map_bounds: tri(ignore),
+    };
+    let gm: &'static GameMap = Box::leak(Box::new(GameMap::new(
+        w,
+        h,
+        vec![0x03; (w * h) as usize],
+        w * h,
+    )));
+    PB_KEEP.with(|k| *k.borrow_mut() = Some(gm));
+    PB_OPT.with(|o| *o.borrow_mut() = Some(opt));
+    PB.with(|p| *p.borrow_mut() = Some(ParabolaUniversalPathFinder::new(gm, Some(opt))));
+}
+
+/// getParabolaControlPoints; results readable via `probe_pb_cp_at`.
+#[no_mangle]
+pub extern "C" fn probe_pb_cp(from: f64, to: f64) {
+    let gm = PB_KEEP.with(|k| k.borrow().unwrap());
+    let opt = PB_OPT.with(|o| *o.borrow());
+    let cps = get_parabola_control_points(gm, from, to, opt.as_ref());
+    PB_CP.with(|c| {
+        *c.borrow_mut() = [
+            cps[0].x, cps[0].y, cps[1].x, cps[1].y, cps[2].x, cps[2].y, cps[3].x, cps[3].y,
+        ]
+    });
+}
+
+#[no_mangle]
+pub extern "C" fn probe_pb_cp_at(i: usize) -> f64 {
+    PB_CP.with(|c| c.borrow()[i])
+}
+
+/// findPath via the would-throw variant. Returns 1 = path, 0 = threw.
+#[no_mangle]
+pub extern "C" fn probe_pb_find(from: f64, to: f64) -> u8 {
+    let path = PB.with(|p| p.borrow().as_ref().unwrap().debug_find_path(from, to));
+    match path {
+        Some(v) => {
+            PB_PATH.with(|x| *x.borrow_mut() = v);
+            1
+        }
+        None => {
+            PB_PATH.with(|x| x.borrow_mut().clear());
+            0
+        }
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn probe_pb_path_len() -> usize {
+    PB_PATH.with(|p| p.borrow().len())
+}
+
+#[no_mangle]
+pub extern "C" fn probe_pb_path_at(i: usize) -> f64 {
+    PB_PATH.with(|p| p.borrow()[i])
+}
+
+/// next() via the would-throw variant. Returns 0 = NEXT (node readable via
+/// `probe_pb_node`), 2 = COMPLETE (node = to), 1 = threw.
+#[no_mangle]
+pub extern "C" fn probe_pb_next(from: f64, to: f64, speed: f64) -> u8 {
+    let r = PB.with(|p| {
+        p.borrow_mut()
+            .as_mut()
+            .unwrap()
+            .debug_next(from, to, if speed < 0.0 { None } else { Some(speed) })
+    });
+    match r {
+        DebugNext::Next(n) => {
+            PB_NODE.with(|x| *x.borrow_mut() = n);
+            0
+        }
+        DebugNext::Complete(n) => {
+            PB_NODE.with(|x| *x.borrow_mut() = n);
+            2
+        }
+        DebugNext::Threw => 1,
+    }
+}
+
+thread_local! {
+    static PB_NODE: std::cell::RefCell<f64> = const { std::cell::RefCell::new(0.0) };
+}
+
+#[no_mangle]
+pub extern "C" fn probe_pb_node() -> f64 {
+    PB_NODE.with(|x| *x.borrow())
+}
+
+#[no_mangle]
+pub extern "C" fn probe_pb_invalidate() {
+    PB.with(|p| p.borrow_mut().as_mut().unwrap().invalidate());
+}
+
+#[no_mangle]
+pub extern "C" fn probe_pb_index() -> u64 {
+    PB.with(|p| p.borrow().as_ref().unwrap().current_index() as u64)
+}

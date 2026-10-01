@@ -542,6 +542,56 @@ function prepare(rel) {
       "AStar PQ import",
     );
   }
+  if (rel.endsWith("pathfinding/PathFinder.Parabola.ts")) {
+    // GameMap/TileRef are type-only (interface + branded type) -> dropped.
+    // `within` (Util) and `DistanceBasedBezierCurve` (Line) are *value* uses,
+    // redirected to their prepared copies. The `./types` import mixes the
+    // PathStatus enum (a runtime value) with PathResult / SteppingPathFinder
+    // (types, erased); Node's strip loader rejects `export enum` in the real
+    // types.ts and the extensionless specifier is unloadable, so inline the
+    // numeric enum as a plain object and drop the type names. The ctor's two
+    // parameter properties are expanded.
+    out = must(out, 'import { GameMap, TileRef } from "../game/GameMap";\n', "", "Parabola GameMap import");
+    const utilRel = "src/core/Util.ts";
+    if (!prepared.has(utilRel)) prepare(utilRel);
+    out = must(
+      out,
+      'import { within } from "../Util";',
+      `import { within } from "./${prepared.get(utilRel)}";`,
+      "Parabola Util import",
+    );
+    const lineRel = "src/core/utilities/Line.ts";
+    if (!prepared.has(lineRel)) prepare(lineRel);
+    out = must(
+      out,
+      'import { DistanceBasedBezierCurve } from "../utilities/Line";',
+      `import { DistanceBasedBezierCurve } from "./${prepared.get(lineRel)}";`,
+      "Parabola Line import",
+    );
+    out = must(
+      out,
+      'import { PathResult, PathStatus, SteppingPathFinder } from "./types";\n',
+      "const PathStatus = { NEXT: 0, COMPLETE: 2, NOT_FOUND: 3 };\n",
+      "Parabola types import",
+    );
+    out = must(
+      out,
+      "  constructor(\n" +
+        "    private gameMap: GameMap,\n" +
+        "    private options?: ParabolaOptions,\n" +
+        "  ) {}",
+      "  private gameMap: GameMap;\n" +
+        "  private options?: ParabolaOptions;\n\n" +
+        "  constructor(\n" +
+        "    gameMap: GameMap,\n" +
+        "    options?: ParabolaOptions,\n" +
+        "  ) {\n" +
+        "    this.gameMap = gameMap;\n" +
+        "    this.options = options;\n" +
+        "  }",
+      "Parabola ctor",
+    );
+  }
 
   mkdirSync(cacheDir, { recursive: true });
   const hash = createHash("sha1").update(out).digest("hex").slice(0, 10);

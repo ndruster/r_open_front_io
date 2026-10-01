@@ -2227,6 +2227,21 @@ fn replay_asseturls_scenarios() {
     }
 }
 
+// Maps.gen.ts: replay the data-table dumps / id lookup through the shared
+// `run_op` runner and compare the flat token streams (the Rust table must
+// serialise to the exact golden stream captured from the TS source).
+#[test]
+fn replay_maps_scenarios() {
+    use openfront_core::maps_gen::run_op;
+    for s in vectors::MG_SCENARIOS {
+        let got = run_op(s.kind, s.args);
+        assert_eq!(got.len(), s.res.len(), "{} res len", s.name);
+        for (j, (g, w)) in got.iter().zip(s.res.iter()).enumerate() {
+            assert!(obj_is(*g, *w), "{} res[{j}]: got {g} want {w}", s.name);
+        }
+    }
+}
+
 // GameUpdateUtils.ts: replay diff / apply / pack through the shared `run_op`
 // runner and compare the flat token streams (reference identity rides in as
 // the capture's refid, NaN/-0 through obj_is).

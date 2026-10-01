@@ -88,6 +88,7 @@ for (const name of [
   "probe_close_arg", "probe_close_op",
   "probe_sl_arg", "probe_sl_op", "probe_sl_out_at",
   "probe_au_arg", "probe_au_op", "probe_au_out_at",
+  "probe_mg_arg", "probe_mg_op", "probe_mg_out_at",
   "probe_pd_arg", "probe_pd_op", "probe_pd_out_at",
   "probe_dc_arg", "probe_dc_op", "probe_dc_out_at",
   "probe_eu_terrain_byte", "probe_eu_owner", "probe_eu_new",
@@ -1556,6 +1557,25 @@ for (const s of S.asseturls) {
   for (let i = 0; i < len; i++) {
     checks++;
     const g = ex.probe_au_out_at(i);
+    const w = numTok(s.res[i]);
+    if (!Object.is(g, w)) fail(`${s.name} res[${i}]`, 0, g, w);
+  }
+}
+
+// --- Maps.gen (Maps.gen.ts) ---------------------------------------------------
+// Replays the data-table dumps / id lookup through the shared run_op runner;
+// args and res are flat f64 token streams, compared element-by-element with
+// Object.is.
+for (const s of S.maps) {
+  for (const a of s.args) ex.probe_mg_arg(numTok(a));
+  const len = Number(ex.probe_mg_op(s.kind));
+  if (len !== s.res.length) {
+    fail(`${s.name} res len`, 0, len, s.res.length);
+    continue;
+  }
+  for (let i = 0; i < len; i++) {
+    checks++;
+    const g = ex.probe_mg_out_at(i);
     const w = numTok(s.res[i]);
     if (!Object.is(g, w)) fail(`${s.name} res[${i}]`, 0, g, w);
   }

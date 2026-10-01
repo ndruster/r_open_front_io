@@ -1162,6 +1162,35 @@ function prepare(rel) {
     );
   }
 
+  if (rel.endsWith("game/Maps.gen.ts")) {
+    // Node's strip-only TS loader rejects `export enum`. GameMapType is a
+    // string enum (member name = the folder id, value = the canonical wire
+    // name); rewrite the whole declaration into a plain object literal so the
+    // `type: GameMapType.X` references in `maps` still resolve. The types
+    // (GameMapName, MapCategory, SpecialModifierKey, MapInfo, CustomTribe,
+    // MapLayer, LayerPlacement) are erased by strip mode, and `maps` /
+    // `mapCategoryOrder` are plain const arrays that load untouched.
+    const before = out;
+    out = out.replace(
+      /export enum GameMapType \{([\s\S]*?)\n\}/,
+      (_m, body) => {
+        const entries = [
+          ...body.matchAll(
+            /^\s*([A-Za-z0-9_$]+)\s*=\s*"((?:[^"\\]|\\.)*)"/gm,
+          ),
+        ]
+          .map((mm) => `  ${mm[1]}: "${mm[2]}",`)
+          .join("\n");
+        return `export const GameMapType = {\n${entries}\n};`;
+      },
+    );
+    if (out === before) {
+      throw new Error(
+        "ts_load: Maps.gen.ts GameMapType enum not found - the TS source changed, update this shim",
+      );
+    }
+  }
+
   mkdirSync(cacheDir, { recursive: true });
   const hash = createHash("sha1").update(out).digest("hex").slice(0, 10);
   const base = `${basename(rel, ".ts")}-${hash}.ts`;

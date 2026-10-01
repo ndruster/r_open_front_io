@@ -165,6 +165,7 @@ const RSG = await loadTs("src/core/game/RailroadSpatialGrid.ts");
 const TTS = await loadTs("src/core/game/TileTraversalScratch.ts");
 const EB = await loadTs("src/core/EventBus.ts");
 const AU = await loadTs("src/core/AssetUrls.ts");
+const MG = await loadTs("src/core/game/Maps.gen.ts");
 const { AStar } = await loadTs("src/core/pathfinding/algorithms/AStar.ts");
 const { AStarRail } = await loadTs("src/core/pathfinding/algorithms/AStar.Rail.ts");
 const { AStarWater } = await loadTs("src/core/pathfinding/algorithms/AStar.Water.ts");
@@ -1831,6 +1832,84 @@ const auCall = (fn, ...a) => {
     );
   }
 }
+
+// --- Maps.gen scenario runner --------------------------------------------------
+// Exercises the real Maps.gen.ts data tables through the shared run_op
+// runner. kind 0 = dump maps, 1 = dump GameMapType, 2 = dump
+// mapCategoryOrder, 3 = find a map by id. The record serialisation (strings
+// as [len, u0, ..], optional fields behind an explicit presence flag) is
+// re-implemented here in JS exactly as maps_gen.rs does it in Rust, so the
+// golden stream is the TS data and the replay proves the Rust table matches.
+// The Rust twin is `maps_gen::*`.
+const mgScenarios = [];
+function captureMG(name, kind, args, res) {
+  mgScenarios.push({ name, kind, args: args.flat().map(uenc), res: res.flat().map(uenc) });
+}
+
+const mgStr = (s) => encS(s);
+const mgOptNum = (v) => (v === undefined ? [0] : [1, v]);
+const mgOptStrs = (v) =>
+  v === undefined ? [0] : [1, v.length, ...v.flatMap(mgStr)];
+const mgRecord = (m) => [
+  ...mgStr(m.id),
+  ...mgStr(m.type),
+  ...mgStr(m.translationKey),
+  m.categories.length,
+  ...m.categories.flatMap(mgStr),
+  m.multiplayerFrequency,
+  m.ffaFrequency,
+  m.teamFrequency,
+  m.specialFrequency,
+  m.defaultNationCount,
+  ...mgOptNum(m.featuredRank),
+  ...mgOptNum(m.specialTeamCount),
+  ...mgOptStrs(m.disabledModifiers),
+  ...mgOptStrs(m.forcedModifiers),
+  ...mgOptStrs(m.themes),
+  ...(m.customTribes === undefined
+    ? [0]
+    : [
+        1,
+        m.customTribes.length,
+        ...m.customTribes.flatMap((t) => [
+          ...mgStr(t.name),
+          ...(t.coordinates === undefined
+            ? [0]
+            : [1, t.coordinates[0], t.coordinates[1]]),
+        ]),
+      ]),
+  ...(m.layers === undefined
+    ? [0]
+    : [
+        1,
+        m.layers.length,
+        ...m.layers.flatMap((l) => [
+          ...mgStr(l.id),
+          ...mgStr(l.placement),
+          ...(l.nukeable === undefined ? [0] : [1, l.nukeable ? 1 : 0]),
+        ]),
+      ]),
+];
+
+captureMG("mg_types_dump", 1, [], [
+  Object.keys(MG.GameMapType).length,
+  ...Object.entries(MG.GameMapType).flatMap(([k, v]) => [...mgStr(k), ...mgStr(v)]),
+]);
+captureMG("mg_categories_dump", 2, [], [
+  MG.mapCategoryOrder.length,
+  ...MG.mapCategoryOrder.flatMap(mgStr),
+]);
+captureMG("mg_maps_dump", 0, [], [
+  MG.maps.length,
+  ...MG.maps.flatMap(mgRecord),
+]);
+// kind 3: a hit for the first / last map and a miss for an unknown id.
+captureMG("mg_find_achiran", 3, [mgStr("Achiran")], [0, ...mgRecord(MG.maps[0])]);
+captureMG("mg_find_milkyway", 3, [mgStr("MilkyWay")], [
+  0,
+  ...mgRecord(MG.maps.find((m) => m.id === "MilkyWay")),
+]);
+captureMG("mg_find_miss", 3, [mgStr("NoSuchMap")], [1]);
 
 // --- PatternDecoder scenario runner -------------------------------------------
 // Exercises the real PatternDecoder.ts decode + isPrimary through the shared
@@ -5122,6 +5201,7 @@ const structures = {
   tiletravscratch: ttsScenarios,
   eventbus: ebScenarios,
   asseturls: auScenarios,
+  maps: mgScenarios,
   astar: asScenarios,
   rail: railScenarios,
   water: waterScenarios,
@@ -7175,6 +7255,33 @@ for (const s of structures.asseturls) {
 }
 L.push("pub const AU_SCENARIOS: &[AuScenario] = &[");
 for (const s of structures.asseturls) L.push(`    ${s.name.toUpperCase()},`);
+L.push("];");
+L.push("");
+
+L.push("/// Maps.gen.ts scenario: one `maps_gen::run_op(kind, args)` call.");
+L.push("/// kind 0 dumps `maps`, 1 dumps `GameMapType`, 2 dumps");
+L.push("/// `mapCategoryOrder`, 3 finds a map by id. `args` is `[]` for the");
+L.push("/// dumps or `[id]` (kind 3); `res` is the flat token stream the Rust");
+L.push("/// serialiser must reproduce byte-for-byte.");
+L.push("pub struct MgScenario {");
+L.push("    pub name: &'static str,");
+L.push("    pub kind: u8,");
+L.push("    pub args: &'static [f64],");
+L.push("    pub res: &'static [f64],");
+L.push("}");
+L.push("");
+for (const s of structures.maps) {
+  const id = s.name.toUpperCase();
+  L.push(`pub const ${id}: MgScenario = MgScenario {`);
+  L.push(`    name: "${s.name}",`);
+  L.push(`    kind: ${s.kind}u8,`);
+  L.push(`    args: &[${s.args.map(utilResLit).join(", ")}],`);
+  L.push(`    res: &[${s.res.map(utilResLit).join(", ")}],`);
+  L.push("};");
+  L.push("");
+}
+L.push("pub const MG_SCENARIOS: &[MgScenario] = &[");
+for (const s of structures.maps) L.push(`    ${s.name.toUpperCase()},`);
 L.push("];");
 L.push("");
 

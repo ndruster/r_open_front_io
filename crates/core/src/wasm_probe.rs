@@ -3684,3 +3684,31 @@ pub extern "C" fn probe_gu_op(kind: u32) -> usize {
 pub extern "C" fn probe_gu_out_at(i: usize) -> f64 {
     GU_OUT.with(|o| o.borrow()[i])
 }
+
+// ================= P31: game/Railroad.ts (railroad) ===========================
+
+thread_local! {
+    static RR_ARGS: std::cell::RefCell<Vec<f64>> = const { std::cell::RefCell::new(Vec::new()) };
+    static RR_OUT: std::cell::RefCell<Vec<f64>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
+/// Push one flat token of the Railroad token stream (stations/rails by refid).
+#[no_mangle]
+pub extern "C" fn probe_rr_arg(v: f64) {
+    RR_ARGS.with(|t| t.borrow_mut().push(v));
+}
+
+/// Run `railroad::run_op(kind, args)`; returns the result-stream length.
+#[no_mangle]
+pub extern "C" fn probe_rr_op(kind: u32) -> usize {
+    let a = RR_ARGS.with(|t| std::mem::take(&mut *t.borrow_mut()));
+    let out = crate::railroad::run_op(kind as u8, &a);
+    let len = out.len();
+    RR_OUT.with(|o| *o.borrow_mut() = out);
+    len
+}
+
+#[no_mangle]
+pub extern "C" fn probe_rr_out_at(i: usize) -> f64 {
+    RR_OUT.with(|o| o.borrow()[i])
+}

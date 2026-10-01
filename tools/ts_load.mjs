@@ -1033,6 +1033,58 @@ function prepare(rel) {
     );
   }
 
+  if (rel.endsWith("game/Railroad.ts")) {
+    // Game / TileRef / TrainStation are type-only (interface + branded type +
+    // the stations are only ever *called on*, never constructed here) ->
+    // dropped. GameUpdateType is a value use (delete() stamps it), redirected
+    // to the prepared GameUpdates copy. Both ctors use parameter properties,
+    // which strip mode rejects; expand them.
+    out = must(out, 'import { Game } from "./Game";\n', "", "Railroad Game import");
+    out = must(out, 'import { TileRef } from "./GameMap";\n', "", "Railroad GameMap import");
+    out = must(out, 'import { TrainStation } from "./TrainStation";\n', "", "Railroad TrainStation import");
+    const guRel = "src/core/game/GameUpdates.ts";
+    if (!prepared.has(guRel)) prepare(guRel);
+    out = must(
+      out,
+      'import { GameUpdateType } from "./GameUpdates";',
+      `import { GameUpdateType } from "./${prepared.get(guRel)}";`,
+      "Railroad GameUpdates import",
+    );
+    out = must(
+      out,
+      "  constructor(\n" +
+        "    public from: TrainStation,\n" +
+        "    public to: TrainStation,\n" +
+        "    public tiles: TileRef[],\n" +
+        "    public id: number,\n" +
+        "  ) {}",
+      "  from: TrainStation;\n" +
+        "  to: TrainStation;\n" +
+        "  tiles: TileRef[];\n" +
+        "  id: number;\n\n" +
+        "  constructor(from: TrainStation, to: TrainStation, tiles: TileRef[], id: number) {\n" +
+        "    this.from = from;\n" +
+        "    this.to = to;\n" +
+        "    this.tiles = tiles;\n" +
+        "    this.id = id;\n" +
+        "  }",
+      "Railroad ctor",
+    );
+    out = must(
+      out,
+      "  constructor(\n" +
+        "    private railroad: Railroad,\n" +
+        "    private forward: boolean,\n" +
+        "  ) {",
+      "  private railroad: Railroad;\n" +
+        "  private forward: boolean;\n\n" +
+        "  constructor(railroad: Railroad, forward: boolean) {\n" +
+        "    this.railroad = railroad;\n" +
+        "    this.forward = forward;",
+      "OrientedRailroad ctor",
+    );
+  }
+
   if (rel.endsWith("PatternDecoder.ts")) {
     // PlayerPattern is a type-only import (a z.infer type from Schemas); strip
     // mode cannot tell and would pull in the whole zod schema graph -> drop.

@@ -95,6 +95,7 @@ for (const name of [
   "probe_wm_arg", "probe_wm_op", "probe_wm_out_at", "probe_wm_version",
   "probe_wm_map_terrain_at", "probe_wm_map_state_at", "probe_wm_mini_terrain_at",
   "probe_gu_arg", "probe_gu_op", "probe_gu_out_at",
+  "probe_rr_arg", "probe_rr_op", "probe_rr_out_at",
 ]) {
   if (typeof ex[name] !== "function") {
     console.error(`missing wasm export ${name} - rebuild with --features wasm-probe`);
@@ -1641,6 +1642,24 @@ for (const s of S.gameupdateutils) {
   for (let i = 0; i < len; i++) {
     checks++;
     const g = ex.probe_gu_out_at(i);
+    const w = numTok(s.res[i]);
+    if (!Object.is(g, w)) fail(`${s.name} res[${i}]`, 0, g, w);
+  }
+}
+
+// --- game/Railroad.ts (railroad) ----------------------------------------------
+// Replays closest-tile-index / oriented-railroad / delete through the shared
+// run_op runner; stations and rails cross by capture-assigned refids.
+for (const s of S.railroad) {
+  for (const a of s.args) ex.probe_rr_arg(numTok(a));
+  const len = Number(ex.probe_rr_op(s.kind));
+  if (len !== s.res.length) {
+    fail(`${s.name} res len`, 0, len, s.res.length);
+    continue;
+  }
+  for (let i = 0; i < len; i++) {
+    checks++;
+    const g = ex.probe_rr_out_at(i);
     const w = numTok(s.res[i]);
     if (!Object.is(g, w)) fail(`${s.name} res[${i}]`, 0, g, w);
   }

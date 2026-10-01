@@ -64,6 +64,12 @@
 //!   fast path modelled as a capture `refid`, `applyStateUpdate` in-place
 //!   merge with the `Number()` / `Math.max(0,·)` / `.slice()` quirks, and
 //!   `packAttackTroopDeltas` membership-gated troop quads)
+//! * [`railroad`] — `src/core/game/Railroad.ts` (`getClosestTileIndex`
+//!   squared-distance first-minimum over `game.x/y`-decoded tiles,
+//!   `getOrientedRailroad` neighbor lookup + tile reversal, and `delete`'s
+//!   observable destruction-update / `removeRailroad` call sequence; station
+//!   identity rides in as capture refids — the `TrainStation` internals are a
+//!   later port)
 //! * [`line`] — `src/core/utilities/Line.ts` (`DistanceBasedBezierCurve`:
 //!   fixed-point De Casteljau subdivision for MIRV trajectories)
 //! * [`veterancy`] — `src/core/game/Veterancy.ts` (`maxHealthWithVeterancy`:
@@ -124,6 +130,7 @@ pub mod motion_plans;
 pub mod pathfinding;
 pub mod pattern_decoder;
 pub mod pseudo_random;
+pub mod railroad;
 pub mod server_list;
 pub mod team_assignment;
 pub mod terrain_search_map;

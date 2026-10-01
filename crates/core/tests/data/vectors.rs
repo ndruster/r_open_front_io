@@ -32276,3 +32276,179 @@ pub const GU_SCENARIOS: &[GuScenario] = &[
     GU_PACK_OWNER_NAN,
 ];
 
+/// One `Railroad.ts` scenario through the shared `run_op` runner.
+/// `kind` 0 = getClosestTileIndex `[width, to, n, tiles…]` → `[index]`;
+/// 1 = getOrientedRailroad `[to, k, (nbr,rr)*k, m, (railroad)*m]` → `[0]`
+/// or `[1, forward, n, tiles…, start, end]`; 2 = delete `[railroad]` →
+/// `[type, id, caller_from, rr, caller_to, rr]`. A `railroad` token is
+/// `[refid, from, to, id, n, tiles…]`; stations cross by numeric refid.
+pub struct RrScenario {
+    pub name: &'static str,
+    pub kind: u8,
+    pub args: &'static [f64],
+    pub res: &'static [f64],
+}
+
+pub const RR_CLOSE_EMPTY: RrScenario = RrScenario {
+    name: "rr_close_empty",
+    kind: 0u8,
+    args: &[10f64, 20f64, 0f64],
+    res: &[-1f64],
+};
+
+pub const RR_CLOSE_BASIC: RrScenario = RrScenario {
+    name: "rr_close_basic",
+    kind: 0u8,
+    args: &[10f64, 20f64, 3f64, 23f64, 41f64, 2f64],
+    res: &[1f64],
+};
+
+pub const RR_CLOSE_TIE: RrScenario = RrScenario {
+    name: "rr_close_tie",
+    kind: 0u8,
+    args: &[10f64, 20f64, 2f64, 10f64, 30f64],
+    res: &[0f64],
+};
+
+pub const RR_CLOSE_SINGLE: RrScenario = RrScenario {
+    name: "rr_close_single",
+    kind: 0u8,
+    args: &[10f64, 7f64, 1f64, 7f64],
+    res: &[0f64],
+};
+
+pub const RR_CLOSE_NAN_TO: RrScenario = RrScenario {
+    name: "rr_close_nan_to",
+    kind: 0u8,
+    args: &[10f64, f64::NAN, 2f64, 23f64, 41f64],
+    res: &[0f64],
+};
+
+pub const RR_CLOSE_NAN_TILE: RrScenario = RrScenario {
+    name: "rr_close_nan_tile",
+    kind: 0u8,
+    args: &[10f64, 20f64, 2f64, f64::NAN, 41f64],
+    res: &[1f64],
+};
+
+pub const RR_CLOSE_WIDTH1: RrScenario = RrScenario {
+    name: "rr_close_width1",
+    kind: 0u8,
+    args: &[1f64, 3f64, 3f64, 0f64, 5f64, 9f64],
+    res: &[1f64],
+};
+
+pub const RR_CLOSE_NEG_TO: RrScenario = RrScenario {
+    name: "rr_close_neg_to",
+    kind: 0u8,
+    args: &[10f64, -1f64, 2f64, 23f64, 41f64],
+    res: &[0f64],
+};
+
+pub const RR_CLOSE_BIG: RrScenario = RrScenario {
+    name: "rr_close_big",
+    kind: 0u8,
+    args: &[1000f64, 234000f64, 3f64, 123456f64, 234567f64, 345678f64],
+    res: &[0f64],
+};
+
+pub const RR_CLOSE_INF_TO: RrScenario = RrScenario {
+    name: "rr_close_inf_to",
+    kind: 0u8,
+    args: &[10f64, f64::INFINITY, 2f64, 23f64, 41f64],
+    res: &[0f64],
+};
+
+pub const RR_CLOSE_DUP: RrScenario = RrScenario {
+    name: "rr_close_dup",
+    kind: 0u8,
+    args: &[10f64, 55f64, 3f64, 50f64, 50f64, 50f64],
+    res: &[0f64],
+};
+
+pub const RR_OR_FORWARD: RrScenario = RrScenario {
+    name: "rr_or_forward",
+    kind: 1u8,
+    args: &[20f64, 1f64, 20f64, 12f64, 1f64, 12f64, 10f64, 20f64, 7f64, 3f64, 1f64, 2f64, 3f64],
+    res: &[1f64, 1f64, 3f64, 1f64, 2f64, 3f64, 10f64, 20f64],
+};
+
+pub const RR_OR_BACKWARD: RrScenario = RrScenario {
+    name: "rr_or_backward",
+    kind: 1u8,
+    args: &[10f64, 1f64, 10f64, 12f64, 1f64, 12f64, 10f64, 20f64, 7f64, 3f64, 1f64, 2f64, 3f64],
+    res: &[1f64, 0f64, 3f64, 3f64, 2f64, 1f64, 20f64, 10f64],
+};
+
+pub const RR_OR_MISSING: RrScenario = RrScenario {
+    name: "rr_or_missing",
+    kind: 1u8,
+    args: &[30f64, 1f64, 20f64, 12f64, 1f64, 12f64, 10f64, 20f64, 7f64, 3f64, 1f64, 2f64, 3f64],
+    res: &[0f64],
+};
+
+pub const RR_OR_EMPTY_TILES: RrScenario = RrScenario {
+    name: "rr_or_empty_tiles",
+    kind: 1u8,
+    args: &[20f64, 1f64, 20f64, 13f64, 1f64, 13f64, 10f64, 20f64, 8f64, 0f64],
+    res: &[1f64, 1f64, 0f64, 10f64, 20f64],
+};
+
+pub const RR_OR_PARALLEL: RrScenario = RrScenario {
+    name: "rr_or_parallel",
+    kind: 1u8,
+    args: &[30f64, 2f64, 20f64, 14f64, 30f64, 15f64, 2f64, 14f64, 10f64, 20f64, 1f64, 2f64, 1f64, 2f64, 15f64, 10f64, 30f64, 2f64, 3f64, 3f64, 4f64, 5f64],
+    res: &[1f64, 1f64, 3f64, 3f64, 4f64, 5f64, 10f64, 30f64],
+};
+
+pub const RR_OR_PARALLEL2: RrScenario = RrScenario {
+    name: "rr_or_parallel2",
+    kind: 1u8,
+    args: &[20f64, 2f64, 20f64, 14f64, 30f64, 15f64, 2f64, 14f64, 10f64, 20f64, 1f64, 2f64, 1f64, 2f64, 15f64, 10f64, 30f64, 2f64, 3f64, 3f64, 4f64, 5f64],
+    res: &[1f64, 1f64, 2f64, 1f64, 2f64, 10f64, 20f64],
+};
+
+pub const RR_DEL_BASIC: RrScenario = RrScenario {
+    name: "rr_del_basic",
+    kind: 2u8,
+    args: &[16f64, 10f64, 20f64, 7f64, 3f64, 1f64, 2f64, 3f64],
+    res: &[16f64, 7f64, 10f64, 16f64, 20f64, 16f64],
+};
+
+pub const RR_DEL_SELFLOOP: RrScenario = RrScenario {
+    name: "rr_del_selfloop",
+    kind: 2u8,
+    args: &[17f64, 10f64, 10f64, 9f64, 0f64],
+    res: &[16f64, 9f64, 10f64, 17f64, 10f64, 17f64],
+};
+
+pub const RR_DEL_NEGID: RrScenario = RrScenario {
+    name: "rr_del_negid",
+    kind: 2u8,
+    args: &[18f64, 10f64, 20f64, -3f64, 1f64, 5f64],
+    res: &[16f64, -3f64, 10f64, 18f64, 20f64, 18f64],
+};
+
+pub const RR_SCENARIOS: &[RrScenario] = &[
+    RR_CLOSE_EMPTY,
+    RR_CLOSE_BASIC,
+    RR_CLOSE_TIE,
+    RR_CLOSE_SINGLE,
+    RR_CLOSE_NAN_TO,
+    RR_CLOSE_NAN_TILE,
+    RR_CLOSE_WIDTH1,
+    RR_CLOSE_NEG_TO,
+    RR_CLOSE_BIG,
+    RR_CLOSE_INF_TO,
+    RR_CLOSE_DUP,
+    RR_OR_FORWARD,
+    RR_OR_BACKWARD,
+    RR_OR_MISSING,
+    RR_OR_EMPTY_TILES,
+    RR_OR_PARALLEL,
+    RR_OR_PARALLEL2,
+    RR_DEL_BASIC,
+    RR_DEL_SELFLOOP,
+    RR_DEL_NEGID,
+];
+

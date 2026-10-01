@@ -160,6 +160,7 @@ const DC = await loadTs("src/core/game/DoomsdayClock.ts");
 const EU = await loadTs("src/core/execution/Util.ts");
 const WM = await loadTs("src/core/game/WaterManager.ts");
 const GUU = await loadTs("src/core/game/GameUpdateUtils.ts");
+const RR = await loadTs("src/core/game/Railroad.ts");
 const { AStar } = await loadTs("src/core/pathfinding/algorithms/AStar.ts");
 const { AStarRail } = await loadTs("src/core/pathfinding/algorithms/AStar.Rail.ts");
 const { AStarWater } = await loadTs("src/core/pathfinding/algorithms/AStar.Water.ts");
@@ -1124,6 +1125,124 @@ guPack("gu_pack_retreat", GUA(1, [guAtk(1, "a", false)]), GUA(2, [guAtk(1, "a", 
 guPack("gu_pack_len", GUA(1, [guAtk(1, "a")]), GUA(2, [guAtk(1, "a"), guAtk(2, "b")]), 5, 0);
 guPack("gu_pack_empty", GUA(1, []), GUA(2, []), 5, 0);
 guPack("gu_pack_owner_nan", GUA(1, [guAtk(1, "a")]), GUA(2, [guAtk(2, "a")]), NaN, 0);
+
+// --- Railroad scenario runner --------------------------------------------------
+// Exercises the real Railroad.ts through the shared run_op runner. Stations are
+// duck-typed stubs carrying a numeric `__refid` (identity), rails are real
+// Railroad instances carrying `__refid`. `game` is a width-parameterised duck
+// (`x = t % w`, `y = (t / w) | 0`); `delete` records the emitted update and the
+// two `removeRailroad` calls. kind 0 = getClosestTileIndex `[width, to, n,
+// tiles…]` → `[index]`; kind 1 = getOrientedRailroad `[to, k, (nbr,rr)*k, m,
+// (railroad)*m]` (railroad = `[refid, from, to, id, n, tiles…]`) → `[0]` or
+// `[1, forward, n, tiles…, start, end]`; kind 2 = delete `[railroad]` →
+// `[type, id, caller_from, rr, caller_to, rr]`.
+const rrScenarios = [];
+function captureRR(name, kind, args, res) {
+  rrScenarios.push({ name, kind, args: args.flat().map(uenc), res: res.flat().map(uenc) });
+}
+let rrRefSeq = 1;
+const rrStation = (refid) => ({
+  __refid: refid,
+  railroadByNeighbor: new Map(),
+  removeRailroadCalls: [],
+  getRailroadTo(o) {
+    return this.railroadByNeighbor.get(o) ?? null;
+  },
+  removeRailroad(r) {
+    this.removeRailroadCalls.push(r);
+  },
+});
+const rrRail = (from, to, tiles, id) => {
+  const r = new RR.Railroad(from, to, tiles, id);
+  r.__refid = rrRefSeq++;
+  return r;
+};
+const rrGame = (w) => ({ x: (t) => t % w, y: (t) => (t / w) | 0 });
+const rrTokRail = (r) => [r.__refid, r.from.__refid, r.to.__refid, r.id, r.tiles.length, ...r.tiles];
+
+// kind 0: closest-tile-index geometry.
+function rrClosest(name, width, tiles, to) {
+  const s = rrStation(1);
+  const rail = rrRail(s, s, tiles, 0);
+  const idx = rail.getClosestTileIndex(rrGame(width), to);
+  captureRR(name, 0, [width, to, tiles.length, ...tiles], [idx]);
+}
+rrClosest("rr_close_empty", 10, [], 20);
+rrClosest("rr_close_basic", 10, [23, 41, 2], 20);
+rrClosest("rr_close_tie", 10, [10, 30], 20);
+rrClosest("rr_close_single", 10, [7], 7);
+rrClosest("rr_close_nan_to", 10, [23, 41], NaN);
+rrClosest("rr_close_nan_tile", 10, [NaN, 41], 20);
+rrClosest("rr_close_width1", 1, [0, 5, 9], 3);
+rrClosest("rr_close_neg_to", 10, [23, 41], -1);
+rrClosest("rr_close_big", 1000, [123456, 234567, 345678], 234000);
+rrClosest("rr_close_inf_to", 10, [23, 41], Infinity);
+rrClosest("rr_close_dup", 10, [50, 50, 50], 55);
+
+// kind 1: oriented-railroad lookup + reversal.
+function rrOriented(name, fromSt, toSt, rails) {
+  const o = RR.getOrientedRailroad(fromSt, toSt);
+  const by = [...fromSt.railroadByNeighbor].map(([s, r]) => [s.__refid, r.__refid]);
+  const args = [toSt.__refid, by.length, ...by.flat(), rails.length, ...rails.flatMap(rrTokRail)];
+  let res;
+  if (o === null) {
+    res = [0];
+  } else {
+    const rail = fromSt.railroadByNeighbor.get(toSt);
+    const forward = rail.to === toSt ? 1 : 0;
+    const tiles = o.getTiles();
+    res = [1, forward, tiles.length, ...tiles, o.getStart().__refid, o.getEnd().__refid];
+  }
+  captureRR(name, 1, args, res);
+}
+{
+  const A = rrStation(10), B = rrStation(20);
+  const r = rrRail(A, B, [1, 2, 3], 7);
+  A.railroadByNeighbor.set(B, r);
+  B.railroadByNeighbor.set(A, r);
+  rrOriented("rr_or_forward", A, B, [r]);
+  rrOriented("rr_or_backward", B, A, [r]);
+  const C = rrStation(30);
+  rrOriented("rr_or_missing", A, C, [r]);
+}
+{
+  const A = rrStation(10), B = rrStation(20);
+  const r = rrRail(A, B, [], 8);
+  A.railroadByNeighbor.set(B, r);
+  rrOriented("rr_or_empty_tiles", A, B, [r]);
+}
+{
+  const A = rrStation(10), B = rrStation(20), C = rrStation(30);
+  const r1 = rrRail(A, B, [1, 2], 1);
+  const r2 = rrRail(A, C, [3, 4, 5], 2);
+  A.railroadByNeighbor.set(B, r1);
+  A.railroadByNeighbor.set(C, r2);
+  rrOriented("rr_or_parallel", A, C, [r1, r2]);
+  rrOriented("rr_or_parallel2", A, B, [r1, r2]);
+}
+
+// kind 2: delete's observable update + removeRailroad call sequence.
+function rrDelete(name, rail) {
+  const game = { updates: [], addUpdate(u) { this.updates.push(u); } };
+  rail.from.removeRailroadCalls = [];
+  rail.to.removeRailroadCalls = [];
+  rail.delete(game);
+  const u = game.updates[0];
+  const res = [u.type, u.id, rail.from.__refid, rail.__refid, rail.to.__refid, rail.__refid];
+  captureRR(name, 2, rrTokRail(rail), res);
+}
+{
+  const A = rrStation(10), B = rrStation(20);
+  rrDelete("rr_del_basic", rrRail(A, B, [1, 2, 3], 7));
+}
+{
+  const A = rrStation(10);
+  rrDelete("rr_del_selfloop", rrRail(A, A, [], 9));
+}
+{
+  const A = rrStation(10), B = rrStation(20);
+  rrDelete("rr_del_negid", rrRail(A, B, [5], -3));
+}
 
 // --- PatternDecoder scenario runner -------------------------------------------
 // Exercises the real PatternDecoder.ts decode + isPrimary through the shared
@@ -4410,6 +4529,7 @@ const structures = {
   executil: euScenarios,
   watermanager: wmScenarios,
   gameupdateutils: guScenarios,
+  railroad: rrScenarios,
   astar: asScenarios,
   rail: railScenarios,
   water: waterScenarios,
@@ -6307,6 +6427,34 @@ for (const s of structures.gameupdateutils) {
 }
 L.push("pub const GU_SCENARIOS: &[GuScenario] = &[");
 for (const s of structures.gameupdateutils) L.push(`    ${s.name.toUpperCase()},`);
+L.push("];");
+L.push("");
+
+L.push("/// One `Railroad.ts` scenario through the shared `run_op` runner.");
+L.push("/// `kind` 0 = getClosestTileIndex `[width, to, n, tiles…]` → `[index]`;");
+L.push("/// 1 = getOrientedRailroad `[to, k, (nbr,rr)*k, m, (railroad)*m]` → `[0]`");
+L.push("/// or `[1, forward, n, tiles…, start, end]`; 2 = delete `[railroad]` →");
+L.push("/// `[type, id, caller_from, rr, caller_to, rr]`. A `railroad` token is");
+L.push("/// `[refid, from, to, id, n, tiles…]`; stations cross by numeric refid.");
+L.push("pub struct RrScenario {");
+L.push("    pub name: &'static str,");
+L.push("    pub kind: u8,");
+L.push("    pub args: &'static [f64],");
+L.push("    pub res: &'static [f64],");
+L.push("}");
+L.push("");
+for (const s of structures.railroad) {
+  const id = s.name.toUpperCase();
+  L.push(`pub const ${id}: RrScenario = RrScenario {`);
+  L.push(`    name: "${s.name}",`);
+  L.push(`    kind: ${s.kind}u8,`);
+  L.push(`    args: &[${s.args.map(utilResLit).join(", ")}],`);
+  L.push(`    res: &[${s.res.map(utilResLit).join(", ")}],`);
+  L.push("};");
+  L.push("");
+}
+L.push("pub const RR_SCENARIOS: &[RrScenario] = &[");
+for (const s of structures.railroad) L.push(`    ${s.name.toUpperCase()},`);
 L.push("];");
 L.push("");
 

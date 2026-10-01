@@ -2227,6 +2227,21 @@ fn replay_gameupdateutils_scenarios() {
     }
 }
 
+// Railroad.ts: replay closest-tile-index / oriented-railroad / delete through
+// the shared `run_op` runner and compare the flat token streams (station and
+// railroad identity ride in as the capture's refid, NaN/±Inf through obj_is).
+#[test]
+fn replay_railroad_scenarios() {
+    use openfront_core::railroad::run_op;
+    for s in vectors::RR_SCENARIOS {
+        let got = run_op(s.kind, s.args);
+        assert_eq!(got.len(), s.res.len(), "{} res len: got {got:?} want {:?}", s.name, s.res);
+        for (j, (g, w)) in got.iter().zip(s.res.iter()).enumerate() {
+            assert!(obj_is(*g, *w), "{} res[{j}]: got {g} want {w}", s.name);
+        }
+    }
+}
+
 // PatternDecoder.ts: replay decode + isPrimary through the shared `run_op`
 // runner (throws recorded as numeric codes) and compare the token streams.
 #[test]

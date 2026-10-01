@@ -51,6 +51,10 @@ rust/
 │   │   │                          PlayerUpdate diff / in-place state merge /
 │   │   │                          attack troop-delta packing; refid models the
 │   │   │                          `a === b` fast path)
+│   │   ├── railroad.rs            port of game/Railroad.ts (closest-tile
+│   │   │                          index geometry, oriented-railroad lookup
+│   │   │                          + reversal, delete's update/call sequence;
+│   │   │                          stations and rails cross by refid)
 │   │   ├── wasm_probe.rs          `extern "C"` surface, feature-gated
 │   │   └── pathfinding/
 │   │       ├── mod.rs
@@ -545,6 +549,18 @@ desync, not a rounding nit. Two things enforce that here:
     NaN fast path, set-semantic embargoes, troops-only attack changes,
     `null` vs `undefined` merges, `Math.max` NaN/negative/`-0`/Infinity edges,
     and the pack gate's reference / membership / length branches.
+33. **`game/Railroad.ts`** (`railroad`) — `getClosestTileIndex` (squared
+    Euclidean distance over the tile list with JS-accurate `x = t % width` /
+    `y = (t / width) | 0` decoding, strict `<` keeps the first on ties, `-1`
+    when empty), `getOrientedRailroad` + `OrientedRailroad` (neighbor→rail
+    lookup, direction decided by `railroad.to === to` reference identity,
+    backward rails copy-and-reverse their tiles), and `delete` (emits the
+    `RailroadDestructionEvent` update and calls `removeRailroad(this)` on
+    `from` then `to`). Stations and rails are duck-typed stubs carrying
+    capture-assigned refids; the mutation lives in `TrainStation` (a later
+    port), so the parity surface is the call sequence. 20 scenarios cover
+    empty / tie / NaN / ±Inf geometry, forward / backward / missing /
+    parallel-rail orientation, and self-loop / negative-id deletes.
 
 Regenerate whenever a ported source changes:
 
@@ -578,7 +594,7 @@ node rust/tools/run_wasm_parity.mjs
 
 `wasm-probe` exposes the ported functions through `extern "C"` scalar
 entrypoints (`src/wasm_probe.rs`); the runner imports `data/vectors.json` and
-compares every value. Last run: **39,418 comparisons, all bit-identical**.
+compares every value. Last run: **39,484 comparisons, all bit-identical**.
 
 ### Windows: the linker environment
 

@@ -60,6 +60,38 @@ function prepare(rel) {
       "BFS ctor",
     );
   }
+  if (rel.endsWith("PathFinder.Air.ts")) {
+    // Game / TileRef / PathFinder are type-only (interface + branded type);
+    // strip mode would still execute their imports and pull in the whole
+    // Game.ts graph. PseudoRandom is a *value* use (`new PseudoRandom`), so it
+    // resolves to the real module. The ctor's `private game` parameter
+    // property is expanded, and the `implements` clause is dropped.
+    out = must(
+      out,
+      'import { Game } from "../game/Game";\n' +
+        'import { TileRef } from "../game/GameMap";\n' +
+        'import { PseudoRandom } from "../PseudoRandom";\n' +
+        'import { PathFinder } from "./types";\n',
+      `import { PseudoRandom } from "${TS_URL}src/core/PseudoRandom.ts";\n`,
+      "Air imports",
+    );
+    out = must(
+      out,
+      "export class AirPathFinder implements PathFinder<TileRef> {\n" +
+        "  private seed: number;\n\n" +
+        "  constructor(private game: Game) {\n" +
+        "    this.seed = game.ticks();\n" +
+        "  }",
+      "export class AirPathFinder {\n" +
+        "  private seed: number;\n" +
+        "  private game: any;\n\n" +
+        "  constructor(game: any) {\n" +
+        "    this.game = game;\n" +
+        "    this.seed = game.ticks();\n" +
+        "  }",
+      "Air ctor",
+    );
+  }
   if (rel.endsWith("game/GameMap.ts")) {
     // The import (and the whole Game.ts graph behind it) is dropped; the
     // numeric enum is inlined so terrainType() still works. `Cell` is only

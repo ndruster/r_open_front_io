@@ -15983,3 +15983,152 @@ pub const BFS_TS_SCENARIOS: &[BfsTsScenario] = &[
     BFS_MULTI_COMP,
 ];
 
+/// AirPathFinder scenario (PathFinder.Air.ts). Walks from `from` to
+/// `to` on a `w x h` map seeded with `ticks`. `path` is the recorded
+/// (x, y) coordinate stream (refs are width-dependent); `threw` marks
+/// the Array.isArray multi-start or an out-of-range `game.ref`.
+pub struct AirScenario {
+    pub name: &'static str,
+    pub w: f64,
+    pub h: f64,
+    pub ticks: f64,
+    pub from: f64,
+    pub to: f64,
+    pub multi: bool,
+    pub threw: bool,
+    pub path: &'static [f64],
+}
+
+pub const AIR_SAME: AirScenario = AirScenario {
+    name: "air_same",
+    w: 10f64,
+    h: 10f64,
+    ticks: 0f64,
+    from: 43f64,
+    to: 43f64,
+    multi: false,
+    threw: false,
+    path: &[3f64, 4f64],
+};
+
+pub const AIR_VERTICAL: AirScenario = AirScenario {
+    name: "air_vertical",
+    w: 10f64,
+    h: 10f64,
+    ticks: 0f64,
+    from: 15f64,
+    to: 85f64,
+    multi: false,
+    threw: false,
+    path: &[5f64, 1f64, 5f64, 2f64, 5f64, 3f64, 5f64, 4f64, 5f64, 5f64, 5f64, 6f64, 5f64, 7f64, 5f64, 8f64],
+};
+
+pub const AIR_HORIZONTAL: AirScenario = AirScenario {
+    name: "air_horizontal",
+    w: 10f64,
+    h: 10f64,
+    ticks: 123f64,
+    from: 61f64,
+    to: 67f64,
+    multi: false,
+    threw: false,
+    path: &[1f64, 6f64, 2f64, 6f64, 3f64, 6f64, 4f64, 6f64, 5f64, 6f64, 6f64, 6f64, 7f64, 6f64],
+};
+
+pub const AIR_DIAG_42: AirScenario = AirScenario {
+    name: "air_diag_42",
+    w: 16f64,
+    h: 16f64,
+    ticks: 42f64,
+    from: 34f64,
+    to: 201f64,
+    multi: false,
+    threw: false,
+    path: &[2f64, 2f64, 2f64, 3f64, 3f64, 3f64, 4f64, 3f64, 5f64, 3f64, 5f64, 4f64, 5f64, 5f64, 6f64, 5f64, 7f64, 5f64, 7f64, 6f64, 8f64, 6f64, 8f64, 7f64, 8f64, 8f64, 8f64, 9f64, 9f64, 9f64, 9f64, 10f64, 9f64, 11f64, 9f64, 12f64],
+};
+
+pub const AIR_DIAG_0: AirScenario = AirScenario {
+    name: "air_diag_0",
+    w: 16f64,
+    h: 16f64,
+    ticks: 0f64,
+    from: 34f64,
+    to: 201f64,
+    multi: false,
+    threw: false,
+    path: &[2f64, 2f64, 3f64, 2f64, 4f64, 2f64, 4f64, 3f64, 5f64, 3f64, 5f64, 4f64, 5f64, 5f64, 5f64, 6f64, 6f64, 6f64, 7f64, 6f64, 7f64, 7f64, 8f64, 7f64, 9f64, 7f64, 9f64, 8f64, 9f64, 9f64, 9f64, 10f64, 9f64, 11f64, 9f64, 12f64],
+};
+
+pub const AIR_DIAG_NEG: AirScenario = AirScenario {
+    name: "air_diag_neg",
+    w: 16f64,
+    h: 16f64,
+    ticks: -1f64,
+    from: 34f64,
+    to: 201f64,
+    multi: false,
+    threw: false,
+    path: &[2f64, 2f64, 2f64, 3f64, 2f64, 4f64, 3f64, 4f64, 3f64, 5f64, 4f64, 5f64, 4f64, 6f64, 5f64, 6f64, 5f64, 7f64, 6f64, 7f64, 7f64, 7f64, 8f64, 7f64, 9f64, 7f64, 9f64, 8f64, 9f64, 9f64, 9f64, 10f64, 9f64, 11f64, 9f64, 12f64],
+};
+
+pub const AIR_DIAG_FRAC: AirScenario = AirScenario {
+    name: "air_diag_frac",
+    w: 16f64,
+    h: 16f64,
+    ticks: 0.75f64,
+    from: 34f64,
+    to: 201f64,
+    multi: false,
+    threw: false,
+    path: &[2f64, 2f64, 3f64, 2f64, 4f64, 2f64, 4f64, 3f64, 5f64, 3f64, 5f64, 4f64, 5f64, 5f64, 5f64, 6f64, 6f64, 6f64, 7f64, 6f64, 7f64, 7f64, 8f64, 7f64, 9f64, 7f64, 9f64, 8f64, 9f64, 9f64, 9f64, 10f64, 9f64, 11f64, 9f64, 12f64],
+};
+
+pub const AIR_DIAG_777: AirScenario = AirScenario {
+    name: "air_diag_777",
+    w: 20f64,
+    h: 20f64,
+    ticks: 777f64,
+    from: 21f64,
+    to: 215f64,
+    multi: false,
+    threw: false,
+    path: &[1f64, 1f64, 2f64, 1f64, 3f64, 1f64, 4f64, 1f64, 5f64, 1f64, 6f64, 1f64, 7f64, 1f64, 8f64, 1f64, 9f64, 1f64, 10f64, 1f64, 10f64, 2f64, 10f64, 3f64, 10f64, 4f64, 10f64, 5f64, 11f64, 5f64, 12f64, 5f64, 13f64, 5f64, 14f64, 5f64, 14f64, 6f64, 15f64, 6f64, 15f64, 7f64, 15f64, 8f64, 15f64, 9f64, 15f64, 10f64],
+};
+
+pub const AIR_MULTI: AirScenario = AirScenario {
+    name: "air_multi",
+    w: 10f64,
+    h: 10f64,
+    ticks: 0f64,
+    from: 11f64,
+    to: 55f64,
+    multi: true,
+    threw: true,
+    path: &[],
+};
+
+pub const AIR_OOB: AirScenario = AirScenario {
+    name: "air_oob",
+    w: 10f64,
+    h: 10f64,
+    ticks: 0f64,
+    from: 0f64,
+    to: 100f64,
+    multi: false,
+    threw: true,
+    path: &[],
+};
+
+pub const AIR_SCENARIOS: &[AirScenario] = &[
+    AIR_SAME,
+    AIR_VERTICAL,
+    AIR_HORIZONTAL,
+    AIR_DIAG_42,
+    AIR_DIAG_0,
+    AIR_DIAG_NEG,
+    AIR_DIAG_FRAC,
+    AIR_DIAG_777,
+    AIR_MULTI,
+    AIR_OOB,
+];
+

@@ -151,6 +151,7 @@ const { MinHeap, BucketQueue } = await loadTs(
 const { FlatBinaryHeap } = await loadTs("src/core/execution/utils/FlatBinaryHeap.ts");
 const { BFSGrid } = await loadTs("src/core/pathfinding/algorithms/BFS.Grid.ts");
 const { BFS } = await loadTs("src/core/pathfinding/algorithms/BFS.ts");
+const { AirPathFinder } = await loadTs("src/core/pathfinding/PathFinder.Air.ts");
 const { AStar } = await loadTs("src/core/pathfinding/algorithms/AStar.ts");
 const { AStarRail } = await loadTs("src/core/pathfinding/algorithms/AStar.Rail.ts");
 const { AStarWater } = await loadTs("src/core/pathfinding/algorithms/AStar.Water.ts");
@@ -495,6 +496,58 @@ captureBFS("bfs_nonint", [[-1.5, [0.25]], [0.25, [-1.5, 7.75]], [7.75, []]], [-1
 captureBFS("bfs_nan_nodes", [[NaN, [1]], [1, [NaN]]], [NaN, NaN], Infinity, 0, -1, 0);
 // Two disconnected components seeded by a multi-start.
 captureBFS("bfs_multi_comp", [[10, [11]], [11, []], [20, [21]], [21, []]], [10, 20], Infinity, 0, -1, 0);
+
+// --- AirPathFinder scenario runner (PathFinder.Air.ts) -----------------------
+// The real TS AirPathFinder over a GameMap-backed `game` stub (ticks/x/y/ref).
+// Records the walked path as (x, y) coordinate pairs (tile refs are map-width
+// dependent; coords are the stable cross-language observable). `multi` drives
+// the Array.isArray throw branch; an out-of-range goal makes the final
+// `game.ref` throw, recorded as threw=true.
+const airScenarios = [];
+const gm_ref = (w, _h, x, y) => y * w + x; // GameMap.ref for valid coords
+function captureAir(name, w, h, ticks, fromTile, toTile, multi) {
+  const gm = new GameMapImpl(w, h, new Uint8Array(w * h).fill(0x83), w * h);
+  const game = {
+    ticks: () => ticks,
+    x: (t) => gm.x(t),
+    y: (t) => gm.y(t),
+    ref: (x, y) => gm.ref(x, y),
+  };
+  const pf = new AirPathFinder(game);
+  let threw = false;
+  let path = [];
+  try {
+    const from = multi ? [fromTile] : fromTile;
+    const r = pf.findPath(from, toTile);
+    path = r.map((t) => [gm.x(t), gm.y(t)]);
+  } catch {
+    threw = true;
+  }
+  airScenarios.push({
+    name,
+    w,
+    h,
+    ticks: uenc(ticks),
+    from: uenc(fromTile),
+    to: uenc(toTile),
+    multi,
+    threw,
+    path,
+  });
+}
+captureAir("air_same", 10, 10, 0, gm_ref(10, 10, 3, 4), gm_ref(10, 10, 3, 4), false);
+captureAir("air_vertical", 10, 10, 0, gm_ref(10, 10, 5, 1), gm_ref(10, 10, 5, 8), false);
+captureAir("air_horizontal", 10, 10, 123, gm_ref(10, 10, 1, 6), gm_ref(10, 10, 7, 6), false);
+captureAir("air_diag_42", 16, 16, 42, gm_ref(16, 16, 2, 2), gm_ref(16, 16, 9, 12), false);
+captureAir("air_diag_0", 16, 16, 0, gm_ref(16, 16, 2, 2), gm_ref(16, 16, 9, 12), false);
+captureAir("air_diag_neg", 16, 16, -1, gm_ref(16, 16, 2, 2), gm_ref(16, 16, 9, 12), false);
+captureAir("air_diag_frac", 16, 16, 0.75, gm_ref(16, 16, 2, 2), gm_ref(16, 16, 9, 12), false);
+captureAir("air_diag_777", 20, 20, 777, gm_ref(20, 20, 1, 1), gm_ref(20, 20, 15, 10), false);
+// Array.isArray(from) throws before any walk.
+captureAir("air_multi", 10, 10, 0, gm_ref(10, 10, 1, 1), gm_ref(10, 10, 5, 5), true);
+// Goal with an out-of-range y (tile 100 on a 10x10 map -> y=10): the vertical
+// walk steps into y=10 and game.ref throws.
+captureAir("air_oob", 10, 10, 0, gm_ref(10, 10, 0, 0), 100, false);
 
 // --- AStar scenario runner ---------------------------------------------------
 // The grid adapter below is the *twin* of `pathfinding::a_star::GridAdapter`
@@ -3201,6 +3254,7 @@ const structures = {
   flatheap: fbhScenarios,
   bfsgrid: bgScenarios,
   bfs: bfsScenarios,
+  air: airScenarios,
   astar: asScenarios,
   rail: railScenarios,
   water: waterScenarios,
@@ -4788,6 +4842,49 @@ for (const s of structures.bfs) {
 }
 L.push("pub const BFS_TS_SCENARIOS: &[BfsTsScenario] = &[");
 for (const s of structures.bfs) L.push(`    ${s.name.toUpperCase()},`);
+L.push("];");
+L.push("");
+
+L.push("/// AirPathFinder scenario (PathFinder.Air.ts). Walks from `from` to");
+L.push("/// `to` on a `w x h` map seeded with `ticks`. `path` is the recorded");
+L.push("/// (x, y) coordinate stream (refs are width-dependent); `threw` marks");
+L.push("/// the Array.isArray multi-start or an out-of-range `game.ref`.");
+L.push("pub struct AirScenario {");
+L.push("    pub name: &'static str,");
+L.push("    pub w: f64,");
+L.push("    pub h: f64,");
+L.push("    pub ticks: f64,");
+L.push("    pub from: f64,");
+L.push("    pub to: f64,");
+L.push("    pub multi: bool,");
+L.push("    pub threw: bool,");
+L.push("    pub path: &'static [f64],");
+L.push("}");
+L.push("");
+const airTok = (v) => {
+  if (v === "n") return "f64::NAN";
+  if (v === "-0") return "-0.0f64";
+  if (v === "i") return "f64::INFINITY";
+  if (v === "-i") return "f64::NEG_INFINITY";
+  return f64(v);
+};
+for (const s of structures.air) {
+  const id = s.name.toUpperCase();
+  L.push(`pub const ${id}: AirScenario = AirScenario {`);
+  L.push(`    name: "${s.name}",`);
+  L.push(`    w: ${f64(s.w)},`);
+  L.push(`    h: ${f64(s.h)},`);
+  L.push(`    ticks: ${airTok(s.ticks)},`);
+  L.push(`    from: ${airTok(s.from)},`);
+  L.push(`    to: ${airTok(s.to)},`);
+  L.push(`    multi: ${s.multi},`);
+  L.push(`    threw: ${s.threw},`);
+  L.push(`    path: &[${s.path.flat().map((v) => `${v}f64`).join(", ")}],`);
+  L.push("};");
+  L.push("");
+}
+L.push("pub const AIR_SCENARIOS: &[AirScenario] = &[");
+for (const s of structures.air) L.push(`    ${s.name.toUpperCase()},`);
 L.push("];");
 L.push("");
 

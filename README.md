@@ -36,6 +36,7 @@ rust/
 │   │       ├── flat_heap.rs       port of execution/utils/FlatBinaryHeap.ts
 │   │       ├── bfs_grid.rs        port of algorithms/BFS.Grid.ts
 │   │       ├── bfs.rs             port of algorithms/BFS.ts (generic BFS)
+│   │       ├── air.rs             port of PathFinder.Air.ts (air walk)
 │   │       ├── a_star.rs          port of algorithms/AStar.ts (+ GridAdapter)
 │   │       ├── rail.rs            port of algorithms/AStar.Rail.ts
 │   │       │                      (+ TerrainMap: GameMapImpl's packed bytes)
@@ -385,6 +386,21 @@ desync, not a rounding nit. Two things enforce that here:
     repeated neighbours. The twelve scenarios pin the duplicate-start double
     visit, the falsy-found short-circuit, the reject-without-expansion dist
     shift, the NaN bound, NaN-node dedup, and the empty-start no-op.
+24. **`PathFinder.Air.ts`** (`pathfinding::air`) is the deterministic aircraft
+    walk: each step nudges one tile toward the goal, picking the X or Y axis by
+    a seeded `chance(ratio)` coin whose bias is the destination slope
+    (`floor(1 + |dy| / (|dx| + 1))`). JS-isms pinned: `game.ticks()` seeds the
+    generator **once at construction**, and every `findPath` builds a *fresh*
+    `PseudoRandom(this.seed)`, so repeated queries replay the identical stream;
+    the `Array.isArray(from)` guard **throws** (the union is not collapsed,
+    unlike the grid engines) — modelled as a panic pinned by `catch_unwind`;
+    `game.ref(nextX, nextY)` **throws** on an out-of-range step; and the loop
+    guard `next === current` is strict `f64` equality. The `y === dstY` and
+    `chance` X-move branches share a body, merged with `||` short-circuit so
+    `chance` is drawn only when `y !== dstY` (the TS order). The ten scenarios
+    pin the same-tile single path, the pure-axis walks (no random draw), four
+    seed-varied diagonal interleavings, the multi-start throw, and the
+    out-of-range `game.ref` throw.
 
 Regenerate whenever a ported source changes:
 
@@ -418,7 +434,7 @@ node rust/tools/run_wasm_parity.mjs
 
 `wasm-probe` exposes the ported functions through `extern "C"` scalar
 entrypoints (`src/wasm_probe.rs`); the runner imports `data/vectors.json` and
-compares every value. Last run: **31,342 comparisons, all bit-identical**.
+compares every value. Last run: **31,584 comparisons, all bit-identical**.
 
 ### Windows: the linker environment
 

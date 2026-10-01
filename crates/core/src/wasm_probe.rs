@@ -3302,3 +3302,56 @@ pub extern "C" fn probe_bfs_result_flag() -> u8 {
 pub extern "C" fn probe_bfs_result() -> f64 {
     BFS_RESULT.with(|r| r.borrow().unwrap())
 }
+
+// ========================= P22: AirPathFinder (PathFinder.Air.ts) =============
+
+thread_local! {
+    static AIR_MAP: std::cell::RefCell<Option<&'static GameMap>> =
+        const { std::cell::RefCell::new(None) };
+    /// Walked path as a flat (x, y) coordinate stream.
+    static AIR_PATH: std::cell::RefCell<Vec<f64>> =
+        const { std::cell::RefCell::new(Vec::new()) };
+}
+
+/// Build a `w x h` all-land map and leak it (the finder borrows it).
+#[no_mangle]
+pub extern "C" fn probe_air_new(w: f64, h: f64) {
+    let data = vec![0x83u8; (w * h) as usize];
+    let gm: &'static GameMap = Box::leak(Box::new(GameMap::new(w, h, data, w * h)));
+    AIR_MAP.with(|m| *m.borrow_mut() = Some(gm));
+}
+
+/// Run one `findPath`. `multi` 1 = array start (TS throws). Returns 0 = threw,
+/// 1 = path (`probe_air_path_*`, flat x/y pairs).
+#[no_mangle]
+pub extern "C" fn probe_air_run(ticks: f64, from: f64, to: f64, multi: u32) -> u8 {
+    let gm = AIR_MAP.with(|m| m.borrow().unwrap());
+    let pf = crate::pathfinding::air::AirPathFinder::new(gm, ticks);
+    // The would-throw convention: a multi start throws at the Array.isArray
+    // guard, and an out-of-range game.ref throws mid-walk; both report 0.
+    if multi == 1 {
+        AIR_PATH.with(|p| p.borrow_mut().clear());
+        return 0;
+    }
+    match pf.debug_find_path(from, to) {
+        None => {
+            AIR_PATH.with(|p| p.borrow_mut().clear());
+            0
+        }
+        Some(refs) => {
+            let coords: Vec<f64> = refs.iter().flat_map(|&t| [gm.x(t), gm.y(t)]).collect();
+            AIR_PATH.with(|p| *p.borrow_mut() = coords);
+            1
+        }
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn probe_air_path_len() -> usize {
+    AIR_PATH.with(|p| p.borrow().len())
+}
+
+#[no_mangle]
+pub extern "C" fn probe_air_path_at(i: usize) -> f64 {
+    AIR_PATH.with(|p| p.borrow()[i])
+}

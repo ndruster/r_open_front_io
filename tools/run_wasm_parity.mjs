@@ -83,6 +83,7 @@ for (const name of [
   "probe_bfs_edge_end", "probe_bfs_reset", "probe_bfs_start", "probe_bfs_run",
   "probe_bfs_visits_len", "probe_bfs_visit_node", "probe_bfs_visit_dist",
   "probe_bfs_result_flag", "probe_bfs_result",
+  "probe_air_new", "probe_air_run", "probe_air_path_len", "probe_air_path_at",
 ]) {
   if (typeof ex[name] !== "function") {
     console.error(`missing wasm export ${name} - rebuild with --features wasm-probe`);
@@ -1448,6 +1449,25 @@ for (const s of S.bfs) {
   }
   if (s.result !== "u")
     cmpBits(`${s.name} result`, ex.probe_bfs_result(), toBits(numTok(s.result)), 0);
+}
+
+// --- AirPathFinder (PathFinder.Air.ts) ----------------------------------------
+// Replays the walk against the wasm finder and compares the (x, y) coordinate
+// stream bit-exactly; the multi-start / OOB-ref throws are pinned via the
+// would-throw flag.
+for (const s of S.air) {
+  ex.probe_air_new(s.w, s.h);
+  const got = Number(ex.probe_air_run(numTok(s.ticks), numTok(s.from), numTok(s.to), s.multi ? 1 : 0));
+  cmpU32(`${s.name} threw flag`, got, s.threw ? 0 : 1, 0);
+  if (!s.threw) {
+    checks++;
+    if (Number(ex.probe_air_path_len()) !== s.path.length * 2)
+      fail(`${s.name} path length`, 0, Number(ex.probe_air_path_len()), s.path.length * 2);
+    for (let i = 0; i < s.path.length; i++) {
+      cmpBits(`${s.name} path[${i}] x`, ex.probe_air_path_at(2 * i), toBits(s.path[i][0]), i);
+      cmpBits(`${s.name} path[${i}] y`, ex.probe_air_path_at(2 * i + 1), toBits(s.path[i][1]), i);
+    }
+  }
 }
 
 console.log(`${checks} vector comparisons executed against wasm build`);

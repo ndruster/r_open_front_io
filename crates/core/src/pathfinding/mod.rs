@@ -9,6 +9,7 @@
 pub mod abstract_graph;
 pub mod abstract_graph_astar;
 pub mod a_star;
+pub mod air;
 pub mod bfs;
 pub mod bfs_grid;
 pub mod component_check_transformer;

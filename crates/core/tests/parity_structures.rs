@@ -2138,3 +2138,34 @@ fn replay_bfs_ts_scenarios() {
         }
     }
 }
+
+// AirPathFinder (PathFinder.Air.ts): replays the walk and compares the (x, y)
+// coordinate stream bit-exactly. Throw scenarios (multi-start, out-of-range
+// game.ref) are pinned via catch_unwind on the panicking path.
+#[test]
+fn replay_air_scenarios() {
+    use openfront_core::pathfinding::air::AirPathFinder;
+    use openfront_core::pathfinding::PathStart;
+    for s in vectors::AIR_SCENARIOS {
+        let gm = GameMap::new(s.w, s.h, vec![0x83u8; (s.w * s.h) as usize], s.w * s.h);
+        let pf = AirPathFinder::new(&gm, s.ticks);
+        if s.threw {
+            let start = if s.multi {
+                PathStart::Multi(&[s.from])
+            } else {
+                PathStart::Single(s.from)
+            };
+            let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                pf.find_path(start, s.to)
+            }));
+            assert!(r.is_err(), "{} expected throw", s.name);
+            continue;
+        }
+        let refs = pf.find_path(PathStart::Single(s.from), s.to);
+        let coords: Vec<f64> = refs.iter().flat_map(|&t| [gm.x(t), gm.y(t)]).collect();
+        assert_eq!(coords.len(), s.path.len(), "{} path length", s.name);
+        for (i, (&got, &want)) in coords.iter().zip(s.path.iter()).enumerate() {
+            assert_eq!(got, want, "{} path[{i}]", s.name);
+        }
+    }
+}

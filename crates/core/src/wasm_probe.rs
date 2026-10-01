@@ -3499,6 +3499,34 @@ pub extern "C" fn probe_mg_out_at(i: usize) -> f64 {
     MG_OUT.with(|o| o.borrow()[i])
 }
 
+// ====================== P37: TribeNames (TribeNames.ts) =======================
+
+thread_local! {
+    static TN_ARGS: std::cell::RefCell<Vec<f64>> = const { std::cell::RefCell::new(Vec::new()) };
+    static TN_OUT: std::cell::RefCell<Vec<f64>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
+/// Push one flat token (string length, code unit, name-list count…).
+#[no_mangle]
+pub extern "C" fn probe_tn_arg(v: f64) {
+    TN_ARGS.with(|t| t.borrow_mut().push(v));
+}
+
+/// Run `tribe_names::run_op(kind, args)`; returns the result-stream length.
+#[no_mangle]
+pub extern "C" fn probe_tn_op(kind: u32) -> usize {
+    let a = TN_ARGS.with(|t| std::mem::take(&mut *t.borrow_mut()));
+    let out = crate::tribe_names::run_op(kind as u8, &a);
+    let len = out.len();
+    TN_OUT.with(|o| *o.borrow_mut() = out);
+    len
+}
+
+#[no_mangle]
+pub extern "C" fn probe_tn_out_at(i: usize) -> f64 {
+    TN_OUT.with(|o| o.borrow()[i])
+}
+
 // ====================== P26: PatternDecoder (PatternDecoder.ts) ===============
 
 thread_local! {

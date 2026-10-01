@@ -7,7 +7,7 @@
 // serialised dump.
 import { readFileSync, writeFileSync } from "node:fs";
 import { join, dirname } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { loadTs, TS_ROOT } from "./ts_load.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -130,6 +130,43 @@ if (begin < 0 || end < 0)
 const out =
   src.slice(0, begin) + L.join("\n") + src.slice(end + "// END GENERATED".length);
 writeFileSync(rsPath, out, "utf8");
+
+// --- tribe_names.rs THEMES table ----------------------------------------------
+// The tribeNameThemes.json record, emitted verbatim (key order preserved —
+// the TS `Record` iteration order is insertion order, which only matters for
+// prototype-chain misses we never hit, but keeping it stable is free).
+const themes = await import(
+  pathToFileURL(join(TS_ROOT, "resources", "tribeNameThemes.json")).href,
+  { with: { type: "json" } }
+).then((m) => m.default);
+const TL = [];
+TL.push("// BEGIN GENERATED — rewritten by tools/gen_maps_rs.mjs, do not edit by hand.");
+TL.push("/// `tribeNameThemes.json`: the 17 themes in JSON key order.");
+TL.push("pub static THEMES: &[Theme] = &[");
+for (const [name, t] of Object.entries(themes)) {
+  TL.push(`    Theme {`);
+  TL.push(`        name: ${rustStr(name)},`);
+  TL.push(`        prefixes: &[`);
+  for (const p of t.prefixes) TL.push(`            ${rustStr(p)},`);
+  TL.push(`        ],`);
+  TL.push(`        suffixes: &[`);
+  for (const s of t.suffixes) TL.push(`            ${rustStr(s)},`);
+  TL.push(`        ],`);
+  TL.push(`    },`);
+}
+TL.push("];");
+TL.push("// END GENERATED");
+
+const tnPath = join(root, "crates", "core", "src", "tribe_names.rs");
+const tnSrc = readFileSync(tnPath, "utf8");
+const tnBegin = tnSrc.indexOf("// BEGIN GENERATED");
+const tnEnd = tnSrc.indexOf("// END GENERATED");
+if (tnBegin < 0 || tnEnd < 0)
+  throw new Error("tribe_names.rs: GENERATED markers not found");
+const tnOut =
+  tnSrc.slice(0, tnBegin) + TL.join("\n") + tnSrc.slice(tnEnd + "// END GENERATED".length);
+writeFileSync(tnPath, tnOut, "utf8");
+
 console.log(
-  `maps_gen.rs: ${enumEntries.length} types, ${MG.mapCategoryOrder.length} categories, ${MG.maps.length} maps`,
+  `maps_gen.rs: ${enumEntries.length} types, ${MG.mapCategoryOrder.length} categories, ${MG.maps.length} maps; tribe_names.rs: ${Object.keys(themes).length} themes`,
 );

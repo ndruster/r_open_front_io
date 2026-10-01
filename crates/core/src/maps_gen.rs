@@ -32,6 +32,7 @@ pub struct MapTypeEntry {
 }
 
 /// `src/core/game/Maps.gen.ts` `CustomTribe`.
+#[derive(Debug, PartialEq)]
 pub struct Tribe {
     pub name: &'static str,
     pub coordinates: Option<(f64, f64)>,

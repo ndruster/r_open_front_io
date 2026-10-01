@@ -1191,6 +1191,34 @@ function prepare(rel) {
     }
   }
 
+  if (rel.endsWith("execution/utils/TribeNames.ts")) {
+    // The JSON import needs a `with { type: "json" }` attribute (Node's
+    // strip-only loader does not apply the package's import attributes for a
+    // bare "resources/..." specifier), so redirect it to an absolute file
+    // URL with the attribute inline. Maps.gen imports: the types are erased
+    // by strip mode, but the *value* import of GameMapType + maps must
+    // resolve to the prepared copy (whose enum is inlined).
+    out = must(
+      out,
+      'import tribeNameThemesData from "resources/tribeNameThemes.json";',
+      `import tribeNameThemesData from "${TS_URL}resources/tribeNameThemes.json" with { type: "json" };`,
+      "TribeNames JSON import",
+    );
+    const mapsRel = "src/core/game/Maps.gen.ts";
+    if (!prepared.has(mapsRel)) prepare(mapsRel);
+    out = must(
+      out,
+      'import {\n' +
+        '  type CustomTribe,\n' +
+        '  GameMapType,\n' +
+        '  type MapInfo,\n' +
+        '  maps,\n' +
+        '} from "../../game/Maps.gen";',
+      `import { GameMapType, maps } from "./${prepared.get(mapsRel)}";`,
+      "TribeNames Maps.gen import",
+    );
+  }
+
   mkdirSync(cacheDir, { recursive: true });
   const hash = createHash("sha1").update(out).digest("hex").slice(0, 10);
   const base = `${basename(rel, ".ts")}-${hash}.ts`;

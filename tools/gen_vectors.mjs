@@ -166,6 +166,7 @@ const TTS = await loadTs("src/core/game/TileTraversalScratch.ts");
 const EB = await loadTs("src/core/EventBus.ts");
 const AU = await loadTs("src/core/AssetUrls.ts");
 const MG = await loadTs("src/core/game/Maps.gen.ts");
+const TN = await loadTs("src/core/execution/utils/TribeNames.ts");
 const { AStar } = await loadTs("src/core/pathfinding/algorithms/AStar.ts");
 const { AStarRail } = await loadTs("src/core/pathfinding/algorithms/AStar.Rail.ts");
 const { AStarWater } = await loadTs("src/core/pathfinding/algorithms/AStar.Water.ts");
@@ -1910,6 +1911,107 @@ captureMG("mg_find_milkyway", 3, [mgStr("MilkyWay")], [
   ...mgRecord(MG.maps.find((m) => m.id === "MilkyWay")),
 ]);
 captureMG("mg_find_miss", 3, [mgStr("NoSuchMap")], [1]);
+
+// --- TribeNames scenario runner ------------------------------------------------
+// Exercises the real TribeNames.ts resolveTribeNameData through the shared
+// run_op runner. The theme record is the JSON module object the prepared
+// module imported (same ESM instance, mutable), so the capture can delete /
+// blank entries to reach the unknown-theme and fallback edges, restoring them
+// after each call. The console.warn trace is captured as the warn list.
+// args = [mapPresent, mapType?, removedN, (removed)*, blankedN, (blanked)*];
+// res = [0, warnN, (warn)*, prefixN, (prefix)*, suffixN, (suffix)*,
+//        tribesPresent, tribeN, (name, coordPresent, x, y)*] or [1] (throw).
+// The Rust twin is `tribe_names::*`.
+const tnScenarios = [];
+function captureTN(name, args, res) {
+  tnScenarios.push({ name, kind: 0, args: args.flat(2).map(uenc), res: res.flat().map(uenc) });
+}
+
+const TN_THEMES = (
+  await import(
+    new URL(
+      "resources/tribeNameThemes.json",
+      pathToFileURL(TS_ROOT).href.replace(/\/?$/, "/"),
+    ).href,
+    { with: { type: "json" } }
+  )
+).default;
+
+const tnOk = (r, warns) => [
+  0,
+  warns.length,
+  ...warns.flatMap(encS),
+  r.prefixes.length,
+  ...r.prefixes.flatMap(encS),
+  r.suffixes.length,
+  ...r.suffixes.flatMap(encS),
+  ...(r.customTribes === undefined
+    ? [0]
+    : [
+        1,
+        r.customTribes.length,
+        ...r.customTribes.flatMap((t) => [
+          ...encS(t.name),
+          ...(t.coordinates === undefined
+            ? [0]
+            : [1, t.coordinates[0], t.coordinates[1]]),
+        ]),
+      ]),
+];
+
+function tnRun(mapType, removed = [], blanked = []) {
+  const saved = new Map();
+  for (const name of removed) {
+    saved.set(name, TN_THEMES[name]);
+    delete TN_THEMES[name];
+  }
+  for (const name of blanked) {
+    saved.set(name, TN_THEMES[name]);
+    TN_THEMES[name] = { prefixes: [], suffixes: [] };
+  }
+  const warns = [];
+  const origWarn = console.warn;
+  console.warn = (m) => warns.push(m);
+  let res;
+  try {
+    res = tnOk(TN.resolveTribeNameData(mapType), warns);
+  } catch {
+    res = [1];
+  } finally {
+    console.warn = origWarn;
+    for (const [k, v] of saved) TN_THEMES[k] = v;
+  }
+  const args = [
+    mapType === undefined ? [0] : [1, encS(mapType)],
+    [removed.length, ...removed.flatMap(encS)],
+    [blanked.length, ...blanked.flatMap(encS)],
+  ];
+  return { args, res };
+}
+
+const tnCases = [
+  ["tn_none", undefined, [], []],
+  ["tn_unknown_map", "NoSuchMap", [], []],
+  ["tn_achiran", "Achiran", [], []],
+  ["tn_antarctica", "Antarctica", [], []],
+  ["tn_germany", "Germany", [], []],
+  ["tn_sol", "Sol", [], []],
+  ["tn_aegean_rm_europe", "Aegean", ["europe"], []],
+  ["tn_aegean_rm_both", "Aegean", ["europe", "asia"], []],
+  ["tn_alps_blank_europe", "Alps", [], ["europe"]],
+  ["tn_throw_none", undefined, ["default"], []],
+  ["tn_throw_aegean", "Aegean", ["europe", "asia", "default"], []],
+  ["tn_alps_rm_europe_blank_default", "Alps", ["europe"], ["default"]],
+  ["tn_milkyway", "MilkyWay", [], []],
+  // getMapInfo matches the enum *value*, not the id: the wire name finds the
+  // map, the folder id does not.
+  ["tn_guanabara_value", "Rio de Janeiro", [], []],
+  ["tn_guanabara_id", "Guanabara", [], []],
+];
+for (const [name, mt, removed, blanked] of tnCases) {
+  const { args, res } = tnRun(mt, removed, blanked);
+  captureTN(name, args, res);
+}
 
 // --- PatternDecoder scenario runner -------------------------------------------
 // Exercises the real PatternDecoder.ts decode + isPrimary through the shared
@@ -5202,6 +5304,7 @@ const structures = {
   eventbus: ebScenarios,
   asseturls: auScenarios,
   maps: mgScenarios,
+  tribenames: tnScenarios,
   astar: asScenarios,
   rail: railScenarios,
   water: waterScenarios,
@@ -7282,6 +7385,33 @@ for (const s of structures.maps) {
 }
 L.push("pub const MG_SCENARIOS: &[MgScenario] = &[");
 for (const s of structures.maps) L.push(`    ${s.name.toUpperCase()},`);
+L.push("];");
+L.push("");
+
+L.push("/// TribeNames.ts scenario: one `tribe_names::run_op(0, args)` call.");
+L.push("/// `args` is `[mapPresent, mapType?, removedN, (removed)*, blankedN,");
+L.push("/// (blanked)*]`; `res` is `[0, warnN, (warn)*, prefixN, (prefix)*,");
+L.push("/// suffixN, (suffix)*, tribesPresent, tribeN, (name, coordPresent,");
+L.push("/// x, y)*]` on success or `[1]` when the TS function throws.");
+L.push("pub struct TnScenario {");
+L.push("    pub name: &'static str,");
+L.push("    pub kind: u8,");
+L.push("    pub args: &'static [f64],");
+L.push("    pub res: &'static [f64],");
+L.push("}");
+L.push("");
+for (const s of structures.tribenames) {
+  const id = s.name.toUpperCase();
+  L.push(`pub const ${id}: TnScenario = TnScenario {`);
+  L.push(`    name: "${s.name}",`);
+  L.push(`    kind: ${s.kind}u8,`);
+  L.push(`    args: &[${s.args.map(utilResLit).join(", ")}],`);
+  L.push(`    res: &[${s.res.map(utilResLit).join(", ")}],`);
+  L.push("};");
+  L.push("");
+}
+L.push("pub const TN_SCENARIOS: &[TnScenario] = &[");
+for (const s of structures.tribenames) L.push(`    ${s.name.toUpperCase()},`);
 L.push("];");
 L.push("");
 

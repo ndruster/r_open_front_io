@@ -165,6 +165,7 @@ pub mod team_assignment;
 pub mod terrain_search_map;
 pub mod tile_set;
 pub mod tile_traversal_scratch;
+pub mod tribe_names;
 pub mod util;
 pub mod veterancy;
 pub mod water_manager;

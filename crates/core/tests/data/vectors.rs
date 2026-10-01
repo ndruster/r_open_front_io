@@ -32754,3 +32754,84 @@ pub const TTS_SCENARIOS: &[TtsScenario] = &[
     TTS_INF_TOTAL_8,
 ];
 
+/// One `EventBus.ts` op: `kind` + flat `args` / `res` token streams
+/// (see the Rust `RigHarness::run_op` docs).
+pub struct EbOp {
+    pub kind: u8,
+    pub args: &'static [f64],
+    pub res: &'static [f64],
+}
+/// One bus scenario: the op stream replayed against a fresh harness.
+pub struct EbScenario {
+    pub name: &'static str,
+    pub ops: &'static [EbOp],
+}
+
+const EB_BASIC_0_OPS: &[EbOp] = &[
+    EbOp { kind: 0, args: &[1f64, 10f64], res: &[] },
+    EbOp { kind: 0, args: &[1f64, 20f64], res: &[] },
+    EbOp { kind: 2, args: &[1f64, 100f64], res: &[2f64, 10f64, 100f64, 20f64, 100f64] },
+    EbOp { kind: 0, args: &[1f64, 30f64], res: &[] },
+    EbOp { kind: 2, args: &[1f64, 101f64], res: &[3f64, 10f64, 101f64, 20f64, 101f64, 30f64, 101f64] },
+    EbOp { kind: 1, args: &[1f64, 20f64], res: &[] },
+    EbOp { kind: 2, args: &[1f64, 102f64], res: &[2f64, 10f64, 102f64, 30f64, 102f64] },
+];
+pub const EB_BASIC_0: EbScenario = EbScenario {
+    name: "eb_basic_0",
+    ops: EB_BASIC_0_OPS,
+};
+
+const EB_DUP_CB_1_OPS: &[EbOp] = &[
+    EbOp { kind: 0, args: &[1f64, 10f64], res: &[] },
+    EbOp { kind: 0, args: &[1f64, 10f64], res: &[] },
+    EbOp { kind: 1, args: &[1f64, 10f64], res: &[] },
+    EbOp { kind: 2, args: &[1f64, 55f64], res: &[1f64, 10f64, 55f64] },
+];
+pub const EB_DUP_CB_1: EbScenario = EbScenario {
+    name: "eb_dup_cb_1",
+    ops: EB_DUP_CB_1_OPS,
+};
+
+const EB_UNKNOWN_2_OPS: &[EbOp] = &[
+    EbOp { kind: 2, args: &[2f64, 200f64], res: &[0f64] },
+    EbOp { kind: 1, args: &[2f64, 10f64], res: &[] },
+    EbOp { kind: 0, args: &[2f64, 10f64], res: &[] },
+    EbOp { kind: 1, args: &[2f64, 10f64], res: &[] },
+    EbOp { kind: 2, args: &[2f64, 201f64], res: &[0f64] },
+];
+pub const EB_UNKNOWN_2: EbScenario = EbScenario {
+    name: "eb_unknown_2",
+    ops: EB_UNKNOWN_2_OPS,
+};
+
+const EB_ORDER_3_OPS: &[EbOp] = &[
+    EbOp { kind: 0, args: &[2f64, 20f64], res: &[] },
+    EbOp { kind: 0, args: &[1f64, 10f64], res: &[] },
+    EbOp { kind: 0, args: &[2f64, 21f64], res: &[] },
+    EbOp { kind: 3, args: &[], res: &[2f64, 2f64, 2f64, 20f64, 21f64, 1f64, 1f64, 10f64] },
+];
+pub const EB_ORDER_3: EbScenario = EbScenario {
+    name: "eb_order_3",
+    ops: EB_ORDER_3_OPS,
+};
+
+const EB_MULTI_CTOR_4_OPS: &[EbOp] = &[
+    EbOp { kind: 0, args: &[1f64, 10f64], res: &[] },
+    EbOp { kind: 0, args: &[2f64, 20f64], res: &[] },
+    EbOp { kind: 2, args: &[1f64, 100f64], res: &[1f64, 10f64, 100f64] },
+    EbOp { kind: 2, args: &[2f64, 200f64], res: &[1f64, 20f64, 200f64] },
+    EbOp { kind: 3, args: &[], res: &[2f64, 1f64, 1f64, 10f64, 2f64, 1f64, 20f64] },
+];
+pub const EB_MULTI_CTOR_4: EbScenario = EbScenario {
+    name: "eb_multi_ctor_4",
+    ops: EB_MULTI_CTOR_4_OPS,
+};
+
+pub const EB_SCENARIOS: &[EbScenario] = &[
+    EB_BASIC_0,
+    EB_DUP_CB_1,
+    EB_UNKNOWN_2,
+    EB_ORDER_3,
+    EB_MULTI_CTOR_4,
+];
+

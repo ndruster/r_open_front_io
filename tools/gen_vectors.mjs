@@ -163,6 +163,7 @@ const GUU = await loadTs("src/core/game/GameUpdateUtils.ts");
 const RR = await loadTs("src/core/game/Railroad.ts");
 const RSG = await loadTs("src/core/game/RailroadSpatialGrid.ts");
 const TTS = await loadTs("src/core/game/TileTraversalScratch.ts");
+const EB = await loadTs("src/core/EventBus.ts");
 const { AStar } = await loadTs("src/core/pathfinding/algorithms/AStar.ts");
 const { AStarRail } = await loadTs("src/core/pathfinding/algorithms/AStar.Rail.ts");
 const { AStarWater } = await loadTs("src/core/pathfinding/algorithms/AStar.Water.ts");
@@ -1566,6 +1567,132 @@ runTTS(
 
 // 9. Infinity total throws.
 runTTS("tts_inf_total", { 1: [Infinity, 1] }, [[0, 1, Infinity, 1]]);
+
+// --- EventBus scenario runner -------------------------------------------------
+// Exercises the real EventBus.ts through a stateful op stream. The Map keys on
+// the event *constructor* object and the array holds *callback* function
+// objects, so each rides in as a persistent capture refid (one object per
+// refid, exactly like railOf in RSG): `off`'s `indexOf` and `emit`'s `get` see
+// the same identities the Rust harness keys by. `emit` takes an event
+// instance; its constructor is resolved from `event.constructor.__refid` so the
+// recorded ctor always matches the object JS looks up. kind 0 = on(ctor, cb)
+// -> []; 1 = off(ctor, cb) -> []; 2 = emit(ctor, event) -> `[n, (cb, event)*n]`
+// call trace; 3 = dump -> `[nentries, (ctor, m, cbs…)*]` in Map order.
+const ebScenarios = [];
+let ebIdx = 0;
+function runEB(name, ops) {
+  const ctors = new Map();
+  const ctorOf = (refid) => {
+    let c = ctors.get(refid);
+    if (!c) {
+      c = class {};
+      c.__refid = refid;
+      ctors.set(refid, c);
+    }
+    return c;
+  };
+  // The per-emit call trace. Each callback pushes `(own refid, event refid)`
+  // when the *real* `bus.emit` invokes it, so the recorded trace is the actual
+  // invocation sequence (registration order, first-match `off`, truthy-empty
+  // array, etc.) rather than a re-implementation.
+  let trace = [];
+  const cbs = new Map();
+  const cbOf = (refid) => {
+    let f = cbs.get(refid);
+    if (!f) {
+      f = (e) => trace.push(f.__refid, e.__refid);
+      f.__refid = refid;
+      cbs.set(refid, f);
+    }
+    return f;
+  };
+  // Each event refid is a fresh instance of its ctor; the ctor refid is given
+  // in the op so the instance's `constructor` identity matches the Rust key.
+  const events = new Map();
+  const eventOf = (refid, ctorRefid) => {
+    let e = events.get(refid);
+    if (!e) {
+      e = new (ctorOf(ctorRefid))();
+      e.__refid = refid;
+      events.set(refid, e);
+    }
+    return e;
+  };
+  const bus = new EB.EventBus();
+  const played = [];
+  for (const [k, ...a] of ops) {
+    let args, res;
+    if (k === 0) {
+      args = [a[0], a[1]];
+      bus.on(ctorOf(a[0]), cbOf(a[1]));
+      res = [];
+    } else if (k === 1) {
+      args = [a[0], a[1]];
+      bus.off(ctorOf(a[0]), cbOf(a[1]));
+      res = [];
+    } else if (k === 2) {
+      // a = [ctorRefid, eventRefid]; run the real emit.
+      const evt = eventOf(a[1], a[0]);
+      args = [a[0], a[1]];
+      trace = [];
+      bus.emit(evt);
+      res = [trace.length / 2, ...trace];
+    } else {
+      args = [];
+      res = [bus.listeners.size];
+      for (const [ctor, list] of bus.listeners) {
+        res.push(ctor.__refid, list.length, ...list.map((cb) => cb.__refid));
+      }
+    }
+    played.push({ kind: k, args: args.flat().map(uenc), res: res.flat().map(uenc) });
+  }
+  ebScenarios.push({ name: `${name}_${ebIdx++}`, ops: played });
+}
+
+// 1. Registration order, emit fan-out, off removes first duplicate.
+runEB("eb_basic", [
+  [0, 1, 10], // on(EvA, c1)
+  [0, 1, 20], // on(EvA, c2)
+  [2, 1, 100], // emit EvA -> [2, (10,100),(20,100)]
+  [0, 1, 30], // on(EvA, c3)
+  [2, 1, 101], // emit -> [3, ...]
+  [1, 1, 20], // off c2
+  [2, 1, 102], // emit -> [2, (10,102),(30,102)]
+]);
+
+// 2. Duplicate callback: one off removes only the first.
+runEB("eb_dup_cb", [
+  [0, 1, 10],
+  [0, 1, 10], // same cb twice
+  [1, 1, 10], // off removes first
+  [2, 1, 55], // emit -> [1, (10,55)]
+]);
+
+// 3. Unknown ctor emit/off are no-ops; empty array is truthy (0 calls).
+runEB("eb_unknown", [
+  [2, 2, 200], // emit unknown ctor -> [0]
+  [1, 2, 10], // off unknown -> no-op
+  [0, 2, 10],
+  [1, 2, 10], // entry exists but empty
+  [2, 2, 201], // emit -> [0]
+]);
+
+// 4. Map insertion order across ctors; re-on does not reorder.
+runEB("eb_order", [
+  [0, 2, 20], // ctor2 first
+  [0, 1, 10], // ctor1 second
+  [0, 2, 21], // append to ctor2
+  [3], // dump -> [2, (2,[20,21]), (1,[10])]
+]);
+
+// 5. Two ctors, interleaved emits.
+runEB("eb_multi_ctor", [
+  [0, 1, 10],
+  [0, 2, 20],
+  [2, 1, 100], // emit ctor1 -> [1,(10,100)]
+  [2, 2, 200], // emit ctor2 -> [1,(20,200)]
+  [3], // dump -> [2, (1,[10]), (2,[20])]
+]);
 
 // --- PatternDecoder scenario runner -------------------------------------------
 // Exercises the real PatternDecoder.ts decode + isPrimary through the shared
@@ -4855,6 +4982,7 @@ const structures = {
   railroad: rrScenarios,
   railgrid: rsgScenarios,
   tiletravscratch: ttsScenarios,
+  eventbus: ebScenarios,
   astar: asScenarios,
   rail: railScenarios,
   water: waterScenarios,
@@ -6850,6 +6978,38 @@ for (const s of structures.tiletravscratch) {
 }
 L.push("pub const TTS_SCENARIOS: &[TtsScenario] = &[");
 for (const s of structures.tiletravscratch) L.push(`    ${s.name.toUpperCase()},`);
+L.push("];");
+L.push("");
+
+L.push("/// One `EventBus.ts` op: `kind` + flat `args` / `res` token streams");
+L.push("/// (see the Rust `RigHarness::run_op` docs).");
+L.push("pub struct EbOp {");
+L.push("    pub kind: u8,");
+L.push("    pub args: &'static [f64],");
+L.push("    pub res: &'static [f64],");
+L.push("}");
+L.push("/// One bus scenario: the op stream replayed against a fresh harness.");
+L.push("pub struct EbScenario {");
+L.push("    pub name: &'static str,");
+L.push("    pub ops: &'static [EbOp],");
+L.push("}");
+L.push("");
+for (const s of structures.eventbus) {
+  const id = s.name.toUpperCase();
+  L.push(`const ${id}_OPS: &[EbOp] = &[`);
+  for (const o of s.ops)
+    L.push(
+      `    EbOp { kind: ${o.kind}, args: &[${o.args.map(utilResLit).join(", ")}], res: &[${o.res.map(utilResLit).join(", ")}] },`,
+    );
+  L.push("];");
+  L.push(`pub const ${id}: EbScenario = EbScenario {`);
+  L.push(`    name: "${s.name}",`);
+  L.push(`    ops: ${id}_OPS,`);
+  L.push("};");
+  L.push("");
+}
+L.push("pub const EB_SCENARIOS: &[EbScenario] = &[");
+for (const s of structures.eventbus) L.push(`    ${s.name.toUpperCase()},`);
 L.push("];");
 L.push("");
 

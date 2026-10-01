@@ -80,6 +80,10 @@
 //!   stack + `Int32Array` cluster map, `WeakMap`-cached by game refid; JS
 //!   `ToIndex` allocation coercion, shrink-keeps / grow-reallocates reuse,
 //!   `0xffffffff` bump wrap with `fill(0)`)
+//! * [`event_bus`] — `src/core/EventBus.ts` (`on` / `off` / `emit` over a
+//!   `Map<EventConstructor, Array<callback>>`; ctors / callbacks / events ride
+//!   in as capture refids, `emit` is pinned as the ordered callback call trace
+//!   and the `Map`-insertion-order dump)
 //! * [`line`] — `src/core/utilities/Line.ts` (`DistanceBasedBezierCurve`:
 //!   fixed-point De Casteljau subdivision for MIRV trajectories)
 //! * [`veterancy`] — `src/core/game/Veterancy.ts` (`maxHealthWithVeterancy`:
@@ -131,6 +135,7 @@ pub mod anon_names;
 pub mod close_codes;
 pub mod detmath;
 pub mod doomsday_clock;
+pub mod event_bus;
 pub mod exec_util;
 pub mod game_map;
 pub mod game_update_utils;

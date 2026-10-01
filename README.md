@@ -64,6 +64,10 @@ rust/
 │   │   │                          + stack + cluster map, WeakMap-cached by
 │   │   │                          game refid; ToIndex allocation, shrink-keeps
 │   │   │                          reuse, 0xffffffff bump wrap)
+│   │   ├── event_bus.rs           port of EventBus.ts (Map<ctor, callbacks[]>;
+│   │   │                          on/off/emit + Map-order dump, ctors/cbs/events
+│   │   │                          cross by refid, emit pinned as the callback
+│   │   │                          call trace)
 │   │   ├── wasm_probe.rs          `extern "C"` surface, feature-gated
 │   │   └── pathfinding/
 │   │       ├── mod.rs
@@ -599,6 +603,19 @@ desync, not a rounding nit. Two things enforce that here:
     OOB writes dropped, OOB reads `undefined` → `NaN`). 9 scenarios cover
     allocate/reuse/shrink/grow, the bump wrap, distinct games, the throw and
     truncation boundaries, and typed-array OOB.
+36. **`EventBus.ts`** (`event_bus`) — `on` / `off` / `emit`: the typed pub/sub
+    bus over a `Map<EventConstructor, Array<callback>>`. Constructors,
+    callbacks and event instances all ride in as capture-assigned refids (the
+    `Map` keys on ctor identity, `off`'s `indexOf` on callback identity, and
+    `emit` passes the event object through), so the parity surface is the
+    ordered `[(callback, event)]` call trace `emit` produces plus the
+    `Map`-insertion-order dump. Faithful JS edges: re-`on`-ing a known ctor
+    appends without reordering the `Map`; `off` splices only the *first*
+    `===` match (a duplicate callback survives one `off`); an absent ctor key
+    is `undefined` and an empty array is truthy — both emit zero calls;
+    SameValueZero keys collapse `-0`/`+0` refids. 5 scenarios cover fan-out
+    order, duplicate-callback `off`, unknown-ctor no-ops, cross-ctor insertion
+    order, and interleaved multi-ctor emits.
 
 Regenerate whenever a ported source changes:
 
@@ -632,7 +649,7 @@ node rust/tools/run_wasm_parity.mjs
 
 `wasm-probe` exposes the ported functions through `extern "C"` scalar
 entrypoints (`src/wasm_probe.rs`); the runner imports `data/vectors.json` and
-compares every value. Last run: **39,737 comparisons, all bit-identical**.
+compares every value. Last run: **39,780 comparisons, all bit-identical**.
 
 ### Windows: the linker environment
 

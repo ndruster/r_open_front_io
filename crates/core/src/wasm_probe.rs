@@ -3786,3 +3786,39 @@ pub extern "C" fn probe_tts_op(kind: u32) -> usize {
 pub extern "C" fn probe_tts_out_at(i: usize) -> f64 {
     TTS_OUT.with(|o| o.borrow()[i])
 }
+
+// ========================== P34: EventBus.ts (event_bus) ======================
+
+thread_local! {
+    static EB_HARNESS: std::cell::RefCell<crate::event_bus::RigHarness> =
+        std::cell::RefCell::new(crate::event_bus::RigHarness::new());
+    static EB_ARGS: std::cell::RefCell<Vec<f64>> = const { std::cell::RefCell::new(Vec::new()) };
+    static EB_OUT: std::cell::RefCell<Vec<f64>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
+/// Drop all listeners (one scenario's op stream ends; the next begins fresh).
+#[no_mangle]
+pub extern "C" fn probe_eb_reset() {
+    EB_HARNESS.with(|h| h.borrow_mut().reset());
+}
+
+/// Push one flat token of the op's arg stream.
+#[no_mangle]
+pub extern "C" fn probe_eb_arg(v: f64) {
+    EB_ARGS.with(|t| t.borrow_mut().push(v));
+}
+
+/// Run `RigHarness::run_op(kind, args)`; returns the result-stream length.
+#[no_mangle]
+pub extern "C" fn probe_eb_op(kind: u32) -> usize {
+    let a = EB_ARGS.with(|t| std::mem::take(&mut *t.borrow_mut()));
+    let out = EB_HARNESS.with(|h| h.borrow_mut().run_op(kind as u8, &a));
+    let len = out.len();
+    EB_OUT.with(|o| *o.borrow_mut() = out);
+    len
+}
+
+#[no_mangle]
+pub extern "C" fn probe_eb_out_at(i: usize) -> f64 {
+    EB_OUT.with(|o| o.borrow()[i])
+}

@@ -98,6 +98,7 @@ for (const name of [
   "probe_rr_arg", "probe_rr_op", "probe_rr_out_at",
   "probe_rsg_reset", "probe_rsg_arg", "probe_rsg_op", "probe_rsg_out_at",
   "probe_tts_reset", "probe_tts_arg", "probe_tts_op", "probe_tts_out_at",
+  "probe_eb_reset", "probe_eb_arg", "probe_eb_op", "probe_eb_out_at",
 ]) {
   if (typeof ex[name] !== "function") {
     console.error(`missing wasm export ${name} - rebuild with --features wasm-probe`);
@@ -1683,6 +1684,27 @@ for (const s of S.tiletravscratch) {
     for (let i = 0; i < len; i++) {
       checks++;
       const g = ex.probe_tts_out_at(i);
+      const w = numTok(op.res[i]);
+      if (!Object.is(g, w)) fail(`${s.name} op${op.kind} res[${i}]`, 0, g, w);
+    }
+  }
+}
+
+// --- EventBus.ts (event_bus) --------------------------------------------------
+// Replays the stateful op stream (on / off / emit call trace / Map-order dump)
+// through the wasm RigHarness. Each scenario resets the harness first.
+for (const s of S.eventbus) {
+  ex.probe_eb_reset();
+  for (const op of s.ops) {
+    for (const a of op.args) ex.probe_eb_arg(numTok(a));
+    const len = Number(ex.probe_eb_op(op.kind));
+    if (len !== op.res.length) {
+      fail(`${s.name} op${op.kind} res len`, 0, len, op.res.length);
+      continue;
+    }
+    for (let i = 0; i < len; i++) {
+      checks++;
+      const g = ex.probe_eb_out_at(i);
       const w = numTok(op.res[i]);
       if (!Object.is(g, w)) fail(`${s.name} op${op.kind} res[${i}]`, 0, g, w);
     }

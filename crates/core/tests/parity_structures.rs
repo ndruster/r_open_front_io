@@ -2302,6 +2302,36 @@ fn replay_tiletravscratch_scenarios() {
     }
 }
 
+// EventBus.ts: replay the stateful op stream (on / off / emit call trace /
+// Map-order dump) through `RigHarness::run_op` and compare every op's flat
+// token stream (constructors, callbacks and events cross as capture refids).
+#[test]
+fn replay_eventbus_scenarios() {
+    use openfront_core::event_bus::RigHarness;
+    for s in vectors::EB_SCENARIOS {
+        let mut rig = RigHarness::new();
+        for op in s.ops {
+            let got = rig.run_op(op.kind, op.args);
+            assert_eq!(
+                got.len(),
+                op.res.len(),
+                "{} op[{:?}] res len: got {got:?} want {:?}",
+                s.name,
+                op.kind,
+                op.res
+            );
+            for (j, (g, w)) in got.iter().zip(op.res.iter()).enumerate() {
+                assert!(
+                    obj_is(*g, *w),
+                    "{} op[{:?}] res[{j}]: got {g} want {w}",
+                    s.name,
+                    op.kind
+                );
+            }
+        }
+    }
+}
+
 // PatternDecoder.ts: replay decode + isPrimary through the shared `run_op`
 // runner (throws recorded as numeric codes) and compare the token streams.
 #[test]

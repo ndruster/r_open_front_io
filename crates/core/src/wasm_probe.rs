@@ -2135,3 +2135,117 @@ pub extern "C" fn probe_aga_arr_get(field: u32, i: usize) -> f64 {
         _ => AGA_QPRI.with(|p| p.borrow()[i] as f64),
     }
 }
+
+// --- AStarWaterHierarchical probe --------------------------------------------
+// Terrain bytes are queued one at a time; `probe_wh_new` builds the real
+// GameMap + AbstractGraphBuilder graph and the orchestrator. Each query
+// queues its starts, then `probe_wh_run(goal, is_multi, rebuild_before)`
+// optionally replays `setGraph` (fresh rebuild from the stored terrain),
+// dispatches on `is_multi` and returns 1/0 for path/null. After every run the
+// five engine stamps and the graph path cache (capture snapshot format) are
+// refreshed for read-back.
+
+use crate::pathfinding::water_hierarchical::AStarWaterHierarchical;
+
+thread_local! {
+    static WH: std::cell::RefCell<Option<Box<AStarWaterHierarchical>>> =
+        const { std::cell::RefCell::new(None) };
+    static WH_TERRAIN: std::cell::RefCell<Vec<u8>> = const { std::cell::RefCell::new(Vec::new()) };
+    /// Retained copy of the current scenario's terrain (for `rebuild_before`).
+    static WH_KEEP: std::cell::RefCell<Vec<u8>> = const { std::cell::RefCell::new(Vec::new()) };
+    static WH_STARTS: std::cell::RefCell<Vec<f64>> = const { std::cell::RefCell::new(Vec::new()) };
+    static WH_PATH: std::cell::RefCell<Vec<f64>> = const { std::cell::RefCell::new(Vec::new()) };
+    /// (bfs, local, multi, short, aga) stamps refreshed after every run.
+    static WH_STAMPS: std::cell::RefCell<[u64; 5]> = const { std::cell::RefCell::new([0; 5]) };
+    static WH_CACHE: std::cell::RefCell<Vec<f64>> = const { std::cell::RefCell::new(Vec::new()) };
+    static WH_GEOM: std::cell::RefCell<(f64, f64, i64)> = const { std::cell::RefCell::new((0.0, 0.0, 0)) };
+}
+
+/// Queue one packed terrain byte for the next map (before `probe_wh_new`).
+#[no_mangle]
+pub extern "C" fn probe_wh_terrain_byte(v: u32) {
+    WH_TERRAIN.with(|t| t.borrow_mut().push(v as u8));
+}
+
+/// Build the map + graph + orchestrator. The terrain is retained (kept, not
+/// taken) so `rebuild_before` queries can rebuild the graph identically.
+#[no_mangle]
+pub extern "C" fn probe_wh_new(w: f64, h: f64, cluster_size: f64, cache_paths: u32) {
+    let terrain = WH_TERRAIN.with(|t| std::mem::take(&mut *t.borrow_mut()));
+    WH_KEEP.with(|k| *k.borrow_mut() = terrain.clone());
+    let cs = cluster_size as i64;
+    let gm = GameMap::new(w, h, terrain.clone(), w * h);
+    let graph = AbstractGraphBuilder::new(gm, cs).build();
+    let gm2 = GameMap::new(w, h, terrain, w * h);
+    let wh = AStarWaterHierarchical::new(gm2, graph, cache_paths == 1);
+    WH_GEOM.with(|g| *g.borrow_mut() = (w, h, cs));
+    WH.with(|x| *x.borrow_mut() = Some(Box::new(wh)));
+}
+
+/// Queue one start tile for the next query.
+#[no_mangle]
+pub extern "C" fn probe_wh_start(v: f64) {
+    WH_STARTS.with(|s| s.borrow_mut().push(v));
+}
+
+/// Run one query. `is_multi` 1 = array start (`find_path_multi`), 0 = scalar
+/// (`find_path_single`, first queued start). `rebuild_before` 1 = setGraph
+/// with a fresh rebuild first. Returns 1 when a path was found, 0 for null;
+/// refreshes the stamp and cache snapshots.
+#[no_mangle]
+pub extern "C" fn probe_wh_run(goal: f64, is_multi: u32, rebuild_before: u32) -> u8 {
+    if rebuild_before == 1 {
+        let (w, h, cs) = WH_GEOM.with(|g| *g.borrow());
+        let terrain = WH_KEEP.with(|k| k.borrow().clone());
+        let gm = GameMap::new(w, h, terrain, w * h);
+        let graph = AbstractGraphBuilder::new(gm, cs).build();
+        WH.with(|x| x.borrow_mut().as_mut().unwrap().set_graph(graph));
+    }
+    let starts = WH_STARTS.with(|s| std::mem::take(&mut *s.borrow_mut()));
+    let path = WH.with(|x| {
+        let mut cell = x.borrow_mut();
+        let wh = cell.as_mut().expect("probe_wh_new must be called first");
+        if is_multi == 1 {
+            wh.find_path_multi(&starts, goal)
+        } else {
+            wh.find_path_single(starts[0], goal)
+        }
+    });
+    let found = path.is_some();
+    WH_PATH.with(|p| *p.borrow_mut() = path.unwrap_or_default());
+    let stamps = WH.with(|x| x.borrow().as_ref().unwrap().debug_stamps());
+    WH_STAMPS.with(|s| *s.borrow_mut() = [stamps.0, stamps.1, stamps.2, stamps.3, stamps.4]);
+    let cache = WH.with(|x| x.borrow().as_ref().unwrap().debug_path_cache());
+    WH_CACHE.with(|c| *c.borrow_mut() = cache);
+    if found {
+        1
+    } else {
+        0
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn probe_wh_path_len() -> usize {
+    WH_PATH.with(|p| p.borrow().len())
+}
+
+#[no_mangle]
+pub extern "C" fn probe_wh_path_at(i: usize) -> f64 {
+    WH_PATH.with(|p| p.borrow()[i])
+}
+
+/// Stamp selector: 0=bfs, 1=local, 2=multi, 3=short, 4=aga.
+#[no_mangle]
+pub extern "C" fn probe_wh_stamp(which: u32) -> u64 {
+    WH_STAMPS.with(|s| s.borrow()[which as usize])
+}
+
+#[no_mangle]
+pub extern "C" fn probe_wh_cache_len() -> usize {
+    WH_CACHE.with(|c| c.borrow().len())
+}
+
+#[no_mangle]
+pub extern "C" fn probe_wh_cache_at(i: usize) -> f64 {
+    WH_CACHE.with(|c| c.borrow()[i])
+}

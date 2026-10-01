@@ -304,6 +304,91 @@ function prepare(rel) {
       "WaterBounded PQ import",
     );
   }
+  if (rel.endsWith("algorithms/AStar.WaterHierarchical.ts")) {
+    // Orchestrator class: GameMap/TileRef/PathFinder/AbstractGraph/AbstractNode
+    // are type-only (the graph and map are passed in, never news-ed here) ->
+    // dropped. DebugSpan / BFSGrid / AbstractGraphAStar / AStarWaterBounded are
+    // value imports redirected to prepared copies (all cached flat). Both ctors
+    // use parameter properties (strip-mode rejects them) -> expanded.
+    out = must(out, 'import { GameMap, TileRef } from "../../game/GameMap";\n', "", "WH GameMap import");
+    out = must(out, 'import { PathFinder } from "../types";\n', "", "WH types import");
+    out = must(out, 'import { AbstractGraph, AbstractNode } from "./AbstractGraph";\n', "", "WH AbstractGraph import");
+    const dbgRel = "src/core/utilities/DebugSpan.ts";
+    if (!prepared.has(dbgRel)) prepare(dbgRel);
+    out = must(
+      out,
+      'import { DebugSpan } from "../../utilities/DebugSpan";',
+      `import { DebugSpan } from "./${prepared.get(dbgRel)}";`,
+      "WH DebugSpan import",
+    );
+    const bfsRel = "src/core/pathfinding/algorithms/BFS.Grid.ts";
+    if (!prepared.has(bfsRel)) prepare(bfsRel);
+    out = must(
+      out,
+      'import { BFSGrid } from "./BFS.Grid";',
+      `import { BFSGrid } from "./${prepared.get(bfsRel)}";`,
+      "WH BFSGrid import",
+    );
+    const agaRel = "src/core/pathfinding/algorithms/AStar.AbstractGraph.ts";
+    if (!prepared.has(agaRel)) prepare(agaRel);
+    out = must(
+      out,
+      'import { AbstractGraphAStar } from "./AStar.AbstractGraph";',
+      `import { AbstractGraphAStar } from "./${prepared.get(agaRel)}";`,
+      "WH AGA import",
+    );
+    const wbRel = "src/core/pathfinding/algorithms/AStar.WaterBounded.ts";
+    if (!prepared.has(wbRel)) prepare(wbRel);
+    out = must(
+      out,
+      'import { AStarWaterBounded } from "./AStar.WaterBounded";',
+      `import { AStarWaterBounded } from "./${prepared.get(wbRel)}";`,
+      "WH WB import",
+    );
+    out = must(
+      out,
+      "  constructor(\n" +
+        "    private map: GameMap,\n" +
+        "    private graph: AbstractGraph,\n" +
+        "    private options: {\n" +
+        "      cachePaths?: boolean;\n" +
+        "    } = {},\n" +
+        "  ) {",
+      "  private map: GameMap;\n" +
+        "  private graph: AbstractGraph;\n" +
+        "  private options: {\n" +
+        "    cachePaths?: boolean;\n" +
+        "  };\n\n" +
+        "  constructor(\n" +
+        "    map: GameMap,\n" +
+        "    graph: AbstractGraph,\n" +
+        "    options: {\n" +
+        "      cachePaths?: boolean;\n" +
+        "    } = {},\n" +
+        "  ) {\n" +
+        "    this.map = map;\n" +
+        "    this.graph = graph;\n" +
+        "    this.options = options;",
+      "WH ctor",
+    );
+    out = must(
+      out,
+      "  constructor(\n" +
+        "    private map: GameMap,\n" +
+        "    private graph: AbstractGraph,\n" +
+        "  ) {}",
+      "  private map: GameMap;\n" +
+        "  private graph: AbstractGraph;\n\n" +
+        "  constructor(\n" +
+        "    map: GameMap,\n" +
+        "    graph: AbstractGraph,\n" +
+        "  ) {\n" +
+        "    this.map = map;\n" +
+        "    this.graph = graph;\n" +
+        "  }",
+      "SourceResolver ctor",
+    );
+  }
   if (rel.endsWith("algorithms/AStar.AbstractGraph.ts")) {
     // PathFinder (interface) and AbstractGraph (used only as a *type* here —
     // the class never news it) are type-only -> dropped. MinHeap is the only

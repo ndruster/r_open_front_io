@@ -175,6 +175,9 @@ const { AbstractGraph, AbstractGraphBuilder } = await loadTs(
 const { AbstractGraphAStar } = await loadTs(
   "src/core/pathfinding/algorithms/AStar.AbstractGraph.ts",
 );
+const { AStarWaterHierarchical } = await loadTs(
+  "src/core/pathfinding/algorithms/AStar.WaterHierarchical.ts",
+);
 
 // enc() maps JS-only values JSON cannot carry: undefined -> "u", NaN -> "n",
 // booleans -> 1/0, and -0 -> "-0" (JSON collapses -0 to 0, yet the f32 bit
@@ -2201,6 +2204,144 @@ runAg("ag_all_water", 8, 8, 4, new Array(64).fill(AW), [
   ], "ag_all_water_12", [0, 1, 12, 13]);
 }
 
+// --- AStarWaterHierarchical scenario runner ----------------------------------
+// Runs the real orchestrator over a real GameMapImpl + AbstractGraphBuilder
+// graph and records, after EVERY query, the returned path plus the five engine
+// stamps (BFS / local / multi-cluster / short-path / abstract A*). The stamps
+// pin the dispatch: which bounded engine a query consumed and how often, so a
+// Rust port that takes a different branch (early exit vs node lookup vs
+// abstract stitch, short-path vs abstract winner, cache hit vs recompute)
+// diverges even when the final path happens to match. `rebuildBefore` replays
+// `setGraph` (recreates the abstract engine — its stamp resets — while the
+// map-sized engines keep counting). For cachePaths scenarios each query also
+// snapshots the graph's direction-aware path cache, flattened per slot as
+// `[-1]` (null) or `[len, tiles...]`. The Rust twin is
+// `water_hierarchical::AStarWaterHierarchical`.
+const whScenarios = [];
+function captureWH(name, w, h, clusterSize, rows, cachePaths, queries) {
+  const terrain = Uint8Array.from(rows.join("").split(""), (c) => (c === "w" ? AW : AL));
+  const gm = new GameMapImpl(w, h, terrain, w * h);
+  const graph = new AbstractGraphBuilder(gm, clusterSize).build();
+  const wh = new AStarWaterHierarchical(gm, graph, cachePaths ? { cachePaths: true } : {});
+  const snapCache = () =>
+    graph._pathCache.flatMap((p) => (p === null || p === undefined ? [-1] : [p.length, ...Array.from(p)]));
+  const qs = queries.map((q) => {
+    if (q.rebuildBefore) {
+      wh.setGraph(new AbstractGraphBuilder(gm, clusterSize).build());
+    }
+    const isMulti = Array.isArray(q.starts);
+    const path = wh.findPath(isMulti ? q.starts : q.starts[0], q.goal);
+    return {
+      rebuildBefore: q.rebuildBefore ? 1 : 0,
+      isMulti: isMulti ? 1 : 0,
+      starts: q.starts.slice(),
+      goal: q.goal,
+      path: path === null ? "u" : Array.from(path),
+      bfs: wh.tileBFS.stamp,
+      local: wh.localAStar.stamp,
+      multi: wh.localAStarMultiCluster.stamp,
+      short: wh.localAStarShortPath.stamp,
+      aga: wh.abstractAStar.stamp,
+      cache: cachePaths ? snapCache() : [],
+    };
+  });
+  whScenarios.push({
+    name,
+    w,
+    h,
+    clusterSize,
+    terrain: Array.from(terrain),
+    cachePaths: cachePaths ? 1 : 0,
+    queries: qs,
+  });
+}
+
+const WHW = "wwwwwwwwwwww"; // 12-wide all-water row (AW byte 0x00)
+// 12x12 all water, clusterSize 4. Pins: early-exit local (27->38), the
+// same-node fallback with dist > clusterSize (0->62 both resolve to node 1),
+// the abstract stitch forward + reverse, and multi-source short-path success
+// (both winner choices the short engine can make).
+captureWH("wh_all_water", 12, 12, 4, Array(12).fill(WHW), false, [
+  { starts: [27], goal: 38 },
+  { starts: [0], goal: 15 },
+  { starts: [0], goal: 62 },
+  { starts: [0], goal: 143 },
+  { starts: [143], goal: 0 },
+  { starts: [27, 38], goal: 90 },
+  { starts: [0, 143], goal: 70 },
+]);
+// cachePaths on the same map: q1 computes + caches the three middle segments,
+// q2 runs the REVERSE node path (different cache direction -> recompute),
+// q3 repeats q1 and must hit every cached segment (stamps prove the local
+// engines stay untouched while the BFS still runs).
+captureWH("wh_cache", 12, 12, 4, Array(12).fill(WHW), true, [
+  { starts: [0], goal: 143 },
+  { starts: [143], goal: 0 },
+  { starts: [0], goal: 143 },
+]);
+// Two disconnected water strips (cols 0-3 and 8-11). Pins: abstract null
+// across components (0->143), early exit inside a strip (12->15), a
+// same-component stitch through the strip's two gateways (2->50), and a
+// multi-source short-path whose winner is the far strip's source.
+{
+  const rows = Array(12).fill("wwwwLLLLwwww");
+  captureWH("wh_disconnected", 12, 12, 4, rows, false, [
+    { starts: [0], goal: 143 },
+    { starts: [12], goal: 15 },
+    { starts: [2], goal: 50 },
+    { starts: [0, 143], goal: 70 },
+  ]);
+}
+// Land map with a horizontal channel (rows 5-6) and a right block (x8-11,
+// y4-11): clusters (0,0)/(1,0) have NO gateway nodes. Pins: startNode null
+// (0->60), endNode null (5->0), and a multi-source query whose sources all
+// resolve to nothing -> null after the short-path miss.
+{
+  const rows = [
+    "LLLLLLLLLLLL",
+    "LLLLLLLLLLLL",
+    "LLLLLLLLLLLL",
+    "LLLLLLLLLLLL",
+    "LLLLLLLLwwww",
+    "wwwwwwwwwwww",
+    "wwwwwwwwwwww",
+    "LLLLLLLLwwww",
+    "LLLLLLLLwwww",
+    "LLLLLLLLwwww",
+    "LLLLLLLLwwww",
+    "LLLLLLLLwwww",
+  ];
+  captureWH("wh_no_nodes", 12, 12, 4, rows, false, [
+    { starts: [0], goal: 60 },
+    { starts: [5], goal: 0 },
+    { starts: [0, 5], goal: 70 },
+  ]);
+}
+// 40x40 all water with a land wall down column 20 (rows 0-24, gap below):
+// (18,2)->(22,2) is only 4 apart so the early-exit 3x3 window cannot cross
+// the wall -> the query falls through to the node lookup + abstract stitch,
+// exercising the endpoint-fix unshift/push on real gateway tiles and the
+// multi-source ABSTRACT winner path (short fails through the wall, the
+// closest-per-node map picks source 418 regardless of insertion order).
+{
+  const rows = [];
+  for (let y = 0; y < 40; y++) {
+    rows.push(y <= 24 ? "w".repeat(20) + "L" + "w".repeat(19) : "w".repeat(40));
+  }
+  captureWH("wh_gap", 40, 40, 4, rows, false, [
+    { starts: [738], goal: 882 },
+    { starts: [882], goal: 738 },
+    { starts: [738, 418], goal: 882 },
+    { starts: [418, 738], goal: 882 },
+  ]);
+}
+// setGraph between queries: q2 rebuilds the graph first, so the abstract
+// engine's stamp RESETS to 1 while bfs/local/multi/short keep counting.
+captureWH("wh_setgraph", 12, 12, 4, Array(12).fill(WHW), false, [
+  { starts: [0], goal: 143 },
+  { starts: [143], goal: 0, rebuildBefore: 1 },
+]);
+
 const structures = {
   minheap: mhScenarios,
   bucket: bqScenarios,
@@ -2221,6 +2362,7 @@ const structures = {
   terrainsearchmap: tsmScenarios,
   abstractgraph: agScenarios,
   abstractgraphastar: agaScenarios,
+  waterhierarchical: whScenarios,
 };
 
 // ================================================================ JSON
@@ -3426,6 +3568,84 @@ for (const s of structures.abstractgraphastar) {
 }
 L.push("pub const ABSTRACT_GRAPH_ASTAR_SCENARIOS: &[AbstractGraphAStarScenario] = &[");
 for (const s of structures.abstractgraphastar) L.push(`    ${s.name.toUpperCase()},`);
+L.push("];");
+L.push("");
+
+L.push("/// One hierarchical query: the dispatch flag (1 = array start ->");
+L.push("/// multi-source), the start(s), the goal, the returned path (`None` =");
+L.push("/// TS null), the five engine stamps after the query (BFS / local /");
+L.push("/// multi-cluster / short-path / abstract A* — the dispatch witness),");
+L.push("/// and, for cachePaths scenarios, the graph path cache flattened per");
+L.push("/// slot as [-1] (null) or [len, tiles...]. `rebuild_before` = 1 means");
+L.push("/// setGraph(fresh rebuild) runs before this query.");
+L.push("#[derive(Clone, Copy, Debug)]");
+L.push("pub struct WhQuery {");
+L.push("    pub rebuild_before: u8,");
+L.push("    pub is_multi: u8,");
+L.push("    pub starts: &'static [f64],");
+L.push("    pub goal: f64,");
+L.push("    pub path: Option<&'static [f64]>,");
+L.push("    pub bfs: u64,");
+L.push("    pub local: u64,");
+L.push("    pub multi: u64,");
+L.push("    pub short: u64,");
+L.push("    pub aga: u64,");
+L.push("    pub cache: &'static [f64],");
+L.push("}");
+L.push("");
+L.push("/// A real GameMapImpl + AbstractGraphBuilder graph, the cachePaths");
+L.push("/// flag, and a query script. Twin:");
+L.push("/// `water_hierarchical::AStarWaterHierarchical`.");
+L.push("pub struct WaterHierarchicalScenario {");
+L.push("    pub name: &'static str,");
+L.push("    pub w: f64,");
+L.push("    pub h: f64,");
+L.push("    pub cluster_size: f64,");
+L.push("    pub terrain: &'static [u8],");
+L.push("    pub cache_paths: u8,");
+L.push("    pub queries: &'static [WhQuery],");
+L.push("}");
+L.push("");
+for (const s of structures.waterhierarchical) {
+  const id = s.name.toUpperCase();
+  const qNames = [];
+  s.queries.forEach((q, qi) => {
+    const qn = `${id}_Q${qi}`;
+    qNames.push(qn);
+    L.push(`const ${qn}: WhQuery = WhQuery {`);
+    L.push(`    rebuild_before: ${q.rebuildBefore}u8,`);
+    L.push(`    is_multi: ${q.isMulti}u8,`);
+    L.push(`    starts: &[${q.starts.map(f64).join(", ")}],`);
+    L.push(`    goal: ${f64(q.goal)},`);
+    L.push(
+      `    path: ${q.path === "u" ? "None" : `Some(&[${q.path.map(f64).join(", ")}] as &[f64])`},`,
+    );
+    L.push(`    bfs: ${q.bfs}u64,`);
+    L.push(`    local: ${q.local}u64,`);
+    L.push(`    multi: ${q.multi}u64,`);
+    L.push(`    short: ${q.short}u64,`);
+    L.push(`    aga: ${q.aga}u64,`);
+    L.push("    cache: &[");
+    L.push(...numArr(q.cache, "f64", 12));
+    L.push("],");
+    L.push("};");
+    L.push("");
+  });
+  L.push(`pub const ${id}: WaterHierarchicalScenario = WaterHierarchicalScenario {`);
+  L.push(`    name: "${s.name}",`);
+  L.push(`    w: ${f64(s.w)},`);
+  L.push(`    h: ${f64(s.h)},`);
+  L.push(`    cluster_size: ${f64(s.clusterSize)},`);
+  L.push("    terrain: &[");
+  L.push(...numArr(s.terrain, "u8", 16));
+  L.push("],");
+  L.push(`    cache_paths: ${s.cachePaths}u8,`);
+  L.push(`    queries: &[${qNames.join(", ")}],`);
+  L.push("};");
+  L.push("");
+}
+L.push("pub const WATER_HIERARCHICAL_SCENARIOS: &[WaterHierarchicalScenario] = &[");
+for (const s of structures.waterhierarchical) L.push(`    ${s.name.toUpperCase()},`);
 L.push("];");
 L.push("");
 

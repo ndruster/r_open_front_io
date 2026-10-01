@@ -47,6 +47,9 @@ for (const name of [
   "probe_aga_node", "probe_aga_edge", "probe_aga_new", "probe_aga_start",
   "probe_aga_run", "probe_aga_path_len", "probe_aga_path_at", "probe_aga_stamp",
   "probe_aga_qfield", "probe_aga_arr_len", "probe_aga_arr_get",
+  "probe_wh_terrain_byte", "probe_wh_new", "probe_wh_start", "probe_wh_run",
+  "probe_wh_path_len", "probe_wh_path_at", "probe_wh_stamp",
+  "probe_wh_cache_len", "probe_wh_cache_at",
 ]) {
   if (typeof ex[name] !== "function") {
     console.error(`missing wasm export ${name} - rebuild with --features wasm-probe`);
@@ -952,6 +955,43 @@ for (const s of S.abstractgraphastar) {
         fail(`${s.name} ${label} length`, ex.probe_aga_arr_len(f), want.length, 0);
       for (let i = 0; i < want.length; i++)
         cmpU32(`${s.name} ${label}`, Number(ex.probe_aga_arr_get(f, i)), want[i], i);
+    }
+  }
+}
+
+// --- AStarWaterHierarchical ---------------------------------------------------
+// Rebuilds each scenario's map + graph + orchestrator from the raw terrain,
+// replays the query script and compares the returned path, the five engine
+// stamps (the dispatch witness) and the graph path cache after every query.
+for (const s of S.waterhierarchical) {
+  for (const b of s.terrain) ex.probe_wh_terrain_byte(b);
+  ex.probe_wh_new(s.w, s.h, s.clusterSize, s.cachePaths);
+  for (const q of s.queries) {
+    for (const st of q.starts) ex.probe_wh_start(st);
+    const gotPath = ex.probe_wh_run(q.goal, q.isMulti, q.rebuildBefore) === 1;
+    checks++;
+    if (gotPath !== (q.path !== "u")) {
+      fail(`${s.name} q path presence`, 0, gotPath, q.path !== "u");
+    }
+    if (q.path !== "u") {
+      checks++;
+      if (ex.probe_wh_path_len() !== q.path.length) {
+        fail(`${s.name} q path length`, ex.probe_wh_path_len(), q.path.length, 0);
+      }
+      for (let i = 0; i < q.path.length; i++)
+        cmpBits(`${s.name} q path`, ex.probe_wh_path_at(i), toBits(q.path[i]), i);
+    }
+    cmpU32(`${s.name} q bfs`, Number(ex.probe_wh_stamp(0)), q.bfs, 0);
+    cmpU32(`${s.name} q local`, Number(ex.probe_wh_stamp(1)), q.local, 0);
+    cmpU32(`${s.name} q multi`, Number(ex.probe_wh_stamp(2)), q.multi, 0);
+    cmpU32(`${s.name} q short`, Number(ex.probe_wh_stamp(3)), q.short, 0);
+    cmpU32(`${s.name} q aga`, Number(ex.probe_wh_stamp(4)), q.aga, 0);
+    if (s.cachePaths) {
+      checks++;
+      if (ex.probe_wh_cache_len() !== q.cache.length)
+        fail(`${s.name} q cache length`, ex.probe_wh_cache_len(), q.cache.length, 0);
+      for (let i = 0; i < q.cache.length; i++)
+        cmpBits(`${s.name} q cache`, ex.probe_wh_cache_at(i), toBits(q.cache[i]), i);
     }
   }
 }

@@ -14464,3 +14464,615 @@ pub const ABSTRACT_GRAPH_ASTAR_SCENARIOS: &[AbstractGraphAStarScenario] = &[
     AGA_UNREACHABLE,
 ];
 
+/// One hierarchical query: the dispatch flag (1 = array start ->
+/// multi-source), the start(s), the goal, the returned path (`None` =
+/// TS null), the five engine stamps after the query (BFS / local /
+/// multi-cluster / short-path / abstract A* — the dispatch witness),
+/// and, for cachePaths scenarios, the graph path cache flattened per
+/// slot as [-1] (null) or [len, tiles...]. `rebuild_before` = 1 means
+/// setGraph(fresh rebuild) runs before this query.
+#[derive(Clone, Copy, Debug)]
+pub struct WhQuery {
+    pub rebuild_before: u8,
+    pub is_multi: u8,
+    pub starts: &'static [f64],
+    pub goal: f64,
+    pub path: Option<&'static [f64]>,
+    pub bfs: u64,
+    pub local: u64,
+    pub multi: u64,
+    pub short: u64,
+    pub aga: u64,
+    pub cache: &'static [f64],
+}
+
+/// A real GameMapImpl + AbstractGraphBuilder graph, the cachePaths
+/// flag, and a query script. Twin:
+/// `water_hierarchical::AStarWaterHierarchical`.
+pub struct WaterHierarchicalScenario {
+    pub name: &'static str,
+    pub w: f64,
+    pub h: f64,
+    pub cluster_size: f64,
+    pub terrain: &'static [u8],
+    pub cache_paths: u8,
+    pub queries: &'static [WhQuery],
+}
+
+const WH_ALL_WATER_Q0: WhQuery = WhQuery {
+    rebuild_before: 0u8,
+    is_multi: 1u8,
+    starts: &[27f64],
+    goal: 38f64,
+    path: Some(&[27f64, 39f64, 38f64] as &[f64]),
+    bfs: 1u64,
+    local: 1u64,
+    multi: 1u64,
+    short: 2u64,
+    aga: 1u64,
+    cache: &[
+],
+};
+
+const WH_ALL_WATER_Q1: WhQuery = WhQuery {
+    rebuild_before: 0u8,
+    is_multi: 1u8,
+    starts: &[0f64],
+    goal: 15f64,
+    path: Some(&[0f64, 1f64, 2f64, 14f64, 15f64] as &[f64]),
+    bfs: 1u64,
+    local: 1u64,
+    multi: 1u64,
+    short: 3u64,
+    aga: 1u64,
+    cache: &[
+],
+};
+
+const WH_ALL_WATER_Q2: WhQuery = WhQuery {
+    rebuild_before: 0u8,
+    is_multi: 1u8,
+    starts: &[0f64],
+    goal: 62f64,
+    path: Some(&[0f64, 12f64, 13f64, 25f64, 37f64, 49f64, 50f64, 62f64] as &[f64]),
+    bfs: 1u64,
+    local: 1u64,
+    multi: 1u64,
+    short: 4u64,
+    aga: 1u64,
+    cache: &[
+],
+};
+
+const WH_ALL_WATER_Q3: WhQuery = WhQuery {
+    rebuild_before: 0u8,
+    is_multi: 1u8,
+    starts: &[0f64],
+    goal: 143f64,
+    path: Some(&[0f64, 12f64, 13f64, 14f64, 26f64, 38f64, 39f64, 40f64, 52f64, 64f64, 65f64, 66f64, 78f64, 90f64, 91f64, 92f64, 104f64, 116f64, 117f64, 129f64, 130f64, 142f64, 143f64] as &[f64]),
+    bfs: 1u64,
+    local: 1u64,
+    multi: 1u64,
+    short: 5u64,
+    aga: 1u64,
+    cache: &[
+],
+};
+
+const WH_ALL_WATER_Q4: WhQuery = WhQuery {
+    rebuild_before: 0u8,
+    is_multi: 1u8,
+    starts: &[143f64],
+    goal: 0f64,
+    path: Some(&[143f64, 131f64, 130f64, 129f64, 117f64, 105f64, 104f64, 103f64, 91f64, 79f64, 78f64, 77f64, 65f64, 53f64, 52f64, 51f64, 39f64, 27f64, 26f64, 14f64, 13f64, 1f64, 0f64] as &[f64]),
+    bfs: 1u64,
+    local: 1u64,
+    multi: 1u64,
+    short: 6u64,
+    aga: 1u64,
+    cache: &[
+],
+};
+
+const WH_ALL_WATER_Q5: WhQuery = WhQuery {
+    rebuild_before: 0u8,
+    is_multi: 1u8,
+    starts: &[27f64, 38f64],
+    goal: 90f64,
+    path: Some(&[27f64, 39f64, 40f64, 52f64, 64f64, 65f64, 77f64, 78f64, 90f64] as &[f64]),
+    bfs: 1u64,
+    local: 1u64,
+    multi: 1u64,
+    short: 7u64,
+    aga: 1u64,
+    cache: &[
+],
+};
+
+const WH_ALL_WATER_Q6: WhQuery = WhQuery {
+    rebuild_before: 0u8,
+    is_multi: 1u8,
+    starts: &[0f64, 143f64],
+    goal: 70f64,
+    path: Some(&[143f64, 131f64, 119f64, 107f64, 95f64, 83f64, 71f64, 70f64] as &[f64]),
+    bfs: 1u64,
+    local: 1u64,
+    multi: 1u64,
+    short: 8u64,
+    aga: 1u64,
+    cache: &[
+],
+};
+
+pub const WH_ALL_WATER: WaterHierarchicalScenario = WaterHierarchicalScenario {
+    name: "wh_all_water",
+    w: 12f64,
+    h: 12f64,
+    cluster_size: 4f64,
+    terrain: &[
+    0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8,
+    0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8,
+    0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8,
+    0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8,
+    0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8,
+    0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8,
+    0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8,
+    0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8,
+    0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8,
+],
+    cache_paths: 0u8,
+    queries: &[WH_ALL_WATER_Q0, WH_ALL_WATER_Q1, WH_ALL_WATER_Q2, WH_ALL_WATER_Q3, WH_ALL_WATER_Q4, WH_ALL_WATER_Q5, WH_ALL_WATER_Q6],
+};
+
+const WH_CACHE_Q0: WhQuery = WhQuery {
+    rebuild_before: 0u8,
+    is_multi: 1u8,
+    starts: &[0f64],
+    goal: 143f64,
+    path: Some(&[0f64, 12f64, 13f64, 14f64, 26f64, 38f64, 39f64, 40f64, 52f64, 64f64, 65f64, 66f64, 78f64, 90f64, 91f64, 92f64, 104f64, 116f64, 117f64, 129f64, 130f64, 142f64, 143f64] as &[f64]),
+    bfs: 1u64,
+    local: 1u64,
+    multi: 1u64,
+    short: 2u64,
+    aga: 1u64,
+    cache: &[
+    -1f64, -1f64, -1f64, -1f64, -1f64, -1f64, -1f64, -1f64, -1f64, -1f64, -1f64, -1f64,
+    -1f64, -1f64, -1f64, -1f64, -1f64, -1f64, -1f64, -1f64, -1f64, -1f64, -1f64, -1f64,
+    -1f64, -1f64, -1f64, -1f64, -1f64, -1f64, -1f64, -1f64, -1f64, -1f64, -1f64, -1f64,
+    -1f64, -1f64, -1f64, -1f64, -1f64, -1f64, -1f64, -1f64,
+],
+};
+
+const WH_CACHE_Q1: WhQuery = WhQuery {
+    rebuild_before: 0u8,
+    is_multi: 1u8,
+    starts: &[143f64],
+    goal: 0f64,
+    path: Some(&[143f64, 131f64, 130f64, 129f64, 117f64, 105f64, 104f64, 103f64, 91f64, 79f64, 78f64, 77f64, 65f64, 53f64, 52f64, 51f64, 39f64, 27f64, 26f64, 14f64, 13f64, 1f64, 0f64] as &[f64]),
+    bfs: 1u64,
+    local: 1u64,
+    multi: 1u64,
+    short: 3u64,
+    aga: 1u64,
+    cache: &[
+    -1f64, -1f64, -1f64, -1f64, -1f64, -1f64, -1f64, -1f64, -1f64, -1f64, -1f64, -1f64,
+    -1f64, -1f64, -1f64, -1f64, -1f64, -1f64, -1f64, -1f64, -1f64, -1f64, -1f64, -1f64,
+    -1f64, -1f64, -1f64, -1f64, -1f64, -1f64, -1f64, -1f64, -1f64, -1f64, -1f64, -1f64,
+    -1f64, -1f64, -1f64, -1f64, -1f64, -1f64, -1f64, -1f64,
+],
+};
+
+const WH_CACHE_Q2: WhQuery = WhQuery {
+    rebuild_before: 0u8,
+    is_multi: 1u8,
+    starts: &[0f64],
+    goal: 143f64,
+    path: Some(&[0f64, 12f64, 13f64, 14f64, 26f64, 38f64, 39f64, 40f64, 52f64, 64f64, 65f64, 66f64, 78f64, 90f64, 91f64, 92f64, 104f64, 116f64, 117f64, 129f64, 130f64, 142f64, 143f64] as &[f64]),
+    bfs: 1u64,
+    local: 1u64,
+    multi: 1u64,
+    short: 4u64,
+    aga: 1u64,
+    cache: &[
+    -1f64, -1f64, -1f64, -1f64, -1f64, -1f64, -1f64, -1f64, -1f64, -1f64, -1f64, -1f64,
+    -1f64, -1f64, -1f64, -1f64, -1f64, -1f64, -1f64, -1f64, -1f64, -1f64, -1f64, -1f64,
+    -1f64, -1f64, -1f64, -1f64, -1f64, -1f64, -1f64, -1f64, -1f64, -1f64, -1f64, -1f64,
+    -1f64, -1f64, -1f64, -1f64, -1f64, -1f64, -1f64, -1f64,
+],
+};
+
+pub const WH_CACHE: WaterHierarchicalScenario = WaterHierarchicalScenario {
+    name: "wh_cache",
+    w: 12f64,
+    h: 12f64,
+    cluster_size: 4f64,
+    terrain: &[
+    0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8,
+    0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8,
+    0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8,
+    0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8,
+    0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8,
+    0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8,
+    0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8,
+    0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8,
+    0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8,
+],
+    cache_paths: 1u8,
+    queries: &[WH_CACHE_Q0, WH_CACHE_Q1, WH_CACHE_Q2],
+};
+
+const WH_DISCONNECTED_Q0: WhQuery = WhQuery {
+    rebuild_before: 0u8,
+    is_multi: 1u8,
+    starts: &[0f64],
+    goal: 143f64,
+    path: None,
+    bfs: 1u64,
+    local: 1u64,
+    multi: 1u64,
+    short: 2u64,
+    aga: 2u64,
+    cache: &[
+],
+};
+
+const WH_DISCONNECTED_Q1: WhQuery = WhQuery {
+    rebuild_before: 0u8,
+    is_multi: 1u8,
+    starts: &[12f64],
+    goal: 15f64,
+    path: Some(&[12f64, 13f64, 14f64, 15f64] as &[f64]),
+    bfs: 1u64,
+    local: 1u64,
+    multi: 1u64,
+    short: 3u64,
+    aga: 2u64,
+    cache: &[
+],
+};
+
+const WH_DISCONNECTED_Q2: WhQuery = WhQuery {
+    rebuild_before: 0u8,
+    is_multi: 1u8,
+    starts: &[2f64],
+    goal: 50f64,
+    path: Some(&[2f64, 14f64, 26f64, 38f64, 50f64] as &[f64]),
+    bfs: 1u64,
+    local: 1u64,
+    multi: 1u64,
+    short: 4u64,
+    aga: 2u64,
+    cache: &[
+],
+};
+
+const WH_DISCONNECTED_Q3: WhQuery = WhQuery {
+    rebuild_before: 0u8,
+    is_multi: 1u8,
+    starts: &[0f64, 143f64],
+    goal: 70f64,
+    path: Some(&[143f64, 131f64, 119f64, 107f64, 95f64, 83f64, 71f64, 70f64] as &[f64]),
+    bfs: 1u64,
+    local: 1u64,
+    multi: 1u64,
+    short: 5u64,
+    aga: 2u64,
+    cache: &[
+],
+};
+
+pub const WH_DISCONNECTED: WaterHierarchicalScenario = WaterHierarchicalScenario {
+    name: "wh_disconnected",
+    w: 12f64,
+    h: 12f64,
+    cluster_size: 4f64,
+    terrain: &[
+    0u8, 0u8, 0u8, 0u8, 133u8, 133u8, 133u8, 133u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8,
+    133u8, 133u8, 133u8, 133u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 133u8, 133u8, 133u8, 133u8,
+    0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 133u8, 133u8, 133u8, 133u8, 0u8, 0u8, 0u8, 0u8,
+    0u8, 0u8, 0u8, 0u8, 133u8, 133u8, 133u8, 133u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8,
+    133u8, 133u8, 133u8, 133u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 133u8, 133u8, 133u8, 133u8,
+    0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 133u8, 133u8, 133u8, 133u8, 0u8, 0u8, 0u8, 0u8,
+    0u8, 0u8, 0u8, 0u8, 133u8, 133u8, 133u8, 133u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8,
+    133u8, 133u8, 133u8, 133u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 133u8, 133u8, 133u8, 133u8,
+    0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 133u8, 133u8, 133u8, 133u8, 0u8, 0u8, 0u8, 0u8,
+],
+    cache_paths: 0u8,
+    queries: &[WH_DISCONNECTED_Q0, WH_DISCONNECTED_Q1, WH_DISCONNECTED_Q2, WH_DISCONNECTED_Q3],
+};
+
+const WH_NO_NODES_Q0: WhQuery = WhQuery {
+    rebuild_before: 0u8,
+    is_multi: 1u8,
+    starts: &[0f64],
+    goal: 60f64,
+    path: None,
+    bfs: 1u64,
+    local: 1u64,
+    multi: 1u64,
+    short: 2u64,
+    aga: 1u64,
+    cache: &[
+],
+};
+
+const WH_NO_NODES_Q1: WhQuery = WhQuery {
+    rebuild_before: 0u8,
+    is_multi: 1u8,
+    starts: &[5f64],
+    goal: 0f64,
+    path: None,
+    bfs: 1u64,
+    local: 1u64,
+    multi: 1u64,
+    short: 3u64,
+    aga: 1u64,
+    cache: &[
+],
+};
+
+const WH_NO_NODES_Q2: WhQuery = WhQuery {
+    rebuild_before: 0u8,
+    is_multi: 1u8,
+    starts: &[0f64, 5f64],
+    goal: 70f64,
+    path: None,
+    bfs: 1u64,
+    local: 1u64,
+    multi: 1u64,
+    short: 4u64,
+    aga: 1u64,
+    cache: &[
+],
+};
+
+pub const WH_NO_NODES: WaterHierarchicalScenario = WaterHierarchicalScenario {
+    name: "wh_no_nodes",
+    w: 12f64,
+    h: 12f64,
+    cluster_size: 4f64,
+    terrain: &[
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8,
+    0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8,
+    0u8, 0u8, 0u8, 0u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 0u8, 0u8, 0u8, 0u8,
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 0u8, 0u8, 0u8, 0u8, 133u8, 133u8, 133u8, 133u8,
+    133u8, 133u8, 133u8, 133u8, 0u8, 0u8, 0u8, 0u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+    0u8, 0u8, 0u8, 0u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 0u8, 0u8, 0u8, 0u8,
+],
+    cache_paths: 0u8,
+    queries: &[WH_NO_NODES_Q0, WH_NO_NODES_Q1, WH_NO_NODES_Q2],
+};
+
+const WH_GAP_Q0: WhQuery = WhQuery {
+    rebuild_before: 0u8,
+    is_multi: 1u8,
+    starts: &[738f64],
+    goal: 882f64,
+    path: Some(&[738f64, 737f64, 736f64, 776f64, 775f64, 774f64, 773f64, 772f64, 812f64, 811f64, 810f64, 809f64, 808f64, 848f64, 847f64, 846f64, 845f64, 844f64, 884f64, 883f64, 882f64] as &[f64]),
+    bfs: 1u64,
+    local: 1u64,
+    multi: 1u64,
+    short: 2u64,
+    aga: 1u64,
+    cache: &[
+],
+};
+
+const WH_GAP_Q1: WhQuery = WhQuery {
+    rebuild_before: 0u8,
+    is_multi: 1u8,
+    starts: &[882f64],
+    goal: 738f64,
+    path: Some(&[882f64, 883f64, 884f64, 844f64, 845f64, 846f64, 847f64, 848f64, 808f64, 809f64, 810f64, 811f64, 812f64, 772f64, 773f64, 774f64, 775f64, 776f64, 736f64, 737f64, 738f64] as &[f64]),
+    bfs: 1u64,
+    local: 1u64,
+    multi: 1u64,
+    short: 3u64,
+    aga: 1u64,
+    cache: &[
+],
+};
+
+const WH_GAP_Q2: WhQuery = WhQuery {
+    rebuild_before: 0u8,
+    is_multi: 1u8,
+    starts: &[738f64, 418f64],
+    goal: 882f64,
+    path: Some(&[738f64, 737f64, 736f64, 776f64, 775f64, 774f64, 773f64, 772f64, 812f64, 811f64, 810f64, 809f64, 808f64, 848f64, 847f64, 846f64, 845f64, 844f64, 884f64, 883f64, 882f64] as &[f64]),
+    bfs: 1u64,
+    local: 1u64,
+    multi: 1u64,
+    short: 4u64,
+    aga: 1u64,
+    cache: &[
+],
+};
+
+const WH_GAP_Q3: WhQuery = WhQuery {
+    rebuild_before: 0u8,
+    is_multi: 1u8,
+    starts: &[418f64, 738f64],
+    goal: 882f64,
+    path: Some(&[738f64, 737f64, 736f64, 735f64, 734f64, 733f64, 732f64, 731f64, 730f64, 729f64, 728f64, 727f64, 767f64, 766f64, 765f64, 805f64, 804f64, 844f64, 843f64, 883f64, 882f64] as &[f64]),
+    bfs: 1u64,
+    local: 1u64,
+    multi: 1u64,
+    short: 5u64,
+    aga: 1u64,
+    cache: &[
+],
+};
+
+pub const WH_GAP: WaterHierarchicalScenario = WaterHierarchicalScenario {
+    name: "wh_gap",
+    w: 40f64,
+    h: 40f64,
+    cluster_size: 4f64,
+    terrain: &[
+    0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8,
+    0u8, 0u8, 0u8, 0u8, 133u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8,
+    0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8,
+    0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 133u8, 0u8, 0u8, 0u8,
+    0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8,
+    0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8,
+    0u8, 0u8, 0u8, 0u8, 133u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8,
+    0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8,
+    0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 133u8, 0u8, 0u8, 0u8,
+    0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8,
+    0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8,
+    0u8, 0u8, 0u8, 0u8, 133u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8,
+    0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8,
+    0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 133u8, 0u8, 0u8, 0u8,
+    0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8,
+    0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8,
+    0u8, 0u8, 0u8, 0u8, 133u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8,
+    0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8,
+    0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 133u8, 0u8, 0u8, 0u8,
+    0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8,
+    0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8,
+    0u8, 0u8, 0u8, 0u8, 133u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8,
+    0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8,
+    0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 133u8, 0u8, 0u8, 0u8,
+    0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8,
+    0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8,
+    0u8, 0u8, 0u8, 0u8, 133u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8,
+    0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8,
+    0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 133u8, 0u8, 0u8, 0u8,
+    0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8,
+    0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8,
+    0u8, 0u8, 0u8, 0u8, 133u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8,
+    0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8,
+    0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 133u8, 0u8, 0u8, 0u8,
+    0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8,
+    0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8,
+    0u8, 0u8, 0u8, 0u8, 133u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8,
+    0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8,
+    0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 133u8, 0u8, 0u8, 0u8,
+    0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8,
+    0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8,
+    0u8, 0u8, 0u8, 0u8, 133u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8,
+    0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8,
+    0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 133u8, 0u8, 0u8, 0u8,
+    0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8,
+    0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8,
+    0u8, 0u8, 0u8, 0u8, 133u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8,
+    0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8,
+    0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 133u8, 0u8, 0u8, 0u8,
+    0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8,
+    0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8,
+    0u8, 0u8, 0u8, 0u8, 133u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8,
+    0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8,
+    0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 133u8, 0u8, 0u8, 0u8,
+    0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8,
+    0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8,
+    0u8, 0u8, 0u8, 0u8, 133u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8,
+    0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8,
+    0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 133u8, 0u8, 0u8, 0u8,
+    0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8,
+    0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8,
+    0u8, 0u8, 0u8, 0u8, 133u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8,
+    0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8,
+    0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8,
+    0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8,
+    0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8,
+    0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8,
+    0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8,
+    0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8,
+    0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8,
+    0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8,
+    0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8,
+    0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8,
+    0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8,
+    0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8,
+    0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8,
+    0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8,
+    0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8,
+    0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8,
+    0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8,
+    0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8,
+    0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8,
+    0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8,
+    0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8,
+    0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8,
+    0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8,
+    0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8,
+    0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8,
+    0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8,
+    0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8,
+    0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8,
+    0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8,
+    0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8,
+    0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8,
+    0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8,
+    0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8,
+    0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8,
+    0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8,
+    0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8,
+    0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8,
+],
+    cache_paths: 0u8,
+    queries: &[WH_GAP_Q0, WH_GAP_Q1, WH_GAP_Q2, WH_GAP_Q3],
+};
+
+const WH_SETGRAPH_Q0: WhQuery = WhQuery {
+    rebuild_before: 0u8,
+    is_multi: 1u8,
+    starts: &[0f64],
+    goal: 143f64,
+    path: Some(&[0f64, 12f64, 13f64, 14f64, 26f64, 38f64, 39f64, 40f64, 52f64, 64f64, 65f64, 66f64, 78f64, 90f64, 91f64, 92f64, 104f64, 116f64, 117f64, 129f64, 130f64, 142f64, 143f64] as &[f64]),
+    bfs: 1u64,
+    local: 1u64,
+    multi: 1u64,
+    short: 2u64,
+    aga: 1u64,
+    cache: &[
+],
+};
+
+const WH_SETGRAPH_Q1: WhQuery = WhQuery {
+    rebuild_before: 1u8,
+    is_multi: 1u8,
+    starts: &[143f64],
+    goal: 0f64,
+    path: Some(&[143f64, 131f64, 130f64, 129f64, 117f64, 105f64, 104f64, 103f64, 91f64, 79f64, 78f64, 77f64, 65f64, 53f64, 52f64, 51f64, 39f64, 27f64, 26f64, 14f64, 13f64, 1f64, 0f64] as &[f64]),
+    bfs: 1u64,
+    local: 1u64,
+    multi: 1u64,
+    short: 3u64,
+    aga: 1u64,
+    cache: &[
+],
+};
+
+pub const WH_SETGRAPH: WaterHierarchicalScenario = WaterHierarchicalScenario {
+    name: "wh_setgraph",
+    w: 12f64,
+    h: 12f64,
+    cluster_size: 4f64,
+    terrain: &[
+    0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8,
+    0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8,
+    0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8,
+    0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8,
+    0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8,
+    0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8,
+    0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8,
+    0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8,
+    0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8,
+],
+    cache_paths: 0u8,
+    queries: &[WH_SETGRAPH_Q0, WH_SETGRAPH_Q1],
+};
+
+pub const WATER_HIERARCHICAL_SCENARIOS: &[WaterHierarchicalScenario] = &[
+    WH_ALL_WATER,
+    WH_CACHE,
+    WH_DISCONNECTED,
+    WH_NO_NODES,
+    WH_GAP,
+    WH_SETGRAPH,
+];
+

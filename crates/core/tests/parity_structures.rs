@@ -27,6 +27,7 @@ use openfront_core::pathfinding::priority_queue::{BucketQueue, MinHeap, Priority
 use openfront_core::pathfinding::rail::{RailAdapter, TerrainMap};
 use openfront_core::pathfinding::water::AStarWater;
 use openfront_core::pathfinding::water_bounded::AStarWaterBounded;
+use openfront_core::pathfinding::water_hierarchical::AStarWaterHierarchical;
 use openfront_core::terrain_search_map::TerrainSearchMap;
 use openfront_core::tile_set::TileSet;
 use vectors::GmRes;
@@ -1329,6 +1330,52 @@ fn replay_abstract_graph_astar_scenarios() {
             assert_eq!(pri, q.q_pri_bits, "{} queue pri bits", ctx());
             assert_eq!(size, q.q_size, "{} queue size", ctx());
             assert_eq!(cap, q.q_cap, "{} queue capacity", ctx());
+        }
+    }
+}
+
+// --- AStarWaterHierarchical --------------------------------------------------
+// Builds the real graph over a real GameMap (same construction the capture
+// used), runs the orchestrator query script, and asserts the returned path,
+// the five engine stamps (the dispatch witness) and — for cachePaths
+// scenarios — the graph path cache after EVERY query.
+#[test]
+fn replay_water_hierarchical_scenarios() {
+    for s in vectors::WATER_HIERARCHICAL_SCENARIOS {
+        let gm = GameMap::new(s.w, s.h, s.terrain.to_vec(), s.w * s.h);
+        let mut builder = AbstractGraphBuilder::new(gm, s.cluster_size as i64);
+        let graph = builder.build();
+        let gm2 = GameMap::new(s.w, s.h, s.terrain.to_vec(), s.w * s.h);
+        let mut wh = AStarWaterHierarchical::new(gm2, graph, s.cache_paths == 1);
+
+        for (qi, q) in s.queries.iter().enumerate() {
+            let ctx = || format!("{} q#{qi}", s.name);
+            if q.rebuild_before == 1 {
+                let gm2 = GameMap::new(s.w, s.h, s.terrain.to_vec(), s.w * s.h);
+                let mut b2 = AbstractGraphBuilder::new(gm2, s.cluster_size as i64);
+                wh.set_graph(b2.build());
+            }
+            let path = if q.is_multi == 1 {
+                wh.find_path_multi(q.starts, q.goal)
+            } else {
+                wh.find_path_single(q.starts[0], q.goal)
+            };
+            match (q.path, &path) {
+                (None, None) => {}
+                (Some(want), Some(got)) => {
+                    assert_eq!(got.as_slice(), want, "{} path", ctx());
+                }
+                _ => panic!("{} path: got {:?} want {:?}", ctx(), path, q.path),
+            }
+            let (bfs, local, multi, short, aga) = wh.debug_stamps();
+            assert_eq!(bfs, q.bfs, "{} bfs stamp", ctx());
+            assert_eq!(local, q.local, "{} local stamp", ctx());
+            assert_eq!(multi, q.multi, "{} multi stamp", ctx());
+            assert_eq!(short, q.short, "{} short stamp", ctx());
+            assert_eq!(aga, q.aga, "{} aga stamp", ctx());
+            if s.cache_paths == 1 {
+                assert_eq!(wh.debug_path_cache(), q.cache, "{} path cache", ctx());
+            }
         }
     }
 }

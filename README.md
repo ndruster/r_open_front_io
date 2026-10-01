@@ -47,6 +47,10 @@ rust/
 │   │       ├── abstract_graph_astar.rs
 │   │       │                      port of algorithms/AStar.AbstractGraph.ts
 │   │       │                      (Float32Array gScore, startNode origins)
+│   │       ├── water_hierarchical.rs
+│   │       │                      port of algorithms/AStar.WaterHierarchical.ts
+│   │       │                      (orchestrator: early exit / node lookup /
+│   │       │                       abstract stitch / multi-source dispatch)
 │   │       └── connected_components.rs
 │   │                              port of algorithms/ConnectedComponents.ts
 │   └── tests/
@@ -229,6 +233,35 @@ desync, not a rounding nit. Two things enforce that here:
     start through `startNode` (`aga_multi_ring`). Defaults:
     `heuristicWeight ?? 1` / `maxIterations ?? 100_000`; the heap is sized
     `numNodes + edgeCount * 2`.
+16. **`AStar.WaterHierarchical.ts`** (`pathfinding::water_hierarchical`) is an
+    *orchestrator* — it composes `BfsGrid`, `AbstractGraphAStar` and three
+    `AStarWaterBounded` engines over a shared map + `AbstractGraph`. The parity
+    target is the **dispatch**, so every scenario snapshots all five engine
+    stamps after each query: a port that takes a different branch (early exit
+    vs node lookup vs abstract stitch, short-path vs abstract winner, cache hit
+    vs recompute) diverges even when the final path happens to match. The
+    capture builds the real graph with `AbstractGraphBuilder` (no hand-built
+    graphs). Pinned behaviours: the `dist <= clusterSize` early exit runs a
+    *3×3-cluster* local search and returns it only on success (`wh_all_water`
+    q1); a same-node pair with `dist > clusterSize` falls through to the
+    `findNearestNode` BFS + same-node local path (q3); the abstract stitch
+    concatenates a start segment, one `slice(1)`-joined segment per edge, and
+    an end segment, with `findLocalPath`'s endpoint fix (`unshift(from)` /
+    `push(to)`) restoring gateway tiles that sit outside the clamped window
+    (`wh_gap`, whose 40×40 wall forces the early exit to fail into a real
+    multi-edge stitch); `options.cachePaths` gates a direction-aware edge cache
+    stored *on the graph* — `wh_cache` runs forward, reverse (opposite
+    direction → recompute), then forward again (every segment hits cache, so
+    the local engines' stamps stay frozen while the BFS still advances);
+    `findPathMultiSource` tries the short-path engine first (candidates within
+    120 tiles, padded window) and, on failure, resolves each source to its
+    cluster node (closest source per node, JS-`Map` insertion order), runs
+    multi-source abstract A*, and re-runs single-source from the winning tile
+    (`wh_gap` q3/q4 prove the winner is the *closest* source regardless of
+    array order); `setGraph` recreates only the abstract engine — its stamp
+    resets to 1 while the map-sized engines keep counting (`wh_setgraph` q2).
+    The `DebugSpan` instrumentation is disabled in the capture (a transparent
+    `wrap`), so it is omitted here.
 
 Regenerate whenever a ported source changes:
 
@@ -262,7 +295,7 @@ node rust/tools/run_wasm_parity.mjs
 
 `wasm-probe` exposes the ported functions through `extern "C"` scalar
 entrypoints (`src/wasm_probe.rs`); the runner imports `data/vectors.json` and
-compares every value. Last run: **29,581 comparisons, all bit-identical**.
+compares every value. Last run: **30,168 comparisons, all bit-identical**.
 
 ### Windows: the linker environment
 

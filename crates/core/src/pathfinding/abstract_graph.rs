@@ -327,6 +327,11 @@ impl AbstractGraph {
     pub fn debug_cluster_size(&self) -> f64 {
         self.cluster_size as f64
     }
+    /// The public `clusterSize` readonly field (consumed by the hierarchical
+    /// water router for cluster-rectangle math).
+    pub fn cluster_size(&self) -> f64 {
+        self.cluster_size as f64
+    }
     pub fn debug_clusters_x(&self) -> f64 {
         self.clusters_x as f64
     }
@@ -335,6 +340,22 @@ impl AbstractGraph {
     }
     pub fn debug_path_cache_len(&self) -> f64 {
         self.path_cache.len() as f64
+    }
+
+    /// Path cache flattened per slot: `[-1]` for a null slot, else
+    /// `[len, tiles...]` — the capture-side snapshot format.
+    pub fn debug_path_cache(&self) -> Vec<f64> {
+        let mut out = Vec::new();
+        for slot in &self.path_cache {
+            match slot {
+                None => out.push(-1.0),
+                Some(p) => {
+                    out.push(p.len() as f64);
+                    out.extend(p.iter().copied());
+                }
+            }
+        }
+        out
     }
 
     /// Nodes flattened 5-per-entry `[id, x, y, tile, componentId]`.

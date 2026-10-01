@@ -91,6 +91,9 @@ for (const name of [
   "probe_dc_arg", "probe_dc_op", "probe_dc_out_at",
   "probe_eu_terrain_byte", "probe_eu_owner", "probe_eu_new",
   "probe_eu_arg", "probe_eu_op", "probe_eu_out_at",
+  "probe_wm_map_terrain_byte", "probe_wm_mini_terrain_byte", "probe_wm_new",
+  "probe_wm_arg", "probe_wm_op", "probe_wm_out_at", "probe_wm_version",
+  "probe_wm_map_terrain_at", "probe_wm_map_state_at", "probe_wm_mini_terrain_at",
 ]) {
   if (typeof ex[name] !== "function") {
     console.error(`missing wasm export ${name} - rebuild with --features wasm-probe`);
@@ -1586,6 +1589,42 @@ for (const s of S.executil) {
     const w = numTok(s.res[i]);
     if (!Object.is(g, w)) fail(`${s.name} res[${i}]`, 0, g, w);
   }
+}
+
+// --- game/WaterManager.ts (water_manager) ------------------------------------
+// Queue both packed terrains (initial state is all-zero), build the manager,
+// replay the op stream, then diff the version counter and the final buffers.
+for (const s of S.watermanager) {
+  for (const b of s.mapTerrain) ex.probe_wm_map_terrain_byte(b);
+  for (const b of s.miniTerrain) ex.probe_wm_mini_terrain_byte(b);
+  ex.probe_wm_new(s.mw, s.mh, s.nw, s.nh, s.disable ? 1 : 0);
+  for (const [k, a, b, res] of s.ops) {
+    ex.probe_wm_arg(numTok(a));
+    ex.probe_wm_arg(numTok(b));
+    const len = Number(ex.probe_wm_op(k));
+    if (len !== res.length) {
+      fail(`${s.name} op${k} res len`, 0, len, res.length);
+      continue;
+    }
+    for (let i = 0; i < len; i++) {
+      checks++;
+      const g = ex.probe_wm_out_at(i);
+      const w = numTok(res[i]);
+      if (!Object.is(g, w)) fail(`${s.name} op${k} res[${i}]`, 0, g, w);
+    }
+  }
+  checks++;
+  {
+    const g = ex.probe_wm_version();
+    const w = numTok(s.versionAfter);
+    if (!Object.is(g, w)) fail(`${s.name} version`, 0, g, w);
+  }
+  for (let i = 0; i < s.mapTerrainAfter.length; i++)
+    cmpU32(`${s.name} mapTerrain`, ex.probe_wm_map_terrain_at(i), s.mapTerrainAfter[i], i);
+  for (let i = 0; i < s.mapStateAfter.length; i++)
+    cmpU32(`${s.name} mapState`, ex.probe_wm_map_state_at(i), s.mapStateAfter[i], i);
+  for (let i = 0; i < s.miniTerrainAfter.length; i++)
+    cmpU32(`${s.name} miniTerrain`, ex.probe_wm_mini_terrain_at(i), s.miniTerrainAfter[i], i);
 }
 
 console.log(`${checks} vector comparisons executed against wasm build`);

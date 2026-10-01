@@ -158,6 +158,7 @@ const SL = await loadTs("src/core/ServerList.ts");
 const PD = await loadTs("src/core/PatternDecoder.ts");
 const DC = await loadTs("src/core/game/DoomsdayClock.ts");
 const EU = await loadTs("src/core/execution/Util.ts");
+const WM = await loadTs("src/core/game/WaterManager.ts");
 const { AStar } = await loadTs("src/core/pathfinding/algorithms/AStar.ts");
 const { AStarRail } = await loadTs("src/core/pathfinding/algorithms/AStar.Rail.ts");
 const { AStarWater } = await loadTs("src/core/pathfinding/algorithms/AStar.Water.ts");
@@ -1243,6 +1244,177 @@ function captureEU(name, w, h, cells, owners, kind, args, res) {
     captureEU("eu_c2", 10, 2, EU_LAND, [], 5, [xs.length, ...xs, ...ys],
       r === null ? [1] : [0, r.x, r.y]);
   }
+}
+
+// --- WaterManager scenario runner -------------------------------------------
+// Op-stream replay against the real `WaterManager` over two real
+// `GameMapImpl`s (full + minimap). `runWM` kind table mirrors
+// `water_manager::WaterManager::run_op`:
+//   0 queueTile(a)          1 tick(a) -> [len, changed...]
+//   2 waterGraphVersion()   3 getWaterComponent(a) -> [1|null] | [0,id]
+//   4 hasWaterComponent(a,b) 5 getWaterComponentSize(a) -> [1|null] | [0,size]
+//   6 map.setOwnerID(a,b)   7 map.setFallout(a,b)
+// The scenario records the per-op result streams plus the final terrain/state
+// buffers of both maps and the version counter, so any divergence in the
+// five-phase finalize (ocean/magnitude/shoreline/minimap/CC) or the throttled
+// rebuild shows up even when the returned changed-tile lists happen to match.
+const wmScenarios = [];
+let wmIdx = 0;
+function runWM(name, mw, mh, mcells, nw, nh, ncells, disable, ops) {
+  // cells: flat glyph arrays or a single glyph (numbers).
+  const mk = (w, h, cells) =>
+    new GameMapImpl(
+      w,
+      h,
+      Uint8Array.from(typeof cells === "number" ? new Array(w * h).fill(cells) : cells),
+      w * h,
+    );
+  const map = mk(mw, mh, mcells);
+  const mini = mk(nw, nh, ncells);
+  // Snapshot the *initial* buffers before any op mutates them.
+  const mapTerrain0 = Array.from(map.terrain);
+  const mapState0 = Array.from(map.state);
+  const miniTerrain0 = Array.from(mini.terrain);
+  const wm = new WM.WaterManager(map, mini, disable);
+  const played = ops.map(([k, a, b]) => {
+    let res;
+    switch (k) {
+      case 0: wm.queueTile(a); res = []; break;
+      case 1: { const c = wm.tick(a); res = [c.length, ...c]; break; }
+      case 2: res = [wm.waterGraphVersion()]; break;
+      case 3: { const c = wm.getWaterComponent(a); res = c === null ? [1] : [0, c]; break; }
+      case 4: res = [wm.hasWaterComponent(a, b) ? 1 : 0]; break;
+      case 5: { const s = wm.getWaterComponentSize(a); res = s === null ? [1] : [0, s]; break; }
+      case 6: map.setOwnerID(a, b); res = []; break;
+      case 7: map.setFallout(a, !!b); res = []; break;
+      default: throw new Error("bad wm op kind " + k);
+    }
+    return [k, uenc(a === undefined ? 0 : a), uenc(b === undefined ? 0 : b), res.map(uenc)];
+  });
+  wmScenarios.push({
+    name: `${name}_${wmIdx++}`,
+    mw,
+    mh,
+    mapTerrain: mapTerrain0,
+    mapState: mapState0,
+    nw,
+    nh,
+    miniTerrain: miniTerrain0,
+    disable,
+    ops: played,
+    mapTerrainAfter: Array.from(map.terrain),
+    mapStateAfter: Array.from(map.state),
+    miniTerrainAfter: Array.from(mini.terrain),
+    versionAfter: wm.waterGraphVersion(),
+  });
+}
+{
+  const L = 0x85, OC = 0x20, IP = 0x9f;
+  // 1. Basic crater: 4x4 all-land full map over an all-land 2x2 minimap.
+  //    Converting three of the four tiles under mini tile 0 folds the minimap
+  //    (>= min(3,4)), dirties the graph, and the throttled rebuild lands on
+  //    tick 20 (never the conversion tick).
+  runWM("wm_basic", 4, 4, L, 2, 2, L, false, [
+    [0, 0], [0, 1], [0, 4],
+    [1, 0],
+    [2],
+    [1, 19],
+    [2],
+    [1, 20],
+    [2],
+    [3, 0],
+    [5, 0],
+    [4, 0, 1],
+  ]);
+  // 2. Single isolated crater, ocean minimap: the converted tile joins the
+  //    ocean component; queries hit the persistent CC.
+  runWM("wm_ocean_mini", 8, 8, L, 4, 4, OC, false, [
+    [0, 18],
+    [1, 0],
+    [3, 18],
+    [5, 18],
+    [4, 18, 1],
+    [1, 20],
+    [2],
+    [3, 18],
+  ]);
+  // 3. disableNavMesh: permissive fallbacks (component 0 / has true / size 0),
+  //    version never advances.
+  runWM("wm_nonav", 4, 4, L, 2, 2, L, true, [
+    [0, 0], [0, 1], [0, 4],
+    [1, 0],
+    [3, 0],
+    [4, 0, 7],
+    [5, 0],
+    [1, 100],
+    [2],
+  ]);
+  // 4. Conquered tile is skipped at flush (owner set between queue and tick).
+  runWM("wm_owned", 4, 4, L, 2, 2, L, false, [
+    [0, 0], [0, 1], [0, 4],
+    [6, 0, 3],
+    [1, 0],
+    [3, 0],
+  ]);
+  // 5. Fallout tile converts and clears its fallout bit.
+  runWM("wm_fallout", 4, 4, L, 2, 2, L, false, [
+    [7, 0, 1],
+    [0, 0], [0, 1], [0, 4],
+    [1, 0],
+  ]);
+  // 6. Impassable tile is never converted.
+  {
+    const cells = new Array(16).fill(L);
+    cells[0] = IP;
+    runWM("wm_impass", 4, 4, cells, 2, 2, L, false, [
+      [0, 0], [0, 1], [0, 4],
+      [1, 0],
+      [3, 0],
+    ]);
+  }
+  // 7. Two distant craters -> separate crater groups (barrage case). 12x12
+  //    full map, 6x6 ocean minimap; convert corners far apart.
+  runWM("wm_two_craters", 12, 12, L, 6, 6, OC, false, [
+    [0, 0], [0, 1], [0, 12], [0, 13],
+    [0, 130], [0, 131], [0, 142], [0, 143],
+    [1, 0],
+    [3, 0],
+    [3, 130],
+    [5, 0],
+    [1, 20],
+    [2],
+  ]);
+  // 8. Dense cluster collapses to one crater group; shoreline ring observed.
+  runWM("wm_dense", 6, 6, L, 3, 3, L, false, [
+    [0, 14], [0, 15], [0, 16], [0, 17], [0, 20], [0, 21],
+    [1, 0],
+    [3, 14],
+    [5, 14],
+    [1, 20],
+    [2],
+  ]);
+  // 9. Shoreline tile with no water component within 2 hops -> null.
+  //    Full map 6x6 all-land; minimap 3x3 all-land; convert a 2x2 block so
+  //    mini folds, then query a land tile far from any water.
+  runWM("wm_null_comp", 6, 6, L, 3, 3, L, false, [
+    [0, 14], [0, 15], [0, 20], [0, 21],
+    [1, 0],
+    [3, 0],
+    [5, 0],
+  ]);
+  // 10. Repeat conversions across ticks: incremental CC merge (a second
+  //     crater bridging two components).
+  runWM("wm_merge", 8, 8, L, 4, 4, OC, false, [
+    [0, 10], [0, 18],
+    [1, 0],
+    [3, 10],
+    [0, 26], [0, 34], [0, 11], [0, 19],
+    [1, 20],
+    [3, 26],
+    [5, 10],
+    [1, 40],
+    [2],
+  ]);
 }
 
 // --- AStar scenario runner ---------------------------------------------------
@@ -3957,6 +4129,7 @@ const structures = {
   patterndecoder: pdScenarios,
   doomsdayclock: dcScenarios,
   executil: euScenarios,
+  watermanager: wmScenarios,
   astar: asScenarios,
   rail: railScenarios,
   water: waterScenarios,
@@ -5765,6 +5938,71 @@ for (const s of structures.executil) {
 }
 L.push("pub const EU_SCENARIOS: &[EuScenario] = &[");
 for (const s of structures.executil) L.push(`    ${s.name.toUpperCase()},`);
+L.push("];");
+L.push("");
+
+L.push("/// WaterManager scenario: two packed GameMaps (full + minimap), an");
+L.push("/// op stream replayed against the real TS class (kind table in");
+L.push("/// gen_vectors.mjs; per-op result streams recorded), and the final");
+L.push("/// terrain/state buffers of both maps plus the graph version.");
+L.push("pub struct WmOp { pub kind: u8, pub a: f64, pub b: f64, pub res: &'static [f64] }");
+L.push("pub struct WmScenario {");
+L.push("    pub name: &'static str,");
+L.push("    pub mw: f64,");
+L.push("    pub mh: f64,");
+L.push("    pub map_terrain: &'static [u8],");
+L.push("    pub map_state: &'static [u16],");
+L.push("    pub nw: f64,");
+L.push("    pub nh: f64,");
+L.push("    pub mini_terrain: &'static [u8],");
+L.push("    pub disable: bool,");
+L.push("    pub ops: &'static [WmOp],");
+L.push("    pub map_terrain_after: &'static [u8],");
+L.push("    pub map_state_after: &'static [u16],");
+L.push("    pub mini_terrain_after: &'static [u8],");
+L.push("    pub version_after: f64,");
+L.push("}");
+L.push("");
+for (const s of structures.watermanager) {
+  const id = s.name.toUpperCase();
+  L.push(`const ${id}_OPS: &[WmOp] = &[`);
+  for (const [k, a, b, r] of s.ops)
+    L.push(
+      `    WmOp { kind: ${k}, a: ${argLit(a)}, b: ${argLit(b)}, res: &[${r.map(utilResLit).join(", ")}] },`,
+    );
+  L.push("];");
+  L.push(`pub const ${id}: WmScenario = WmScenario {`);
+  L.push(`    name: "${s.name}",`);
+  L.push(`    mw: ${f64(s.mw)},`);
+  L.push(`    mh: ${f64(s.mh)},`);
+  L.push(`    map_terrain: &[`);
+  L.push(...numArr(s.mapTerrain, "u8", 16));
+  L.push("],");
+  L.push(`    map_state: &[`);
+  L.push(...numArr(s.mapState, "u16", 16));
+  L.push("],");
+  L.push(`    nw: ${f64(s.nw)},`);
+  L.push(`    nh: ${f64(s.nh)},`);
+  L.push(`    mini_terrain: &[`);
+  L.push(...numArr(s.miniTerrain, "u8", 16));
+  L.push("],");
+  L.push(`    disable: ${s.disable},`);
+  L.push(`    ops: ${id}_OPS,`);
+  L.push(`    map_terrain_after: &[`);
+  L.push(...numArr(s.mapTerrainAfter, "u8", 16));
+  L.push("],");
+  L.push(`    map_state_after: &[`);
+  L.push(...numArr(s.mapStateAfter, "u16", 16));
+  L.push("],");
+  L.push(`    mini_terrain_after: &[`);
+  L.push(...numArr(s.miniTerrainAfter, "u8", 16));
+  L.push("],");
+  L.push(`    version_after: ${f64(s.versionAfter)},`);
+  L.push("};");
+  L.push("");
+}
+L.push("pub const WM_SCENARIOS: &[WmScenario] = &[");
+for (const s of structures.watermanager) L.push(`    ${s.name.toUpperCase()},`);
 L.push("];");
 L.push("");
 

@@ -31185,3 +31185,514 @@ pub const EU_SCENARIOS: &[EuScenario] = &[
     EU_C2_79,
 ];
 
+/// WaterManager scenario: two packed GameMaps (full + minimap), an
+/// op stream replayed against the real TS class (kind table in
+/// gen_vectors.mjs; per-op result streams recorded), and the final
+/// terrain/state buffers of both maps plus the graph version.
+pub struct WmOp { pub kind: u8, pub a: f64, pub b: f64, pub res: &'static [f64] }
+pub struct WmScenario {
+    pub name: &'static str,
+    pub mw: f64,
+    pub mh: f64,
+    pub map_terrain: &'static [u8],
+    pub map_state: &'static [u16],
+    pub nw: f64,
+    pub nh: f64,
+    pub mini_terrain: &'static [u8],
+    pub disable: bool,
+    pub ops: &'static [WmOp],
+    pub map_terrain_after: &'static [u8],
+    pub map_state_after: &'static [u16],
+    pub mini_terrain_after: &'static [u8],
+    pub version_after: f64,
+}
+
+const WM_BASIC_0_OPS: &[WmOp] = &[
+    WmOp { kind: 0, a: 0f64, b: 0f64, res: &[] },
+    WmOp { kind: 0, a: 1f64, b: 0f64, res: &[] },
+    WmOp { kind: 0, a: 4f64, b: 0f64, res: &[] },
+    WmOp { kind: 1, a: 0f64, b: 0f64, res: &[6f64, 0f64, 1f64, 4f64, 8f64, 5f64, 2f64] },
+    WmOp { kind: 2, a: 0f64, b: 0f64, res: &[0f64] },
+    WmOp { kind: 1, a: 19f64, b: 0f64, res: &[0f64] },
+    WmOp { kind: 2, a: 0f64, b: 0f64, res: &[0f64] },
+    WmOp { kind: 1, a: 20f64, b: 0f64, res: &[0f64] },
+    WmOp { kind: 2, a: 0f64, b: 0f64, res: &[1f64] },
+    WmOp { kind: 3, a: 0f64, b: 0f64, res: &[0f64, 1f64] },
+    WmOp { kind: 5, a: 0f64, b: 0f64, res: &[0f64, 4f64] },
+    WmOp { kind: 4, a: 0f64, b: 1f64, res: &[1f64] },
+];
+pub const WM_BASIC_0: WmScenario = WmScenario {
+    name: "wm_basic_0",
+    mw: 4f64,
+    mh: 4f64,
+    map_terrain: &[
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+],
+    map_state: &[
+    0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16,
+],
+    nw: 2f64,
+    nh: 2f64,
+    mini_terrain: &[
+    133u8, 133u8, 133u8, 133u8,
+],
+    disable: false,
+    ops: WM_BASIC_0_OPS,
+    map_terrain_after: &[
+    1u8, 64u8, 197u8, 133u8, 64u8, 197u8, 133u8, 133u8, 197u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+],
+    map_state_after: &[
+    0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16,
+],
+    mini_terrain_after: &[
+    0u8, 133u8, 133u8, 133u8,
+],
+    version_after: 1f64,
+};
+
+const WM_OCEAN_MINI_1_OPS: &[WmOp] = &[
+    WmOp { kind: 0, a: 18f64, b: 0f64, res: &[] },
+    WmOp { kind: 1, a: 0f64, b: 0f64, res: &[5f64, 18f64, 10f64, 26f64, 17f64, 19f64] },
+    WmOp { kind: 3, a: 18f64, b: 0f64, res: &[0f64, 1f64] },
+    WmOp { kind: 5, a: 18f64, b: 0f64, res: &[0f64, 64f64] },
+    WmOp { kind: 4, a: 18f64, b: 1f64, res: &[1f64] },
+    WmOp { kind: 1, a: 20f64, b: 0f64, res: &[0f64] },
+    WmOp { kind: 2, a: 0f64, b: 0f64, res: &[0f64] },
+    WmOp { kind: 3, a: 18f64, b: 0f64, res: &[0f64, 1f64] },
+];
+pub const WM_OCEAN_MINI_1: WmScenario = WmScenario {
+    name: "wm_ocean_mini_1",
+    mw: 8f64,
+    mh: 8f64,
+    map_terrain: &[
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+],
+    map_state: &[
+    0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16,
+    0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16,
+    0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16,
+    0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16,
+],
+    nw: 4f64,
+    nh: 4f64,
+    mini_terrain: &[
+    32u8, 32u8, 32u8, 32u8, 32u8, 32u8, 32u8, 32u8, 32u8, 32u8, 32u8, 32u8, 32u8, 32u8, 32u8, 32u8,
+],
+    disable: false,
+    ops: WM_OCEAN_MINI_1_OPS,
+    map_terrain_after: &[
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 197u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+    133u8, 197u8, 64u8, 197u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 197u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+],
+    map_state_after: &[
+    0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16,
+    0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16,
+    0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16,
+    0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16,
+],
+    mini_terrain_after: &[
+    32u8, 32u8, 32u8, 32u8, 32u8, 32u8, 32u8, 32u8, 32u8, 32u8, 32u8, 32u8, 32u8, 32u8, 32u8, 32u8,
+],
+    version_after: 0f64,
+};
+
+const WM_NONAV_2_OPS: &[WmOp] = &[
+    WmOp { kind: 0, a: 0f64, b: 0f64, res: &[] },
+    WmOp { kind: 0, a: 1f64, b: 0f64, res: &[] },
+    WmOp { kind: 0, a: 4f64, b: 0f64, res: &[] },
+    WmOp { kind: 1, a: 0f64, b: 0f64, res: &[6f64, 0f64, 1f64, 4f64, 8f64, 5f64, 2f64] },
+    WmOp { kind: 3, a: 0f64, b: 0f64, res: &[0f64, 0f64] },
+    WmOp { kind: 4, a: 0f64, b: 7f64, res: &[1f64] },
+    WmOp { kind: 5, a: 0f64, b: 0f64, res: &[0f64, 0f64] },
+    WmOp { kind: 1, a: 100f64, b: 0f64, res: &[0f64] },
+    WmOp { kind: 2, a: 0f64, b: 0f64, res: &[0f64] },
+];
+pub const WM_NONAV_2: WmScenario = WmScenario {
+    name: "wm_nonav_2",
+    mw: 4f64,
+    mh: 4f64,
+    map_terrain: &[
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+],
+    map_state: &[
+    0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16,
+],
+    nw: 2f64,
+    nh: 2f64,
+    mini_terrain: &[
+    133u8, 133u8, 133u8, 133u8,
+],
+    disable: true,
+    ops: WM_NONAV_2_OPS,
+    map_terrain_after: &[
+    1u8, 64u8, 197u8, 133u8, 64u8, 197u8, 133u8, 133u8, 197u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+],
+    map_state_after: &[
+    0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16,
+],
+    mini_terrain_after: &[
+    0u8, 133u8, 133u8, 133u8,
+],
+    version_after: 0f64,
+};
+
+const WM_OWNED_3_OPS: &[WmOp] = &[
+    WmOp { kind: 0, a: 0f64, b: 0f64, res: &[] },
+    WmOp { kind: 0, a: 1f64, b: 0f64, res: &[] },
+    WmOp { kind: 0, a: 4f64, b: 0f64, res: &[] },
+    WmOp { kind: 6, a: 0f64, b: 3f64, res: &[] },
+    WmOp { kind: 1, a: 0f64, b: 0f64, res: &[6f64, 1f64, 4f64, 5f64, 0f64, 2f64, 8f64] },
+    WmOp { kind: 3, a: 0f64, b: 0f64, res: &[1f64] },
+];
+pub const WM_OWNED_3: WmScenario = WmScenario {
+    name: "wm_owned_3",
+    mw: 4f64,
+    mh: 4f64,
+    map_terrain: &[
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+],
+    map_state: &[
+    0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16,
+],
+    nw: 2f64,
+    nh: 2f64,
+    mini_terrain: &[
+    133u8, 133u8, 133u8, 133u8,
+],
+    disable: false,
+    ops: WM_OWNED_3_OPS,
+    map_terrain_after: &[
+    197u8, 64u8, 197u8, 133u8, 64u8, 197u8, 133u8, 133u8, 197u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+],
+    map_state_after: &[
+    3u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16,
+],
+    mini_terrain_after: &[
+    133u8, 133u8, 133u8, 133u8,
+],
+    version_after: 0f64,
+};
+
+const WM_FALLOUT_4_OPS: &[WmOp] = &[
+    WmOp { kind: 7, a: 0f64, b: 1f64, res: &[] },
+    WmOp { kind: 0, a: 0f64, b: 0f64, res: &[] },
+    WmOp { kind: 0, a: 1f64, b: 0f64, res: &[] },
+    WmOp { kind: 0, a: 4f64, b: 0f64, res: &[] },
+    WmOp { kind: 1, a: 0f64, b: 0f64, res: &[6f64, 0f64, 1f64, 4f64, 8f64, 5f64, 2f64] },
+];
+pub const WM_FALLOUT_4: WmScenario = WmScenario {
+    name: "wm_fallout_4",
+    mw: 4f64,
+    mh: 4f64,
+    map_terrain: &[
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+],
+    map_state: &[
+    0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16,
+],
+    nw: 2f64,
+    nh: 2f64,
+    mini_terrain: &[
+    133u8, 133u8, 133u8, 133u8,
+],
+    disable: false,
+    ops: WM_FALLOUT_4_OPS,
+    map_terrain_after: &[
+    1u8, 64u8, 197u8, 133u8, 64u8, 197u8, 133u8, 133u8, 197u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+],
+    map_state_after: &[
+    0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16,
+],
+    mini_terrain_after: &[
+    0u8, 133u8, 133u8, 133u8,
+],
+    version_after: 0f64,
+};
+
+const WM_IMPASS_5_OPS: &[WmOp] = &[
+    WmOp { kind: 0, a: 0f64, b: 0f64, res: &[] },
+    WmOp { kind: 0, a: 1f64, b: 0f64, res: &[] },
+    WmOp { kind: 0, a: 4f64, b: 0f64, res: &[] },
+    WmOp { kind: 1, a: 0f64, b: 0f64, res: &[5f64, 1f64, 4f64, 5f64, 2f64, 8f64] },
+    WmOp { kind: 3, a: 0f64, b: 0f64, res: &[1f64] },
+];
+pub const WM_IMPASS_5: WmScenario = WmScenario {
+    name: "wm_impass_5",
+    mw: 4f64,
+    mh: 4f64,
+    map_terrain: &[
+    159u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+],
+    map_state: &[
+    0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16,
+],
+    nw: 2f64,
+    nh: 2f64,
+    mini_terrain: &[
+    133u8, 133u8, 133u8, 133u8,
+],
+    disable: false,
+    ops: WM_IMPASS_5_OPS,
+    map_terrain_after: &[
+    159u8, 64u8, 197u8, 133u8, 64u8, 197u8, 133u8, 133u8, 197u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+],
+    map_state_after: &[
+    0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16,
+],
+    mini_terrain_after: &[
+    133u8, 133u8, 133u8, 133u8,
+],
+    version_after: 0f64,
+};
+
+const WM_TWO_CRATERS_6_OPS: &[WmOp] = &[
+    WmOp { kind: 0, a: 0f64, b: 0f64, res: &[] },
+    WmOp { kind: 0, a: 1f64, b: 0f64, res: &[] },
+    WmOp { kind: 0, a: 12f64, b: 0f64, res: &[] },
+    WmOp { kind: 0, a: 13f64, b: 0f64, res: &[] },
+    WmOp { kind: 0, a: 130f64, b: 0f64, res: &[] },
+    WmOp { kind: 0, a: 131f64, b: 0f64, res: &[] },
+    WmOp { kind: 0, a: 142f64, b: 0f64, res: &[] },
+    WmOp { kind: 0, a: 143f64, b: 0f64, res: &[] },
+    WmOp { kind: 1, a: 0f64, b: 0f64, res: &[16f64, 0f64, 1f64, 12f64, 13f64, 130f64, 131f64, 142f64, 143f64, 24f64, 2f64, 25f64, 14f64, 118f64, 119f64, 141f64, 129f64] },
+    WmOp { kind: 3, a: 0f64, b: 0f64, res: &[0f64, 1f64] },
+    WmOp { kind: 3, a: 130f64, b: 0f64, res: &[0f64, 1f64] },
+    WmOp { kind: 5, a: 0f64, b: 0f64, res: &[0f64, 144f64] },
+    WmOp { kind: 1, a: 20f64, b: 0f64, res: &[0f64] },
+    WmOp { kind: 2, a: 0f64, b: 0f64, res: &[0f64] },
+];
+pub const WM_TWO_CRATERS_6: WmScenario = WmScenario {
+    name: "wm_two_craters_6",
+    mw: 12f64,
+    mh: 12f64,
+    map_terrain: &[
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+],
+    map_state: &[
+    0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16,
+    0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16,
+    0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16,
+    0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16,
+    0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16,
+    0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16,
+    0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16,
+    0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16,
+    0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16,
+],
+    nw: 6f64,
+    nh: 6f64,
+    mini_terrain: &[
+    32u8, 32u8, 32u8, 32u8, 32u8, 32u8, 32u8, 32u8, 32u8, 32u8, 32u8, 32u8, 32u8, 32u8, 32u8, 32u8,
+    32u8, 32u8, 32u8, 32u8, 32u8, 32u8, 32u8, 32u8, 32u8, 32u8, 32u8, 32u8, 32u8, 32u8, 32u8, 32u8,
+    32u8, 32u8, 32u8, 32u8,
+],
+    disable: false,
+    ops: WM_TWO_CRATERS_6_OPS,
+    map_terrain_after: &[
+    1u8, 64u8, 197u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 64u8, 64u8, 197u8, 133u8,
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 197u8, 197u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 197u8, 197u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+    133u8, 197u8, 64u8, 64u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 197u8, 64u8, 1u8,
+],
+    map_state_after: &[
+    0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16,
+    0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16,
+    0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16,
+    0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16,
+    0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16,
+    0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16,
+    0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16,
+    0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16,
+    0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16,
+],
+    mini_terrain_after: &[
+    32u8, 32u8, 32u8, 32u8, 32u8, 32u8, 32u8, 32u8, 32u8, 32u8, 32u8, 32u8, 32u8, 32u8, 32u8, 32u8,
+    32u8, 32u8, 32u8, 32u8, 32u8, 32u8, 32u8, 32u8, 32u8, 32u8, 32u8, 32u8, 32u8, 32u8, 32u8, 32u8,
+    32u8, 32u8, 32u8, 32u8,
+],
+    version_after: 0f64,
+};
+
+const WM_DENSE_7_OPS: &[WmOp] = &[
+    WmOp { kind: 0, a: 14f64, b: 0f64, res: &[] },
+    WmOp { kind: 0, a: 15f64, b: 0f64, res: &[] },
+    WmOp { kind: 0, a: 16f64, b: 0f64, res: &[] },
+    WmOp { kind: 0, a: 17f64, b: 0f64, res: &[] },
+    WmOp { kind: 0, a: 20f64, b: 0f64, res: &[] },
+    WmOp { kind: 0, a: 21f64, b: 0f64, res: &[] },
+    WmOp { kind: 1, a: 0f64, b: 0f64, res: &[16f64, 14f64, 15f64, 16f64, 17f64, 20f64, 21f64, 8f64, 9f64, 26f64, 19f64, 13f64, 10f64, 27f64, 22f64, 11f64, 23f64] },
+    WmOp { kind: 3, a: 14f64, b: 0f64, res: &[0f64, 1f64] },
+    WmOp { kind: 5, a: 14f64, b: 0f64, res: &[0f64, 4f64] },
+    WmOp { kind: 1, a: 20f64, b: 0f64, res: &[0f64] },
+    WmOp { kind: 2, a: 0f64, b: 0f64, res: &[1f64] },
+];
+pub const WM_DENSE_7: WmScenario = WmScenario {
+    name: "wm_dense_7",
+    mw: 6f64,
+    mh: 6f64,
+    map_terrain: &[
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+    133u8, 133u8, 133u8, 133u8,
+],
+    map_state: &[
+    0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16,
+    0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16,
+    0u16, 0u16, 0u16, 0u16,
+],
+    nw: 3f64,
+    nh: 3f64,
+    mini_terrain: &[
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+],
+    disable: false,
+    ops: WM_DENSE_7_OPS,
+    map_terrain_after: &[
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 197u8, 197u8, 197u8, 197u8, 133u8, 197u8, 64u8, 64u8,
+    64u8, 64u8, 133u8, 197u8, 64u8, 64u8, 197u8, 197u8, 133u8, 133u8, 197u8, 197u8, 133u8, 133u8, 133u8, 133u8,
+    133u8, 133u8, 133u8, 133u8,
+],
+    map_state_after: &[
+    0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16,
+    0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16,
+    0u16, 0u16, 0u16, 0u16,
+],
+    mini_terrain_after: &[
+    133u8, 133u8, 133u8, 133u8, 0u8, 133u8, 133u8, 133u8, 133u8,
+],
+    version_after: 1f64,
+};
+
+const WM_NULL_COMP_8_OPS: &[WmOp] = &[
+    WmOp { kind: 0, a: 14f64, b: 0f64, res: &[] },
+    WmOp { kind: 0, a: 15f64, b: 0f64, res: &[] },
+    WmOp { kind: 0, a: 20f64, b: 0f64, res: &[] },
+    WmOp { kind: 0, a: 21f64, b: 0f64, res: &[] },
+    WmOp { kind: 1, a: 0f64, b: 0f64, res: &[12f64, 14f64, 15f64, 20f64, 21f64, 8f64, 9f64, 26f64, 19f64, 13f64, 16f64, 27f64, 22f64] },
+    WmOp { kind: 3, a: 0f64, b: 0f64, res: &[0f64, 1f64] },
+    WmOp { kind: 5, a: 0f64, b: 0f64, res: &[0f64, 4f64] },
+];
+pub const WM_NULL_COMP_8: WmScenario = WmScenario {
+    name: "wm_null_comp_8",
+    mw: 6f64,
+    mh: 6f64,
+    map_terrain: &[
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+    133u8, 133u8, 133u8, 133u8,
+],
+    map_state: &[
+    0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16,
+    0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16,
+    0u16, 0u16, 0u16, 0u16,
+],
+    nw: 3f64,
+    nh: 3f64,
+    mini_terrain: &[
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+],
+    disable: false,
+    ops: WM_NULL_COMP_8_OPS,
+    map_terrain_after: &[
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 197u8, 197u8, 133u8, 133u8, 133u8, 197u8, 64u8, 64u8,
+    197u8, 133u8, 133u8, 197u8, 64u8, 64u8, 197u8, 133u8, 133u8, 133u8, 197u8, 197u8, 133u8, 133u8, 133u8, 133u8,
+    133u8, 133u8, 133u8, 133u8,
+],
+    map_state_after: &[
+    0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16,
+    0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16,
+    0u16, 0u16, 0u16, 0u16,
+],
+    mini_terrain_after: &[
+    133u8, 133u8, 133u8, 133u8, 0u8, 133u8, 133u8, 133u8, 133u8,
+],
+    version_after: 0f64,
+};
+
+const WM_MERGE_9_OPS: &[WmOp] = &[
+    WmOp { kind: 0, a: 10f64, b: 0f64, res: &[] },
+    WmOp { kind: 0, a: 18f64, b: 0f64, res: &[] },
+    WmOp { kind: 1, a: 0f64, b: 0f64, res: &[8f64, 10f64, 18f64, 2f64, 26f64, 17f64, 19f64, 9f64, 11f64] },
+    WmOp { kind: 3, a: 10f64, b: 0f64, res: &[0f64, 1f64] },
+    WmOp { kind: 0, a: 26f64, b: 0f64, res: &[] },
+    WmOp { kind: 0, a: 34f64, b: 0f64, res: &[] },
+    WmOp { kind: 0, a: 11f64, b: 0f64, res: &[] },
+    WmOp { kind: 0, a: 19f64, b: 0f64, res: &[] },
+    WmOp { kind: 1, a: 20f64, b: 0f64, res: &[12f64, 26f64, 34f64, 11f64, 19f64, 42f64, 33f64, 35f64, 25f64, 27f64, 3f64, 20f64, 12f64] },
+    WmOp { kind: 3, a: 26f64, b: 0f64, res: &[0f64, 1f64] },
+    WmOp { kind: 5, a: 10f64, b: 0f64, res: &[0f64, 64f64] },
+    WmOp { kind: 1, a: 40f64, b: 0f64, res: &[0f64] },
+    WmOp { kind: 2, a: 0f64, b: 0f64, res: &[0f64] },
+];
+pub const WM_MERGE_9: WmScenario = WmScenario {
+    name: "wm_merge_9",
+    mw: 8f64,
+    mh: 8f64,
+    map_terrain: &[
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+],
+    map_state: &[
+    0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16,
+    0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16,
+    0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16,
+    0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16,
+],
+    nw: 4f64,
+    nh: 4f64,
+    mini_terrain: &[
+    32u8, 32u8, 32u8, 32u8, 32u8, 32u8, 32u8, 32u8, 32u8, 32u8, 32u8, 32u8, 32u8, 32u8, 32u8, 32u8,
+],
+    disable: false,
+    ops: WM_MERGE_9_OPS,
+    map_terrain_after: &[
+    133u8, 133u8, 197u8, 197u8, 133u8, 133u8, 133u8, 133u8, 133u8, 197u8, 64u8, 64u8, 197u8, 133u8, 133u8, 133u8,
+    133u8, 197u8, 64u8, 64u8, 197u8, 133u8, 133u8, 133u8, 133u8, 197u8, 64u8, 197u8, 133u8, 133u8, 133u8, 133u8,
+    133u8, 197u8, 64u8, 197u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 197u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+    133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8, 133u8,
+],
+    map_state_after: &[
+    0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16,
+    0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16,
+    0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16,
+    0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16, 0u16,
+],
+    mini_terrain_after: &[
+    32u8, 32u8, 32u8, 32u8, 32u8, 32u8, 32u8, 32u8, 32u8, 32u8, 32u8, 32u8, 32u8, 32u8, 32u8, 32u8,
+],
+    version_after: 0f64,
+};
+
+pub const WM_SCENARIOS: &[WmScenario] = &[
+    WM_BASIC_0,
+    WM_OCEAN_MINI_1,
+    WM_NONAV_2,
+    WM_OWNED_3,
+    WM_FALLOUT_4,
+    WM_IMPASS_5,
+    WM_TWO_CRATERS_6,
+    WM_DENSE_7,
+    WM_NULL_COMP_8,
+    WM_MERGE_9,
+];
+

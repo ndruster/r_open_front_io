@@ -52,6 +52,13 @@
 //!   the `isTileSetLike` duck-test branch (Manhattan ring walk vs. clamped
 //!   linear scan) and `closestTwoTiles` stable-by-column sort + two-pointer
 //!   sweep; the three `Game`-facade functions are out of scope)
+//! * [`water_manager`] — `src/core/game/WaterManager.ts` (water-nuke terrain
+//!   fixup: pending-tile flush, ocean BFS propagation, crater-grouped
+//!   magnitude BFS over direct terrain bytes, shoreline 2-ring recompute,
+//!   minimap 2×2 downsample + mini ocean/magnitude BFSes, persistent shared
+//!   `ConnectedComponents` incremental labeling, 20-tick throttled graph
+//!   rebuild as a version bump — the graph/HPA machinery never crosses the
+//!   WaterManager API surface)
 //! * [`line`] — `src/core/utilities/Line.ts` (`DistanceBasedBezierCurve`:
 //!   fixed-point De Casteljau subdivision for MIRV trajectories)
 //! * [`veterancy`] — `src/core/game/Veterancy.ts` (`maxHealthWithVeterancy`:
@@ -117,6 +124,7 @@ pub mod terrain_search_map;
 pub mod tile_set;
 pub mod util;
 pub mod veterancy;
+pub mod water_manager;
 
 #[cfg(feature = "wasm-probe")]
 mod wasm_probe;

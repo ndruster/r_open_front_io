@@ -2257,3 +2257,63 @@ fn replay_executil_scenarios() {
         }
     }
 }
+
+// game/WaterManager.ts: rebuild the two packed GameMaps, replay the op stream
+// through `WaterManager::run_op`, compare every per-op result stream, then the
+// final terrain/state buffers of both maps and the graph version.
+#[test]
+fn replay_watermanager_scenarios() {
+    use openfront_core::water_manager::WaterManager;
+    for s in vectors::WM_SCENARIOS {
+        let map = GameMap::new(s.mw, s.mh, s.map_terrain.to_vec(), s.mw * s.mh);
+        let mini = GameMap::new(s.nw, s.nh, s.mini_terrain.to_vec(), s.nw * s.nh);
+        {
+            let mut wm = WaterManager::new(map, mini, s.disable);
+            for op in s.ops {
+                let args = [op.a, op.b];
+                let got = wm.run_op(op.kind, &args);
+                assert_eq!(
+                    got.len(),
+                    op.res.len(),
+                    "{} op[{:?}] res len: got {got:?} want {:?}",
+                    s.name,
+                    op.kind,
+                    op.res
+                );
+                for (j, (g, w)) in got.iter().zip(op.res.iter()).enumerate() {
+                    assert!(
+                        obj_is(*g, *w),
+                        "{} op[{:?}] res[{j}]: got {g} want {w}",
+                        s.name,
+                        op.kind
+                    );
+                }
+            }
+            assert!(
+                obj_is(wm.water_graph_version(), s.version_after),
+                "{} version: got {} want {}",
+                s.name,
+                wm.water_graph_version(),
+                s.version_after
+            );
+            assert_eq!(
+                wm.debug_map_terrain(),
+                s.map_terrain_after,
+                "{} map terrain after",
+                s.name
+            );
+            assert_eq!(
+                wm.debug_map_state(),
+                s.map_state_after,
+                "{} map state after",
+                s.name
+            );
+            assert_eq!(
+                wm.debug_mini_terrain(),
+                s.mini_terrain_after,
+                "{} mini terrain after",
+                s.name
+            );
+        }
+    }
+}

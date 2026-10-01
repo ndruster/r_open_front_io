@@ -839,6 +839,79 @@ function prepare(rel) {
     );
   }
 
+  if (rel.endsWith("game/WaterManager.ts")) {
+    // Orchestrator class: GameMap/TileRef (interface + branded type) and
+    // PathFinder (interface) are type-only -> dropped. AbstractGraphBuilder,
+    // AStarWaterHierarchical, BFSGrid, ConnectedComponents and DebugSpan are
+    // *value* uses (the ctor/news them), redirected to their prepared copies.
+    // `AbstractGraph` rides along in the builder import as a type. The ctor's
+    // three parameter properties are expanded (strip mode rejects them).
+    // `(map as unknown as { terrain }).terrain` is a plain type assertion —
+    // strip mode erases it and the live private field reads through.
+    out = must(out, 'import { PathFinder } from "../pathfinding/types";\n', "", "WM types import");
+    out = must(out, 'import { GameMap, TileRef } from "./GameMap";\n', "", "WM GameMap import");
+    const agRel = "src/core/pathfinding/algorithms/AbstractGraph.ts";
+    if (!prepared.has(agRel)) prepare(agRel);
+    out = must(
+      out,
+      'import {\n  AbstractGraph,\n  AbstractGraphBuilder,\n} from "../pathfinding/algorithms/AbstractGraph";',
+      `import {\n  AbstractGraph,\n  AbstractGraphBuilder,\n} from "./${prepared.get(agRel)}";`,
+      "WM AbstractGraph import",
+    );
+    const whRel = "src/core/pathfinding/algorithms/AStar.WaterHierarchical.ts";
+    if (!prepared.has(whRel)) prepare(whRel);
+    out = must(
+      out,
+      'import { AStarWaterHierarchical } from "../pathfinding/algorithms/AStar.WaterHierarchical";',
+      `import { AStarWaterHierarchical } from "./${prepared.get(whRel)}";`,
+      "WM WH import",
+    );
+    const bfsRel = "src/core/pathfinding/algorithms/BFS.Grid.ts";
+    if (!prepared.has(bfsRel)) prepare(bfsRel);
+    out = must(
+      out,
+      'import { BFSGrid } from "../pathfinding/algorithms/BFS.Grid";',
+      `import { BFSGrid } from "./${prepared.get(bfsRel)}";`,
+      "WM BFSGrid import",
+    );
+    const ccRel = "src/core/pathfinding/algorithms/ConnectedComponents.ts";
+    if (!prepared.has(ccRel)) prepare(ccRel);
+    out = must(
+      out,
+      'import { ConnectedComponents } from "../pathfinding/algorithms/ConnectedComponents";',
+      `import { ConnectedComponents } from "./${prepared.get(ccRel)}";`,
+      "WM ConnectedComponents import",
+    );
+    const dbgRel = "src/core/utilities/DebugSpan.ts";
+    if (!prepared.has(dbgRel)) prepare(dbgRel);
+    out = must(
+      out,
+      'import { DebugSpan } from "../utilities/DebugSpan";',
+      `import { DebugSpan } from "./${prepared.get(dbgRel)}";`,
+      "WM DebugSpan import",
+    );
+    out = must(
+      out,
+      "  constructor(\n" +
+        "    private map: GameMap,\n" +
+        "    private miniMap: GameMap,\n" +
+        "    private disableNavMesh: boolean,\n" +
+        "  ) {",
+      "  private map: GameMap;\n" +
+        "  private miniMap: GameMap;\n" +
+        "  private disableNavMesh: boolean;\n\n" +
+        "  constructor(\n" +
+        "    map: GameMap,\n" +
+        "    miniMap: GameMap,\n" +
+        "    disableNavMesh: boolean,\n" +
+        "  ) {\n" +
+        "    this.map = map;\n" +
+        "    this.miniMap = miniMap;\n" +
+        "    this.disableNavMesh = disableNavMesh;",
+      "WM ctor",
+    );
+  }
+
   if (rel.endsWith("PatternDecoder.ts")) {
     // PlayerPattern is a type-only import (a z.infer type from Schemas); strip
     // mode cannot tell and would pull in the whole zod schema graph -> drop.

@@ -44,6 +44,9 @@ rust/
 │   │   ├── exec_util.rs           port of execution/Util.ts (pure-GameMap
 │   │   │                          subset: nuke blast counts, spawn tiles,
 │   │   │                          nearest-tile searches, closest-two sweep)
+│   │   ├── water_manager.rs       port of game/WaterManager.ts (water-nuke
+│   │   │                          terrain fixup + throttled minimap water-graph
+│   │   │                          rebuild; graph/HPA bypass, persistent CC)
 │   │   ├── wasm_probe.rs          `extern "C"` surface, feature-gated
 │   │   └── pathfinding/
 │   │       ├── mod.rs
@@ -503,6 +506,26 @@ desync, not a rounding nit. Two things enforce that here:
     distance edges, both capped branches (an `Infinity` cap would spin the ring
     loop forever and hangs the TS side — not captured), and the tie / empty /
     NaN-column sort cases of the sweep.
+31. **`game/WaterManager.ts`** (`water_manager`) — pending water-tile queue,
+    the five-phase `finalizeWaterChanges` (ocean BFS, crater-grouped magnitude
+    BFS with stamp/distance scratch arrays, shoreline 2-ring recompute, minimap
+    2×2 majority fold with its own ocean + magnitude passes, and persistent
+    `ConnectedComponents` `addWaterTile` labeling), the 20-tick throttled graph
+    rebuild, and the per-tile component queries. The TS graph/HPA/BFSGrid
+    machinery only ever delegates to the *same* persistent CC object (the
+    builder's `sharedWaterComponents` path) and a rebuild's sole observable is
+    `waterGraphVersion++` + dirty-tile clear — so the port keeps the CC
+    directly and models rebuilds as a version bump (the Rust
+    `AbstractGraphBuilder` re-floods and renumbers per build, which would
+    *break* parity). JS `Set`/`Map` insertion order is replicated by
+    `OrderedSet`/`OrderedMap` (SameValueZero keys); the magnitude BFS reads
+    packed terrain bytes and defers `setMagnitude` writes to the end of each
+    update loop (each tile is read at most once inside the loop, so snapshot
+    reads are identical). 10 scenarios cover the throttle boundary, owned /
+    impassable / fallout skip-and-clear branches, single- and two-crater ocean
+    folds, dense conversions, null-component queries, and a cross-tick CC
+    merge; per-op result streams plus both maps' final terrain/state buffers
+    and the version counter are compared.
 
 Regenerate whenever a ported source changes:
 
@@ -536,7 +559,7 @@ node rust/tools/run_wasm_parity.mjs
 
 `wasm-probe` exposes the ported functions through `extern "C"` scalar
 entrypoints (`src/wasm_probe.rs`); the runner imports `data/vectors.json` and
-compares every value. Last run: **37,141 comparisons, all bit-identical**.
+compares every value. Last run: **38,562 comparisons, all bit-identical**.
 
 ### Windows: the linker environment
 

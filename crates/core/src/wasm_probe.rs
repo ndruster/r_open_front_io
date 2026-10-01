@@ -3565,3 +3565,93 @@ pub extern "C" fn probe_eu_op(kind: u32) -> usize {
 pub extern "C" fn probe_eu_out_at(i: usize) -> f64 {
     EU_OUT.with(|o| o.borrow()[i])
 }
+
+// ================= P29: game/WaterManager.ts (water_manager) ================
+// Two packed GameMaps (full + minimap) queued before `probe_wm_new`, then an
+// op stream replayed through `WaterManager::run_op` (kind table in
+// water_manager.rs). The initial `map_state` is always all-zero (the TS
+// GameMapImpl ctor allocates a zeroed Uint16Array), so only terrain bytes are
+// queued; the final buffers are read back per index.
+
+thread_local! {
+    static WM_MAP_T: std::cell::RefCell<Vec<u8>> = const { std::cell::RefCell::new(Vec::new()) };
+    static WM_MINI_T: std::cell::RefCell<Vec<u8>> = const { std::cell::RefCell::new(Vec::new()) };
+    static WM_ARGS: std::cell::RefCell<Vec<f64>> = const { std::cell::RefCell::new(Vec::new()) };
+    static WM_OUT: std::cell::RefCell<Vec<f64>> = const { std::cell::RefCell::new(Vec::new()) };
+    static WM_GM: std::cell::RefCell<Option<crate::water_manager::WaterManager>> =
+        const { std::cell::RefCell::new(None) };
+}
+
+/// Queue one full-map terrain byte (before `probe_wm_new`).
+#[no_mangle]
+pub extern "C" fn probe_wm_map_terrain_byte(v: u32) {
+    WM_MAP_T.with(|t| t.borrow_mut().push(v as u8));
+}
+
+/// Queue one minimap terrain byte (before `probe_wm_new`).
+#[no_mangle]
+pub extern "C" fn probe_wm_mini_terrain_byte(v: u32) {
+    WM_MINI_T.with(|t| t.borrow_mut().push(v as u8));
+}
+
+/// Build both maps and the manager from the queued terrain.
+#[no_mangle]
+pub extern "C" fn probe_wm_new(mw: f64, mh: f64, nw: f64, nh: f64, disable: u32) {
+    let mt = WM_MAP_T.with(|t| std::mem::take(&mut *t.borrow_mut()));
+    let nt = WM_MINI_T.with(|t| std::mem::take(&mut *t.borrow_mut()));
+    let map = GameMap::new(mw, mh, mt, mw * mh);
+    let mini = GameMap::new(nw, nh, nt, nw * nh);
+    let wm = crate::water_manager::WaterManager::new(map, mini, disable != 0);
+    WM_GM.with(|g| *g.borrow_mut() = Some(wm));
+}
+
+/// Push one flat op arg (a, then b).
+#[no_mangle]
+pub extern "C" fn probe_wm_arg(v: f64) {
+    WM_ARGS.with(|t| t.borrow_mut().push(v));
+}
+
+/// Run `WaterManager::run_op(kind, args)`; returns the result-stream length.
+#[no_mangle]
+pub extern "C" fn probe_wm_op(kind: u32) -> usize {
+    let a = WM_ARGS.with(|t| std::mem::take(&mut *t.borrow_mut()));
+    let out = WM_GM.with(|g| {
+        g.borrow_mut()
+            .as_mut()
+            .expect("probe_wm_new must be called first")
+            .run_op(kind as u8, &a)
+    });
+    let len = out.len();
+    WM_OUT.with(|o| *o.borrow_mut() = out);
+    len
+}
+
+#[no_mangle]
+pub extern "C" fn probe_wm_out_at(i: usize) -> f64 {
+    WM_OUT.with(|o| o.borrow()[i])
+}
+
+#[no_mangle]
+pub extern "C" fn probe_wm_version() -> f64 {
+    WM_GM.with(|g| {
+        g.borrow()
+            .as_ref()
+            .expect("probe_wm_new must be called first")
+            .water_graph_version()
+    })
+}
+
+#[no_mangle]
+pub extern "C" fn probe_wm_map_terrain_at(i: usize) -> u32 {
+    WM_GM.with(|g| g.borrow().as_ref().unwrap().debug_map_terrain()[i] as u32)
+}
+
+#[no_mangle]
+pub extern "C" fn probe_wm_map_state_at(i: usize) -> u32 {
+    WM_GM.with(|g| g.borrow().as_ref().unwrap().debug_map_state()[i] as u32)
+}
+
+#[no_mangle]
+pub extern "C" fn probe_wm_mini_terrain_at(i: usize) -> u32 {
+    WM_GM.with(|g| g.borrow().as_ref().unwrap().debug_mini_terrain()[i] as u32)
+}

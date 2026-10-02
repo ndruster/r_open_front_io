@@ -112,6 +112,12 @@ rust/
 │   │   │                          constants, LogSeverity, QuickChat keys,
 │   │   │                          GAME_ID / renderable-name predicates;
 │   │   │                          zod schemas inert except z.enum options)
+│   │   ├── api_schemas.rs         port of ApiSchemas.ts (runtime-value
+│   │   │                          subset: ADMIN_ROLES / PlayerStatsGameModes
+│   │   │                          / the two filter arrays, ten z.enum option
+│   │   │                          arrays, isAdminRole / isTemporaryUsername /
+│   │   │                          isVerifiedUsername / isGrantedSubscription;
+│   │   │                          zod schemas inert, Base64 stubbed)
 │   │   ├── wasm_probe.rs          `extern "C"` surface, feature-gated
 │   │   └── pathfinding/
 │   │       ├── mod.rs
@@ -878,6 +884,29 @@ desync, not a rounding nit. Two things enforce that here:
     `\uXXXX` text) are ported verbatim. `LobbyInfoEvent` /
     `GroupTokenEvent` are pure field-storage classes and are not ported.
     12 scenarios (1,462 result tokens) over kinds 0–11 of the sc runner.
+48. **`ApiSchemas.ts`** (`api_schemas`) — the runtime-value subset of the API
+    wire layer: the four data constants (`ADMIN_ROLES`, `PlayerStatsGameModes`
+    captured as its runtime *string values* — `"Free For All"` / `"Team"` /
+    `"Humans Vs Nations"`, the bare `HumansVsNations` import included — and
+    the two player-game filter arrays), the ten `z.enum` option arrays
+    (`UsernameStatus` 4 / `BareClaim` 3 / `TribeNameStatus` 4 /
+    `PlayerGameModeFilter` 4 / `PlayerGameTypeFilter` 3 / `PlayerGameResult`
+    3 / `PaymentsProvider` 2 / `PaymentsKind` 3 / `PaymentsHandoff` 3 /
+    `SteamOrderResolution` 4), and the four pure predicates: `isAdminRole`
+    (strict `===` against the two literals), `isTemporaryUsername`
+    (`/^TEMPORARY\d{4}$/`, no `u` flag → UTF-16 code units, `\d` ASCII-only
+    so Arabic-Indic digits miss), `isVerifiedUsername` (no `.` code unit and
+    not a TEMPORARY rename), and `isGrantedSubscription` (the three-state
+    provider rule — `null` = granted true, a string rail false, a missing
+    field false, no subscription false — modelled through the capture's sub
+    encoding `[0]`=undefined / `[1,(str)provider]` / `[2]`=null). The
+    `z.object(...)` declarations are inert at capture time except `z.enum`
+    (the same functional shim as `schemas`; `.unwrap()` / `.pick()` /
+    `.extend()` / `.refine()` / `.transform()` / `.or()` / `.default()` /
+    `.partialRecord()` chains ride the Proxy), `TokenPayloadSchema`'s
+    refine/transform callbacks reference `base64urlToUuid` (a `jose`
+    dependency) and never run — the loader stubs the import. 16 scenarios
+    (400 result tokens) over kinds 0–15 of the as runner.
 
 Regenerate whenever a ported source changes:
 
@@ -911,7 +940,7 @@ node rust/tools/run_wasm_parity.mjs
 
 `wasm-probe` exposes the ported functions through `extern "C"` scalar
 entrypoints (`src/wasm_probe.rs`); the runner imports `data/vectors.json` and
-compares every value. Last run: **102,226 comparisons, all bit-identical**.
+compares every value. Last run: **102,626 comparisons, all bit-identical**.
 
 ### Windows: the linker environment
 

@@ -4151,3 +4151,31 @@ pub extern "C" fn probe_sc_op(kind: u32) -> usize {
 pub extern "C" fn probe_sc_out_at(i: usize) -> f64 {
     SC_OUT.with(|o| o.borrow()[i])
 }
+
+// ====== P46: ApiSchemas.ts runtime values (api_schemas) ========================
+
+thread_local! {
+    static AS_ARGS: std::cell::RefCell<Vec<f64>> = const { std::cell::RefCell::new(Vec::new()) };
+    static AS_OUT: std::cell::RefCell<Vec<f64>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
+/// Push one flat token (string length, code unit…).
+#[no_mangle]
+pub extern "C" fn probe_as_arg(v: f64) {
+    AS_ARGS.with(|t| t.borrow_mut().push(v));
+}
+
+/// Run `api_schemas::run_op(kind, args)`; returns the result-stream length.
+#[no_mangle]
+pub extern "C" fn probe_as_op(kind: u32) -> usize {
+    let a = AS_ARGS.with(|t| std::mem::take(&mut *t.borrow_mut()));
+    let out = crate::api_schemas::run_op(kind as u8, &a);
+    let len = out.len();
+    AS_OUT.with(|o| *o.borrow_mut() = out);
+    len
+}
+
+#[no_mangle]
+pub extern "C" fn probe_as_out_at(i: usize) -> f64 {
+    AS_OUT.with(|o| o.borrow()[i])
+}

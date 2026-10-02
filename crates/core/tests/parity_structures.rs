@@ -2378,6 +2378,22 @@ fn replay_schemas_scenarios() {
     }
 }
 
+// ApiSchemas.ts: replay the data-constant / z.enum option-array dumps and the
+// isAdminRole / isTemporaryUsername / isVerifiedUsername /
+// isGrantedSubscription predicate batches through the shared `run_op` runner
+// and compare the flat token streams (UTF-16 code-unit exact).
+#[test]
+fn replay_apischemas_scenarios() {
+    use openfront_core::api_schemas::run_op;
+    for s in vectors::AS_SCENARIOS {
+        let got = run_op(s.kind, s.args);
+        assert_eq!(got.len(), s.res.len(), "{} res len: got {got:?} want {:?}", s.name, s.res);
+        for (j, (g, w)) in got.iter().zip(s.res.iter()).enumerate() {
+            assert!(obj_is(*g, *w), "{} res[{j}]: got {g} want {w}", s.name);
+        }
+    }
+}
+
 // pathfinding/PathFinder.ts WaterPathMemo: replay the scripted-inner memo
 // scenarios (miss / hit / null accounting / LRU re-insert / waterVersion
 // clears / array-from passthrough / over-budget eviction / key collision /

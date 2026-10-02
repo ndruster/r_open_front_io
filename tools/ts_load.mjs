@@ -1481,6 +1481,84 @@ function prepare(rel) {
     );
   }
 
+  if (rel.endsWith("core/ApiSchemas.ts")) {
+    // The runtime-value subset (data constants, z.enum .options, the four
+    // pure predicates) rides on the same functional zod shim as
+    // core/Schemas: enum keeps real options / exclude, everything else falls
+    // through to the inert Proxy - which also swallows the .unwrap() /
+    // .pick() / .extend() / .refine() / .transform() / .or() / .default() /
+    // .catch() / .iso.datetime() / .partialRecord() chains this file builds
+    // its (unported) schema declarations with. The Base64 import pulls in
+    // `jose`, but base64urlToUuid is only referenced inside the
+    // TokenPayloadSchema refine / transform callbacks the capture never
+    // invokes -> replace the import with a stub. The Schemas / StatsSchemas
+    // / Game value imports redirect to prepared copies.
+    out = must(
+      out,
+      'import { z } from "zod";\n',
+      "const z = new Proxy(function () {}, {\n" +
+        "  get: (_t, k) => {\n" +
+        "    if (k === \"enum\") {\n" +
+        "      return (a) => {\n" +
+        "        const base = {\n" +
+        "          options: a,\n" +
+        "          exclude: (b) => ({ options: a.filter((o) => !b.includes(o)) }),\n" +
+        "        };\n" +
+        "        return new Proxy(base, { get: (t, kk) => (kk in t ? t[kk] : z), apply: () => z });\n" +
+        "      };\n" +
+        "    }\n" +
+        "    return z;\n" +
+        "  },\n" +
+        "  apply: () => z,\n" +
+        "});\n",
+      "ApiSchemas zod import",
+    );
+    out = must(
+      out,
+      'import { base64urlToUuid } from "./Base64";\n',
+      "function base64urlToUuid(_encoded: string): string {\n" +
+        "  return null as unknown as string;\n" +
+        "}\n",
+      "ApiSchemas Base64 import",
+    );
+    const apiSchemasRel = "src/core/Schemas.ts";
+    if (!prepared.has(apiSchemasRel)) prepare(apiSchemasRel);
+    out = must(
+      out,
+      'import { ClanTagSchema } from "./Schemas";\n',
+      `import { ClanTagSchema } from "./${prepared.get(apiSchemasRel)}";\n`,
+      "ApiSchemas Schemas import",
+    );
+    const apiStatsRel = "src/core/StatsSchemas.ts";
+    if (!prepared.has(apiStatsRel)) prepare(apiStatsRel);
+    out = must(
+      out,
+      'import { BigIntStringSchema, PlayerStatsSchema } from "./StatsSchemas";\n',
+      `import { BigIntStringSchema, PlayerStatsSchema } from "./${prepared.get(apiStatsRel)}";\n`,
+      "ApiSchemas StatsSchemas import",
+    );
+    if (!prepared.has("src/core/game/Game.ts")) prepare("src/core/game/Game.ts");
+    out = must(
+      out,
+      "import {\n" +
+        "  Difficulty,\n" +
+        "  GameMode,\n"
+        +
+        "  GameType,\n" +
+        "  HumansVsNations,\n" +
+        "  RankedType,\n" +
+        '} from "./game/Game";\n',
+      "import {\n" +
+        "  Difficulty,\n" +
+        "  GameMode,\n" +
+        "  GameType,\n" +
+        "  HumansVsNations,\n" +
+        "  RankedType,\n" +
+        `} from "./${prepared.get("src/core/game/Game.ts")}";\n`,
+      "ApiSchemas Game import",
+    );
+  }
+
   if (rel.endsWith("game/Maps.gen.ts")) {
     // Node's strip-only TS loader rejects `export enum`. GameMapType is a
     // string enum (member name = the folder id, value = the canonical wire

@@ -176,6 +176,14 @@
 //!   stats index constants, and the module-private `toBigInt` coercion; the
 //!   zod/zbin schema declarations are inert, and `unitTypeToBoatUnit` is
 //!   commented out upstream)
+//! * [`api_schemas`] — the runtime-value subset of `src/core/ApiSchemas.ts`
+//!   (the data constants `ADMIN_ROLES` / `PlayerStatsGameModes` / the two
+//!   player game filter arrays, the eight `z.enum` option arrays, and the
+//!   predicates `isAdminRole` / `isTemporaryUsername` / `isVerifiedUsername`
+//!   / `isGrantedSubscription` with their probed no-`u`-flag regex and
+//!   three-state provider semantics; the zod schema declarations are inert
+//!   and the `TokenPayloadSchema` refine/transform callbacks are never
+//!   invoked — neither is ported)
 //!
 //! Two rules govern every future port into this crate:
 //!
@@ -192,6 +200,7 @@
 //! file changes.
 
 pub mod anon_names;
+pub mod api_schemas;
 pub mod asset_urls;
 pub mod close_codes;
 pub mod cosmetic_schemas;

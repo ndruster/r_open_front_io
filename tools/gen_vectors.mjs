@@ -174,6 +174,7 @@ const NE = await loadTs("src/core/execution/nation/NationEmojiBehavior.ts");
 const Cosmetic = await loadTs("src/core/CosmeticSchemas.ts");
 const St = await loadTs("src/core/StatsSchemas.ts");
 const Sc = await loadTs("src/core/Schemas.ts");
+const Api = await loadTs("src/core/ApiSchemas.ts");
 const PF = await loadTs("src/core/pathfinding/PathFinder.ts");
 const { AStar } = await loadTs("src/core/pathfinding/algorithms/AStar.ts");
 const { AStarRail } = await loadTs("src/core/pathfinding/algorithms/AStar.Rail.ts");
@@ -2981,6 +2982,181 @@ captureSC("sc_has_alnum_batch", 11, [scHasCases.length, scHasCases.map(encS)], [
   scHasCases.length,
   ...scHasCases.map((s) => (Sc.RENDERABLE_NAME_HAS_ALNUM_RE.test(s) ? 1 : 0)),
 ]);
+
+// --- ApiSchemas scenario runner ----------------------------------------------
+// Exercises the runtime-value subset of src/core/ApiSchemas.ts: the data
+// constants, the z.enum option arrays (read through the functional zod shim),
+// and the four pure predicates. The Rust twin is `api_schemas::run_op`.
+//
+// kind table:
+//   0  [0] -> [2,(str)*2]            ADMIN_ROLES dump
+//   1  [0] -> [3,(str)*3]            PlayerStatsGameModes dump (string values)
+//   2  [0] -> [4,(str)*4]            PlayerGameModeFilters dump
+//   3  [0] -> [3,(str)*3]            PlayerGameTypeFilters dump
+//   4  [0] -> [4,(str)*4]            UsernameStatusSchema.options dump
+//   5  [0] -> [3,(str)*3]            BareClaimSchema.options dump
+//   6  [0] -> [4,(str)*4]            TribeNameStatusSchema.options dump
+//   7  [0] -> [3,(str)*3]            PlayerGameResultSchema.options dump
+//   8  [0] -> [2,(str)*2]            PaymentsProviderSchema.options dump
+//   9  [0] -> [3,(str)*3]            PaymentsKindSchema.options dump
+//   10 [0] -> [3,(str)*3]            PaymentsHandoffSchema.options dump
+//   11 [0] -> [4,(str)*4]            SteamOrderResolutionSchema.options dump
+//   12 [n,(str)*n] -> [n,(0/1)*n]    isAdminRole batch
+//   13 [n,(str)*n] -> [n,(0/1)*n]    isTemporaryUsername batch
+//   14 [n,(str)*n] -> [n,(0/1)*n]    isVerifiedUsername batch
+//   15 [n,(enc sub)*n] -> [n,(0/1)*n] isGrantedSubscription batch
+//        enc sub: [0]=undefined, [1,(str)provider]=provider string value,
+//        [2]=provider is null
+const asSchemasScenarios = [];
+function captureAS(name, kind, args, res) {
+  asSchemasScenarios.push({
+    name,
+    kind,
+    args: args.flat(Infinity).map(uenc),
+    res: res.flat(Infinity).map(uenc),
+  });
+}
+
+// kinds 0-3: the data constants (declaration order; the GameModes dump
+// captures the actual string values, not the enum member names).
+captureAS("as_admin_roles", 0, [0], [
+  Api.ADMIN_ROLES.length,
+  ...Api.ADMIN_ROLES.map(encS),
+]);
+captureAS("as_player_stats_game_modes", 1, [0], [
+  Api.PlayerStatsGameModes.length,
+  ...Api.PlayerStatsGameModes.map(encS),
+]);
+captureAS("as_player_game_mode_filters", 2, [0], [
+  Api.PlayerGameModeFilters.length,
+  ...Api.PlayerGameModeFilters.map(encS),
+]);
+captureAS("as_player_game_type_filters", 3, [0], [
+  Api.PlayerGameTypeFilters.length,
+  ...Api.PlayerGameTypeFilters.map(encS),
+]);
+
+// kinds 4-11: the z.enum option arrays.
+captureAS("as_username_status_options", 4, [0], [
+  Api.UsernameStatusSchema.options.length,
+  ...Api.UsernameStatusSchema.options.map(encS),
+]);
+captureAS("as_bare_claim_options", 5, [0], [
+  Api.BareClaimSchema.options.length,
+  ...Api.BareClaimSchema.options.map(encS),
+]);
+captureAS("as_tribe_name_status_options", 6, [0], [
+  Api.TribeNameStatusSchema.options.length,
+  ...Api.TribeNameStatusSchema.options.map(encS),
+]);
+captureAS("as_player_game_result_options", 7, [0], [
+  Api.PlayerGameResultSchema.options.length,
+  ...Api.PlayerGameResultSchema.options.map(encS),
+]);
+captureAS("as_payments_provider_options", 8, [0], [
+  Api.PaymentsProviderSchema.options.length,
+  ...Api.PaymentsProviderSchema.options.map(encS),
+]);
+captureAS("as_payments_kind_options", 9, [0], [
+  Api.PaymentsKindSchema.options.length,
+  ...Api.PaymentsKindSchema.options.map(encS),
+]);
+captureAS("as_payments_handoff_options", 10, [0], [
+  Api.PaymentsHandoffSchema.options.length,
+  ...Api.PaymentsHandoffSchema.options.map(encS),
+]);
+captureAS("as_steam_order_resolution_options", 11, [0], [
+  Api.SteamOrderResolutionSchema.options.length,
+  ...Api.SteamOrderResolutionSchema.options.map(encS),
+]);
+
+// kind 12: isAdminRole - the two admin roles plus every other wire role,
+// case-sensitivity negatives, and the empty string.
+const asAdminRoles = [
+  "admin",
+  "root",
+  "mod",
+  "flagged",
+  "banned",
+  "",
+  "Admin",
+  "ADMIN",
+];
+captureAS("as_is_admin_role_batch", 12, [
+  asAdminRoles.length,
+  asAdminRoles.map(encS),
+], [
+  asAdminRoles.length,
+  ...asAdminRoles.map((s) => (Api.isAdminRole(s) ? 1 : 0)),
+]);
+
+// kind 13: isTemporaryUsername - the exact TEMPORARY#### shape plus the
+// boundary cases (3/5 digits, lowercase, non-ASCII digits that JS \d without
+// the u flag does not match, interior space, prefix/suffix, empty).
+const asTempNames = [
+  "TEMPORARY1234",
+  "TEMPORARY123",
+  "TEMPORARY12345",
+  "temporary1234",
+  "TEMPORARY١٢٣٤",
+  "TEMPORARY12 4",
+  "XTEMPORARY1234",
+  "TEMPORARY1234X",
+  "",
+];
+captureAS("as_is_temporary_username_batch", 13, [
+  asTempNames.length,
+  asTempNames.map(encS),
+], [
+  asTempNames.length,
+  ...asTempNames.map((s) => (Api.isTemporaryUsername(s) ? 1 : 0)),
+]);
+
+// kind 14: isVerifiedUsername - bare names true, dotted / TEMPORARY####
+// renames false, the dot-only and empty edges.
+const asVerifiedNames = [
+  "Ninja",
+  "Ninja.4471",
+  "TEMPORARY1234",
+  "TEMPORARY1234.5",
+  "a.b.",
+  ".",
+  "",
+];
+captureAS("as_is_verified_username_batch", 14, [
+  asVerifiedNames.length,
+  asVerifiedNames.map(encS),
+], [
+  asVerifiedNames.length,
+  ...asVerifiedNames.map((s) => (Api.isVerifiedUsername(s) ? 1 : 0)),
+]);
+
+// kind 15: isGrantedSubscription - the three-state provider rule: null =
+// granted (true), a string rail = paid (false), a missing provider field =
+// the pre-feature server (false), and no subscription at all (false).
+// enc sub: [0]=undefined, [1,(str)provider]=string, [2]=null.
+const asSubs = [
+  [0],
+  [2],
+  [1, ...encS("steam")],
+  [1, ...encS("stripe")],
+  [0],
+  [2],
+  [2],
+  [1, ...encS("future_rail")],
+];
+captureAS("as_is_granted_subscription_batch", 15, [
+  asSubs.length,
+  asSubs,
+], [
+  asSubs.length,
+  ...asSubs.map((e) => {
+    const sub =
+      e[0] === 0 ? undefined : e[0] === 2 ? { provider: null } : { provider: String.fromCharCode(...e.slice(2)) };
+    return Api.isGrantedSubscription(sub) ? 1 : 0;
+  }),
+]);
+
 
 // --- WaterPathMemo scenario runner -------------------------------------------
 // Exercises the real PathFinder.ts WaterPathMemo against a scripted inner
@@ -6606,6 +6782,7 @@ const structures = {
   cosmeticschemas: csScenarios,
   statschemas: stScenarios,
   schemas: scScenarios,
+  apischemas: asSchemasScenarios,
   waterpathmemo: wpmScenarios,
   astar: asScenarios,
   rail: railScenarios,
@@ -8916,6 +9093,38 @@ for (const s of structures.schemas) {
 }
 L.push("pub const SC_SCENARIOS: &[ScScenario] = &[");
 for (const s of structures.schemas) L.push(`    ${s.name.toUpperCase()},`);
+L.push("];");
+L.push("");
+
+L.push("/// ApiSchemas.ts scenario: one `api_schemas::run_op(kind, args)` call.");
+L.push("/// kind 0 dumps ADMIN_ROLES, 1 PlayerStatsGameModes (string values), 2");
+L.push("/// PlayerGameModeFilters, 3 PlayerGameTypeFilters, 4-11 the z.enum");
+L.push("/// option arrays (UsernameStatus, BareClaim, TribeNameStatus,");
+L.push("/// PlayerGameResult, PaymentsProvider, PaymentsKind, PaymentsHandoff,");
+L.push("/// SteamOrderResolution), 12 maps a string batch through isAdminRole,");
+L.push("/// 13 through isTemporaryUsername, 14 through isVerifiedUsername, 15");
+L.push("/// through isGrantedSubscription (sub encoding [0]=undefined,");
+L.push("/// [1,(str)provider]=string, [2]=provider null). Strings cross as");
+L.push("/// `[len, u0, ..]` UTF-16 units; the boolean batches emit [n,(0/1)*n].");
+L.push("pub struct AsScenario {");
+L.push("    pub name: &'static str,");
+L.push("    pub kind: u8,");
+L.push("    pub args: &'static [f64],");
+L.push("    pub res: &'static [f64],");
+L.push("}");
+L.push("");
+for (const s of structures.apischemas) {
+  const id = s.name.toUpperCase();
+  L.push(`pub const ${id}: AsScenario = AsScenario {`);
+  L.push(`    name: "${s.name}",`);
+  L.push(`    kind: ${s.kind}u8,`);
+  L.push(`    args: &[${s.args.map(utilResLit).join(", ")}],`);
+  L.push(`    res: &[${s.res.map(utilResLit).join(", ")}],`);
+  L.push("};");
+  L.push("");
+}
+L.push("pub const AS_SCENARIOS: &[AsScenario] = &[");
+for (const s of structures.apischemas) L.push(`    ${s.name.toUpperCase()},`);
 L.push("];");
 L.push("");
 

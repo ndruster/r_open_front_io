@@ -38791,6 +38791,154 @@ pub const SC_SCENARIOS: &[ScScenario] = &[
     SC_HAS_ALNUM_BATCH,
 ];
 
+/// ApiSchemas.ts scenario: one `api_schemas::run_op(kind, args)` call.
+/// kind 0 dumps ADMIN_ROLES, 1 PlayerStatsGameModes (string values), 2
+/// PlayerGameModeFilters, 3 PlayerGameTypeFilters, 4-11 the z.enum
+/// option arrays (UsernameStatus, BareClaim, TribeNameStatus,
+/// PlayerGameResult, PaymentsProvider, PaymentsKind, PaymentsHandoff,
+/// SteamOrderResolution), 12 maps a string batch through isAdminRole,
+/// 13 through isTemporaryUsername, 14 through isVerifiedUsername, 15
+/// through isGrantedSubscription (sub encoding [0]=undefined,
+/// [1,(str)provider]=string, [2]=provider null). Strings cross as
+/// `[len, u0, ..]` UTF-16 units; the boolean batches emit [n,(0/1)*n].
+pub struct AsScenario {
+    pub name: &'static str,
+    pub kind: u8,
+    pub args: &'static [f64],
+    pub res: &'static [f64],
+}
+
+pub const AS_ADMIN_ROLES: AsScenario = AsScenario {
+    name: "as_admin_roles",
+    kind: 0u8,
+    args: &[0f64],
+    res: &[2f64, 5f64, 97f64, 100f64, 109f64, 105f64, 110f64, 4f64, 114f64, 111f64, 111f64, 116f64],
+};
+
+pub const AS_PLAYER_STATS_GAME_MODES: AsScenario = AsScenario {
+    name: "as_player_stats_game_modes",
+    kind: 1u8,
+    args: &[0f64],
+    res: &[3f64, 12f64, 70f64, 114f64, 101f64, 101f64, 32f64, 70f64, 111f64, 114f64, 32f64, 65f64, 108f64, 108f64, 4f64, 84f64, 101f64, 97f64, 109f64, 17f64, 72f64, 117f64, 109f64, 97f64, 110f64, 115f64, 32f64, 86f64, 115f64, 32f64, 78f64, 97f64, 116f64, 105f64, 111f64, 110f64, 115f64],
+};
+
+pub const AS_PLAYER_GAME_MODE_FILTERS: AsScenario = AsScenario {
+    name: "as_player_game_mode_filters",
+    kind: 2u8,
+    args: &[0f64],
+    res: &[4f64, 3f64, 102f64, 102f64, 97f64, 4f64, 116f64, 101f64, 97f64, 109f64, 3f64, 104f64, 118f64, 110f64, 6f64, 114f64, 97f64, 110f64, 107f64, 101f64, 100f64],
+};
+
+pub const AS_PLAYER_GAME_TYPE_FILTERS: AsScenario = AsScenario {
+    name: "as_player_game_type_filters",
+    kind: 3u8,
+    args: &[0f64],
+    res: &[3f64, 6f64, 112f64, 117f64, 98f64, 108f64, 105f64, 99f64, 7f64, 112f64, 114f64, 105f64, 118f64, 97f64, 116f64, 101f64, 12f64, 115f64, 105f64, 110f64, 103f64, 108f64, 101f64, 112f64, 108f64, 97f64, 121f64, 101f64, 114f64],
+};
+
+pub const AS_USERNAME_STATUS_OPTIONS: AsScenario = AsScenario {
+    name: "as_username_status_options",
+    kind: 4u8,
+    args: &[0f64],
+    res: &[4f64, 9f64, 117f64, 110f64, 99f64, 108f64, 97f64, 105f64, 109f64, 101f64, 100f64, 7f64, 99f64, 108f64, 97f64, 105f64, 109f64, 101f64, 100f64, 7f64, 112f64, 114f64, 101f64, 109f64, 105f64, 117f64, 109f64, 10f64, 105f64, 110f64, 100f64, 101f64, 102f64, 105f64, 110f64, 105f64, 116f64, 101f64],
+};
+
+pub const AS_BARE_CLAIM_OPTIONS: AsScenario = AsScenario {
+    name: "as_bare_claim_options",
+    kind: 5u8,
+    args: &[0f64],
+    res: &[3f64, 7f64, 99f64, 108f64, 97f64, 105f64, 109f64, 101f64, 100f64, 11f64, 117f64, 110f64, 97f64, 118f64, 97f64, 105f64, 108f64, 97f64, 98f64, 108f64, 101f64, 12f64, 110f64, 111f64, 116f64, 95f64, 101f64, 108f64, 105f64, 103f64, 105f64, 98f64, 108f64, 101f64],
+};
+
+pub const AS_TRIBE_NAME_STATUS_OPTIONS: AsScenario = AsScenario {
+    name: "as_tribe_name_status_options",
+    kind: 6u8,
+    args: &[0f64],
+    res: &[4f64, 7f64, 112f64, 101f64, 110f64, 100f64, 105f64, 110f64, 103f64, 4f64, 108f64, 105f64, 118f64, 101f64, 8f64, 114f64, 101f64, 106f64, 101f64, 99f64, 116f64, 101f64, 100f64, 7f64, 114f64, 101f64, 118f64, 111f64, 107f64, 101f64, 100f64],
+};
+
+pub const AS_PLAYER_GAME_RESULT_OPTIONS: AsScenario = AsScenario {
+    name: "as_player_game_result_options",
+    kind: 7u8,
+    args: &[0f64],
+    res: &[3f64, 7f64, 118f64, 105f64, 99f64, 116f64, 111f64, 114f64, 121f64, 6f64, 100f64, 101f64, 102f64, 101f64, 97f64, 116f64, 10f64, 105f64, 110f64, 99f64, 111f64, 109f64, 112f64, 108f64, 101f64, 116f64, 101f64],
+};
+
+pub const AS_PAYMENTS_PROVIDER_OPTIONS: AsScenario = AsScenario {
+    name: "as_payments_provider_options",
+    kind: 8u8,
+    args: &[0f64],
+    res: &[2f64, 5f64, 115f64, 116f64, 101f64, 97f64, 109f64, 6f64, 115f64, 116f64, 114f64, 105f64, 112f64, 101f64],
+};
+
+pub const AS_PAYMENTS_KIND_OPTIONS: AsScenario = AsScenario {
+    name: "as_payments_kind_options",
+    kind: 9u8,
+    args: &[0f64],
+    res: &[3f64, 13f64, 99f64, 117f64, 114f64, 114f64, 101f64, 110f64, 99f64, 121f64, 95f64, 112f64, 97f64, 99f64, 107f64, 15f64, 99f64, 117f64, 115f64, 116f64, 111f64, 109f64, 95f64, 99f64, 117f64, 114f64, 114f64, 101f64, 110f64, 99f64, 121f64, 17f64, 115f64, 117f64, 98f64, 115f64, 99f64, 114f64, 105f64, 112f64, 116f64, 105f64, 111f64, 110f64, 95f64, 116f64, 105f64, 101f64, 114f64],
+};
+
+pub const AS_PAYMENTS_HANDOFF_OPTIONS: AsScenario = AsScenario {
+    name: "as_payments_handoff_options",
+    kind: 10u8,
+    args: &[0f64],
+    res: &[3f64, 8f64, 114f64, 101f64, 100f64, 105f64, 114f64, 101f64, 99f64, 116f64, 14f64, 99f64, 108f64, 105f64, 101f64, 110f64, 116f64, 95f64, 111f64, 118f64, 101f64, 114f64, 108f64, 97f64, 121f64, 13f64, 99f64, 108f64, 105f64, 101f64, 110f64, 116f64, 95f64, 115f64, 101f64, 99f64, 114f64, 101f64, 116f64],
+};
+
+pub const AS_STEAM_ORDER_RESOLUTION_OPTIONS: AsScenario = AsScenario {
+    name: "as_steam_order_resolution_options",
+    kind: 11u8,
+    args: &[0f64],
+    res: &[4f64, 7f64, 115f64, 101f64, 116f64, 116f64, 108f64, 101f64, 100f64, 7f64, 101f64, 120f64, 112f64, 105f64, 114f64, 101f64, 100f64, 4f64, 111f64, 112f64, 101f64, 110f64, 10f64, 117f64, 110f64, 114f64, 101f64, 115f64, 111f64, 108f64, 118f64, 101f64, 100f64],
+};
+
+pub const AS_IS_ADMIN_ROLE_BATCH: AsScenario = AsScenario {
+    name: "as_is_admin_role_batch",
+    kind: 12u8,
+    args: &[8f64, 5f64, 97f64, 100f64, 109f64, 105f64, 110f64, 4f64, 114f64, 111f64, 111f64, 116f64, 3f64, 109f64, 111f64, 100f64, 7f64, 102f64, 108f64, 97f64, 103f64, 103f64, 101f64, 100f64, 6f64, 98f64, 97f64, 110f64, 110f64, 101f64, 100f64, 0f64, 5f64, 65f64, 100f64, 109f64, 105f64, 110f64, 5f64, 65f64, 68f64, 77f64, 73f64, 78f64],
+    res: &[8f64, 1f64, 1f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64],
+};
+
+pub const AS_IS_TEMPORARY_USERNAME_BATCH: AsScenario = AsScenario {
+    name: "as_is_temporary_username_batch",
+    kind: 13u8,
+    args: &[9f64, 13f64, 84f64, 69f64, 77f64, 80f64, 79f64, 82f64, 65f64, 82f64, 89f64, 49f64, 50f64, 51f64, 52f64, 12f64, 84f64, 69f64, 77f64, 80f64, 79f64, 82f64, 65f64, 82f64, 89f64, 49f64, 50f64, 51f64, 14f64, 84f64, 69f64, 77f64, 80f64, 79f64, 82f64, 65f64, 82f64, 89f64, 49f64, 50f64, 51f64, 52f64, 53f64, 13f64, 116f64, 101f64, 109f64, 112f64, 111f64, 114f64, 97f64, 114f64, 121f64, 49f64, 50f64, 51f64, 52f64, 13f64, 84f64, 69f64, 77f64, 80f64, 79f64, 82f64, 65f64, 82f64, 89f64, 1633f64, 1634f64, 1635f64, 1636f64, 13f64, 84f64, 69f64, 77f64, 80f64, 79f64, 82f64, 65f64, 82f64, 89f64, 49f64, 50f64, 32f64, 52f64, 14f64, 88f64, 84f64, 69f64, 77f64, 80f64, 79f64, 82f64, 65f64, 82f64, 89f64, 49f64, 50f64, 51f64, 52f64, 14f64, 84f64, 69f64, 77f64, 80f64, 79f64, 82f64, 65f64, 82f64, 89f64, 49f64, 50f64, 51f64, 52f64, 88f64, 0f64],
+    res: &[9f64, 1f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64],
+};
+
+pub const AS_IS_VERIFIED_USERNAME_BATCH: AsScenario = AsScenario {
+    name: "as_is_verified_username_batch",
+    kind: 14u8,
+    args: &[7f64, 5f64, 78f64, 105f64, 110f64, 106f64, 97f64, 10f64, 78f64, 105f64, 110f64, 106f64, 97f64, 46f64, 52f64, 52f64, 55f64, 49f64, 13f64, 84f64, 69f64, 77f64, 80f64, 79f64, 82f64, 65f64, 82f64, 89f64, 49f64, 50f64, 51f64, 52f64, 15f64, 84f64, 69f64, 77f64, 80f64, 79f64, 82f64, 65f64, 82f64, 89f64, 49f64, 50f64, 51f64, 52f64, 46f64, 53f64, 4f64, 97f64, 46f64, 98f64, 46f64, 1f64, 46f64, 0f64],
+    res: &[7f64, 1f64, 0f64, 0f64, 0f64, 0f64, 0f64, 1f64],
+};
+
+pub const AS_IS_GRANTED_SUBSCRIPTION_BATCH: AsScenario = AsScenario {
+    name: "as_is_granted_subscription_batch",
+    kind: 15u8,
+    args: &[8f64, 0f64, 2f64, 1f64, 5f64, 115f64, 116f64, 101f64, 97f64, 109f64, 1f64, 6f64, 115f64, 116f64, 114f64, 105f64, 112f64, 101f64, 0f64, 2f64, 2f64, 1f64, 11f64, 102f64, 117f64, 116f64, 117f64, 114f64, 101f64, 95f64, 114f64, 97f64, 105f64, 108f64],
+    res: &[8f64, 0f64, 1f64, 0f64, 0f64, 0f64, 1f64, 1f64, 0f64],
+};
+
+pub const AS_SCENARIOS: &[AsScenario] = &[
+    AS_ADMIN_ROLES,
+    AS_PLAYER_STATS_GAME_MODES,
+    AS_PLAYER_GAME_MODE_FILTERS,
+    AS_PLAYER_GAME_TYPE_FILTERS,
+    AS_USERNAME_STATUS_OPTIONS,
+    AS_BARE_CLAIM_OPTIONS,
+    AS_TRIBE_NAME_STATUS_OPTIONS,
+    AS_PLAYER_GAME_RESULT_OPTIONS,
+    AS_PAYMENTS_PROVIDER_OPTIONS,
+    AS_PAYMENTS_KIND_OPTIONS,
+    AS_PAYMENTS_HANDOFF_OPTIONS,
+    AS_STEAM_ORDER_RESOLUTION_OPTIONS,
+    AS_IS_ADMIN_ROLE_BATCH,
+    AS_IS_TEMPORARY_USERNAME_BATCH,
+    AS_IS_VERIFIED_USERNAME_BATCH,
+    AS_IS_GRANTED_SUBSCRIPTION_BATCH,
+];
+
 /// pathfinding/PathFinder.ts WaterPathMemo scenario: one
 /// `water_path_memo::run_op(kind, args)` call. kind 0 replays the
 /// whole scenario (scripted inner mock + op sequence) and emits the

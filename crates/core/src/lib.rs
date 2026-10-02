@@ -180,6 +180,14 @@
 //!   stats index constants, and the module-private `toBigInt` coercion; the
 //!   zod/zbin schema declarations are inert, and `unitTypeToBoatUnit` is
 //!   commented out upstream)
+//! * [`stats_impl`] — `src/core/game/StatsImpl.ts` (the pure bigint stats
+//!   accumulator: `_bigint`'s `Math.floor` + `BigInt(NaN/±Inf)` throw matrix,
+//!   the `??=` / `while`-grow array primitives, the boats/bombs/units
+//!   string-keyed objects with JS insertion order, the `conquest_by_type`
+//!   lookup, the `recordTickSample` cross-multiplied drawdown update, the
+//!   first-write-wins `killedBy` / `deathPosition` / `kills`, and the MIRV
+//!   launch counter; the `Player` facade is a scripted mock whose call trace
+//!   rides in the res stream, same pattern as `nation_utils`)
 //! * [`api_schemas`] — the runtime-value subset of `src/core/ApiSchemas.ts`
 //!   (the data constants `ADMIN_ROLES` / `PlayerStatsGameModes` / the two
 //!   player game filter arrays, the eight `z.enum` option arrays, and the
@@ -250,6 +258,7 @@ pub mod railroad;
 pub mod railroad_spatial_grid;
 pub mod schemas;
 pub mod server_list;
+pub mod stats_impl;
 pub mod stats_schemas;
 pub mod team_assignment;
 pub mod terra_nullius;

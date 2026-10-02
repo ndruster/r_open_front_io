@@ -4266,3 +4266,31 @@ pub extern "C" fn probe_tni_op(kind: u32) -> usize {
 pub extern "C" fn probe_tni_out_at(i: usize) -> f64 {
     TNI_OUT.with(|o| o.borrow()[i])
 }
+
+// ====== P50: game/StatsImpl.ts (stats_impl) ===================================
+
+thread_local! {
+    static SI_ARGS: std::cell::RefCell<Vec<f64>> = const { std::cell::RefCell::new(Vec::new()) };
+    static SI_OUT: std::cell::RefCell<Vec<f64>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
+/// Push one flat token (player id, string length, code unit…).
+#[no_mangle]
+pub extern "C" fn probe_si_arg(v: f64) {
+    SI_ARGS.with(|t| t.borrow_mut().push(v));
+}
+
+/// Run `stats_impl::run_op(kind, args)`; returns the result-stream length.
+#[no_mangle]
+pub extern "C" fn probe_si_op(kind: u32) -> usize {
+    let a = SI_ARGS.with(|t| std::mem::take(&mut *t.borrow_mut()));
+    let out = crate::stats_impl::run_op(kind as u8, &a);
+    let len = out.len();
+    SI_OUT.with(|o| *o.borrow_mut() = out);
+    len
+}
+
+#[no_mangle]
+pub extern "C" fn probe_si_out_at(i: usize) -> f64 {
+    SI_OUT.with(|o| o.borrow()[i])
+}

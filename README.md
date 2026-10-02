@@ -135,6 +135,9 @@ rust/
 │   │   ├── terra_nullius.rs       port of game/TerraNulliusImpl.ts (stateless
 │   │   │                          neutral player: smallID=0 / clientID
 │   │   │                          literal / id()=null / isPlayer()=false)
+│   │   ├── stats_impl.rs          port of game/StatsImpl.ts (pure bigint
+│   │   │                          stats accumulator; Player facade
+│   │   │                          scripted-mocked with a pinned call trace)
 │   │   ├── wasm_probe.rs          `extern "C"` surface, feature-gated
 │   │   └── pathfinding/
 │   │       ├── mod.rs
@@ -978,6 +981,30 @@ desync, not a rounding nit. Two things enforce that here:
     neutral player: `smallID()` = `0`, `clientID()` = the literal
     `"TERRA_NULLIUS_CLIENT_ID"`, `id()` = JS `null` (encoded with the
     `[-1]` sentinel), `isPlayer()` = `false`. 6 scenarios (553 result tokens).
+52. **`game/StatsImpl.ts`** (`stats_impl`) — the pure bigint stats
+    accumulator: `conquest_by_type` over the `PlayerType` **string** enum
+    (`"HUMAN"`/`"NATION"`/`"BOT"` → `PLAYER_INDEX_*`; an off-table mocked type
+    reads `undefined` and skips the conquest), `_bigint` (bigint passthrough;
+    number → `BigInt(Math.floor(v))` — `-0` → `0n`, fractional floors toward
+    −∞, `NaN`/`±Infinity` **throw** at the exact TS landing point: after the
+    `??=` init + `while` growth in `_addAttack`, after the `type()` facade
+    call in `goldWar`, before any write in `_addPlayerKilled`), the shared
+    `arr ??= [0n]` + `while (length <= index) push(0n)` + `+=`/max/set growth
+    pattern (strict `>` — ties never rewrite), `attackCancel`'s `-troops`
+    following the input shape, `bombLaunch`'s `MIRV` counter, the
+    `recordTickSample` cross-multiplied drawdown comparison (exact integer
+    arithmetic in `i128`, the `ddPeak === 0n` seed step), first-write-wins
+    `killedBy` (`null` is a valid recorded value) / `deathPosition` `??=` /
+    `kills` push, the `recordKill` Human + non-null-clientID filters, and the
+    computed-key stringification (`{ [type]: [0n] }` and the
+    `unitTypeToBombUnit`/`unitTypeToOtherUnit` lookups key `"undefined"` for
+    an off-table type — captured). bigint crosses as `i64` (capture domain
+    |v| ≤ 2^53, precedent `stats_schemas::toBigInt`); the `Player` facade is
+    a scripted mock whose every call (`clientID()` / `type()` / `isPlayer()`)
+    lands in the res trace, and the final `stats()` dump pins the `data` /
+    `PlayerStats` / boats / bombs / units key insertion orders. The `in`
+    prototype-chain quirk and the negative-index property write are out of
+    domain (pinned in the module doc). 34 scenarios (2,137 result tokens).
 
 Regenerate whenever a ported source changes:
 
@@ -1011,7 +1038,7 @@ node rust/tools/run_wasm_parity.mjs
 
 `wasm-probe` exposes the ported functions through `extern "C"` scalar
 entrypoints (`src/wasm_probe.rs`); the runner imports `data/vectors.json` and
-compares every value. Last run: **110,006 comparisons, all bit-identical**.
+compares every value. Last run: **112,143 comparisons, all bit-identical**.
 
 ### Windows: the linker environment
 

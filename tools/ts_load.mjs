@@ -1314,6 +1314,53 @@ function prepare(rel) {
     );
   }
 
+  if (rel.endsWith("game/StatsImpl.ts")) {
+    // AllPlayersStats / ClientID (Schemas), Player / TerraNullius (Game) and
+    // Stats are type-only uses (annotations / the implements clause) -> the
+    // imports are dropped. The StatsSchemas block is a *value* import (the
+    // index constants and the two lookup tables) but it also names four types
+    // (BoatUnit / NukeType / OtherUnitType / PlayerStats) that appear only in
+    // erased annotations; strip mode keeps bare named imports at runtime, so
+    // the type lines are dropped and the specifier redirected to the prepared
+    // copy (which exports every value, with inert zod/zb shims). PlayerType /
+    // UnitType are *value* uses (the conquest_by_type computed keys, the MIRV
+    // check and the recordKill filter) and ride on the prepared Game.ts copy
+    // (enums inlined as plain objects). The `type BigIntLike` alias and every
+    // annotation are erased by strip mode; the `satisfies PlayerStats` clause
+    // is erasable syntax.
+    out = must(
+      out,
+      'import { AllPlayersStats, ClientID } from "../Schemas";\n',
+      "",
+      "StatsImpl Schemas import",
+    );
+    for (const t of ["BoatUnit", "NukeType", "OtherUnitType", "PlayerStats"]) {
+      out = must(out, `  ${t},\n`, "", `StatsImpl StatsSchemas type ${t}`);
+    }
+    const siStatsRel = "src/core/StatsSchemas.ts";
+    if (!prepared.has(siStatsRel)) prepare(siStatsRel);
+    out = must(
+      out,
+      '} from "../StatsSchemas";\n',
+      `} from "./${prepared.get(siStatsRel)}";\n`,
+      "StatsImpl StatsSchemas import",
+    );
+    if (!prepared.has("src/core/game/Game.ts")) prepare("src/core/game/Game.ts");
+    out = must(
+      out,
+      'import { Player, PlayerType, TerraNullius, UnitType } from "./Game";\n' +
+        'import { Stats } from "./Stats";\n',
+      `import { PlayerType, UnitType } from "./${prepared.get("src/core/game/Game.ts")}";\n`,
+      "StatsImpl Game/Stats imports",
+    );
+    out = must(
+      out,
+      "export class StatsImpl implements Stats {",
+      "export class StatsImpl {",
+      "StatsImpl implements clause",
+    );
+  }
+
   if (rel.endsWith("core/Schemas.ts")) {
     // The zod / zb schema declarations are wire-validation and are not
     // ported, but unlike ServerList / StatsSchemas the capture must *read*

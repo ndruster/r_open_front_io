@@ -107,6 +107,7 @@ for (const name of [
   "probe_tml_arg", "probe_tml_op", "probe_tml_out_at",
   "probe_nu_arg", "probe_nu_op", "probe_nu_out_at",
   "probe_tni_arg", "probe_tni_op", "probe_tni_out_at",
+  "probe_si_arg", "probe_si_op", "probe_si_out_at",
   "probe_wpm_arg", "probe_wpm_op", "probe_wpm_out_at",
   "probe_rr_arg", "probe_rr_op", "probe_rr_out_at",
   "probe_rsg_reset", "probe_rsg_arg", "probe_rsg_op", "probe_rsg_out_at",
@@ -1836,6 +1837,25 @@ for (const s of S.terranulliusimpl) {
   for (let i = 0; i < len; i++) {
     checks++;
     const g = ex.probe_tni_out_at(i);
+    const w = numTok(s.res[i]);
+    if (!Object.is(g, w)) fail(`${s.name} res[${i}]`, 0, g, w);
+  }
+}
+
+// --- game/StatsImpl.ts (stats_impl) -------------------------------------------
+// Replays the scripted-mock bigint accumulator scenarios (facade trace + throw
+// points + stats() dump) through the shared run_op runner; args and res are
+// flat f64 token streams, compared element-by-element with Object.is.
+for (const s of S.statsimpl) {
+  for (const a of s.args) ex.probe_si_arg(numTok(a));
+  const len = Number(ex.probe_si_op(s.kind));
+  if (len !== s.res.length) {
+    fail(`${s.name} res len`, 0, len, s.res.length);
+    continue;
+  }
+  for (let i = 0; i < len; i++) {
+    checks++;
+    const g = ex.probe_si_out_at(i);
     const w = numTok(s.res[i]);
     if (!Object.is(g, w)) fail(`${s.name} res[${i}]`, 0, g, w);
   }

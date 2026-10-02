@@ -179,6 +179,7 @@ const Tml = await loadTs("src/core/game/TerrainMapLoader.ts");
 const Nu = await loadTs("src/core/execution/nation/NationUtils.ts");
 const GI = await loadTs("src/core/game/GameImpl.ts");
 const TNI = await loadTs("src/core/game/TerraNulliusImpl.ts");
+const SI = await loadTs("src/core/game/StatsImpl.ts");
 const PF = await loadTs("src/core/pathfinding/PathFinder.ts");
 const { AStar } = await loadTs("src/core/pathfinding/algorithms/AStar.ts");
 const { AStarRail } = await loadTs("src/core/pathfinding/algorithms/AStar.Rail.ts");
@@ -3884,6 +3885,567 @@ captureNU("nu_juice_negzero", nuArgs1([
   nuCand(2, 0, 2, 5, [["Port", 0]]),
 ]));
 
+// --- StatsImpl.ts scenario runner ---------------------------------------------
+// Exercises the real game/StatsImpl.ts accumulator against scripted Player /
+// TerraNullius mocks: every facade call (clientID / type / isPlayer) records
+// its refid + return into a flat trace, each public op runs inside a
+// try/catch that pins the `_bigint` RangeError throw point ([3, kind, 1] —
+// the partial state written before the throw rides into the final dump), and
+// the payload is the final `stats()` dump: the `data` key insertion order,
+// per player the `PlayerStats` key insertion order (Object.keys of the real
+// object), and the boats/bombs/units string-key order. bigints cross as
+// decimal strings (input) / exact f64 numbers (output, |v| <= 2^53 enforced);
+// numbers ride as f64 tokens (NaN / -0 / +-Inf through uenc). The Rust twin is
+// `stats_impl::run_op` kind 0.
+//
+// args: [0, nPlayers, (cidEnc, typeStr, isPlayer)*, nOps, (op)*]
+//   cidEnc [0]=null | [1,str]; val [0,str]=bigint | [1,num]; op = [kind, params]
+//   kinds: 0 attack[p,t,val] 1 attackMaxIncoming[t,val] 2 attackCancel[p,t,val]
+//     3 betray[p] 4 allianceFormed[p] 5 allianceEnded[p,val,cid]
+//     6 boatSendTrade[p] 7 boatArriveTrade[p,t,val] 8 boatCapturedTrade[p,t,val]
+//     9 boatDestroyTrade[p] 10 boatSendTroops[p] 11 boatArriveTroops[p]
+//     12 boatDestroyTroops[p] 13 boatCapturedTroops[p] 14 bombLaunch[p,t,typeStr]
+//     15 bombLand[p,t,typeStr] 16 bombIntercept[p,typeStr,val] 17 goldWork[p,val]
+//     18 goldWar[p,cap,val] 19 unitBuild[p,t] 20 unitCapture[p,t]
+//     21 unitUpgrade[p,t] 22 unitDestroy[p,t] 23 unitLose[p,t]
+//     24 playerKilled[p,val] 25 recordFinalTiles[p,val]
+//     26 recordAlliancesAtEnd[p,val,val] 27 recordTickSample[p,val,val,num]
+//     28 recordKilledBy[v,cid] 29 recordDeathPosition[v,num] 30 recordKill[p,v,val]
+//     31 trainSelfTrade[p,val] 32 trainExternalTrade[p,val] 33 lobbyFillTime[num]
+//     34 numMirvsLaunched[] 35 getPlayerStats[p] 36 stats[]
+//
+// res: [traceLen, (trace)*, numMirv, dump]
+//   trace: 0 clientID [0,r,cidEnc] | 1 type [1,r,(str)] | 2 isPlayer [2,r,0|1]
+//     3 op threw [3,kind,1] | 4 getPlayerStats [4,r,0|1] | 5 numMirvs [5,v]
+//     6 stats called [6]
+//   dump: [nP, (cid, nFields, (name, enc)*)*]; enc: 0 scalar [0,v] |
+//     1 array [1,len,(v)*] | 2 object [2,n,(key,len,(v)*)*] |
+//     3 killedBy [3,cidEnc] | 4 deathPosition [4,num] | 5 kills [5,n,(victim,tick)*]
+const siScenarios = [];
+const siname = (s) => s.replace(/[^A-Za-z0-9]+/g, "_");
+
+const siC = (v) => (v === null ? [0] : [1, ...encS(v)]);
+const siBi = (v) => [0, ...encS(String(v))];
+const siNm = (v) => [1, v];
+
+const siNumV = (v) => {
+  if (typeof v !== "bigint") throw new Error(`si: not a bigint: ${String(v)}`);
+  if (v > 2n ** 53n || v < -(2n ** 53n))
+    throw new Error(`si: bigint out of f64-exact range: ${v}`);
+  return Number(v);
+};
+
+function siDump(out, data) {
+  const keys = Object.keys(data);
+  out.push(keys.length);
+  for (const k of keys) {
+    out.push(...encS(k));
+    const p = data[k];
+    const fs = Object.keys(p);
+    out.push(fs.length);
+    for (const f of fs) {
+      out.push(...encS(f));
+      const v = p[f];
+      switch (f) {
+        case "betrayals":
+        case "killedAt":
+        case "finalTiles":
+        case "peakTroops":
+          out.push(0, siNumV(v));
+          break;
+        case "attacks":
+        case "conquests":
+        case "gold":
+        case "tiles":
+        case "alliances":
+          out.push(1, v.length, ...v.map(siNumV));
+          break;
+        case "boats":
+        case "bombs":
+        case "units": {
+          const ks = Object.keys(v);
+          out.push(2, ks.length);
+          for (const bk of ks) {
+            out.push(...encS(bk), v[bk].length, ...v[bk].map(siNumV));
+          }
+          break;
+        }
+        case "killedBy":
+          out.push(3, ...siC(v));
+          break;
+        case "deathPosition":
+          out.push(4, v);
+          break;
+        case "kills":
+          out.push(5, v.length);
+          for (const e of v) out.push(...encS(e.victim), siNumV(e.tick));
+          break;
+        default:
+          throw new Error(`si: unknown PlayerStats field ${f}`);
+      }
+    }
+  }
+}
+
+function siRun(players, ops) {
+  const trace = [];
+  const ev = (...t) => trace.push(...t);
+  const ps = players.map((pl, r) => ({
+    clientID() {
+      ev(0, r, ...siC(pl.cid));
+      return pl.cid;
+    },
+    type() {
+      ev(1, r, ...encS(pl.type));
+      return pl.type;
+    },
+    isPlayer() {
+      ev(2, r, pl.isPlayer ? 1 : 0);
+      return pl.isPlayer;
+    },
+  }));
+  const inst = new SI.StatsImpl();
+  for (const op of ops) {
+    let p = 0;
+    const num = () => op[p++];
+    const str = () => {
+      const l = op[p++];
+      let s = "";
+      for (let i = 0; i < l; i++) s += String.fromCharCode(op[p++]);
+      return s;
+    };
+    const val = () => (num() === 0 ? BigInt(str()) : num());
+    const cid = () => (num() === 0 ? null : str());
+    const k = num();
+    try {
+      switch (k) {
+        case 0: inst.attack(ps[num()], ps[num()], val()); break;
+        case 1: inst.attackMaxIncoming(ps[num()], val()); break;
+        case 2: inst.attackCancel(ps[num()], ps[num()], val()); break;
+        case 3: inst.betray(ps[num()]); break;
+        case 4: inst.allianceFormed(ps[num()]); break;
+        case 5: inst.allianceEnded(ps[num()], val(), cid()); break;
+        case 6: inst.boatSendTrade(ps[num()]); break;
+        case 7: inst.boatArriveTrade(ps[num()], ps[num()], val()); break;
+        case 8: inst.boatCapturedTrade(ps[num()], ps[num()], val()); break;
+        case 9: inst.boatDestroyTrade(ps[num()]); break;
+        case 10: inst.boatSendTroops(ps[num()]); break;
+        case 11: inst.boatArriveTroops(ps[num()]); break;
+        case 12: inst.boatDestroyTroops(ps[num()]); break;
+        case 13: inst.boatCapturedTroops(ps[num()]); break;
+        case 14: inst.bombLaunch(ps[num()], ps[num()], str()); break;
+        case 15: inst.bombLand(ps[num()], ps[num()], str()); break;
+        case 16: inst.bombIntercept(ps[num()], str(), val()); break;
+        case 17: inst.goldWork(ps[num()], val()); break;
+        case 18: inst.goldWar(ps[num()], ps[num()], val()); break;
+        case 19: inst.unitBuild(ps[num()], str()); break;
+        case 20: inst.unitCapture(ps[num()], str()); break;
+        case 21: inst.unitUpgrade(ps[num()], str()); break;
+        case 22: inst.unitDestroy(ps[num()], str()); break;
+        case 23: inst.unitLose(ps[num()], str()); break;
+        case 24: inst.playerKilled(ps[num()], val()); break;
+        case 25: inst.recordFinalTiles(ps[num()], val()); break;
+        case 26: inst.recordAlliancesAtEnd(ps[num()], val(), val()); break;
+        case 27: inst.recordTickSample(ps[num()], val(), val(), num()); break;
+        case 28: inst.recordKilledBy(ps[num()], cid()); break;
+        case 29: inst.recordDeathPosition(ps[num()], num()); break;
+        case 30: inst.recordKill(ps[num()], ps[num()], val()); break;
+        case 31: inst.trainSelfTrade(ps[num()], val()); break;
+        case 32: inst.trainExternalTrade(ps[num()], val()); break;
+        case 33: inst.lobbyFillTime(num()); break;
+        case 34: ev(5, siNumV(inst.numMirvsLaunched())); break;
+        case 35: {
+          const r = num();
+          const res = inst.getPlayerStats(ps[r]);
+          ev(4, r, res === undefined ? 0 : 1);
+          break;
+        }
+        case 36: inst.stats(); ev(6); break;
+        default: throw new Error(`si: unknown op ${k}`);
+      }
+    } catch {
+      ev(3, k, 1);
+    }
+  }
+  const payload = [siNumV(inst._numMirvLaunched)];
+  siDump(payload, inst.stats());
+  return [trace.length, ...trace, ...payload];
+}
+
+const siArgs = (players, ops) => [
+  0,
+  players.length,
+  ...players.flatMap((pl) => [...siC(pl.cid), ...encS(pl.type), pl.isPlayer ? 1 : 0]),
+  ops.length,
+  ...ops,
+];
+
+function captureSI(name, players, ops) {
+  const args = siArgs(players, ops).flat(Infinity).map(uenc);
+  siScenarios.push({
+    name: siname(name),
+    kind: 0,
+    args,
+    res: siRun(players, ops).map(uenc),
+  });
+}
+
+const sIP = (cid, type, isPlayer = true) => ({ cid, type, isPlayer });
+
+// 1. attack vs a player target: SENT on the attacker, RECV on the target;
+//    bigint troops pass `_bigint` through untouched.
+captureSI("si_attack_player", [sIP("a", "HUMAN"), sIP("b", "HUMAN")], [
+  [0, 0, 1, ...siBi(10n)],
+  [36],
+]);
+
+// 2. attack vs TerraNullius: isPlayer false -> only the SENT side writes;
+//    number troops floor toward -Infinity (2.7 -> 2, -1.5 -> -2).
+captureSI("si_attack_tn_floor", [sIP("a", "HUMAN"), sIP("tn", "HUMAN", false)], [
+  [0, 0, 1, ...siNm(2.7)],
+  [0, 0, 1, ...siNm(-1.5)],
+  [36],
+]);
+
+// 3. _bigint coercion matrix on goldWork: bigint, integer number, negative,
+//    -0 (BigInt(Math.floor(-0)) is 0n), fractional, NaN / +Inf / -Inf throws
+//    (each throw leaves the grown zero array + the inserted key behind).
+captureSI("si_bigint_matrix", [sIP("a", "HUMAN")], [
+  [17, 0, ...siBi(5n)],
+  [17, 0, ...siNm(7)],
+  [17, 0, ...siNm(-3)],
+  [17, 0, ...siNm(-0)],
+  [17, 0, ...siNm(2.9)],
+  [17, 0, ...siNm(-1.5)],
+  [17, 0, ...siNm(NaN)],
+  [17, 0, ...siNm(Infinity)],
+  [17, 0, ...siNm(-Infinity)],
+  [36],
+]);
+
+// 4. attackCancel with bigint troops: CANCEL += t, SENT += -t, RECV += -t
+//    (bigint negation stays bigint); then with number troops the negation is
+//    numeric and re-floors (-2.5 -> -3n); -0 negates to +0 (0n).
+captureSI("si_attack_cancel", [sIP("a", "HUMAN"), sIP("b", "HUMAN")], [
+  [2, 0, 1, ...siBi(5n)],
+  [2, 0, 1, ...siNm(2.5)],
+  [2, 0, 0, ...siNm(-0)],
+  [36],
+]);
+
+// 5. attackCancel NaN: the CANCEL grow lands, the add throws, SENT / RECV
+//    never run (the op aborts mid-way).
+captureSI("si_attack_cancel_nan", [sIP("a", "HUMAN"), sIP("b", "HUMAN")], [
+  [2, 0, 1, ...siNm(NaN)],
+  [36],
+]);
+
+// 6. attack with NaN troops: attacker side grows then throws -> the target is
+//    never touched (no second clientID in the trace).
+captureSI("si_attack_nan", [sIP("a", "HUMAN"), sIP("b", "HUMAN")], [
+  [0, 0, 1, ...siNm(NaN)],
+  [36],
+]);
+
+// 7. attackMaxIncoming: running max, strict `>` (equal does not rewrite),
+//    not reversed by cancel; a non-player target returns after isPlayer.
+captureSI("si_attack_max_incoming", [sIP("a", "HUMAN"), sIP("tn", "HUMAN", false)], [
+  [1, 0, ...siNm(100)],
+  [1, 0, ...siNm(50)],
+  [1, 0, ...siNm(100)],
+  [1, 1, ...siNm(999)],
+  [36],
+]);
+
+// 8. betray: accumulate twice; a null clientID is a silent no-op.
+captureSI("si_betrayal", [sIP("a", "HUMAN"), sIP(null, "BOT")], [
+  [3, 0],
+  [3, 0],
+  [3, 1],
+  [36],
+]);
+
+// 9. allianceFormed / allianceEnded: brokenByOther and expired counters, the
+//    null counter writes only LONGEST_HELD, the max keeps the longest.
+captureSI("si_alliance", [sIP("a", "HUMAN")], [
+  [4, 0],
+  [5, 0, ...siNm(50), 1, ...encS("brokenByOther")],
+  [5, 0, ...siNm(10), 1, ...encS("expired")],
+  [5, 0, ...siNm(30), 0],
+  [5, 0, ...siNm(5), 1, ...encS("other")],
+  [36],
+]);
+
+// 10. allianceEnded with a NaN duration: the counter write lands, the max
+//     throws after the alliances grow.
+captureSI("si_alliance_ended_nan", [sIP("a", "HUMAN")], [
+  [5, 0, ...siNm(NaN), 1, ...encS("expired")],
+  [36],
+]);
+
+// 11. all eight boat methods: the trade/trans arrays grow to length 4, the
+//     boats object key order is first-insertion (trade before trans),
+//     arriveTrade credits gold to both sides, and capturedTrade credits the
+//     steal to the captor (the target argument is unused in the TS).
+captureSI("si_boats", [sIP("a", "HUMAN"), sIP("b", "HUMAN")], [
+  [6, 0],
+  [7, 0, 1, ...siBi(25n)],
+  [8, 0, 1, ...siBi(7n)],
+  [9, 0],
+  [10, 0],
+  [11, 0],
+  [12, 0],
+  [13, 0],
+  [36],
+]);
+
+// 12. boatArriveTrade with NaN gold: the boat write lands, the sender's gold
+//     grows then throws, the target never runs (no second clientID pair).
+captureSI("si_boat_arrive_nan", [sIP("a", "HUMAN"), sIP("b", "HUMAN")], [
+  [7, 0, 1, ...siNm(NaN)],
+  [36],
+]);
+
+// 13. bombs: MIRV increments the launch counter before the (throwing-safe)
+//     addBomb; the bombs key order follows first insertion; the target
+//     argument is read from the op stream but unused by the TS; an off-table
+//     nuke type stringifies the computed key to "undefined".
+captureSI("si_bombs", [sIP("a", "HUMAN"), sIP("b", "HUMAN")], [
+  [14, 0, 1, ...encS("MIRV")],
+  [14, 0, 1, ...encS("Atom Bomb")],
+  [15, 0, 1, ...encS("Hydrogen Bomb")],
+  [16, 0, ...encS("MIRV Warhead"), ...siNm(3)],
+  [14, 0, 1, ...encS("Train")],
+  [34],
+  [36],
+]);
+
+// 14. goldWar across the PlayerType table: HUMAN/NATION/BOT bucket the
+//     conquest onto the conqueror, an unknown mocked type reads undefined and
+//     skips it, and a null-clientID captive still buckets (the conquest lands
+//     on the conqueror; the captive only feeds type()).
+captureSI("si_gold_war", [
+  sIP("a", "HUMAN"),
+  sIP("h", "HUMAN"),
+  sIP("n", "NATION"),
+  sIP("bo", "BOT"),
+  sIP("x", "Alien"),
+  sIP(null, "HUMAN"),
+], [
+  [18, 0, 1, ...siBi(5n)],
+  [18, 0, 2, ...siNm(5)],
+  [18, 0, 3, ...siNm(5)],
+  [18, 0, 4, ...siNm(5)],
+  [18, 0, 5, ...siNm(5)],
+  [36],
+]);
+
+// 15. goldWar where the gold add throws: the op aborts before the captured
+//     player's type() facade call.
+captureSI("si_gold_war_nan", [sIP("a", "HUMAN"), sIP("h", "HUMAN")], [
+  [18, 0, 1, ...siNm(NaN)],
+  [36],
+]);
+
+// 16. the five unit methods over the other-unit table (key insertion order)
+//     plus an off-table type landing under the "undefined" key.
+captureSI("si_units", [sIP("a", "HUMAN")], [
+  [19, 0, ...encS("City")],
+  [20, 0, ...encS("Defense Post")],
+  [21, 0, ...encS("Missile Silo")],
+  [22, 0, ...encS("Port")],
+  [23, 0, ...encS("SAM Launcher")],
+  [19, 0, ...encS("Warship")],
+  [23, 0, ...encS("Factory")],
+  [19, 0, ...encS("Train")],
+  [36],
+]);
+
+// 17. playerKilled overwrites killedAt (assignment, not accumulation); a NaN
+//     tick throws before the write (the old value survives).
+captureSI("si_player_killed", [sIP("a", "HUMAN")], [
+  [24, 0, ...siNm(123)],
+  [24, 0, ...siNm(2.7)],
+  [24, 0, ...siNm(NaN)],
+  [36],
+]);
+
+// 18. recordFinalTiles: bigint passthrough, -0 -> 0n overwrite, null clientID
+//     no-op.
+captureSI("si_final_tiles", [sIP("a", "HUMAN"), sIP(null, "BOT")], [
+  [25, 0, ...siBi(1000n)],
+  [25, 0, ...siNm(-0)],
+  [25, 1, ...siNm(5)],
+  [36],
+]);
+
+// 19. recordAlliancesAtEnd: HELD_TO_END is set (a second call overwrites, not
+//     doubles), LONGEST_HELD is a max (the smaller second value loses).
+captureSI("si_alliances_at_end", [sIP("a", "HUMAN")], [
+  [26, 0, ...siNm(3), ...siNm(500)],
+  [26, 0, ...siNm(2), ...siNm(400)],
+  [36],
+]);
+
+// 20. recordTickSample drawdown sequence: the ddPeak === 0n seed, a worse
+//     decline via cross-multiplication, a new peak that does not rewrite the
+//     pair, a strictly-worse decline that does, and an exactly-equal product
+//     that does not (strict `>`). peakTroops / peak-concurrent are maxes; a
+//     fractional allianceCount floors.
+captureSI("si_tick_sample", [sIP("a", "HUMAN")], [
+  [27, 0, ...siNm(10), ...siNm(100), 2],
+  [27, 0, ...siNm(5), ...siNm(50), 1],
+  [27, 0, ...siNm(20), ...siNm(200), 3],
+  [27, 0, ...siNm(8), ...siNm(8), 2.5],
+  [27, 0, ...siNm(8), ...siNm(8), 3],
+  [36],
+]);
+
+// 21. recordTickSample throws: NaN tiles aborts before the tiles init (no
+//     tiles key at all); NaN troops aborts after the tiles update but before
+//     peakTroops / the alliance max (the alliances grow still lands).
+captureSI("si_tick_sample_nan", [sIP("a", "HUMAN")], [
+  [27, 0, ...siNm(NaN), ...siNm(5), 1],
+  [27, 0, ...siNm(6), ...siNm(6), 1],
+  [27, 0, ...siNm(4), ...siNm(NaN), 1],
+  [27, 0, ...siNm(3), ...siNm(3), NaN],
+  [36],
+]);
+
+// 22. recordKilledBy first-write-wins: the string sticks, null is a valid
+//     recorded value (present, not unstamped), a null-clientID victim no-ops.
+captureSI("si_killed_by", [sIP("a", "HUMAN"), sIP("b", "HUMAN"), sIP(null, "BOT")], [
+  [28, 0, 1, ...encS("k1")],
+  [28, 0, 0],
+  [28, 1, 0],
+  [28, 2, 1, ...encS("k2")],
+  [36],
+]);
+
+// 23. recordDeathPosition ??= first-write-wins, including -0 as the stored
+//     number (Object.is-pinned through the dump).
+captureSI("si_death_position", [sIP("a", "HUMAN"), sIP("b", "HUMAN")], [
+  [29, 0, 7],
+  [29, 0, 3],
+  [29, 1, -0],
+  [36],
+]);
+
+// 24. recordKill: non-HUMAN victims and null-clientID victims are filtered
+//     before any stats write; a null-clientID killer player writes nothing;
+//     a NaN tick throws AFTER the kills ??= (the empty array survives).
+captureSI("si_record_kill", [
+  sIP("a", "HUMAN"),
+  sIP("h", "HUMAN"),
+  sIP("bo", "BOT"),
+  sIP(null, "HUMAN"),
+], [
+  [30, 0, 1, ...siNm(5)],
+  [30, 0, 2, ...siNm(6)],
+  [30, 0, 3, ...siNm(7)],
+  [30, 3, 1, ...siNm(8)],
+  [30, 0, 1, ...siNm(NaN)],
+  [30, 0, 1, ...siNm(9.7)],
+  [36],
+]);
+
+// 25. trains feed the self / other gold buckets.
+captureSI("si_trains", [sIP("a", "HUMAN")], [
+  [31, 0, ...siNm(10)],
+  [32, 0, ...siNm(20)],
+  [36],
+]);
+
+// 26. lobbyFillTime is a no-op: no trace event, no state change.
+captureSI("si_lobby_fill", [sIP("a", "HUMAN")], [
+  [33, 1234],
+  [36],
+]);
+
+// 27. getPlayerStats: absent -> undefined, touched -> present, null clientID
+//     -> undefined (with the facade call still traced).
+captureSI("si_get_player_stats", [sIP("a", "HUMAN"), sIP(null, "BOT")], [
+  [35, 0],
+  [17, 0, ...siNm(1)],
+  [35, 0],
+  [35, 1],
+  [36],
+]);
+
+// 28. empty stats dump: no players, no fields.
+captureSI("si_stats_empty", [sIP("a", "HUMAN")], [[36]]);
+
+// 29. PlayerStats key insertion order pinned against the schema declaration
+//     order: one touch per field in call order (betrayals, gold, units,
+//     boats, bombs, alliances, killedAt, finalTiles, tiles + peakTroops,
+//     killedBy, deathPosition, kills, conquests).
+captureSI("si_field_order", [
+  sIP("a", "HUMAN"),
+  sIP("h", "HUMAN"),
+  sIP("b", "HUMAN"),
+], [
+  [3, 0],
+  [17, 0, ...siNm(1)],
+  [19, 0, ...encS("City")],
+  [6, 0],
+  [15, 0, 1, ...encS("Atom Bomb")],
+  [4, 0],
+  [24, 0, ...siNm(9)],
+  [25, 0, ...siNm(9)],
+  [27, 0, ...siNm(1), ...siNm(1), 1],
+  [28, 0, 1, ...encS("z")],
+  [29, 0, 1],
+  [30, 0, 1, ...siNm(1)],
+  [18, 0, 1, ...siNm(1)],
+  [36],
+]);
+
+// 30. data key insertion order: the second attacker (b) enters the map after
+//     the first target (a) even though a is touched twice; a repeat call on
+//     an existing key does not reorder.
+captureSI("si_data_order", [sIP("a", "HUMAN"), sIP("b", "HUMAN")], [
+  [0, 0, 1, ...siNm(1)],
+  [3, 1],
+  [3, 0],
+  [36],
+]);
+
+// 31. while-growth beyond a single slot: gold starts at length 1 and the
+//     train buckets force it to length 6; intercept grows bombs[abomb] to 3.
+captureSI("si_while_grow", [sIP("a", "HUMAN")], [
+  [17, 0, ...siNm(1)],
+  [31, 0, ...siNm(2)],
+  [16, 0, ...encS("Atom Bomb"), ...siNm(4)],
+  [36],
+]);
+
+// 32. bombIntercept with a MIRV type does NOT increment the launch counter
+//     (only bombLaunch does), and the NaN count throws after the bombs grow;
+//     numMirvsLaunched reports 0.
+captureSI("si_mirv_throw", [sIP("a", "HUMAN")], [
+  [16, 0, ...encS("MIRV"), ...siNm(NaN)],
+  [34],
+  [36],
+]);
+
+// 33. max-attack equal-value on a grown array plus a negative bigint max:
+//     `-5n > 0n` is false, the slot keeps the zero.
+captureSI("si_max_negative", [sIP("a", "HUMAN")], [
+  [1, 0, ...siBi(-5n)],
+  [1, 0, ...siNm(0)],
+  [36],
+]);
+
+// 34. allianceEnded counter identity: only the two exact strings count;
+//     "brokenByOther" twice accumulates the same slot.
+captureSI("si_alliance_counter_str", [sIP("a", "HUMAN")], [
+  [5, 0, ...siNm(1), 1, ...encS("brokenByOther")],
+  [5, 0, ...siNm(1), 1, ...encS("brokenByOther")],
+  [5, 0, ...siNm(1), 1, ...encS("expired")],
+  [36],
+]);
+
+
 
 // --- GameImpl.ts createGameUpdatesMap scenario runner -------------------------
 // Exercises the module-tail `createGameUpdatesMap` of game/GameImpl.ts against
@@ -7584,6 +8146,7 @@ const structures = {
   apischemas: asSchemasScenarios,
   terrainmaploader: tmlScenarios,
   nationutils: nuScenarios,
+  statsimpl: siScenarios,
   waterpathmemo: wpmScenarios,
   astar: asScenarios,
   rail: railScenarios,
@@ -10025,6 +10588,39 @@ for (const s of structures.nationutils) {
 }
 L.push("pub const NU_SCENARIOS: &[NuScenario] = &[");
 for (const s of structures.nationutils) L.push(`    ${s.name.toUpperCase()},`);
+L.push("];");
+L.push("");
+
+L.push("/// game/StatsImpl.ts scenario: one `stats_impl::run_op(0, args)` call replaying");
+L.push("/// a whole scripted op sequence over the real TS accumulator against the");
+L.push("/// Player mocks. args: `[0,nPlayers,(cidEnc,typeStr,isPlayer)*,nOps,(op)*]`");
+L.push("/// (cidEnc [0]=null|[1,str]; val [0,str]=bigint|[1,num]; op kind table in");
+L.push("/// gen_vectors.mjs). res: `[traceLen,(trace)*,numMirv,dump]` - trace events");
+L.push("/// 0 clientID [0,r,cidEnc], 1 type [1,r,(str)], 2 isPlayer [2,r,0|1], 3 op");
+L.push("/// threw [3,kind,1], 4 getPlayerStats [4,r,0|1], 5 numMirvs [5,v], 6 stats");
+L.push("/// called [6]; dump `[nP,(cid,nFields,(name,enc)*)*]` with enc 0 scalar");
+L.push("/// [0,v], 1 array [1,len,(v)*], 2 object [2,n,(key,len,(v)*)*], 3 killedBy");
+L.push("/// [3,cidEnc], 4 deathPosition [4,num], 5 kills [5,n,(victim,tick)*]. Strings");
+L.push("/// cross as `[len,u0,..]` UTF-16.");
+L.push("pub struct SiScenario {");
+L.push("    pub name: &'static str,");
+L.push("    pub kind: u8,");
+L.push("    pub args: &'static [f64],");
+L.push("    pub res: &'static [f64],");
+L.push("}");
+L.push("");
+for (const s of structures.statsimpl) {
+  const id = s.name.toUpperCase();
+  L.push(`pub const ${id}: SiScenario = SiScenario {`);
+  L.push(`    name: "${s.name}",`);
+  L.push(`    kind: ${s.kind}u8,`);
+  L.push(`    args: &[${s.args.map(utilResLit).join(", ")}],`);
+  L.push(`    res: &[${s.res.map(utilResLit).join(", ")}],`);
+  L.push("};");
+  L.push("");
+}
+L.push("pub const SI_SCENARIOS: &[SiScenario] = &[");
+for (const s of structures.statsimpl) L.push(`    ${s.name.toUpperCase()},`);
 L.push("];");
 L.push("");
 

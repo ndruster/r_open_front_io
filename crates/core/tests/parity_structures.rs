@@ -2430,6 +2430,26 @@ fn replay_nationutils_scenarios() {
     }
 }
 
+// game/StatsImpl.ts: replay the scripted-mock accumulator scenarios (the
+// _bigint coercion / throw matrix, the ??= first-vs-reuse and while-growth,
+// the strict-`>` maxes, the MIRV counter, the conquest_by_type undefined
+// branch, the cross-multiplied drawdown sequence, the first-write-wins
+// killedBy / deathPosition / kills, the data / field / object-key insertion
+// orders) through the shared `run_op` runner and compare the flat token
+// streams (facade call traces and the final stats() dump pinned token-by-
+// token, NaN / -0 through obj_is).
+#[test]
+fn replay_statsimpl_scenarios() {
+    use openfront_core::stats_impl::run_op;
+    for s in vectors::SI_SCENARIOS {
+        let got = run_op(s.kind, s.args);
+        assert_eq!(got.len(), s.res.len(), "{} res len: got {got:?} want {:?}", s.name, s.res);
+        for (j, (g, w)) in got.iter().zip(s.res.iter()).enumerate() {
+            assert!(obj_is(*g, *w), "{} res[{j}]: got {g} want {w}", s.name);
+        }
+    }
+}
+
 // game/GameImpl.ts createGameUpdatesMap: replay the map() result dump and the
 // Object.values + `!isNaN(Number(key))` filter pin (the reverse-mapping
 // iteration order, the kept-number stream, the Number→string keys) through the

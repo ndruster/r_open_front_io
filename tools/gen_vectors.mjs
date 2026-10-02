@@ -169,6 +169,8 @@ const MG = await loadTs("src/core/game/Maps.gen.ts");
 const TN = await loadTs("src/core/execution/utils/TribeNames.ts");
 const GAME = await loadTs("src/core/game/Game.ts");
 const NC = await loadTs("src/core/game/NationCreation.ts");
+const GUPD = await loadTs("src/core/game/GameUpdates.ts");
+const NE = await loadTs("src/core/execution/nation/NationEmojiBehavior.ts");
 const { AStar } = await loadTs("src/core/pathfinding/algorithms/AStar.ts");
 const { AStarRail } = await loadTs("src/core/pathfinding/algorithms/AStar.Rail.ts");
 const { AStarWater } = await loadTs("src/core/pathfinding/algorithms/AStar.Water.ts");
@@ -2400,6 +2402,131 @@ for (const [i, [seed, target, man, ext]] of ncCases.entries()) {
   ];
   captureNC(`nc_crn_${i}`, 8, args, ncRunRes(seed, target, man, ext));
 }
+
+// --- GameUpdateType scenario runner -------------------------------------------
+// Exercises the GameUpdates.ts GameUpdateType enum through the shared run_op
+// runner (the prepared copy inlines the enum as a plain object with the same
+// numeric values). Strings cross as `[len, u0, ..]` (UTF-16 code units); the
+// Rust twin is `game_updates::*`.
+//
+// kind table (matches the Rust dispatch):
+//   0 dump all 24 (name, value) pairs   args [0]  res [24,(name,val)*24]
+//   1 name lookup                        args [name]  res [value | -1]
+const gupdScenarios = [];
+const gupdname = (s) => s.replace(/[^A-Za-z0-9]+/g, "_");
+function captureGUPD(name, kind, args, res) {
+  gupdScenarios.push({
+    name: gupdname(name),
+    kind,
+    args: args.flat(Infinity).map(uenc),
+    res: res.flat(Infinity).map(uenc),
+  });
+}
+const GUT = GUPD.GameUpdateType;
+const GUT_NAMES = Object.keys(GUT);
+
+// kind 0: the full enum dump (declaration order = numeric order).
+captureGUPD("gupd_dump", 0, [0], [
+  GUT_NAMES.length,
+  ...GUT_NAMES.flatMap((n) => [encS(n), GUT[n]]),
+]);
+
+// kind 1: every member name plus miss cases (wrong case, empty, prefix).
+// The index keeps the generated Rust const ids unique (Tile vs tile collide
+// once uppercased).
+for (const [i, n] of [...GUT_NAMES, "tile", "Tile2", "", "Donat", "DonateEven", "Alliance"].entries()) {
+  captureGUPD(`gupd_lookup_${i}`, 1, [encS(n)], [GUT[n] ?? -1]);
+}
+
+// --- NationEmojiBehavior scenario runner --------------------------------------
+// Exercises the Util.ts emojiTable / flattenedEmojiTable and the 23 EMOJI_*
+// id arrays from NationEmojiBehavior.ts through the shared run_op runner.
+// Strings cross as `[len, u0, ..]` (UTF-16 code units); the Rust twin is
+// `nation_emoji::*`.
+//
+// kind table (matches the Rust dispatch):
+//   0 emojiTable dump   args [0]  res [12,(5,(str)*5)*12]
+//   1 flattened dump    args [0]  res [60,(str)*60]
+//   2 EMOJI_* dump      args [0]  res [23,(name,len,(id)*len)*23]
+//   3 emoji_id batch    args [n,(str)*n]  res [n,(id)*n]
+const neScenarios = [];
+const nename = (s) => s.replace(/[^A-Za-z0-9]+/g, "_");
+function captureNE(name, kind, args, res) {
+  neScenarios.push({
+    name: nename(name),
+    kind,
+    args: args.flat(Infinity).map(uenc),
+    res: res.flat(Infinity).map(uenc),
+  });
+}
+const NE_NAMES = [
+  "EMOJI_ASSIST_ACCEPT",
+  "EMOJI_ASSIST_RELATION_TOO_LOW",
+  "EMOJI_ASSIST_TARGET_ME",
+  "EMOJI_ASSIST_TARGET_ALLY",
+  "EMOJI_AGGRESSIVE_ATTACK",
+  "EMOJI_ATTACK",
+  "EMOJI_WARSHIP_RETALIATION",
+  "EMOJI_NUKE",
+  "EMOJI_GOT_INSULTED",
+  "EMOJI_LOVE",
+  "EMOJI_CONFUSED",
+  "EMOJI_BRAG",
+  "EMOJI_CHARM_ALLIES",
+  "EMOJI_CLOWN",
+  "EMOJI_RAT",
+  "EMOJI_OVERWHELMED",
+  "EMOJI_CONGRATULATE",
+  "EMOJI_SCARED_OF_THREAT",
+  "EMOJI_BORED",
+  "EMOJI_HANDSHAKE",
+  "EMOJI_DONATION_OK",
+  "EMOJI_DONATION_TOO_SMALL",
+  "EMOJI_GREET",
+];
+
+// kind 0: the 12x5 grid, row-major, each row prefixed with its width.
+captureNE("ne_table", 0, [0], [
+  Util.emojiTable.length,
+  ...Util.emojiTable.flatMap((row) => [row.length, ...row.map(encS)]),
+]);
+
+// kind 1: the flattened 60-entry table.
+captureNE("ne_flat", 1, [0], [
+  Util.flattenedEmojiTable.length,
+  ...Util.flattenedEmojiTable.map(encS),
+]);
+
+// kind 2: the 23 id arrays in declaration order (names ride along for
+// locating a mismatch).
+captureNE("ne_consts", 2, [0], [
+  NE_NAMES.length,
+  ...NE_NAMES.flatMap((n) => {
+    const arr = NE[n];
+    return [encS(n), arr.length, ...arr];
+  }),
+]);
+
+// kind 3: emoji_id over every table entry, the emojis the consts reference,
+// and the -1 branches (not-in-table emoji, multi-char, empty, plain ASCII).
+const neIdCases = [
+  ...Util.flattenedEmojiTable,
+  "🐔🐔",
+  "😀😀",
+  "🤦",
+  "❤",
+  "",
+  "a",
+  "👍 ",
+];
+for (const [i, e] of neIdCases.entries()) {
+  captureNE(`ne_id_${i}`, 3, [1, encS(e)], [1, Util.flattenedEmojiTable.indexOf(e)]);
+}
+// one batch call with the whole case list (pins the count framing both ways)
+captureNE("ne_id_batch", 3, [neIdCases.length, neIdCases.map(encS)], [
+  neIdCases.length,
+  ...neIdCases.map((e) => Util.flattenedEmojiTable.indexOf(e)),
+]);
 
 
 // --- PatternDecoder scenario runner -------------------------------------------
@@ -5696,6 +5823,8 @@ const structures = {
   tribenames: tnScenarios,
   game: gameScenarios,
   nationcreation: ncScenarios,
+  gameupdates: gupdScenarios,
+  nationemoji: neScenarios,
   astar: asScenarios,
   rail: railScenarios,
   water: waterScenarios,
@@ -7857,6 +7986,60 @@ for (const s of structures.nationcreation) {
 }
 L.push("pub const NC_SCENARIOS: &[NcScenario] = &[");
 for (const s of structures.nationcreation) L.push(`    ${s.name.toUpperCase()},`);
+L.push("];");
+L.push("");
+
+L.push("/// game/GameUpdates.ts scenario: one `game_updates::run_op(kind, args)`");
+L.push("/// call. kind 0 dumps the 24 GameUpdateType (name, value) pairs, 1");
+L.push("/// looks a name up (-1 when absent). Strings cross as `[len, u0, ..]`");
+L.push("/// UTF-16 units.");
+L.push("pub struct GupdScenario {");
+L.push("    pub name: &'static str,");
+L.push("    pub kind: u8,");
+L.push("    pub args: &'static [f64],");
+L.push("    pub res: &'static [f64],");
+L.push("}");
+L.push("");
+for (const s of structures.gameupdates) {
+  const id = s.name.toUpperCase();
+  L.push(`pub const ${id}: GupdScenario = GupdScenario {`);
+  L.push(`    name: "${s.name}",`);
+  L.push(`    kind: ${s.kind}u8,`);
+  L.push(`    args: &[${s.args.map(utilResLit).join(", ")}],`);
+  L.push(`    res: &[${s.res.map(utilResLit).join(", ")}],`);
+  L.push("};");
+  L.push("");
+}
+L.push("pub const GUPD_SCENARIOS: &[GupdScenario] = &[");
+for (const s of structures.gameupdates) L.push(`    ${s.name.toUpperCase()},`);
+L.push("];");
+L.push("");
+
+L.push("/// Util.ts emojiTable + NationEmojiBehavior.ts EMOJI_* scenario: one");
+L.push("/// `nation_emoji::run_op(kind, args)` call. kind 0 dumps the 12x5");
+L.push("/// emojiTable, 1 the flattened 60-entry table, 2 the 23 EMOJI_* id");
+L.push("/// arrays (names included), 3 maps an input string batch through");
+L.push("/// emoji_id (-1 for absent). Strings cross as `[len, u0, ..]` UTF-16");
+L.push("/// units.");
+L.push("pub struct NeScenario {");
+L.push("    pub name: &'static str,");
+L.push("    pub kind: u8,");
+L.push("    pub args: &'static [f64],");
+L.push("    pub res: &'static [f64],");
+L.push("}");
+L.push("");
+for (const s of structures.nationemoji) {
+  const id = s.name.toUpperCase();
+  L.push(`pub const ${id}: NeScenario = NeScenario {`);
+  L.push(`    name: "${s.name}",`);
+  L.push(`    kind: ${s.kind}u8,`);
+  L.push(`    args: &[${s.args.map(utilResLit).join(", ")}],`);
+  L.push(`    res: &[${s.res.map(utilResLit).join(", ")}],`);
+  L.push("};");
+  L.push("");
+}
+L.push("pub const NE_SCENARIOS: &[NeScenario] = &[");
+for (const s of structures.nationemoji) L.push(`    ${s.name.toUpperCase()},`);
 L.push("];");
 L.push("");
 

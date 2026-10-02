@@ -87,6 +87,11 @@ rust/
 │   │   ├── nation_creation.rs     port of game/NationCreation.ts (name
 │   │   │                          templates + noun bank, pluralize, unique
 │   │   │                          name generation, createRandomNations)
+│   │   ├── game_updates.rs        port of game/GameUpdates.ts (GameUpdateType
+│   │   │                          24-member numeric wire-tag enum)
+│   │   ├── nation_emoji.rs        port of Util.ts emojiTable /
+│   │   │                          flattenedEmojiTable + NationEmojiBehavior.ts
+│   │   │                          EMOJI_* constants
 │   │   ├── wasm_probe.rs          `extern "C"` surface, feature-gated
 │   │   └── pathfinding/
 │   │       ├── mod.rs
@@ -733,6 +738,26 @@ desync, not a rounding nit. Two things enforce that here:
     whole bank + boundary words, 15 seeds, the collision/fallback paths, and
     7 createRandomNations cases (target ≤ / > manifest, extras dedupe,
     procedural fill).
+42. **`game/GameUpdates.ts` + `execution/nation/NationEmojiBehavior.ts`**
+    (`game_updates` / `nation_emoji`) — `GameUpdateType` is the 24-member
+    implicit-numbering enum (`Tile = 0 .. DonateEvent = 23`); the port spells
+    the discriminants out (`#[repr(i32)]` + `NAMES` + `from_i32`/`as_i32`/
+    `name()`), and the rest of GameUpdates.ts is interfaces with no runtime.
+    `nation_emoji` carries the Util.ts `emojiTable` (12×5 picker grid) and
+    `flattenedEmojiTable` (60 distinct entries, row-major), the 23 `EMOJI_*`
+    constants as literal arrays, and `emojiId` = `flattenedEmojiTable.indexOf`
+    (-1 when absent). Faithfulness rides on the UTF-16 wire: the surrogate
+    pairs, the VS16 tails (`❤️` = 2764 FE0F) and the ZWJ sequence
+    (`🤦‍♂️` = 1F926 200D 2642 FE0F) are compared code-unit-exact, so a
+    missing variation selector misses the table and returns -1 exactly like
+    JS. The loader drops the type-only Game/PseudoRandom/EmojiExecution
+    imports, re-points the `flattenedEmojiTable` value import at the prepared
+    Util copy, and expands the parameter-property ctor. 31 gameupdates
+    scenarios (372 result tokens: full enum dump + 30 name lookups incl.
+    wrong-case/empty/prefix misses) and 71 nationemoji scenarios (1,064
+    result tokens: grid dump, flattened dump, the 23 id arrays with names,
+    and per-string + batched `emoji_id` over all 60 entries plus the -1
+    branches).
 
 Regenerate whenever a ported source changes:
 
@@ -766,7 +791,7 @@ node rust/tools/run_wasm_parity.mjs
 
 `wasm-probe` exposes the ported functions through `extern "C"` scalar
 entrypoints (`src/wasm_probe.rs`); the runner imports `data/vectors.json` and
-compares every value. Last run: **96,864 comparisons, all bit-identical**.
+compares every value. Last run: **98,300 comparisons, all bit-identical**.
 
 ### Windows: the linker environment
 

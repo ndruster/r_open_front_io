@@ -36533,3 +36533,849 @@ pub const NC_SCENARIOS: &[NcScenario] = &[
     NC_CRN_6,
 ];
 
+/// game/GameUpdates.ts scenario: one `game_updates::run_op(kind, args)`
+/// call. kind 0 dumps the 24 GameUpdateType (name, value) pairs, 1
+/// looks a name up (-1 when absent). Strings cross as `[len, u0, ..]`
+/// UTF-16 units.
+pub struct GupdScenario {
+    pub name: &'static str,
+    pub kind: u8,
+    pub args: &'static [f64],
+    pub res: &'static [f64],
+}
+
+pub const GUPD_DUMP: GupdScenario = GupdScenario {
+    name: "gupd_dump",
+    kind: 0u8,
+    args: &[0f64],
+    res: &[24f64, 4f64, 84f64, 105f64, 108f64, 101f64, 0f64, 4f64, 85f64, 110f64, 105f64, 116f64, 1f64, 6f64, 80f64, 108f64, 97f64, 121f64, 101f64, 114f64, 2f64, 12f64, 68f64, 105f64, 115f64, 112f64, 108f64, 97f64, 121f64, 69f64, 118f64, 101f64, 110f64, 116f64, 3f64, 16f64, 68f64, 105f64, 115f64, 112f64, 108f64, 97f64, 121f64, 67f64, 104f64, 97f64, 116f64, 69f64, 118f64, 101f64, 110f64, 116f64, 4f64, 15f64, 65f64, 108f64, 108f64, 105f64, 97f64, 110f64, 99f64, 101f64, 82f64, 101f64, 113f64, 117f64, 101f64, 115f64, 116f64, 5f64, 20f64, 65f64, 108f64, 108f64, 105f64, 97f64, 110f64, 99f64, 101f64, 82f64, 101f64, 113f64, 117f64, 101f64, 115f64, 116f64, 82f64, 101f64, 112f64, 108f64, 121f64, 6f64, 13f64, 66f64, 114f64, 111f64, 107f64, 101f64, 65f64, 108f64, 108f64, 105f64, 97f64, 110f64, 99f64, 101f64, 7f64, 15f64, 65f64, 108f64, 108f64, 105f64, 97f64, 110f64, 99f64, 101f64, 69f64, 120f64, 112f64, 105f64, 114f64, 101f64, 100f64, 8f64, 17f64, 65f64, 108f64, 108f64, 105f64, 97f64, 110f64, 99f64, 101f64, 69f64, 120f64, 116f64, 101f64, 110f64, 115f64, 105f64, 111f64, 110f64, 9f64, 12f64, 84f64, 97f64, 114f64, 103f64, 101f64, 116f64, 80f64, 108f64, 97f64, 121f64, 101f64, 114f64, 10f64, 5f64, 69f64, 109f64, 111f64, 106f64, 105f64, 11f64, 3f64, 87f64, 105f64, 110f64, 12f64, 4f64, 72f64, 97f64, 115f64, 104f64, 13f64, 12f64, 85f64, 110f64, 105f64, 116f64, 73f64, 110f64, 99f64, 111f64, 109f64, 105f64, 110f64, 103f64, 14f64, 10f64, 66f64, 111f64, 110f64, 117f64, 115f64, 69f64, 118f64, 101f64, 110f64, 116f64, 15f64, 24f64, 82f64, 97f64, 105f64, 108f64, 114f64, 111f64, 97f64, 100f64, 68f64, 101f64, 115f64, 116f64, 114f64, 117f64, 99f64, 116f64, 105f64, 111f64, 110f64, 69f64, 118f64, 101f64, 110f64, 116f64, 16f64, 25f64, 82f64, 97f64, 105f64, 108f64, 114f64, 111f64, 97f64, 100f64, 67f64, 111f64, 110f64, 115f64, 116f64, 114f64, 117f64, 99f64, 116f64, 105f64, 111f64, 110f64, 69f64, 118f64, 101f64, 110f64, 116f64, 17f64, 17f64, 82f64, 97f64, 105f64, 108f64, 114f64, 111f64, 97f64, 100f64, 83f64, 110f64, 97f64, 112f64, 69f64, 118f64, 101f64, 110f64, 116f64, 18f64, 13f64, 67f64, 111f64, 110f64, 113f64, 117f64, 101f64, 115f64, 116f64, 69f64, 118f64, 101f64, 110f64, 116f64, 19f64, 12f64, 69f64, 109f64, 98f64, 97f64, 114f64, 103f64, 111f64, 69f64, 118f64, 101f64, 110f64, 116f64, 20f64, 13f64, 83f64, 112f64, 97f64, 119f64, 110f64, 80f64, 104f64, 97f64, 115f64, 101f64, 69f64, 110f64, 100f64, 21f64, 10f64, 71f64, 97f64, 109f64, 101f64, 80f64, 97f64, 117f64, 115f64, 101f64, 100f64, 22f64, 11f64, 68f64, 111f64, 110f64, 97f64, 116f64, 101f64, 69f64, 118f64, 101f64, 110f64, 116f64, 23f64],
+};
+
+pub const GUPD_LOOKUP_0: GupdScenario = GupdScenario {
+    name: "gupd_lookup_0",
+    kind: 1u8,
+    args: &[4f64, 84f64, 105f64, 108f64, 101f64],
+    res: &[0f64],
+};
+
+pub const GUPD_LOOKUP_1: GupdScenario = GupdScenario {
+    name: "gupd_lookup_1",
+    kind: 1u8,
+    args: &[4f64, 85f64, 110f64, 105f64, 116f64],
+    res: &[1f64],
+};
+
+pub const GUPD_LOOKUP_2: GupdScenario = GupdScenario {
+    name: "gupd_lookup_2",
+    kind: 1u8,
+    args: &[6f64, 80f64, 108f64, 97f64, 121f64, 101f64, 114f64],
+    res: &[2f64],
+};
+
+pub const GUPD_LOOKUP_3: GupdScenario = GupdScenario {
+    name: "gupd_lookup_3",
+    kind: 1u8,
+    args: &[12f64, 68f64, 105f64, 115f64, 112f64, 108f64, 97f64, 121f64, 69f64, 118f64, 101f64, 110f64, 116f64],
+    res: &[3f64],
+};
+
+pub const GUPD_LOOKUP_4: GupdScenario = GupdScenario {
+    name: "gupd_lookup_4",
+    kind: 1u8,
+    args: &[16f64, 68f64, 105f64, 115f64, 112f64, 108f64, 97f64, 121f64, 67f64, 104f64, 97f64, 116f64, 69f64, 118f64, 101f64, 110f64, 116f64],
+    res: &[4f64],
+};
+
+pub const GUPD_LOOKUP_5: GupdScenario = GupdScenario {
+    name: "gupd_lookup_5",
+    kind: 1u8,
+    args: &[15f64, 65f64, 108f64, 108f64, 105f64, 97f64, 110f64, 99f64, 101f64, 82f64, 101f64, 113f64, 117f64, 101f64, 115f64, 116f64],
+    res: &[5f64],
+};
+
+pub const GUPD_LOOKUP_6: GupdScenario = GupdScenario {
+    name: "gupd_lookup_6",
+    kind: 1u8,
+    args: &[20f64, 65f64, 108f64, 108f64, 105f64, 97f64, 110f64, 99f64, 101f64, 82f64, 101f64, 113f64, 117f64, 101f64, 115f64, 116f64, 82f64, 101f64, 112f64, 108f64, 121f64],
+    res: &[6f64],
+};
+
+pub const GUPD_LOOKUP_7: GupdScenario = GupdScenario {
+    name: "gupd_lookup_7",
+    kind: 1u8,
+    args: &[13f64, 66f64, 114f64, 111f64, 107f64, 101f64, 65f64, 108f64, 108f64, 105f64, 97f64, 110f64, 99f64, 101f64],
+    res: &[7f64],
+};
+
+pub const GUPD_LOOKUP_8: GupdScenario = GupdScenario {
+    name: "gupd_lookup_8",
+    kind: 1u8,
+    args: &[15f64, 65f64, 108f64, 108f64, 105f64, 97f64, 110f64, 99f64, 101f64, 69f64, 120f64, 112f64, 105f64, 114f64, 101f64, 100f64],
+    res: &[8f64],
+};
+
+pub const GUPD_LOOKUP_9: GupdScenario = GupdScenario {
+    name: "gupd_lookup_9",
+    kind: 1u8,
+    args: &[17f64, 65f64, 108f64, 108f64, 105f64, 97f64, 110f64, 99f64, 101f64, 69f64, 120f64, 116f64, 101f64, 110f64, 115f64, 105f64, 111f64, 110f64],
+    res: &[9f64],
+};
+
+pub const GUPD_LOOKUP_10: GupdScenario = GupdScenario {
+    name: "gupd_lookup_10",
+    kind: 1u8,
+    args: &[12f64, 84f64, 97f64, 114f64, 103f64, 101f64, 116f64, 80f64, 108f64, 97f64, 121f64, 101f64, 114f64],
+    res: &[10f64],
+};
+
+pub const GUPD_LOOKUP_11: GupdScenario = GupdScenario {
+    name: "gupd_lookup_11",
+    kind: 1u8,
+    args: &[5f64, 69f64, 109f64, 111f64, 106f64, 105f64],
+    res: &[11f64],
+};
+
+pub const GUPD_LOOKUP_12: GupdScenario = GupdScenario {
+    name: "gupd_lookup_12",
+    kind: 1u8,
+    args: &[3f64, 87f64, 105f64, 110f64],
+    res: &[12f64],
+};
+
+pub const GUPD_LOOKUP_13: GupdScenario = GupdScenario {
+    name: "gupd_lookup_13",
+    kind: 1u8,
+    args: &[4f64, 72f64, 97f64, 115f64, 104f64],
+    res: &[13f64],
+};
+
+pub const GUPD_LOOKUP_14: GupdScenario = GupdScenario {
+    name: "gupd_lookup_14",
+    kind: 1u8,
+    args: &[12f64, 85f64, 110f64, 105f64, 116f64, 73f64, 110f64, 99f64, 111f64, 109f64, 105f64, 110f64, 103f64],
+    res: &[14f64],
+};
+
+pub const GUPD_LOOKUP_15: GupdScenario = GupdScenario {
+    name: "gupd_lookup_15",
+    kind: 1u8,
+    args: &[10f64, 66f64, 111f64, 110f64, 117f64, 115f64, 69f64, 118f64, 101f64, 110f64, 116f64],
+    res: &[15f64],
+};
+
+pub const GUPD_LOOKUP_16: GupdScenario = GupdScenario {
+    name: "gupd_lookup_16",
+    kind: 1u8,
+    args: &[24f64, 82f64, 97f64, 105f64, 108f64, 114f64, 111f64, 97f64, 100f64, 68f64, 101f64, 115f64, 116f64, 114f64, 117f64, 99f64, 116f64, 105f64, 111f64, 110f64, 69f64, 118f64, 101f64, 110f64, 116f64],
+    res: &[16f64],
+};
+
+pub const GUPD_LOOKUP_17: GupdScenario = GupdScenario {
+    name: "gupd_lookup_17",
+    kind: 1u8,
+    args: &[25f64, 82f64, 97f64, 105f64, 108f64, 114f64, 111f64, 97f64, 100f64, 67f64, 111f64, 110f64, 115f64, 116f64, 114f64, 117f64, 99f64, 116f64, 105f64, 111f64, 110f64, 69f64, 118f64, 101f64, 110f64, 116f64],
+    res: &[17f64],
+};
+
+pub const GUPD_LOOKUP_18: GupdScenario = GupdScenario {
+    name: "gupd_lookup_18",
+    kind: 1u8,
+    args: &[17f64, 82f64, 97f64, 105f64, 108f64, 114f64, 111f64, 97f64, 100f64, 83f64, 110f64, 97f64, 112f64, 69f64, 118f64, 101f64, 110f64, 116f64],
+    res: &[18f64],
+};
+
+pub const GUPD_LOOKUP_19: GupdScenario = GupdScenario {
+    name: "gupd_lookup_19",
+    kind: 1u8,
+    args: &[13f64, 67f64, 111f64, 110f64, 113f64, 117f64, 101f64, 115f64, 116f64, 69f64, 118f64, 101f64, 110f64, 116f64],
+    res: &[19f64],
+};
+
+pub const GUPD_LOOKUP_20: GupdScenario = GupdScenario {
+    name: "gupd_lookup_20",
+    kind: 1u8,
+    args: &[12f64, 69f64, 109f64, 98f64, 97f64, 114f64, 103f64, 111f64, 69f64, 118f64, 101f64, 110f64, 116f64],
+    res: &[20f64],
+};
+
+pub const GUPD_LOOKUP_21: GupdScenario = GupdScenario {
+    name: "gupd_lookup_21",
+    kind: 1u8,
+    args: &[13f64, 83f64, 112f64, 97f64, 119f64, 110f64, 80f64, 104f64, 97f64, 115f64, 101f64, 69f64, 110f64, 100f64],
+    res: &[21f64],
+};
+
+pub const GUPD_LOOKUP_22: GupdScenario = GupdScenario {
+    name: "gupd_lookup_22",
+    kind: 1u8,
+    args: &[10f64, 71f64, 97f64, 109f64, 101f64, 80f64, 97f64, 117f64, 115f64, 101f64, 100f64],
+    res: &[22f64],
+};
+
+pub const GUPD_LOOKUP_23: GupdScenario = GupdScenario {
+    name: "gupd_lookup_23",
+    kind: 1u8,
+    args: &[11f64, 68f64, 111f64, 110f64, 97f64, 116f64, 101f64, 69f64, 118f64, 101f64, 110f64, 116f64],
+    res: &[23f64],
+};
+
+pub const GUPD_LOOKUP_24: GupdScenario = GupdScenario {
+    name: "gupd_lookup_24",
+    kind: 1u8,
+    args: &[4f64, 116f64, 105f64, 108f64, 101f64],
+    res: &[-1f64],
+};
+
+pub const GUPD_LOOKUP_25: GupdScenario = GupdScenario {
+    name: "gupd_lookup_25",
+    kind: 1u8,
+    args: &[5f64, 84f64, 105f64, 108f64, 101f64, 50f64],
+    res: &[-1f64],
+};
+
+pub const GUPD_LOOKUP_26: GupdScenario = GupdScenario {
+    name: "gupd_lookup_26",
+    kind: 1u8,
+    args: &[0f64],
+    res: &[-1f64],
+};
+
+pub const GUPD_LOOKUP_27: GupdScenario = GupdScenario {
+    name: "gupd_lookup_27",
+    kind: 1u8,
+    args: &[5f64, 68f64, 111f64, 110f64, 97f64, 116f64],
+    res: &[-1f64],
+};
+
+pub const GUPD_LOOKUP_28: GupdScenario = GupdScenario {
+    name: "gupd_lookup_28",
+    kind: 1u8,
+    args: &[10f64, 68f64, 111f64, 110f64, 97f64, 116f64, 101f64, 69f64, 118f64, 101f64, 110f64],
+    res: &[-1f64],
+};
+
+pub const GUPD_LOOKUP_29: GupdScenario = GupdScenario {
+    name: "gupd_lookup_29",
+    kind: 1u8,
+    args: &[8f64, 65f64, 108f64, 108f64, 105f64, 97f64, 110f64, 99f64, 101f64],
+    res: &[-1f64],
+};
+
+pub const GUPD_SCENARIOS: &[GupdScenario] = &[
+    GUPD_DUMP,
+    GUPD_LOOKUP_0,
+    GUPD_LOOKUP_1,
+    GUPD_LOOKUP_2,
+    GUPD_LOOKUP_3,
+    GUPD_LOOKUP_4,
+    GUPD_LOOKUP_5,
+    GUPD_LOOKUP_6,
+    GUPD_LOOKUP_7,
+    GUPD_LOOKUP_8,
+    GUPD_LOOKUP_9,
+    GUPD_LOOKUP_10,
+    GUPD_LOOKUP_11,
+    GUPD_LOOKUP_12,
+    GUPD_LOOKUP_13,
+    GUPD_LOOKUP_14,
+    GUPD_LOOKUP_15,
+    GUPD_LOOKUP_16,
+    GUPD_LOOKUP_17,
+    GUPD_LOOKUP_18,
+    GUPD_LOOKUP_19,
+    GUPD_LOOKUP_20,
+    GUPD_LOOKUP_21,
+    GUPD_LOOKUP_22,
+    GUPD_LOOKUP_23,
+    GUPD_LOOKUP_24,
+    GUPD_LOOKUP_25,
+    GUPD_LOOKUP_26,
+    GUPD_LOOKUP_27,
+    GUPD_LOOKUP_28,
+    GUPD_LOOKUP_29,
+];
+
+/// Util.ts emojiTable + NationEmojiBehavior.ts EMOJI_* scenario: one
+/// `nation_emoji::run_op(kind, args)` call. kind 0 dumps the 12x5
+/// emojiTable, 1 the flattened 60-entry table, 2 the 23 EMOJI_* id
+/// arrays (names included), 3 maps an input string batch through
+/// emoji_id (-1 for absent). Strings cross as `[len, u0, ..]` UTF-16
+/// units.
+pub struct NeScenario {
+    pub name: &'static str,
+    pub kind: u8,
+    pub args: &'static [f64],
+    pub res: &'static [f64],
+}
+
+pub const NE_TABLE: NeScenario = NeScenario {
+    name: "ne_table",
+    kind: 0u8,
+    args: &[0f64],
+    res: &[12f64, 5f64, 2f64, 55357f64, 56832f64, 2f64, 55357f64, 56842f64, 2f64, 55358f64, 56688f64, 2f64, 55357f64, 56839f64, 2f64, 55357f64, 56846f64, 5f64, 2f64, 55357f64, 56862f64, 2f64, 55358f64, 56698f64, 2f64, 55357f64, 56877f64, 2f64, 55357f64, 56881f64, 2f64, 55357f64, 56865f64, 5f64, 2f64, 55357f64, 56840f64, 2f64, 55358f64, 56609f64, 2f64, 55358f64, 56689f64, 2f64, 55358f64, 57057f64, 2f64, 55357f64, 56725f64, 5f64, 2f64, 55357f64, 56395f64, 2f64, 55357f64, 56399f64, 1f64, 9995f64, 2f64, 55357f64, 56911f64, 2f64, 55357f64, 56490f64, 5f64, 2f64, 55357f64, 56397f64, 2f64, 55357f64, 56398f64, 2f64, 55358f64, 57076f64, 2f64, 55358f64, 56588f64, 5f64, 55358f64, 56614f64, 8205f64, 9794f64, 65039f64, 5f64, 2f64, 55358f64, 56605f64, 2f64, 55356f64, 56728f64, 3f64, 55357f64, 56650f64, 65039f64, 3f64, 55356f64, 57331f64, 65039f64, 1f64, 9203f64, 5f64, 2f64, 55357f64, 56613f64, 2f64, 55357f64, 56485f64, 2f64, 55357f64, 56448f64, 2f64, 9762f64, 65039f64, 2f64, 9888f64, 65039f64, 5f64, 2f64, 8598f64, 65039f64, 2f64, 11014f64, 65039f64, 2f64, 8599f64, 65039f64, 2f64, 55357f64, 56401f64, 2f64, 55358f64, 56647f64, 5f64, 2f64, 11013f64, 65039f64, 2f64, 55356f64, 57263f64, 2f64, 10145f64, 65039f64, 2f64, 55358f64, 56648f64, 2f64, 55358f64, 56649f64, 5f64, 2f64, 8601f64, 65039f64, 2f64, 11015f64, 65039f64, 2f64, 8600f64, 65039f64, 2f64, 10084f64, 65039f64, 2f64, 55357f64, 56468f64, 5f64, 2f64, 55357f64, 56496f64, 1f64, 9875f64, 1f64, 9973f64, 2f64, 55356f64, 57313f64, 3f64, 55357f64, 57057f64, 65039f64, 5f64, 2f64, 55356f64, 57325f64, 2f64, 55357f64, 56962f64, 1f64, 10067f64, 2f64, 55357f64, 56340f64, 2f64, 55357f64, 56320f64],
+};
+
+pub const NE_FLAT: NeScenario = NeScenario {
+    name: "ne_flat",
+    kind: 1u8,
+    args: &[0f64],
+    res: &[60f64, 2f64, 55357f64, 56832f64, 2f64, 55357f64, 56842f64, 2f64, 55358f64, 56688f64, 2f64, 55357f64, 56839f64, 2f64, 55357f64, 56846f64, 2f64, 55357f64, 56862f64, 2f64, 55358f64, 56698f64, 2f64, 55357f64, 56877f64, 2f64, 55357f64, 56881f64, 2f64, 55357f64, 56865f64, 2f64, 55357f64, 56840f64, 2f64, 55358f64, 56609f64, 2f64, 55358f64, 56689f64, 2f64, 55358f64, 57057f64, 2f64, 55357f64, 56725f64, 2f64, 55357f64, 56395f64, 2f64, 55357f64, 56399f64, 1f64, 9995f64, 2f64, 55357f64, 56911f64, 2f64, 55357f64, 56490f64, 2f64, 55357f64, 56397f64, 2f64, 55357f64, 56398f64, 2f64, 55358f64, 57076f64, 2f64, 55358f64, 56588f64, 5f64, 55358f64, 56614f64, 8205f64, 9794f64, 65039f64, 2f64, 55358f64, 56605f64, 2f64, 55356f64, 56728f64, 3f64, 55357f64, 56650f64, 65039f64, 3f64, 55356f64, 57331f64, 65039f64, 1f64, 9203f64, 2f64, 55357f64, 56613f64, 2f64, 55357f64, 56485f64, 2f64, 55357f64, 56448f64, 2f64, 9762f64, 65039f64, 2f64, 9888f64, 65039f64, 2f64, 8598f64, 65039f64, 2f64, 11014f64, 65039f64, 2f64, 8599f64, 65039f64, 2f64, 55357f64, 56401f64, 2f64, 55358f64, 56647f64, 2f64, 11013f64, 65039f64, 2f64, 55356f64, 57263f64, 2f64, 10145f64, 65039f64, 2f64, 55358f64, 56648f64, 2f64, 55358f64, 56649f64, 2f64, 8601f64, 65039f64, 2f64, 11015f64, 65039f64, 2f64, 8600f64, 65039f64, 2f64, 10084f64, 65039f64, 2f64, 55357f64, 56468f64, 2f64, 55357f64, 56496f64, 1f64, 9875f64, 1f64, 9973f64, 2f64, 55356f64, 57313f64, 3f64, 55357f64, 57057f64, 65039f64, 2f64, 55356f64, 57325f64, 2f64, 55357f64, 56962f64, 1f64, 10067f64, 2f64, 55357f64, 56340f64, 2f64, 55357f64, 56320f64],
+};
+
+pub const NE_CONSTS: NeScenario = NeScenario {
+    name: "ne_consts",
+    kind: 2u8,
+    args: &[0f64],
+    res: &[23f64, 19f64, 69f64, 77f64, 79f64, 74f64, 73f64, 95f64, 65f64, 83f64, 83f64, 73f64, 83f64, 84f64, 95f64, 65f64, 67f64, 67f64, 69f64, 80f64, 84f64, 3f64, 20f64, 25f64, 41f64, 29f64, 69f64, 77f64, 79f64, 74f64, 73f64, 95f64, 65f64, 83f64, 83f64, 73f64, 83f64, 84f64, 95f64, 82f64, 69f64, 76f64, 65f64, 84f64, 73f64, 79f64, 78f64, 95f64, 84f64, 79f64, 79f64, 95f64, 76f64, 79f64, 87f64, 2f64, 12f64, 24f64, 22f64, 69f64, 77f64, 79f64, 74f64, 73f64, 95f64, 65f64, 83f64, 83f64, 73f64, 83f64, 84f64, 95f64, 84f64, 65f64, 82f64, 71f64, 69f64, 84f64, 95f64, 77f64, 69f64, 2f64, 6f64, 32f64, 24f64, 69f64, 77f64, 79f64, 74f64, 73f64, 95f64, 65f64, 83f64, 83f64, 73f64, 83f64, 84f64, 95f64, 84f64, 65f64, 82f64, 71f64, 69f64, 84f64, 95f64, 65f64, 76f64, 76f64, 89f64, 2f64, 27f64, 21f64, 23f64, 69f64, 77f64, 79f64, 74f64, 73f64, 95f64, 65f64, 71f64, 71f64, 82f64, 69f64, 83f64, 83f64, 73f64, 86f64, 69f64, 95f64, 65f64, 84f64, 84f64, 65f64, 67f64, 75f64, 1f64, 10f64, 12f64, 69f64, 77f64, 79f64, 74f64, 73f64, 95f64, 65f64, 84f64, 84f64, 65f64, 67f64, 75f64, 1f64, 9f64, 25f64, 69f64, 77f64, 79f64, 74f64, 73f64, 95f64, 87f64, 65f64, 82f64, 83f64, 72f64, 73f64, 80f64, 95f64, 82f64, 69f64, 84f64, 65f64, 76f64, 73f64, 65f64, 84f64, 73f64, 79f64, 78f64, 1f64, 52f64, 10f64, 69f64, 77f64, 79f64, 74f64, 73f64, 95f64, 78f64, 85f64, 75f64, 69f64, 2f64, 33f64, 31f64, 18f64, 69f64, 77f64, 79f64, 74f64, 73f64, 95f64, 71f64, 79f64, 84f64, 95f64, 73f64, 78f64, 83f64, 85f64, 76f64, 84f64, 69f64, 68f64, 5f64, 14f64, 9f64, 11f64, 5f64, 7f64, 10f64, 69f64, 77f64, 79f64, 74f64, 73f64, 95f64, 76f64, 79f64, 86f64, 69f64, 3f64, 48f64, 1f64, 2f64, 14f64, 69f64, 77f64, 79f64, 74f64, 73f64, 95f64, 67f64, 79f64, 78f64, 70f64, 85f64, 83f64, 69f64, 68f64, 2f64, 57f64, 11f64, 10f64, 69f64, 77f64, 79f64, 74f64, 73f64, 95f64, 66f64, 82f64, 65f64, 71f64, 3f64, 38f64, 39f64, 19f64, 18f64, 69f64, 77f64, 79f64, 74f64, 73f64, 95f64, 67f64, 72f64, 65f64, 82f64, 77f64, 95f64, 65f64, 76f64, 76f64, 73f64, 69f64, 83f64, 3f64, 25f64, 3f64, 19f64, 11f64, 69f64, 77f64, 79f64, 74f64, 73f64, 95f64, 67f64, 76f64, 79f64, 87f64, 78f64, 2f64, 11f64, 24f64, 9f64, 69f64, 77f64, 79f64, 74f64, 73f64, 95f64, 82f64, 65f64, 84f64, 1f64, 59f64, 17f64, 69f64, 77f64, 79f64, 74f64, 73f64, 95f64, 79f64, 86f64, 69f64, 82f64, 87f64, 72f64, 69f64, 76f64, 77f64, 69f64, 68f64, 8f64, 32f64, 26f64, 8f64, 6f64, 7f64, 5f64, 13f64, 15f64, 18f64, 69f64, 77f64, 79f64, 74f64, 73f64, 95f64, 67f64, 79f64, 78f64, 71f64, 82f64, 65f64, 84f64, 85f64, 76f64, 65f64, 84f64, 69f64, 1f64, 16f64, 22f64, 69f64, 77f64, 79f64, 74f64, 73f64, 95f64, 83f64, 67f64, 65f64, 82f64, 69f64, 68f64, 95f64, 79f64, 70f64, 95f64, 84f64, 72f64, 82f64, 69f64, 65f64, 84f64, 2f64, 18f64, 6f64, 11f64, 69f64, 77f64, 79f64, 74f64, 73f64, 95f64, 66f64, 79f64, 82f64, 69f64, 68f64, 1f64, 12f64, 15f64, 69f64, 77f64, 79f64, 74f64, 73f64, 95f64, 72f64, 65f64, 78f64, 68f64, 83f64, 72f64, 65f64, 75f64, 69f64, 1f64, 25f64, 17f64, 69f64, 77f64, 79f64, 74f64, 73f64, 95f64, 68f64, 79f64, 78f64, 65f64, 84f64, 73f64, 79f64, 78f64, 95f64, 79f64, 75f64, 1f64, 20f64, 24f64, 69f64, 77f64, 79f64, 74f64, 73f64, 95f64, 68f64, 79f64, 78f64, 65f64, 84f64, 73f64, 79f64, 78f64, 95f64, 84f64, 79f64, 79f64, 95f64, 83f64, 77f64, 65f64, 76f64, 76f64, 2f64, 57f64, 12f64, 11f64, 69f64, 77f64, 79f64, 74f64, 73f64, 95f64, 71f64, 82f64, 69f64, 69f64, 84f64, 1f64, 15f64],
+};
+
+pub const NE_ID_0: NeScenario = NeScenario {
+    name: "ne_id_0",
+    kind: 3u8,
+    args: &[1f64, 2f64, 55357f64, 56832f64],
+    res: &[1f64, 0f64],
+};
+
+pub const NE_ID_1: NeScenario = NeScenario {
+    name: "ne_id_1",
+    kind: 3u8,
+    args: &[1f64, 2f64, 55357f64, 56842f64],
+    res: &[1f64, 1f64],
+};
+
+pub const NE_ID_2: NeScenario = NeScenario {
+    name: "ne_id_2",
+    kind: 3u8,
+    args: &[1f64, 2f64, 55358f64, 56688f64],
+    res: &[1f64, 2f64],
+};
+
+pub const NE_ID_3: NeScenario = NeScenario {
+    name: "ne_id_3",
+    kind: 3u8,
+    args: &[1f64, 2f64, 55357f64, 56839f64],
+    res: &[1f64, 3f64],
+};
+
+pub const NE_ID_4: NeScenario = NeScenario {
+    name: "ne_id_4",
+    kind: 3u8,
+    args: &[1f64, 2f64, 55357f64, 56846f64],
+    res: &[1f64, 4f64],
+};
+
+pub const NE_ID_5: NeScenario = NeScenario {
+    name: "ne_id_5",
+    kind: 3u8,
+    args: &[1f64, 2f64, 55357f64, 56862f64],
+    res: &[1f64, 5f64],
+};
+
+pub const NE_ID_6: NeScenario = NeScenario {
+    name: "ne_id_6",
+    kind: 3u8,
+    args: &[1f64, 2f64, 55358f64, 56698f64],
+    res: &[1f64, 6f64],
+};
+
+pub const NE_ID_7: NeScenario = NeScenario {
+    name: "ne_id_7",
+    kind: 3u8,
+    args: &[1f64, 2f64, 55357f64, 56877f64],
+    res: &[1f64, 7f64],
+};
+
+pub const NE_ID_8: NeScenario = NeScenario {
+    name: "ne_id_8",
+    kind: 3u8,
+    args: &[1f64, 2f64, 55357f64, 56881f64],
+    res: &[1f64, 8f64],
+};
+
+pub const NE_ID_9: NeScenario = NeScenario {
+    name: "ne_id_9",
+    kind: 3u8,
+    args: &[1f64, 2f64, 55357f64, 56865f64],
+    res: &[1f64, 9f64],
+};
+
+pub const NE_ID_10: NeScenario = NeScenario {
+    name: "ne_id_10",
+    kind: 3u8,
+    args: &[1f64, 2f64, 55357f64, 56840f64],
+    res: &[1f64, 10f64],
+};
+
+pub const NE_ID_11: NeScenario = NeScenario {
+    name: "ne_id_11",
+    kind: 3u8,
+    args: &[1f64, 2f64, 55358f64, 56609f64],
+    res: &[1f64, 11f64],
+};
+
+pub const NE_ID_12: NeScenario = NeScenario {
+    name: "ne_id_12",
+    kind: 3u8,
+    args: &[1f64, 2f64, 55358f64, 56689f64],
+    res: &[1f64, 12f64],
+};
+
+pub const NE_ID_13: NeScenario = NeScenario {
+    name: "ne_id_13",
+    kind: 3u8,
+    args: &[1f64, 2f64, 55358f64, 57057f64],
+    res: &[1f64, 13f64],
+};
+
+pub const NE_ID_14: NeScenario = NeScenario {
+    name: "ne_id_14",
+    kind: 3u8,
+    args: &[1f64, 2f64, 55357f64, 56725f64],
+    res: &[1f64, 14f64],
+};
+
+pub const NE_ID_15: NeScenario = NeScenario {
+    name: "ne_id_15",
+    kind: 3u8,
+    args: &[1f64, 2f64, 55357f64, 56395f64],
+    res: &[1f64, 15f64],
+};
+
+pub const NE_ID_16: NeScenario = NeScenario {
+    name: "ne_id_16",
+    kind: 3u8,
+    args: &[1f64, 2f64, 55357f64, 56399f64],
+    res: &[1f64, 16f64],
+};
+
+pub const NE_ID_17: NeScenario = NeScenario {
+    name: "ne_id_17",
+    kind: 3u8,
+    args: &[1f64, 1f64, 9995f64],
+    res: &[1f64, 17f64],
+};
+
+pub const NE_ID_18: NeScenario = NeScenario {
+    name: "ne_id_18",
+    kind: 3u8,
+    args: &[1f64, 2f64, 55357f64, 56911f64],
+    res: &[1f64, 18f64],
+};
+
+pub const NE_ID_19: NeScenario = NeScenario {
+    name: "ne_id_19",
+    kind: 3u8,
+    args: &[1f64, 2f64, 55357f64, 56490f64],
+    res: &[1f64, 19f64],
+};
+
+pub const NE_ID_20: NeScenario = NeScenario {
+    name: "ne_id_20",
+    kind: 3u8,
+    args: &[1f64, 2f64, 55357f64, 56397f64],
+    res: &[1f64, 20f64],
+};
+
+pub const NE_ID_21: NeScenario = NeScenario {
+    name: "ne_id_21",
+    kind: 3u8,
+    args: &[1f64, 2f64, 55357f64, 56398f64],
+    res: &[1f64, 21f64],
+};
+
+pub const NE_ID_22: NeScenario = NeScenario {
+    name: "ne_id_22",
+    kind: 3u8,
+    args: &[1f64, 2f64, 55358f64, 57076f64],
+    res: &[1f64, 22f64],
+};
+
+pub const NE_ID_23: NeScenario = NeScenario {
+    name: "ne_id_23",
+    kind: 3u8,
+    args: &[1f64, 2f64, 55358f64, 56588f64],
+    res: &[1f64, 23f64],
+};
+
+pub const NE_ID_24: NeScenario = NeScenario {
+    name: "ne_id_24",
+    kind: 3u8,
+    args: &[1f64, 5f64, 55358f64, 56614f64, 8205f64, 9794f64, 65039f64],
+    res: &[1f64, 24f64],
+};
+
+pub const NE_ID_25: NeScenario = NeScenario {
+    name: "ne_id_25",
+    kind: 3u8,
+    args: &[1f64, 2f64, 55358f64, 56605f64],
+    res: &[1f64, 25f64],
+};
+
+pub const NE_ID_26: NeScenario = NeScenario {
+    name: "ne_id_26",
+    kind: 3u8,
+    args: &[1f64, 2f64, 55356f64, 56728f64],
+    res: &[1f64, 26f64],
+};
+
+pub const NE_ID_27: NeScenario = NeScenario {
+    name: "ne_id_27",
+    kind: 3u8,
+    args: &[1f64, 3f64, 55357f64, 56650f64, 65039f64],
+    res: &[1f64, 27f64],
+};
+
+pub const NE_ID_28: NeScenario = NeScenario {
+    name: "ne_id_28",
+    kind: 3u8,
+    args: &[1f64, 3f64, 55356f64, 57331f64, 65039f64],
+    res: &[1f64, 28f64],
+};
+
+pub const NE_ID_29: NeScenario = NeScenario {
+    name: "ne_id_29",
+    kind: 3u8,
+    args: &[1f64, 1f64, 9203f64],
+    res: &[1f64, 29f64],
+};
+
+pub const NE_ID_30: NeScenario = NeScenario {
+    name: "ne_id_30",
+    kind: 3u8,
+    args: &[1f64, 2f64, 55357f64, 56613f64],
+    res: &[1f64, 30f64],
+};
+
+pub const NE_ID_31: NeScenario = NeScenario {
+    name: "ne_id_31",
+    kind: 3u8,
+    args: &[1f64, 2f64, 55357f64, 56485f64],
+    res: &[1f64, 31f64],
+};
+
+pub const NE_ID_32: NeScenario = NeScenario {
+    name: "ne_id_32",
+    kind: 3u8,
+    args: &[1f64, 2f64, 55357f64, 56448f64],
+    res: &[1f64, 32f64],
+};
+
+pub const NE_ID_33: NeScenario = NeScenario {
+    name: "ne_id_33",
+    kind: 3u8,
+    args: &[1f64, 2f64, 9762f64, 65039f64],
+    res: &[1f64, 33f64],
+};
+
+pub const NE_ID_34: NeScenario = NeScenario {
+    name: "ne_id_34",
+    kind: 3u8,
+    args: &[1f64, 2f64, 9888f64, 65039f64],
+    res: &[1f64, 34f64],
+};
+
+pub const NE_ID_35: NeScenario = NeScenario {
+    name: "ne_id_35",
+    kind: 3u8,
+    args: &[1f64, 2f64, 8598f64, 65039f64],
+    res: &[1f64, 35f64],
+};
+
+pub const NE_ID_36: NeScenario = NeScenario {
+    name: "ne_id_36",
+    kind: 3u8,
+    args: &[1f64, 2f64, 11014f64, 65039f64],
+    res: &[1f64, 36f64],
+};
+
+pub const NE_ID_37: NeScenario = NeScenario {
+    name: "ne_id_37",
+    kind: 3u8,
+    args: &[1f64, 2f64, 8599f64, 65039f64],
+    res: &[1f64, 37f64],
+};
+
+pub const NE_ID_38: NeScenario = NeScenario {
+    name: "ne_id_38",
+    kind: 3u8,
+    args: &[1f64, 2f64, 55357f64, 56401f64],
+    res: &[1f64, 38f64],
+};
+
+pub const NE_ID_39: NeScenario = NeScenario {
+    name: "ne_id_39",
+    kind: 3u8,
+    args: &[1f64, 2f64, 55358f64, 56647f64],
+    res: &[1f64, 39f64],
+};
+
+pub const NE_ID_40: NeScenario = NeScenario {
+    name: "ne_id_40",
+    kind: 3u8,
+    args: &[1f64, 2f64, 11013f64, 65039f64],
+    res: &[1f64, 40f64],
+};
+
+pub const NE_ID_41: NeScenario = NeScenario {
+    name: "ne_id_41",
+    kind: 3u8,
+    args: &[1f64, 2f64, 55356f64, 57263f64],
+    res: &[1f64, 41f64],
+};
+
+pub const NE_ID_42: NeScenario = NeScenario {
+    name: "ne_id_42",
+    kind: 3u8,
+    args: &[1f64, 2f64, 10145f64, 65039f64],
+    res: &[1f64, 42f64],
+};
+
+pub const NE_ID_43: NeScenario = NeScenario {
+    name: "ne_id_43",
+    kind: 3u8,
+    args: &[1f64, 2f64, 55358f64, 56648f64],
+    res: &[1f64, 43f64],
+};
+
+pub const NE_ID_44: NeScenario = NeScenario {
+    name: "ne_id_44",
+    kind: 3u8,
+    args: &[1f64, 2f64, 55358f64, 56649f64],
+    res: &[1f64, 44f64],
+};
+
+pub const NE_ID_45: NeScenario = NeScenario {
+    name: "ne_id_45",
+    kind: 3u8,
+    args: &[1f64, 2f64, 8601f64, 65039f64],
+    res: &[1f64, 45f64],
+};
+
+pub const NE_ID_46: NeScenario = NeScenario {
+    name: "ne_id_46",
+    kind: 3u8,
+    args: &[1f64, 2f64, 11015f64, 65039f64],
+    res: &[1f64, 46f64],
+};
+
+pub const NE_ID_47: NeScenario = NeScenario {
+    name: "ne_id_47",
+    kind: 3u8,
+    args: &[1f64, 2f64, 8600f64, 65039f64],
+    res: &[1f64, 47f64],
+};
+
+pub const NE_ID_48: NeScenario = NeScenario {
+    name: "ne_id_48",
+    kind: 3u8,
+    args: &[1f64, 2f64, 10084f64, 65039f64],
+    res: &[1f64, 48f64],
+};
+
+pub const NE_ID_49: NeScenario = NeScenario {
+    name: "ne_id_49",
+    kind: 3u8,
+    args: &[1f64, 2f64, 55357f64, 56468f64],
+    res: &[1f64, 49f64],
+};
+
+pub const NE_ID_50: NeScenario = NeScenario {
+    name: "ne_id_50",
+    kind: 3u8,
+    args: &[1f64, 2f64, 55357f64, 56496f64],
+    res: &[1f64, 50f64],
+};
+
+pub const NE_ID_51: NeScenario = NeScenario {
+    name: "ne_id_51",
+    kind: 3u8,
+    args: &[1f64, 1f64, 9875f64],
+    res: &[1f64, 51f64],
+};
+
+pub const NE_ID_52: NeScenario = NeScenario {
+    name: "ne_id_52",
+    kind: 3u8,
+    args: &[1f64, 1f64, 9973f64],
+    res: &[1f64, 52f64],
+};
+
+pub const NE_ID_53: NeScenario = NeScenario {
+    name: "ne_id_53",
+    kind: 3u8,
+    args: &[1f64, 2f64, 55356f64, 57313f64],
+    res: &[1f64, 53f64],
+};
+
+pub const NE_ID_54: NeScenario = NeScenario {
+    name: "ne_id_54",
+    kind: 3u8,
+    args: &[1f64, 3f64, 55357f64, 57057f64, 65039f64],
+    res: &[1f64, 54f64],
+};
+
+pub const NE_ID_55: NeScenario = NeScenario {
+    name: "ne_id_55",
+    kind: 3u8,
+    args: &[1f64, 2f64, 55356f64, 57325f64],
+    res: &[1f64, 55f64],
+};
+
+pub const NE_ID_56: NeScenario = NeScenario {
+    name: "ne_id_56",
+    kind: 3u8,
+    args: &[1f64, 2f64, 55357f64, 56962f64],
+    res: &[1f64, 56f64],
+};
+
+pub const NE_ID_57: NeScenario = NeScenario {
+    name: "ne_id_57",
+    kind: 3u8,
+    args: &[1f64, 1f64, 10067f64],
+    res: &[1f64, 57f64],
+};
+
+pub const NE_ID_58: NeScenario = NeScenario {
+    name: "ne_id_58",
+    kind: 3u8,
+    args: &[1f64, 2f64, 55357f64, 56340f64],
+    res: &[1f64, 58f64],
+};
+
+pub const NE_ID_59: NeScenario = NeScenario {
+    name: "ne_id_59",
+    kind: 3u8,
+    args: &[1f64, 2f64, 55357f64, 56320f64],
+    res: &[1f64, 59f64],
+};
+
+pub const NE_ID_60: NeScenario = NeScenario {
+    name: "ne_id_60",
+    kind: 3u8,
+    args: &[1f64, 4f64, 55357f64, 56340f64, 55357f64, 56340f64],
+    res: &[1f64, -1f64],
+};
+
+pub const NE_ID_61: NeScenario = NeScenario {
+    name: "ne_id_61",
+    kind: 3u8,
+    args: &[1f64, 4f64, 55357f64, 56832f64, 55357f64, 56832f64],
+    res: &[1f64, -1f64],
+};
+
+pub const NE_ID_62: NeScenario = NeScenario {
+    name: "ne_id_62",
+    kind: 3u8,
+    args: &[1f64, 2f64, 55358f64, 56614f64],
+    res: &[1f64, -1f64],
+};
+
+pub const NE_ID_63: NeScenario = NeScenario {
+    name: "ne_id_63",
+    kind: 3u8,
+    args: &[1f64, 1f64, 10084f64],
+    res: &[1f64, -1f64],
+};
+
+pub const NE_ID_64: NeScenario = NeScenario {
+    name: "ne_id_64",
+    kind: 3u8,
+    args: &[1f64, 0f64],
+    res: &[1f64, -1f64],
+};
+
+pub const NE_ID_65: NeScenario = NeScenario {
+    name: "ne_id_65",
+    kind: 3u8,
+    args: &[1f64, 1f64, 97f64],
+    res: &[1f64, -1f64],
+};
+
+pub const NE_ID_66: NeScenario = NeScenario {
+    name: "ne_id_66",
+    kind: 3u8,
+    args: &[1f64, 3f64, 55357f64, 56397f64, 32f64],
+    res: &[1f64, -1f64],
+};
+
+pub const NE_ID_BATCH: NeScenario = NeScenario {
+    name: "ne_id_batch",
+    kind: 3u8,
+    args: &[67f64, 2f64, 55357f64, 56832f64, 2f64, 55357f64, 56842f64, 2f64, 55358f64, 56688f64, 2f64, 55357f64, 56839f64, 2f64, 55357f64, 56846f64, 2f64, 55357f64, 56862f64, 2f64, 55358f64, 56698f64, 2f64, 55357f64, 56877f64, 2f64, 55357f64, 56881f64, 2f64, 55357f64, 56865f64, 2f64, 55357f64, 56840f64, 2f64, 55358f64, 56609f64, 2f64, 55358f64, 56689f64, 2f64, 55358f64, 57057f64, 2f64, 55357f64, 56725f64, 2f64, 55357f64, 56395f64, 2f64, 55357f64, 56399f64, 1f64, 9995f64, 2f64, 55357f64, 56911f64, 2f64, 55357f64, 56490f64, 2f64, 55357f64, 56397f64, 2f64, 55357f64, 56398f64, 2f64, 55358f64, 57076f64, 2f64, 55358f64, 56588f64, 5f64, 55358f64, 56614f64, 8205f64, 9794f64, 65039f64, 2f64, 55358f64, 56605f64, 2f64, 55356f64, 56728f64, 3f64, 55357f64, 56650f64, 65039f64, 3f64, 55356f64, 57331f64, 65039f64, 1f64, 9203f64, 2f64, 55357f64, 56613f64, 2f64, 55357f64, 56485f64, 2f64, 55357f64, 56448f64, 2f64, 9762f64, 65039f64, 2f64, 9888f64, 65039f64, 2f64, 8598f64, 65039f64, 2f64, 11014f64, 65039f64, 2f64, 8599f64, 65039f64, 2f64, 55357f64, 56401f64, 2f64, 55358f64, 56647f64, 2f64, 11013f64, 65039f64, 2f64, 55356f64, 57263f64, 2f64, 10145f64, 65039f64, 2f64, 55358f64, 56648f64, 2f64, 55358f64, 56649f64, 2f64, 8601f64, 65039f64, 2f64, 11015f64, 65039f64, 2f64, 8600f64, 65039f64, 2f64, 10084f64, 65039f64, 2f64, 55357f64, 56468f64, 2f64, 55357f64, 56496f64, 1f64, 9875f64, 1f64, 9973f64, 2f64, 55356f64, 57313f64, 3f64, 55357f64, 57057f64, 65039f64, 2f64, 55356f64, 57325f64, 2f64, 55357f64, 56962f64, 1f64, 10067f64, 2f64, 55357f64, 56340f64, 2f64, 55357f64, 56320f64, 4f64, 55357f64, 56340f64, 55357f64, 56340f64, 4f64, 55357f64, 56832f64, 55357f64, 56832f64, 2f64, 55358f64, 56614f64, 1f64, 10084f64, 0f64, 1f64, 97f64, 3f64, 55357f64, 56397f64, 32f64],
+    res: &[67f64, 0f64, 1f64, 2f64, 3f64, 4f64, 5f64, 6f64, 7f64, 8f64, 9f64, 10f64, 11f64, 12f64, 13f64, 14f64, 15f64, 16f64, 17f64, 18f64, 19f64, 20f64, 21f64, 22f64, 23f64, 24f64, 25f64, 26f64, 27f64, 28f64, 29f64, 30f64, 31f64, 32f64, 33f64, 34f64, 35f64, 36f64, 37f64, 38f64, 39f64, 40f64, 41f64, 42f64, 43f64, 44f64, 45f64, 46f64, 47f64, 48f64, 49f64, 50f64, 51f64, 52f64, 53f64, 54f64, 55f64, 56f64, 57f64, 58f64, 59f64, -1f64, -1f64, -1f64, -1f64, -1f64, -1f64, -1f64],
+};
+
+pub const NE_SCENARIOS: &[NeScenario] = &[
+    NE_TABLE,
+    NE_FLAT,
+    NE_CONSTS,
+    NE_ID_0,
+    NE_ID_1,
+    NE_ID_2,
+    NE_ID_3,
+    NE_ID_4,
+    NE_ID_5,
+    NE_ID_6,
+    NE_ID_7,
+    NE_ID_8,
+    NE_ID_9,
+    NE_ID_10,
+    NE_ID_11,
+    NE_ID_12,
+    NE_ID_13,
+    NE_ID_14,
+    NE_ID_15,
+    NE_ID_16,
+    NE_ID_17,
+    NE_ID_18,
+    NE_ID_19,
+    NE_ID_20,
+    NE_ID_21,
+    NE_ID_22,
+    NE_ID_23,
+    NE_ID_24,
+    NE_ID_25,
+    NE_ID_26,
+    NE_ID_27,
+    NE_ID_28,
+    NE_ID_29,
+    NE_ID_30,
+    NE_ID_31,
+    NE_ID_32,
+    NE_ID_33,
+    NE_ID_34,
+    NE_ID_35,
+    NE_ID_36,
+    NE_ID_37,
+    NE_ID_38,
+    NE_ID_39,
+    NE_ID_40,
+    NE_ID_41,
+    NE_ID_42,
+    NE_ID_43,
+    NE_ID_44,
+    NE_ID_45,
+    NE_ID_46,
+    NE_ID_47,
+    NE_ID_48,
+    NE_ID_49,
+    NE_ID_50,
+    NE_ID_51,
+    NE_ID_52,
+    NE_ID_53,
+    NE_ID_54,
+    NE_ID_55,
+    NE_ID_56,
+    NE_ID_57,
+    NE_ID_58,
+    NE_ID_59,
+    NE_ID_60,
+    NE_ID_61,
+    NE_ID_62,
+    NE_ID_63,
+    NE_ID_64,
+    NE_ID_65,
+    NE_ID_66,
+    NE_ID_BATCH,
+];
+

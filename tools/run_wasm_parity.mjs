@@ -98,6 +98,8 @@ for (const name of [
   "probe_wm_arg", "probe_wm_op", "probe_wm_out_at", "probe_wm_version",
   "probe_wm_map_terrain_at", "probe_wm_map_state_at", "probe_wm_mini_terrain_at",
   "probe_gu_arg", "probe_gu_op", "probe_gu_out_at",
+  "probe_gupd_arg", "probe_gupd_op", "probe_gupd_out_at",
+  "probe_ne_arg", "probe_ne_op", "probe_ne_out_at",
   "probe_rr_arg", "probe_rr_op", "probe_rr_out_at",
   "probe_rsg_reset", "probe_rsg_arg", "probe_rsg_op", "probe_rsg_out_at",
   "probe_tts_reset", "probe_tts_arg", "probe_tts_op", "probe_tts_out_at",
@@ -1634,6 +1636,44 @@ for (const s of S.nationcreation) {
   for (let i = 0; i < len; i++) {
     checks++;
     const g = ex.probe_nc_out_at(i);
+    const w = numTok(s.res[i]);
+    if (!Object.is(g, w)) fail(`${s.name} res[${i}]`, 0, g, w);
+  }
+}
+
+// --- game/GameUpdates.ts (game_updates) --------------------------------------
+// Replays the GameUpdateType dump / name lookup through the shared run_op
+// runner; args and res are flat f64 token streams, compared element-by-element
+// with Object.is.
+for (const s of S.gameupdates) {
+  for (const a of s.args) ex.probe_gupd_arg(numTok(a));
+  const len = Number(ex.probe_gupd_op(s.kind));
+  if (len !== s.res.length) {
+    fail(`${s.name} res len`, 0, len, s.res.length);
+    continue;
+  }
+  for (let i = 0; i < len; i++) {
+    checks++;
+    const g = ex.probe_gupd_out_at(i);
+    const w = numTok(s.res[i]);
+    if (!Object.is(g, w)) fail(`${s.name} res[${i}]`, 0, g, w);
+  }
+}
+
+// --- Util.ts emojiTable + NationEmojiBehavior.ts (nation_emoji) --------------
+// Replays the table dumps / EMOJI_* id arrays / emoji_id batches through the
+// shared run_op runner; args and res are flat f64 token streams, compared
+// element-by-element with Object.is.
+for (const s of S.nationemoji) {
+  for (const a of s.args) ex.probe_ne_arg(numTok(a));
+  const len = Number(ex.probe_ne_op(s.kind));
+  if (len !== s.res.length) {
+    fail(`${s.name} res len`, 0, len, s.res.length);
+    continue;
+  }
+  for (let i = 0; i < len; i++) {
+    checks++;
+    const g = ex.probe_ne_out_at(i);
     const w = numTok(s.res[i]);
     if (!Object.is(g, w)) fail(`${s.name} res[${i}]`, 0, g, w);
   }

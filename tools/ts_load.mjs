@@ -1602,6 +1602,75 @@ function prepare(rel) {
       "\nexport { PLURAL_NOUN, NOUN, NAME_TEMPLATES, NOUNS, O_TO_OES, SPECIAL_PLURALS, pluralize, generateNationName, generateUniqueNationName, createRandomNations };\n";
   }
 
+  if (rel.endsWith("execution/nation/NationEmojiBehavior.ts")) {
+    // The Game.ts import names only type-position uses (AllPlayers /
+    // Difficulty / Game / GameMode / Player / PlayerType / Relation / Tick):
+    // strip mode would still *execute* the import and pull the whole Game.ts
+    // graph, but the capture only reads the module-top-level EMOJI_* consts,
+    // so the class body and the respondTo* functions never run. Drop it, and
+    // likewise PseudoRandom / EmojiExecution (only referenced inside method
+    // bodies / erased annotations). flattenedEmojiTable is a *value* use (the
+    // 23 consts map over it at module scope), so it redirects to the prepared
+    // Util copy. The ctor is parameter properties, which strip mode rejects;
+    // expand them, same as MinHeap / BFS.
+    out = must(
+      out,
+      'import {\n' +
+        '  AllPlayers,\n' +
+        '  Difficulty,\n' +
+        '  Game,\n' +
+        '  GameMode,\n' +
+        '  Player,\n' +
+        '  PlayerType,\n' +
+        '  Relation,\n' +
+        '  Tick,\n' +
+        '} from "../../game/Game";\n',
+      "",
+      "NationEmoji Game import",
+    );
+    out = must(
+      out,
+      'import { PseudoRandom } from "../../PseudoRandom";\n',
+      "",
+      "NationEmoji PseudoRandom import",
+    );
+    out = must(
+      out,
+      'import { EmojiExecution } from "../EmojiExecution";\n',
+      "",
+      "NationEmoji EmojiExecution import",
+    );
+    const utilRel = "src/core/Util.ts";
+    if (!prepared.has(utilRel)) prepare(utilRel);
+    out = must(
+      out,
+      'import { flattenedEmojiTable } from "../../Util";',
+      `import { flattenedEmojiTable } from "./${prepared.get(utilRel)}";`,
+      "NationEmoji Util import",
+    );
+    out = must(
+      out,
+      "  constructor(\n" +
+        "    private random: PseudoRandom,\n" +
+        "    private game: Game,\n" +
+        "    private player: Player,\n" +
+        "  ) {}",
+      "  private random: PseudoRandom;\n" +
+        "  private game: Game;\n" +
+        "  private player: Player;\n\n" +
+        "  constructor(\n" +
+        "    random: PseudoRandom,\n" +
+        "    game: Game,\n" +
+        "    player: Player,\n" +
+        "  ) {\n" +
+        "    this.random = random;\n" +
+        "    this.game = game;\n" +
+        "    this.player = player;\n" +
+        "  }",
+      "NationEmoji ctor",
+    );
+  }
+
   mkdirSync(cacheDir, { recursive: true });
   const hash = createHash("sha1").update(out).digest("hex").slice(0, 10);
   const base = `${basename(rel, ".ts")}-${hash}.ts`;

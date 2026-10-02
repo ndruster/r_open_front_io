@@ -3583,6 +3583,62 @@ pub extern "C" fn probe_nc_out_at(i: usize) -> f64 {
     NC_OUT.with(|o| o.borrow()[i])
 }
 
+// ============== P40a: game/GameUpdates.ts (game_updates) ================
+
+thread_local! {
+    static GUPD_ARGS: std::cell::RefCell<Vec<f64>> = const { std::cell::RefCell::new(Vec::new()) };
+    static GUPD_OUT: std::cell::RefCell<Vec<f64>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
+/// Push one flat token (string length, code unit…).
+#[no_mangle]
+pub extern "C" fn probe_gupd_arg(v: f64) {
+    GUPD_ARGS.with(|t| t.borrow_mut().push(v));
+}
+
+/// Run `game_updates::run_op(kind, args)`; returns the result-stream length.
+#[no_mangle]
+pub extern "C" fn probe_gupd_op(kind: u32) -> usize {
+    let a = GUPD_ARGS.with(|t| std::mem::take(&mut *t.borrow_mut()));
+    let out = crate::game_updates::run_op(kind as u8, &a);
+    let len = out.len();
+    GUPD_OUT.with(|o| *o.borrow_mut() = out);
+    len
+}
+
+#[no_mangle]
+pub extern "C" fn probe_gupd_out_at(i: usize) -> f64 {
+    GUPD_OUT.with(|o| o.borrow()[i])
+}
+
+// ====== P40b: Util.ts emojiTable + NationEmojiBehavior.ts (nation_emoji) ======
+
+thread_local! {
+    static NE_ARGS: std::cell::RefCell<Vec<f64>> = const { std::cell::RefCell::new(Vec::new()) };
+    static NE_OUT: std::cell::RefCell<Vec<f64>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
+/// Push one flat token (string length, code unit…).
+#[no_mangle]
+pub extern "C" fn probe_ne_arg(v: f64) {
+    NE_ARGS.with(|t| t.borrow_mut().push(v));
+}
+
+/// Run `nation_emoji::run_op(kind, args)`; returns the result-stream length.
+#[no_mangle]
+pub extern "C" fn probe_ne_op(kind: u32) -> usize {
+    let a = NE_ARGS.with(|t| std::mem::take(&mut *t.borrow_mut()));
+    let out = crate::nation_emoji::run_op(kind as u8, &a);
+    let len = out.len();
+    NE_OUT.with(|o| *o.borrow_mut() = out);
+    len
+}
+
+#[no_mangle]
+pub extern "C" fn probe_ne_out_at(i: usize) -> f64 {
+    NE_OUT.with(|o| o.borrow()[i])
+}
+
 // ====================== P26: PatternDecoder (PatternDecoder.ts) ===============
 
 thread_local! {

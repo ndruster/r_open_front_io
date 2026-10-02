@@ -142,6 +142,15 @@
 //!   `createRandomNations`' shuffle/nextID draw order; `createNationsForGame`
 //!   is out of scope — its config branching rides on already-ported
 //!   `Game.ts` constants)
+//! * [`game_updates`] — `src/core/game/GameUpdates.ts` (`GameUpdateType`:
+//!   the 24-member numeric wire-tag enum with explicit discriminants,
+//!   name/value conversions; the update interfaces have no runtime and are
+//!   not ported)
+//! * [`nation_emoji`] — `src/core/Util.ts` (`emojiTable` / 
+//!   `flattenedEmojiTable`) + `src/core/execution/nation/NationEmojiBehavior.ts`
+//!   (the 23 `EMOJI_*` id arrays as literals and `emojiId`'s `indexOf`
+//!   semantics; the behavior class and `respondTo*` ride on `Game`/`Player`
+//!   and are a later port)
 //!
 //! Two rules govern every future port into this crate:
 //!
@@ -167,11 +176,13 @@ pub mod exec_util;
 pub mod game_map;
 pub mod game_ts;
 pub mod game_update_utils;
+pub mod game_updates;
 pub mod jsnum;
 pub mod line;
 pub mod maps_gen;
 pub mod motion_plans;
 pub mod nation_creation;
+pub mod nation_emoji;
 pub mod pathfinding;
 pub mod pattern_decoder;
 pub mod pseudo_random;

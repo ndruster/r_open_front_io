@@ -2862,3 +2862,37 @@ fn replay_trainstation_scenarios() {
         }
     }
 }
+
+// RailNetworkImpl.ts: replay the stateful op stream (connectStation /
+// snap-split / nearby-BFS clustering / ghost paths / remove / dump) through
+// `RigHarness::run_op` and compare every op's flat token stream — the
+// scripted Game/Unit/pathService facade trace prefix (call counts and
+// short-circuits), the live-Set iteration during delete, the
+// distanceFrom-before-null-cluster order, the break-before-minRange cap and
+// the To-before-From grid registration on snap.
+#[test]
+fn replay_railnetwork_scenarios() {
+    use openfront_core::rail_network::RigHarness;
+    for s in vectors::RN_SCENARIOS {
+        let mut rig = RigHarness::new();
+        for op in s.ops {
+            let got = rig.run_op(op.kind, op.args);
+            assert_eq!(
+                got.len(),
+                op.res.len(),
+                "{} op[{:?}] res len: got {got:?} want {:?}",
+                s.name,
+                op.kind,
+                op.res
+            );
+            for (j, (g, w)) in got.iter().zip(op.res.iter()).enumerate() {
+                assert!(
+                    obj_is(*g, *w),
+                    "{} op[{:?}] res[{j}]: got {g} want {w}",
+                    s.name,
+                    op.kind
+                );
+            }
+        }
+    }
+}

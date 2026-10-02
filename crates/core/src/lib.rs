@@ -75,6 +75,13 @@
 //!   `` `${cx}:${cy}` `` template string; register / unregister / query over
 //!   `game.x/y`-decoded rail tiles, rails keyed by capture refid, insertion-
 //!   ordered `Map`/`Set` semantics preserved)
+//! * [`rail_network`] — `src/core/game/RailNetworkImpl.ts` (`RailNetworkImpl`
+//!   station-network orchestrator + `createRailNetwork` factory: connect /
+//!   snap-split / nearby-BFS clustering over the re-implemented
+//!   `StationManagerImpl` / `TrainStation` / `Cluster` / `Railroad` /
+//!   `RailSpatialGrid` semantics; the `Game` and `Unit` facades and the
+//!   `pathService` are scripted mocks whose full call trace rides in the res
+//!   stream, same pattern as `nation_utils` / `unit_grid`)
 //! * [`unit_grid`] — `src/core/game/UnitGrid.ts` (the 100-pixel-cell 2-D
 //!   spatial index: add / remove / updateUnitCell with the JS `Map`/`Set`
 //!   insertion-order semantics (dup `add` keeps position, `delete` + re-`add`
@@ -283,6 +290,7 @@ pub mod nation_utils;
 pub mod pathfinding;
 pub mod pattern_decoder;
 pub mod pseudo_random;
+pub mod rail_network;
 pub mod railroad;
 pub mod railroad_spatial_grid;
 pub mod schemas;

@@ -157,6 +157,11 @@ rust/
 │   │   │                          (TrainStation graph node + Cluster;
 │   │   │                          Unit/Game/Player facades scripted-mocked,
 │   │   │                          stop-handler surface excluded)
+│   │   ├── rail_network.rs        port of game/RailNetworkImpl.ts
+│   │   │                          (RailNetworkImpl orchestration +
+│   │   │                          createRailNetwork factory; Game/config/
+│   │   │                          pathService/unit facades scripted-mocked,
+│   │   │                          RailPathFinderServiceImpl excluded)
 │   │   ├── wasm_probe.rs          `extern "C"` surface, feature-gated
 │   │   └── pathfinding/
 │   │       ├── mod.rs
@@ -1130,6 +1135,43 @@ desync, not a rounding nit. Two things enforce that here:
     eligibleSeen)` once per **eligible** station only, over the real ported
     `PseudoRandom`; `isTradeStation` = unit type `===` the `"City"` / `"Port"`
     string-enum values (Factory excluded). 30 scenarios (1,875 total tokens).
+57. **`game/RailNetworkImpl.ts`** (`rail_network`) — the `RailNetworkImpl`
+    orchestration class + the `createRailNetwork` factory (the last big
+    `src/core` surface). `RailPathFinderServiceImpl` is excluded — the capture
+    injects a scripted `pathService` mock (`findTilePath` / `findStationsPath`
+    tables; the station table is keyed by numbers while the impl passes
+    objects, so `"[object Object]|…"` never hits and `findStationsPath`
+    returns `[]` — pinned), and the `Game` facade (`x`/`y`/`addUpdate`/
+    `config().trainStationMaxRange/MinRange/railroadMaxSize`/`hasUnitNearby`/
+    `nearbyUnits`) and the unit's `setTrainStation` are scripted mocks whose
+    every call rides the res trace, pinning counts and short-circuits.
+    Quirks pinned against the real TS: `connectStation` adds to the manager
+    **before** trying rails; `connectToExistingRails` — `closestRailIndex ===
+    0 || >= tiles.length` continue (an empty-tiles rail returns `-1`, passes
+    the guard, and splits into two empty rails), `nextId++` From→To, grid
+    re-`register` To→From, only `from.getCluster()` is consulted, `edited.
+    size > 1` merges, return `size !== 0`; `overlappingRailroads` /
+    `computeGhostRailPaths` guard on the `"City"`/`"Port"`/`"Factory"` string
+    enum, tiles Set → `sort((a,b)=>a-b)` (NaN comparator → V8 stable); ghost
+    paths — `**2` via `x*x` (NaN minRange → `<=` never continues), `paths.
+    length >= 5` break **before** the minRange continue, `connectedStations.
+    some` short-circuits `distanceFrom` calls, a non-station City neighbor
+    pathfinds in reverse (`targetTile → tile`), accept `0 < len < maxSize`;
+    `connectToNearbyStations` — `distanceFrom` computed **before** the
+    null-cluster continue, `connectionAvailable` short-circuits the minRange
+    config read, `connect` success gates `addStation` (a station may switch
+    clusters mid-loop), `size === 0` spawns a fresh `Cluster`; `removeStation`
+    — `setTrainStation(false)` facade call, empty cluster → `deleteCluster` +
+    `dirty.delete` else `dirty.add` (insertion order, add no-move);
+    `disconnectFromNetwork` / `deleteCluster` / `merge` iterate a JS `Set`
+    while deleting the **current** element — snapshot + has-check (P54
+    precedent); `recomputeClusters` — `new Set(cluster.stations)` copy,
+    `values().next().value` first, the **first** BFS group keeps the original
+    cluster (only later groups get fresh clusters via `addStations`' auto-
+    disconnect), trailing `dirtyClusters.clear()`; `distanceFrom` BFS — shift
+    **then** visited-check, `distance >= max` continue, `neighbor === dest`
+    → `distance + 1`, else `-1`; `mg.y = (t/w)|0` (ToInt32), `mg.x = t % w`.
+    28 `rn_` scenarios (7,848 tokens).
 
 Regenerate whenever a ported source changes:
 
@@ -1163,7 +1205,7 @@ node rust/tools/run_wasm_parity.mjs
 
 `wasm-probe` exposes the ported functions through `extern "C"` scalar
 entrypoints (`src/wasm_probe.rs`); the runner imports `data/vectors.json` and
-compares every value. Last run: **117,803 comparisons, all bit-identical**.
+compares every value. Last run: **124,025 comparisons, all bit-identical**.
 
 ### Windows: the linker environment
 

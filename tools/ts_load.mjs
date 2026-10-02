@@ -2588,15 +2588,28 @@ function prepare(rel) {
   }
 
   if (rel.endsWith("game/RailNetworkImpl.ts")) {
-    // Only StationManagerImpl is captured (P54); RailNetworkImpl /
-    // RailPathFinderServiceImpl / createRailNetwork stay in the file but are
-    // never instantiated (their bodies reference the dropped imports only
-    // inside method bodies, which class declarations never evaluate). All
-    // eight imports are therefore dropped outright: StationManagerImpl's
-    // field initialisers (`new Set()`, `[]`, `1`) are the module's only
-    // load-time runtime surface. The `implements StationManager` /
-    // `RailNetwork` clauses and the interface declarations are type-only and
-    // erased by strip mode.
+    // P55 captures the REAL RailNetworkImpl, so the identifiers its method
+    // bodies use *as values* must resolve: UnitType (the City/Port/Factory
+    // guard comparisons) -> prepared Game.ts, GameUpdateType (the
+    // RailroadSnap/ConstructionEvent stamps) -> prepared GameUpdates.ts,
+    // Railroad -> prepared Railroad.ts, RailSpatialGrid -> prepared
+    // RailroadSpatialGrid.ts, Cluster + TrainStation -> prepared
+    // TrainStation.ts. PathFinding stays dropped (RailPathFinderServiceImpl
+    // is never instantiated; strip mode does no name resolution, so the
+    // undefined identifier inside its body is harmless), as do RailNetwork /
+    // Game / Unit / TileRef (interface / type-only annotations erased by
+    // strip mode). The `implements` clauses and interface declarations are
+    // type-only and erased.
+    const rnGameRel = "src/core/game/Game.ts";
+    if (!prepared.has(rnGameRel)) prepare(rnGameRel);
+    const rnGuRel = "src/core/game/GameUpdates.ts";
+    if (!prepared.has(rnGuRel)) prepare(rnGuRel);
+    const rnRrRel = "src/core/game/Railroad.ts";
+    if (!prepared.has(rnRrRel)) prepare(rnRrRel);
+    const rnRsgRel = "src/core/game/RailroadSpatialGrid.ts";
+    if (!prepared.has(rnRsgRel)) prepare(rnRsgRel);
+    const rnTsRel = "src/core/game/TrainStation.ts";
+    if (!prepared.has(rnTsRel)) prepare(rnTsRel);
     out = must(
       out,
       'import { PathFinding } from "../pathfinding/PathFinder";\n' +
@@ -2607,13 +2620,18 @@ function prepare(rel) {
         'import { Railroad } from "./Railroad";\n' +
         'import { RailSpatialGrid } from "./RailroadSpatialGrid";\n' +
         'import { Cluster, TrainStation } from "./TrainStation";\n',
-      "",
+      `import { UnitType } from "./${prepared.get(rnGameRel)}";\n` +
+        `import { GameUpdateType } from "./${prepared.get(rnGuRel)}";\n` +
+        `import { Railroad } from "./${prepared.get(rnRrRel)}";\n` +
+        `import { RailSpatialGrid } from "./${prepared.get(rnRsgRel)}";\n` +
+        `import { Cluster, TrainStation } from "./${prepared.get(rnTsRel)}";\n`,
       "RailNetworkImpl imports",
     );
     // Parameter properties (strip mode rejects them, same as ExecutionManager
-    // / SharedWaterCache): expand both ctors. RailPathFinderServiceImpl and
-    // RailNetworkImpl are never instantiated by the capture, but the class
-    // *declarations* must still parse.
+    // / SharedWaterCache): expand both ctors. RailPathFinderServiceImpl is
+    // still never instantiated (the capture injects a scripted pathService
+    // mock), but the class *declarations* must parse and RailNetworkImpl is
+    // constructed by the P55 capture.
     out = must(
       out,
       "class RailPathFinderServiceImpl implements RailPathFinderService {\n" +

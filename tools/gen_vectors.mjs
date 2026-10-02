@@ -9985,6 +9985,443 @@ runTSN("tsn_setid", [
   [16, 1], [32, 1],
 ]);
 
+// --- game/RailNetworkImpl.ts RailNetworkImpl scenario runner -------------------
+// Exercises the REAL RailNetworkImpl against scripted facades: a `Game` mock
+// (`x`/`y` packed decode + `addUpdate` + `config()` + `hasUnitNearby` +
+// `nearbyUnits`), a scripted pathService (`findTilePath` / `findStationsPath`
+// tables keyed by (a,b), unknown pair -> []) and real TrainStation objects
+// over scripted unit mocks ({type,tile,setTrainStation}). RailNetworkImpl is
+// constructed with the real StationManagerImpl and the real RailSpatialGrid
+// (cellSize 4). Every facade call is traced: 20 x [20,tile,x], 21 y
+// [21,tile,y], 22 construction update [22,17,id,m,(tiles)*], 23 destruction
+// [23,16,id], 24 snap [24,18,originalId,newId1,newId2,m1,(t1)*,m2,(t2)*],
+// 25 maxRange [25,v], 26 minRange [26,v], 27 maxSize [27,v], 28 hasUnitNearby
+// [28,tile,range,(len,u*),0|1], 29 nearbyUnits [29,tile,range,nTypes,
+// (len,u*)*nTypes,m,(uref,dist)*m], 30 findTilePath [30,a,b,m,(tiles)*],
+// 31 findStationsPath [31,a,b,m,(srefs)*], 32 setTrainStation [32,uref,0|1],
+// 33 unit.type [33,uref,(len,u*)], 34 unit.tile [34,uref,tile].
+// kind table (mirrors the Rust `rail_network::RigHarness::run_op`):
+// 0 construct [maxRange,minRange,maxSize,w,h,nTP,(a,b,m,tiles..)*,nSP,(a,b,m,
+//   srefs..)*,nNU,(tile,range,m,(uref,dist)*m)*,nHN,(tile,range,(str),0|1)*]
+//   -> [0];
+// 1 station [sref,uref,(str),tile] -> [] (real TrainStation + unit mock);
+// 2 connectStation [sref] -> [0]; 3 recomputeClusters -> [0];
+// 4 removeStation [uref] -> [0]; 5 overlappingRailroads [(str),tile] ->
+//   [m,(tiles)*]; 6 computeGhostRailPaths [(str),tile] -> [p,(m,(tiles)*)*];
+// 7 findStationsPath [a,b] -> [m,(srefs)*]; 8 mgrGetById [id] -> [0]|[1,sref];
+// 9 dumpNetwork -> [nextId,mgrNextId,nSt,(sref,id,cref|0,nRail,(railId)*)*,
+//   nRail,(railId,from,to,m,(tiles)*)*,nCl,(cref,m,(sref)*)*,nDirty,(cref)*,
+//   nCells,(1+klen,klen,(byte)*,m,(railId)*)*,nRC,(railId,n,((1+klen,klen,(byte)*))*)*];
+// 10 unit [uref,(str),tile] -> [] (unit mock with no station);
+// 11 factoryConstruct -> [0] (replace the network with createRailNetwork(mg)).
+const rnScenarios = [];
+let rnIdx = 0;
+function runRN(name, spec) {
+  const played = [];
+  const trace = [];
+  const ev = (...t) => trace.push(...t);
+  const width = spec.w;
+  const units = new Map(); // uref -> scripted unit mock
+  const stations = new Map(); // sref -> TrainStation
+  const tpTable = new Map();
+  for (const [a, b, path] of spec.tp) tpTable.set(`${a}|${b}`, path);
+  const spTable = new Map();
+  for (const [a, b, ss] of spec.sp) spTable.set(`${a}|${b}`, ss);
+  const nuTable = new Map();
+  for (const [t, r, list] of spec.nu) nuTable.set(`${t}|${r}`, list);
+  const hnTable = new Map();
+  for (const [t, r, ty, v] of spec.hn) hnTable.set(`${t}|${r}|${ty}`, v);
+  let crefSeq = 0;
+  const crefOf = (cl) => (cl.__cref === undefined ? (cl.__cref = ++crefSeq) : cl.__cref);
+  const mkUnit = (uref, type, tile) => {
+    const u = {
+      __ref: uref,
+      type() {
+        ev(33, uref, ...encS(type));
+        return type;
+      },
+      tile() {
+        ev(34, uref, tile);
+        return tile;
+      },
+      setTrainStation(v) {
+        ev(32, uref, v ? 1 : 0);
+      },
+    };
+    units.set(uref, u);
+    return u;
+  };
+  const mg = {
+    x(t) {
+      const v = t % width;
+      ev(20, t, v);
+      return v;
+    },
+    y(t) {
+      const v = (t / width) | 0;
+      ev(21, t, v);
+      return v;
+    },
+    addUpdate(u) {
+      if (u.type === 17) ev(22, 17, u.id, u.tiles.length, ...u.tiles);
+      else if (u.type === 16) ev(23, 16, u.id);
+      else
+        ev(
+          24,
+          18,
+          u.originalId,
+          u.newId1,
+          u.newId2,
+          u.tiles1.length,
+          ...u.tiles1,
+          u.tiles2.length,
+          ...u.tiles2,
+        );
+    },
+    config() {
+      return {
+        trainStationMaxRange() {
+          ev(25, spec.maxRange);
+          return spec.maxRange;
+        },
+        trainStationMinRange() {
+          ev(26, spec.minRange);
+          return spec.minRange;
+        },
+        railroadMaxSize() {
+          ev(27, spec.maxSize);
+          return spec.maxSize;
+        },
+      };
+    },
+    hasUnitNearby(t, r, type) {
+      const v = hnTable.get(`${t}|${r}|${type}`) === 1;
+      ev(28, t, r, ...encS(type), v ? 1 : 0);
+      return v;
+    },
+    nearbyUnits(t, r, types) {
+      const list = nuTable.get(`${t}|${r}`) ?? [];
+      ev(29, t, r, types.length, ...types.flatMap(encS), list.length, ...list.flatMap(([u, d]) => [u, d]));
+      return list.map(([uref, distSquared]) => ({ unit: units.get(uref), distSquared }));
+    },
+  };
+  const pathService = {
+    findTilePath(a, b) {
+      const p = tpTable.get(`${a}|${b}`) ?? [];
+      ev(30, a, b, p.length, ...p);
+      return p;
+    },
+    findStationsPath(a, b) {
+      const p = spTable.get(`${a}|${b}`) ?? [];
+      ev(31, a.__ref, b.__ref, p.length, ...p);
+      return p.map((sref) => stations.get(sref));
+    },
+  };
+  let mgr = new RN.StationManagerImpl();
+  let net = new RN.RailNetworkImpl(mg, mgr, pathService);
+  for (const [k, ...a] of spec.ops) {
+    let args, res;
+    if (k === 0) {
+      args = [
+        spec.maxRange, spec.minRange, spec.maxSize, spec.w, spec.h,
+        spec.tp.length, ...spec.tp.flatMap(([x, y, p]) => [x, y, p.length, ...p]),
+        spec.sp.length, ...spec.sp.flatMap(([x, y, p]) => [x, y, p.length, ...p]),
+        spec.nu.length, ...spec.nu.flatMap(([t, r, l]) => [t, r, l.length, ...l.flatMap(([u, d]) => [u, d])]),
+        spec.hn.length, ...spec.hn.flatMap(([t, r, ty, v]) => [t, r, ...encS(ty), v]),
+      ];
+      res = [0];
+    } else if (k === 1) {
+      const [sref, uref, type, tile] = a;
+      args = [sref, uref, ...encS(type), tile];
+      mkUnit(uref, type, tile);
+      const s = new TSN.TrainStation(mg, units.get(uref));
+      s.__ref = sref;
+      stations.set(sref, s);
+      res = [];
+    } else if (k === 2) {
+      args = [a[0]];
+      net.connectStation(stations.get(a[0]));
+      res = [0];
+    } else if (k === 3) {
+      args = [];
+      net.recomputeClusters();
+      res = [0];
+    } else if (k === 4) {
+      args = [a[0]];
+      net.removeStation(units.get(a[0]));
+      res = [0];
+    } else if (k === 5) {
+      const [ty, tile] = a;
+      args = [...encS(ty), tile];
+      const r = net.overlappingRailroads(ty, tile);
+      res = [r.length, ...r];
+    } else if (k === 6) {
+      const [ty, tile] = a;
+      args = [...encS(ty), tile];
+      const r = net.computeGhostRailPaths(ty, tile);
+      res = [r.length, ...r.flatMap((p) => [p.length, ...p])];
+    } else if (k === 7) {
+      args = [a[0], a[1]];
+      const r = net.findStationsPath(stations.get(a[0]), stations.get(a[1]));
+      res = [r.length, ...r.map((s) => s.__ref)];
+    } else if (k === 8) {
+      args = [a[0]];
+      const g = mgr.getById(a[0]);
+      res = g === undefined ? [0] : [1, g.__ref];
+    } else if (k === 10) {
+      const [uref, type, tile] = a;
+      args = [uref, ...encS(type), tile];
+      mkUnit(uref, type, tile);
+      res = [];
+    } else if (k === 11) {
+      args = [];
+      net = RN.createRailNetwork(mg);
+      mgr = net.stationManager();
+      res = [0];
+    } else {
+      args = [];
+      const railsSeen = new Set();
+      const rails = [];
+      const stArr = [];
+      const clSeen = new Set();
+      const cls = [];
+      for (const s of mgr.getAll()) {
+        const rr = [...s.getRailroads()];
+        const cl = s.getCluster();
+        const cref = cl === null ? 0 : crefOf(cl);
+        stArr.push([s.__ref, s.id, cref, rr.length, ...rr.map((r) => r.id)]);
+        for (const r of rr)
+          if (!railsSeen.has(r)) {
+            railsSeen.add(r);
+            rails.push([r.id, r.from.__ref, r.to.__ref, r.tiles.length, ...r.tiles]);
+          }
+        if (cl && !clSeen.has(cl)) {
+          clSeen.add(cl);
+          cls.push([cref, [...cl.stations].map((x) => x.__ref)]);
+        }
+      }
+      const dirty = [...net.dirtyClusters].map(crefOf);
+      const cells = [];
+      for (const [key, set] of net.railGrid.cells) cells.push([[key.length, ...Array.from(key, (c) => c.charCodeAt(0))], [...set].map((r) => r.id)]);
+      const rcs = [];
+      for (const [r, set] of net.railGrid.railToCells)
+        rcs.push([r.id, [...set].map((k) => [k.length, ...Array.from(k, (c) => c.charCodeAt(0))])]);
+      res = [
+        net.nextId,
+        mgr.count(),
+        stArr.length, ...stArr.flat(),
+        rails.length, ...rails.flat(),
+        cls.length, ...cls.flatMap(([c, ss]) => [c, ss.length, ...ss]),
+        dirty.length, ...dirty,
+        cells.length, ...cells.flatMap(([kb, rs]) => [kb.length, ...kb, rs.length, ...rs]),
+        rcs.length, ...rcs.flatMap(([rid, ks]) => [rid, ks.length, ...ks.flatMap((kb) => [kb.length, ...kb])]),
+      ];
+    }
+    played.push({ kind: k, args: args.map(uenc), res: [trace.length, ...uencAll(trace), ...uencAll(res)] });
+    trace.length = 0;
+  }
+  rnScenarios.push({ name: `${name}_${rnIdx++}`, ops: played });
+}
+
+const RN_DEF = { maxRange: 10, minRange: 2, maxSize: 12, w: 16, h: 16, tp: [], sp: [], nu: [], hn: [] };
+const rnSpec = (o) => ({ ...RN_DEF, ...o });
+// Tiles ride as packed refs (x + y*16): 34=(2,2) 38=(6,2) 36=(4,2) 54=(6,3)
+// 18=(2,3) 40=(8,2) 42=(10,2) 44=(12,2) 39=(7,2) 50=(2,3)... (50=(2,3)? no:
+// 50 = 2 + 3*16 = (2,3)). City "City", Port "Port", Factory "Factory".
+
+// Construction order + empty dump + mgr passthrough.
+runRN("rn_ctor_empty", rnSpec({
+  ops: [[0], [9], [8, 0], [8, 1]],
+}));
+// Factory-built network (createRailNetwork: mgr -> pathService -> impl).
+runRN("rn_factory_build", rnSpec({
+  nu: [[34, 10, []]],
+  ops: [[0], [11], [1, 1, 11, "City", 34], [2, 1], [9], [8, 1]],
+}));
+// Isolated station: snap miss -> nearby miss -> fresh cluster.
+runRN("rn_nearby_new_cluster", rnSpec({
+  nu: [[34, 10, []]],
+  ops: [[0], [1, 1, 11, "City", 34], [2, 1], [9]],
+}));
+// nearbyUnits containing the station's own unit -> `===` continue.
+runRN("rn_nearby_self_unit", rnSpec({
+  nu: [[34, 10, [[11, 4]]]],
+  ops: [[0], [1, 1, 11, "City", 34], [2, 1], [9]],
+}));
+// Two stations -> connect -> RailroadConstructionEvent + cluster join.
+runRN("rn_connect_basic", rnSpec({
+  nu: [[34, 10, []], [38, 10, [[11, 16]]]],
+  tp: [[38, 34, [38, 37, 36, 35, 34]]],
+  ops: [[0], [1, 1, 11, "City", 34], [1, 2, 12, "Port", 38], [2, 1], [2, 2], [9]],
+}));
+// Snap onto the middle of an existing rail: split, two fresh rails, from's
+// cluster adopts the station, snap update, nextId consumed twice.
+runRN("rn_snap_basic", rnSpec({
+  nu: [[34, 10, []], [38, 10, [[11, 16]]], [36, 10, []]],
+  tp: [[38, 34, [38, 37, 36, 35, 34]]],
+  ops: [[0], [1, 1, 11, "City", 34], [1, 2, 12, "Port", 38], [1, 3, 13, "Factory", 36],
+    [2, 1], [2, 2], [2, 3], [9]],
+}));
+// Closest tile index 0 (endpoint) -> continue -> nearby fallback.
+runRN("rn_snap_endpoint", rnSpec({
+  nu: [[34, 10, []], [38, 10, [[11, 16]]], [54, 10, []]],
+  tp: [[38, 34, [38, 37, 36, 35, 34]]],
+  ops: [[0], [1, 1, 11, "City", 34], [1, 2, 12, "Port", 38], [1, 3, 13, "Factory", 54],
+    [2, 1], [2, 2], [2, 3], [9]],
+}));
+// Closest tile index len-1: the tail segment keeps the single last tile.
+runRN("rn_snap_last_index", rnSpec({
+  nu: [[34, 10, []], [38, 10, [[11, 16]]], [18, 10, []]],
+  tp: [[38, 34, [38, 37, 36, 35, 34]]],
+  ops: [[0], [1, 1, 11, "City", 34], [1, 2, 12, "Port", 38], [1, 3, 13, "Factory", 18],
+    [2, 1], [2, 2], [2, 3], [9]],
+}));
+// Snap rails from two clusters -> editedClusters.size 2 -> mergeClusters.
+runRN("rn_snap_merge", rnSpec({
+  nu: [[34, 10, []], [38, 10, [[11, 16]]], [40, 10, []], [44, 10, [[13, 16]]], [39, 10, []]],
+  tp: [[38, 34, [38, 37, 36, 35, 34]], [44, 40, [44, 42, 40]]],
+  ops: [[0], [1, 1, 11, "City", 34], [1, 2, 12, "Port", 38], [1, 4, 13, "Factory", 40],
+    [1, 5, 14, "City", 44], [1, 3, 15, "Port", 39],
+    [2, 1], [2, 2], [2, 4], [2, 5], [2, 3], [9]],
+}));
+// Station nearby-hits two isolated clusters -> editedClusters size 2 ->
+// mergeClusters: the merged cluster takes cluster1's then cluster2's
+// stations in insertion order (the station itself switches clusters
+// mid-loop, so cluster1 holds only the first one by merge time).
+runRN("rn_nearby_merge", rnSpec({
+  nu: [[34, 10, []], [38, 10, []], [36, 10, [[11, 9], [12, 9]]]],
+  tp: [[36, 34, [36, 34]], [36, 38, [36, 38]]],
+  ops: [[0], [1, 1, 11, "City", 34], [1, 2, 12, "Port", 38], [1, 3, 13, "Factory", 36],
+    [2, 1], [2, 2], [2, 3], [9]],
+}));
+// Non-City/Port/Factory types are rejected by both public queries.
+runRN("rn_type_guard", rnSpec({
+  ops: [[0], [6, "Warship", 50], [5, "MIRV", 50], [6, "1", 50], [5, "factory", 50], [6, "Factory", 50]],
+}));
+// Ghost paths for a Factory: no hasUnitNearby, non-station targets, the
+// City-reversed findTilePath direction, station target + path bounds.
+runRN("rn_ghost_factory", rnSpec({
+  nu: [[34, 10, []], [50, 10, [[13, 16], [11, 25], [14, 36]]]],
+  tp: [[50, 51, [50, 51]], [50, 34, [50, 34]], [52, 50, []]],
+  ops: [[0], [1, 1, 11, "City", 34], [2, 1], [10, 13, "Factory", 51], [10, 14, "City", 52],
+    [6, "Factory", 50]],
+}));
+// City ghost with no Factory in range -> [] before nearbyUnits.
+runRN("rn_ghost_city_no_factory", rnSpec({
+  nu: [[34, 10, []], [50, 10, [[11, 25]]]],
+  hn: [[50, 10, "Factory", 0]],
+  ops: [[0], [1, 1, 11, "City", 34], [2, 1], [6, "City", 50]],
+}));
+// City ghost: reachable station short-circuits (some -> distanceFrom), the
+// second station is skipped, the first station path is pushed. Ghost tile
+// 132=(4,8) stays clear of rail1's cells so canSnap misses.
+runRN("rn_ghost_city_reachable", rnSpec({
+  nu: [[34, 10, []], [38, 10, [[11, 16]]], [132, 10, [[11, 25], [12, 36]]]],
+  tp: [[38, 34, [38, 37, 36, 35, 34]], [132, 34, [132, 34]]],
+  hn: [[132, 10, "Factory", 1]],
+  ops: [[0], [1, 1, 11, "City", 34], [1, 2, 12, "Port", 38], [2, 1], [2, 2], [6, "City", 132]],
+}));
+// The 5-path cap breaks BEFORE the minRange check (6th entry untouched).
+runRN("rn_ghost_limit5", rnSpec({
+  nu: [[50, 10, [[13, 9], [14, 10], [15, 11], [16, 12], [17, 13], [18, 14], [19, 15]]]],
+  tp: [[50, 51, [50, 51]], [50, 52, [50, 52]], [50, 53, [50, 53]], [50, 54, [50, 54]],
+    [50, 55, [50, 55]], [50, 56, [50, 56]], [50, 57, [50, 57]]],
+  ops: [[0], [10, 13, "Factory", 51], [10, 14, "Factory", 52], [10, 15, "Factory", 53],
+    [10, 16, "Factory", 54], [10, 17, "Factory", 55], [10, 18, "Factory", 56],
+    [10, 19, "Factory", 57], [6, "Factory", 50]],
+}));
+// NaN minRange: `dist <= NaN` is false -> nothing is skipped; NaN distSquared
+// sorts Equal (stable) and passes the minRange check.
+runRN("rn_ghost_nan_minrange", rnSpec({
+  minRange: NaN,
+  nu: [[34, 10, []], [38, 10, []], [50, 10, [[13, NaN], [12, 0]]]],
+  tp: [[50, 51, [50, 51]], [50, 38, [50, 38]]],
+  ops: [[0], [1, 1, 11, "City", 34], [2, 1], [1, 2, 12, "Port", 38], [2, 2],
+    [10, 13, "Factory", 51], [6, "Factory", 50]],
+}));
+// canSnapToExistingRailway short-circuits before any config read.
+runRN("rn_ghost_snap", rnSpec({
+  nu: [[34, 10, []], [38, 10, [[11, 16]]]],
+  tp: [[38, 34, [38, 37, 36, 35, 34]]],
+  hn: [[36, 10, "Factory", 1]],
+  ops: [[0], [1, 1, 11, "City", 34], [1, 2, 12, "Port", 38], [2, 1], [2, 2], [6, "City", 36]],
+}));
+// Path bounds: len == maxSize rejected, len 0 rejected, len < maxSize pushed.
+runRN("rn_ghost_path_bounds", rnSpec({
+  maxSize: 3,
+  nu: [[34, 10, []], [38, 10, []], [51, 10, []], [50, 10, [[11, 25], [12, 36], [13, 49]]]],
+  tp: [[50, 34, [50, 49, 34]], [50, 38, []], [50, 51, [50, 51]]],
+  ops: [[0], [1, 1, 11, "City", 34], [1, 2, 12, "Port", 38], [1, 3, 13, "Factory", 51],
+    [2, 1], [2, 2], [2, 3], [6, "Factory", 50]],
+}));
+// overlappingRailroads: union in query order, Set dedup (-0/0 collapse, NaN
+// once), V8 stable sort with the NaN comparator.
+runRN("rn_overlap_tiles", rnSpec({
+  nu: [[34, 10, []], [38, 10, [[11, 16]]], [40, 10, []], [42, 10, [[13, 4]]]],
+  tp: [[38, 34, [38, 37, 36, 35, 34]], [42, 40, [40, -0, NaN, 42]]],
+  ops: [[0], [1, 1, 11, "City", 34], [1, 2, 12, "Port", 38], [1, 3, 13, "Factory", 40],
+    [1, 4, 14, "City", 42], [2, 1], [2, 2], [2, 3], [2, 4], [5, "City", 40], [9]],
+}));
+// Factory passes the includes guard; lowercase does not.
+runRN("rn_overlap_guard", rnSpec({
+  nu: [[34, 10, []], [38, 10, [[11, 16]]]],
+  tp: [[38, 34, [38, 37, 36, 35, 34]]],
+  ops: [[0], [1, 1, 11, "City", 34], [1, 2, 12, "Port", 38], [2, 1], [2, 2],
+    [5, "Factory", 36], [5, "factory", 36], [5, "Port", 36]],
+}));
+// removeStation: rail destruction updates, live-set iteration over two rails,
+// setTrainStation, dirty cluster add.
+runRN("rn_remove_basic", rnSpec({
+  nu: [[34, 10, []], [38, 10, [[11, 16]]], [42, 10, [[12, 16]]]],
+  tp: [[38, 34, [38, 37, 36, 35, 34]], [42, 38, [42, 41, 40, 39, 38]]],
+  ops: [[0], [1, 1, 11, "City", 34], [1, 2, 12, "Port", 38], [1, 3, 13, "Factory", 42],
+    [2, 1], [2, 2], [2, 3], [4, 12], [9]],
+}));
+// removeStation empties the cluster -> deleteCluster + dirty.delete.
+runRN("rn_remove_empty_cluster", rnSpec({
+  nu: [[34, 10, []]],
+  ops: [[0], [1, 1, 11, "City", 34], [2, 1], [4, 11], [9]],
+}));
+// recomputeClusters: the last BFS group keeps the original cluster, earlier
+// groups move to fresh ones; the copy iteration + shrinking-set first read.
+runRN("rn_recompute_split", rnSpec({
+  nu: [[34, 10, []], [38, 10, [[11, 16]]], [42, 10, [[12, 16]]], [46, 10, [[13, 16]]]],
+  tp: [[38, 34, [38, 34]], [42, 38, [42, 38]], [46, 42, [46, 42]]],
+  ops: [[0], [1, 1, 11, "City", 34], [1, 2, 12, "Port", 38], [1, 3, 13, "Factory", 42],
+    [1, 4, 14, "City", 46], [2, 1], [2, 2], [2, 3], [2, 4], [4, 12], [3], [9]],
+}));
+// Three groups: two fresh clusters, the original keeps the last group.
+runRN("rn_recompute_three", rnSpec({
+  nu: [[34, 10, []], [38, 10, [[11, 16]]], [42, 10, [[12, 16]]], [46, 10, [[13, 16]]],
+    [50, 10, [[14, 16]]]],
+  tp: [[38, 34, [38, 34]], [42, 38, [42, 38]], [46, 42, [46, 42]], [50, 46, [50, 46]]],
+  ops: [[0], [1, 1, 11, "City", 34], [1, 2, 12, "Port", 38], [1, 3, 13, "Factory", 42],
+    [1, 4, 14, "City", 46], [1, 5, 15, "Port", 50],
+    [2, 1], [2, 2], [2, 3], [2, 4], [2, 5], [4, 12], [4, 14], [3], [9]],
+}));
+// recomputeClusters with an empty dirty set is a pure no-op.
+runRN("rn_recompute_empty", rnSpec({ ops: [[0], [3]] }));
+// findStationsPath passthrough: table hit + miss.
+runRN("rn_findstations_path", rnSpec({
+  sp: [[1, 2, [1, 3, 2]]],
+  ops: [[0], [1, 1, 11, "City", 34], [1, 2, 12, "Port", 38], [1, 3, 13, "Factory", 42],
+    [7, 1, 2], [7, 2, 1]],
+}));
+// connectStation twice on the same station: mgr re-add takes a fresh id, the
+// second pass creates a second cluster (the first is orphaned, not dirty).
+runRN("rn_readd_station", rnSpec({
+  nu: [[34, 10, []]],
+  ops: [[0], [1, 1, 11, "City", 34], [2, 1], [2, 1], [9], [8, 1], [8, 2]],
+}));
+// Grid query scan order across cells drives the snap iteration + id order.
+runRN("rn_grid_query_order", rnSpec({
+  nu: [[34, 10, []], [38, 10, [[11, 16]]], [40, 10, []], [44, 10, [[13, 16]]], [39, 10, []]],
+  tp: [[38, 34, [38, 37, 36, 35, 34]], [44, 40, [44, 42, 40]]],
+  ops: [[0], [1, 1, 11, "City", 34], [1, 2, 12, "Port", 38], [1, 4, 13, "Factory", 40],
+    [1, 5, 14, "City", 44], [1, 3, 15, "Port", 39],
+    [2, 1], [2, 2], [2, 4], [2, 5], [2, 3], [9], [5, "City", 39]],
+}));
+
 const structures = {
   minheap: mhScenarios,
   bucket: bqScenarios,
@@ -10024,6 +10461,7 @@ const structures = {
   sharedwatercache: swcScenarios,
   stationmanager: stmScenarios,
   trainstation: tsnScenarios,
+  railnetwork: rnScenarios,
   statsimpl: siScenarios,
   waterpathmemo: wpmScenarios,
   astar: asScenarios,
@@ -12664,6 +13102,55 @@ for (const s of structures.trainstation) {
 }
 L.push("pub const TSN_SCENARIOS: &[TsnScenario] = &[");
 for (const s of structures.trainstation) L.push(`    ${s.name.toUpperCase()},`);
+L.push("];");
+L.push("");
+
+L.push("/// One `RailNetworkImpl.ts` op: `kind` + flat `args` / `res` token");
+L.push("/// streams (see the Rust `rail_network::RigHarness::run_op` docs). res is");
+L.push("/// `[traceLen,(trace)*,payload*]`; trace events 20 x [20,tile,x], 21 y");
+L.push("/// [21,tile,y], 22 construction [22,17,id,m,(tiles)*], 23 destruction");
+L.push("/// [23,16,id], 24 snap [24,18,origId,newId1,newId2,m1,(t1)*,m2,(t2)*],");
+L.push("/// 25 maxRange [25,v], 26 minRange [26,v], 27 maxSize [27,v], 28");
+L.push("/// hasUnitNearby [28,tile,range,(str),0|1], 29 nearbyUnits");
+L.push("/// [29,tile,range,nTypes,(type)*,m,(uref,dist)*m], 30 findTilePath");
+L.push("/// [30,a,b,m,(tiles)*], 31 findStationsPath [31,a,b,m,(srefs)*], 32");
+L.push("/// setTrainStation [32,uref,0|1], 33 unit.type [33,uref,(str)], 34");
+L.push("/// unit.tile [34,uref,tile]. Strings cross as [len,u0,..] UTF-16.");
+L.push("/// kind table: 0 construct `[maxRange,minRange,maxSize,w,h,nTP,(a,b,m,");
+L.push("/// tiles)*,nSP,(a,b,m,srefs)*,nNU,(tile,range,m,(uref,dist)*m)*,nHN,");
+L.push("/// (tile,range,(str),0|1)*]`, 1 station `[sref,uref,(str),tile]`, 2");
+L.push("/// connectStation `[sref]`, 3 recomputeClusters, 4 removeStation `[uref]`,");
+L.push("/// 5 overlappingRailroads `[(str),tile]`, 6 computeGhostRailPaths");
+L.push("/// `[(str),tile]`, 7 findStationsPath `[a,b]`, 8 mgrGetById `[id]`, 9");
+L.push("/// dumpNetwork, 10 unit `[uref,(str),tile]`, 11 factoryConstruct.");
+L.push("pub struct RnOp {");
+L.push("    pub kind: u8,");
+L.push("    pub args: &'static [f64],");
+L.push("    pub res: &'static [f64],");
+L.push("}");
+L.push("/// One rail-network scenario: the op stream replayed against a fresh");
+L.push("/// harness (kind 0 (re)builds the network from the scripted tables).");
+L.push("pub struct RnScenario {");
+L.push("    pub name: &'static str,");
+L.push("    pub ops: &'static [RnOp],");
+L.push("}");
+L.push("");
+for (const s of structures.railnetwork) {
+  const id = s.name.toUpperCase();
+  L.push(`const ${id}_OPS: &[RnOp] = &[`);
+  for (const o of s.ops)
+    L.push(
+      `    RnOp { kind: ${o.kind}, args: &[${o.args.map(utilResLit).join(", ")}], res: &[${o.res.map(utilResLit).join(", ")}] },`,
+    );
+  L.push("];");
+  L.push(`pub const ${id}: RnScenario = RnScenario {`);
+  L.push(`    name: "${s.name}",`);
+  L.push(`    ops: ${id}_OPS,`);
+  L.push("};");
+  L.push("");
+}
+L.push("pub const RN_SCENARIOS: &[RnScenario] = &[");
+for (const s of structures.railnetwork) L.push(`    ${s.name.toUpperCase()},`);
 L.push("];");
 L.push("");
 

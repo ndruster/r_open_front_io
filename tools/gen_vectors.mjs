@@ -182,6 +182,8 @@ const SWC = await loadTs("src/core/execution/nation/SharedWaterCache.ts");
 const GI = await loadTs("src/core/game/GameImpl.ts");
 const TNI = await loadTs("src/core/game/TerraNulliusImpl.ts");
 const SI = await loadTs("src/core/game/StatsImpl.ts");
+const RN = await loadTs("src/core/game/RailNetworkImpl.ts");
+const TSN = await loadTs("src/core/game/TrainStation.ts");
 const PF = await loadTs("src/core/pathfinding/PathFinder.ts");
 const { AStar } = await loadTs("src/core/pathfinding/algorithms/AStar.ts");
 const { AStarRail } = await loadTs("src/core/pathfinding/algorithms/AStar.Rail.ts");
@@ -9354,6 +9356,635 @@ captureSWT("swt_long", 64, 12, SWT_LONG, [
   { from: [[2, 4]], scalar: true, to: [58, 6], inner: SWT_LONG_PATH },
 ]);
 
+// --- game/RailNetworkImpl.ts StationManagerImpl scenario runner ---------------
+// Exercises the real StationManagerImpl through a stateful op stream. Stations
+// are duck-typed `{ unit, id }` objects keyed by capture-assigned refids
+// (identity: re-adding the same refid reuses the same object, exactly like
+// passing the same TrainStation twice). Units ride as plain numeric refids
+// (`station.unit === unit` is JS `===` on numbers: NaN never matches, +0/-0
+// do). kind 0 = construct `[0]` -> `[0]`; 1 = addStation `[refid, unit]` ->
+// `[id]` (the id the manager assigned); 2 = removeStation `[refid]` -> `[]`;
+// 3 = findStation `[unit]` -> `[0]` null | `[1, refid]`; 4 = getById `[id]` ->
+// `[0]` undefined | `[1, refid]`; 5 = count -> `[nextId]` (NOT the set size);
+// 6 = dump getAll -> `[n, (refid)*, (id)*]`; 7 = dump stationsById ->
+// `[len, (0|1, refid?)*]` (0 = hole or undefined slot).
+const stmScenarios = [];
+let stmIdx = 0;
+function runSTM(name, ops) {
+  const played = [];
+  let mgr = null;
+  const stations = new Map();
+  const refOf = new Map(); // station object -> refid (reverse lookup)
+  for (const [k, ...a] of ops) {
+    let args, res;
+    if (k === 0) {
+      args = [0];
+      mgr = new RN.StationManagerImpl();
+      res = [0];
+    } else if (k === 1) {
+      const [refid, unit] = a;
+      args = [refid, unit];
+      let s = stations.get(refid);
+      if (!s) {
+        s = { unit, id: -1 };
+        stations.set(refid, s);
+        refOf.set(s, refid);
+      }
+      mgr.addStation(s);
+      res = [s.id];
+    } else if (k === 2) {
+      args = [a[0]];
+      mgr.removeStation(stations.get(a[0]));
+      res = [];
+    } else if (k === 3) {
+      args = [a[0]];
+      const r = mgr.findStation(a[0]);
+      res = r === null ? [0] : [1, refOf.get(r)];
+    } else if (k === 4) {
+      args = [a[0]];
+      const g = mgr.getById(a[0]);
+      res = g === undefined ? [0] : [1, refOf.get(g)];
+    } else if (k === 5) {
+      args = [];
+      res = [mgr.count()];
+    } else if (k === 6) {
+      args = [];
+      const arr = [...mgr.getAll()];
+      res = [arr.length, ...arr.map((s) => refOf.get(s)), ...arr.map((s) => s.id)];
+    } else {
+      args = [];
+      const arr = mgr.stationsById;
+      res = [arr.length];
+      for (let i = 0; i < arr.length; i++) {
+        const slot = arr[i];
+        if (slot === undefined) res.push(0);
+        else res.push(1, refOf.get(slot));
+      }
+    }
+    played.push({ kind: k, args: args.flat().map(uenc), res: res.flat().map(uenc) });
+  }
+  stmScenarios.push({ name: `${name}_${stmIdx++}`, ops: played });
+}
+
+runSTM("stm_basic", [
+  [0],
+  [1, 1, 10],
+  [1, 2, 20],
+  [1, 3, 30],
+  [5],        // count = 4 (nextId), not 3
+  [4, 1], [4, 2], [4, 3], [4, 0], [4, 4],
+  [3, 20], [3, 99],
+  [6], [7],
+]);
+runSTM("stm_count_empty", [[0], [5]]); // count = 1 before any add
+runSTM("stm_readd", [
+  [0],
+  [1, 1, 10],
+  [1, 2, 20],
+  [1, 1, 10], // re-add the same station object: fresh id 3, set no-op
+  [5],
+  [6],
+  [7],
+]);
+runSTM("stm_remove", [
+  [0],
+  [1, 1, 10],
+  [1, 2, 20],
+  [2, 1],
+  [4, 1], [4, 2],
+  [5],        // removals never lower nextId
+  [6], [7],
+]);
+runSTM("stm_dup_units", [
+  [0],
+  [1, 1, 10], // two stations sharing the same unit refid
+  [1, 2, 10],
+  [3, 10],    // first match in set order
+  [2, 1],
+  [3, 10],    // survivor after the first is deleted
+  [3, 11],
+]);
+runSTM("stm_reorder", [
+  [0],
+  [1, 1, 10],
+  [1, 2, 20],
+  [1, 3, 30],
+  [2, 2],
+  [1, 2, 20], // delete + re-add moves to the tail
+  [6],
+]);
+runSTM("stm_find_special", [
+  [0],
+  [1, 1, NaN],
+  [1, 2, -0],
+  [3, NaN],   // NaN === NaN is false -> null
+  [3, 0],     // -0 === 0 -> station 2
+  [3, -0],
+]);
+runSTM("stm_getbyid_weird", [
+  [0],
+  [1, 1, 10],
+  [4, -1], [4, 1.5], [4, NaN], [4, Infinity], [4, 0], [4, 1],
+]);
+runSTM("stm_remove_unadded", [
+  [0],
+  [1, 1, 10], // station id 1
+  [2, 1],
+  [2, 1],     // remove again: id is still 1, writes undefined again, no-op delete
+  [4, 1],
+  [6], [7], [5],
+]);
+runSTM("stm_slot_survives", [
+  // re-add writes a NEW slot; removing the station clears only its current
+  // id slot, the old slot keeps pointing at the (removed) station object.
+  [0],
+  [1, 1, 10], // id 1, slot 1
+  [1, 1, 10], // id 2, slot 2 (same object)
+  [2, 1],     // clears slot 2 only
+  [4, 1],     // slot 1 still returns the station
+  [4, 2],
+  [7], [6],
+]);
+
+// --- game/TrainStation.ts + Cluster scenario runner ---------------------------
+// Exercises the real TrainStation / Cluster against scripted mocks: the
+// `Unit` facade (`type / owner / tile / isActive`), the `Player` facade
+// (`canTrade`) and the `Game` mock (`mg`, whose only observable effect is
+// `addUpdate`). Every facade call is traced: 10 type [10,uref,(len,u*)],
+// 11 owner [11,uref,pref], 12 tile [12,uref,tile], 13 isActive
+// [13,uref,0|1], 14 canTrade [14,pref,other,0|1], 15 addUpdate
+// [15,16,railId], 16 nextInt [16,0,seen,r]. The ctor's stopHandlers side
+// effect is stripped by ts_load, so construction is observable-free.
+// kind table (mirrors the Rust `train_station::RigHarness::run_op`):
+// 0 construct `[seed]` -> `[0]`; 1 player `[pref,n,(other,0|1)*]` -> `[]`;
+// 2 station `[sref,uref,(len,u*),owner,tile,active]` -> `[]`;
+// 3 rail `[railref,from,to,id]` -> `[]`; 4 addRailroad `[sref,railref]`;
+// 5 removeRailroad; 6 clearRailroads `[sref]`;
+// 7 removeNeighboringRails `[sref,target]`; 8 neighbors `[sref]` ->
+// `[n,(sref)*]`; 9 tile -> `[t]`; 10 isActive -> `[0|1]`; 11 getRailroads ->
+// `[n,(railref)*]`; 12 getRailroadTo `[sref,other]` -> `[0]`|`[1,railref]`;
+// 13 setCluster `[sref,cref]` (0=null); 14 getCluster -> `[0]`|`[1,cref]`;
+// 15 tradeAvailable `[sref,pref]` -> `[0|1]`; 16 getId -> `[id]`;
+// 17 setId `[sref,id]`; 20 newCluster -> `[cref]`; 21 has `[cref,sref]`;
+// 22 addStation `[cref,sref]`; 23 removeStation; 24 addStations
+// `[cref,n,(sref)*]`; 25 merge `[cref,other]`; 26 hasAnyTradeDestination
+// `[cref,pref]` -> `[0|1]`; 27 randomTradeDestination `[cref,pref]` ->
+// `[0]`|`[1,sref]`; 28 availableForTrade -> `[n,(sref)*]`; 29 size -> `[n]`;
+// 30 clear; 31 dumpCluster -> `[nSt,(sref)*,nTrade,(sref)*]`; 32 dumpStation
+// -> `[id,0|1+cref,nRails,(railref)*,nNbr,(nbr,railref)*]`.
+const tsnScenarios = [];
+let tsnIdx = 0;
+const uencAll = (arr) => arr.flat().map(uenc);
+function runTSN(name, ops) {
+  const played = [];
+  const trace = [];
+  const ev = (...t) => trace.push(...t);
+  const stations = new Map(); // sref -> TrainStation (s.__ref)
+  const clusters = new Map(); // cref -> Cluster
+  const players = new Map();
+  const rails = new Map();
+  let random = null;
+  let crefSeq = 0;
+  const mg = {
+    addUpdate(u) {
+      ev(15, u.type, u.id);
+    },
+  };
+  const mkPlayer = (pref, trades) => {
+    const p = {
+      __ref: pref,
+      canTrade(other) {
+        const v = trades.get(other.__ref);
+        const r = v === undefined ? false : v === 1;
+        ev(14, pref, other.__ref, r ? 1 : 0);
+        return r;
+      },
+    };
+    players.set(pref, p);
+    return p;
+  };
+  const wrapRandom = () => ({
+    nextInt(a, b) {
+      const r = random.nextInt(a, b);
+      ev(16, a, b, r);
+      return r;
+    },
+  });
+  for (const [k, ...a] of ops) {
+    let args, res;
+    if (k === 0) {
+      args = [a[0]];
+      random = new PseudoRandom(a[0]);
+      res = [0];
+    } else if (k === 1) {
+      const [pref, n] = a;
+      const trades = new Map();
+      for (let i = 0; i < n; i++) trades.set(a[2 + i * 2], a[3 + i * 2]);
+      args = a.slice();
+      mkPlayer(pref, trades);
+      res = [];
+    } else if (k === 2) {
+      const [sref, uref, len] = a;
+      const type = String.fromCharCode(...a.slice(3, 3 + len));
+      const [owner, tile, active] = a.slice(3 + len);
+      args = a.slice();
+      const unit = {
+        __ref: uref,
+        type() {
+          ev(10, uref, ...encS(type));
+          return type;
+        },
+        owner() {
+          ev(11, uref, owner);
+          return players.get(owner);
+        },
+        tile() {
+          ev(12, uref, tile);
+          return tile;
+        },
+        isActive() {
+          ev(13, uref, active ? 1 : 0);
+          return active === 1;
+        },
+      };
+      const s = new TSN.TrainStation(mg, unit);
+      s.__ref = sref;
+      stations.set(sref, s);
+      res = [];
+    } else if (k === 3) {
+      const [railref, from, to, id] = a;
+      args = a.slice();
+      const r = { __ref: railref, from: stations.get(from), to: stations.get(to), id };
+      rails.set(railref, r);
+      res = [];
+    } else if (k === 4 || k === 5) {
+      args = [a[0], a[1]];
+      const s = stations.get(a[0]);
+      const r = rails.get(a[1]);
+      if (k === 4) s.addRailroad(r);
+      else s.removeRailroad(r);
+      res = [];
+    } else if (k === 6) {
+      args = [a[0]];
+      stations.get(a[0]).clearRailroads();
+      res = [];
+    } else if (k === 7) {
+      args = [a[0], a[1]];
+      stations.get(a[0]).removeNeighboringRails(stations.get(a[1]));
+      res = [];
+    } else if (k === 8) {
+      args = [a[0]];
+      const ns = stations.get(a[0]).neighbors();
+      res = [ns.length, ...ns.map((s) => s.__ref)];
+    } else if (k === 9) {
+      args = [a[0]];
+      res = [stations.get(a[0]).tile()];
+    } else if (k === 10) {
+      args = [a[0]];
+      res = [stations.get(a[0]).isActive() ? 1 : 0];
+    } else if (k === 11) {
+      args = [a[0]];
+      const rs = [...stations.get(a[0]).getRailroads()];
+      res = [rs.length, ...rs.map((r) => r.__ref)];
+    } else if (k === 12) {
+      args = [a[0], a[1]];
+      const r = stations.get(a[0]).getRailroadTo(stations.get(a[1]));
+      res = r === null ? [0] : [1, r.__ref];
+    } else if (k === 13) {
+      args = [a[0], a[1]];
+      stations.get(a[0]).setCluster(a[1] === 0 ? null : clusters.get(a[1]));
+      res = [];
+    } else if (k === 14) {
+      args = [a[0]];
+      const cl = stations.get(a[0]).getCluster();
+      res = cl === null ? [0] : [1, cl.__cref];
+    } else if (k === 15) {
+      args = [a[0], a[1]];
+      res = [stations.get(a[0]).tradeAvailable(players.get(a[1])) ? 1 : 0];
+    } else if (k === 16) {
+      args = [a[0]];
+      res = [stations.get(a[0]).id];
+    } else if (k === 17) {
+      args = [a[0], a[1]];
+      stations.get(a[0]).id = a[1];
+      res = [];
+    } else if (k === 20) {
+      args = [];
+      const cl = new TSN.Cluster();
+      cl.__cref = ++crefSeq;
+      clusters.set(cl.__cref, cl);
+      res = [cl.__cref];
+    } else if (k === 21 || k === 22 || k === 23) {
+      args = [a[0], a[1]];
+      const cl = clusters.get(a[0]);
+      const s = stations.get(a[1]);
+      if (k === 21) res = [cl.has(s) ? 1 : 0];
+      else if (k === 22) {
+        cl.addStation(s);
+        res = [];
+      } else {
+        cl.removeStation(s);
+        res = [];
+      }
+    } else if (k === 24) {
+      const [cref, n] = a;
+      args = a.slice();
+      const cl = clusters.get(cref);
+      for (let i = 0; i < n; i++) cl.addStation(stations.get(a[2 + i]));
+      res = [];
+    } else if (k === 25) {
+      args = [a[0], a[1]];
+      clusters.get(a[0]).merge(clusters.get(a[1]));
+      res = [];
+    } else if (k === 26) {
+      args = [a[0], a[1]];
+      res = [clusters.get(a[0]).hasAnyTradeDestination(players.get(a[1])) ? 1 : 0];
+    } else if (k === 27) {
+      args = [a[0], a[1]];
+      const r = clusters.get(a[0]).randomTradeDestination(players.get(a[1]), wrapRandom());
+      res = r === null ? [0] : [1, r.__ref];
+    } else if (k === 28) {
+      args = [a[0], a[1]];
+      const set = clusters.get(a[0]).availableForTrade(players.get(a[1]));
+      res = [set.size, ...[...set].map((s) => s.__ref)];
+    } else if (k === 29) {
+      args = [a[0]];
+      res = [clusters.get(a[0]).size()];
+    } else if (k === 30) {
+      args = [a[0]];
+      clusters.get(a[0]).clear();
+      res = [];
+    } else if (k === 31) {
+      args = [a[0]];
+      const cl = clusters.get(a[0]);
+      const st = [...cl.stations];
+      const tr = [...cl.tradeStations];
+      res = [st.length, ...st.map((s) => s.__ref), tr.length, ...tr.map((s) => s.__ref)];
+    } else {
+      args = [a[0]];
+      const s = stations.get(a[0]);
+      const rr = [...s.railroads];
+      const nb = [...s.railroadByNeighbor];
+      const cl = s.cluster;
+      res = [s.id, ...(cl === null ? [0] : [1, cl.__cref]), rr.length, ...rr.map((r) => r.__ref), nb.length];
+      for (const [n, r] of nb) res.push(n.__ref, r.__ref);
+    }
+    played.push({ kind: k, args: args.flat().map(uenc), res: [trace.length, ...uencAll(trace), ...uencAll(res)] });
+    trace.length = 0;
+  }
+  tsnScenarios.push({ name: `${name}_${tsnIdx++}`, ops: played });
+}
+
+// Station + rail graph basics.
+runTSN("tsn_basics", [
+  [0, 42],
+  [2, 1, 11, 4, 67, 105, 116, 121, 100, 5, 1],   // City, owner 100, tile 5
+  [2, 2, 12, 4, 80, 111, 114, 116, 101, 6, 1],   // Port, owner 101, tile 6
+  [16, 1],                                        // id default -1
+  [9, 1], [10, 1],
+  [3, 500, 1, 2, 77],
+  [4, 1, 500], [4, 2, 500],
+  [8, 1], [8, 2],
+  [11, 1], [12, 1, 2], [12, 1, 1],
+  [32, 1],
+]);
+// addRailroad neighbor rule with a rail whose `from` is NOT this station.
+runTSN("tsn_neighbor_rule", [
+  [0, 7],
+  [2, 1, 11, 4, 67, 105, 116, 121, 100, 1, 1],
+  [2, 2, 12, 4, 80, 111, 114, 116, 101, 2, 1],
+  [2, 3, 13, 7, 70, 97, 99, 116, 111, 114, 121, 100, 3, 1],
+  [3, 500, 3, 1, 9], // rail from station 3 to station 1
+  [4, 1, 500],       // for s1: from(3) !== this -> neighbor = from = 3
+  [8, 1],            // [3]
+  [12, 1, 3], [12, 1, 2],
+  [32, 1],           // map entry (3, 500)
+]);
+// removeNeighboringRails: FIRST match only, addUpdate before removal.
+runTSN("tsn_rnr_first_only", [
+  [0, 9],
+  [2, 1, 11, 4, 67, 105, 116, 121, 100, 1, 1],
+  [2, 2, 12, 4, 80, 111, 114, 116, 101, 2, 1],
+  [3, 500, 1, 2, 77], [3, 501, 1, 2, 88],
+  [4, 1, 500], [4, 1, 501], [4, 2, 500],
+  [7, 1, 2],            // removes rail 500 only, update [15,16,77]
+  [11, 1], [11, 2],
+  [12, 1, 2],           // quirk: key 2 deleted, survivor 501 unreachable
+  [7, 1, 2],            // second call: rail 501 matches now
+  [11, 1], [32, 1],
+]);
+// removeNeighboringRails miss: no update, no removal.
+runTSN("tsn_rnr_miss", [
+  [0, 3],
+  [2, 1, 11, 4, 67, 105, 116, 121, 100, 1, 1],
+  [2, 2, 12, 4, 80, 111, 114, 116, 101, 2, 1],
+  [2, 3, 13, 7, 70, 97, 99, 116, 111, 114, 121, 100, 3, 1],
+  [3, 500, 1, 3, 77],
+  [4, 1, 500],
+  [7, 1, 2],            // no rail touches station 2 -> silent
+  [11, 1],
+]);
+// clearRailroads empties both containers.
+runTSN("tsn_clear_rails", [
+  [0, 5],
+  [2, 1, 11, 4, 67, 105, 116, 121, 100, 1, 1],
+  [2, 2, 12, 4, 80, 111, 114, 116, 101, 2, 1],
+  [3, 500, 1, 2, 77],
+  [4, 1, 500], [4, 2, 500],
+  [6, 1],
+  [11, 1], [8, 1], [12, 1, 2], [32, 1],
+  [11, 2],              // station 2 untouched
+]);
+// tradeAvailable: owner short-circuit (no canTrade), other -> canTrade.
+runTSN("tsn_trade_self", [
+  [0, 11],
+  [1, 100, 2, 101, 1, 102, 0],
+  [1, 101, 1, 100, 1],
+  [1, 102, 0],
+  [1, 103, 0],
+  [2, 1, 11, 4, 67, 105, 116, 121, 100, 1, 1],
+  [15, 1, 100],         // owner itself: true, no canTrade traced
+  [15, 1, 101],         // canTrade(100,101)=1 -> true
+  [15, 1, 102],         // canTrade(100,102)=0 -> false
+  [15, 1, 103],         // canTrade table miss -> false
+]);
+// setCluster: same-cluster no-op, removeStation keeps the pointer, switch
+// disconnects the old cluster.
+runTSN("tsn_setcluster", [
+  [0, 13],
+  [2, 1, 11, 4, 67, 105, 116, 121, 100, 1, 1],
+  [20], [20],
+  [13, 1, 0],           // null -> null: no-op
+  [14, 1],
+  [13, 1, 1],
+  [14, 1],
+  [13, 1, 1],           // same cluster: no disconnect
+  [21, 1, 1],
+  [23, 1, 1],           // removeStation: pointer NOT cleared
+  [14, 1], [21, 1, 1],
+  [13, 1, 2],           // switch: old cluster 1 no-op (already removed)
+  [14, 1],
+  [22, 1, 1],           // c1.addStation re-adds
+  [13, 1, 2],           // switch again: NOW c1.removeStation fires
+  [21, 1, 1], [21, 2, 1],
+]);
+// getRailroadTo ?? null with a stored-then-cleared map entry.
+runTSN("tsn_getrrto", [
+  [0, 17],
+  [2, 1, 11, 4, 67, 105, 116, 121, 100, 1, 1],
+  [2, 2, 12, 4, 80, 111, 114, 116, 101, 2, 1],
+  [12, 1, 2],           // empty map -> null
+  [3, 500, 1, 2, 77],
+  [4, 1, 500],
+  [12, 1, 2],           // [1, 500]
+  [5, 1, 500],
+  [12, 1, 2],           // back to null
+]);
+// double addRailroad of the same rail: set no-op keeps position, map overwrite.
+runTSN("tsn_double_add", [
+  [0, 19],
+  [2, 1, 11, 4, 67, 105, 116, 121, 100, 1, 1],
+  [2, 2, 12, 4, 80, 111, 114, 116, 101, 2, 1],
+  [2, 3, 13, 7, 70, 97, 99, 116, 111, 114, 121, 100, 3, 1],
+  [3, 500, 1, 2, 1], [3, 501, 1, 3, 2],
+  [4, 1, 500], [4, 1, 501], [4, 1, 500], // re-add 500: no move, map untouched
+  [11, 1], [8, 1], [32, 1],
+]);
+
+// Cluster: trade-station classification + insertion orders.
+runTSN("clu_classify", [
+  [0, 23],
+  [1, 100, 0],
+  [2, 1, 11, 4, 67, 105, 116, 121, 100, 1, 1],   // City
+  [2, 2, 12, 4, 80, 111, 114, 116, 101, 2, 1],   // Port
+  [2, 3, 13, 7, 70, 97, 99, 116, 111, 114, 121, 100, 3, 1], // Factory
+  [2, 4, 14, 7, 65, 114, 99, 104, 101, 114, 121, 100, 4, 1], // "Archery"
+  [20],
+  [22, 1, 1], [22, 1, 2], [22, 1, 3], [22, 1, 4],
+  [29, 1], [31, 1],
+  [22, 1, 1],           // re-add: type() traced again, sets no-op
+  [31, 1],
+]);
+// addStations iterates the given array in order.
+runTSN("clu_addstations", [
+  [0, 29],
+  [2, 1, 11, 4, 67, 105, 116, 121, 100, 1, 1],
+  [2, 2, 12, 4, 80, 111, 114, 116, 101, 2, 1],
+  [20],
+  [24, 1, 2, 2, 1],     // add [s2, s1]
+  [31, 1], [14, 1], [14, 2],
+]);
+// merge: live iteration, every station moves, other emptied.
+runTSN("clu_merge", [
+  [0, 31],
+  [2, 1, 11, 4, 67, 105, 116, 121, 100, 1, 1],
+  [2, 2, 12, 4, 80, 111, 114, 116, 101, 2, 1],
+  [2, 3, 13, 7, 70, 97, 99, 116, 111, 114, 121, 100, 3, 1],
+  [20], [20],
+  [22, 2, 1], [22, 2, 2], [22, 2, 3],
+  [25, 1, 2],           // c1.merge(c2)
+  [31, 1], [31, 2],
+  [29, 1], [29, 2],
+]);
+// merge with overlap: station already in this keeps its slot (set no-op).
+runTSN("clu_merge_overlap", [
+  [0, 37],
+  [2, 1, 11, 4, 67, 105, 116, 121, 100, 1, 1],
+  [2, 2, 12, 4, 80, 111, 114, 116, 101, 2, 1],
+  [20], [20],
+  [22, 1, 1],           // c1: [s1]
+  [22, 2, 1], [22, 2, 2], // c2: [s1, s2] (s1 switched cluster, left c1... wait
+  // c2.addStation(s1) -> setCluster(c2) -> c1.removeStation(s1))
+  [31, 1],
+  [25, 1, 2],           // c1.merge(c2): s1 re-enters c1 (tail), s2 moves
+  [31, 1], [31, 2],
+]);
+// hasAnyTradeDestination: first-true short-circuit + full scan.
+runTSN("clu_hasany", [
+  [0, 41],
+  [1, 100, 2, 101, 0, 102, 1],
+  [1, 101, 1, 100, 0],
+  [1, 102, 0],
+  [2, 1, 11, 4, 67, 105, 116, 121, 100, 1, 1],   // owner 100
+  [2, 2, 12, 4, 80, 111, 114, 116, 101, 2, 1],   // owner 101
+  [20],
+  [22, 1, 1], [22, 1, 2],
+  [26, 1, 102],         // s1: canTrade(100,102)=1 -> stop after one probe
+  [26, 1, 101],         // s1 false, s2 owner -> true after two probes
+  [26, 1, 100],         // s1 owner true immediately
+]);
+// randomTradeDestination: reservoir draws only for eligible stations.
+runTSN("clu_rtd", [
+  [0, 2026],
+  [1, 100, 2, 101, 1, 102, 0],
+  [1, 101, 1, 100, 1],
+  [1, 102, 1, 100, 1],
+  [2, 1, 11, 4, 67, 105, 116, 121, 100, 1, 1],
+  [2, 2, 12, 4, 80, 111, 114, 116, 101, 2, 1],
+  [2, 3, 13, 4, 67, 105, 116, 121, 102, 3, 1],
+  [20],
+  [22, 1, 1], [22, 1, 2], [22, 1, 3],
+  [27, 1, 102],         // s1 canTrade(100,102)=0, s2 canTrade(101,102) miss,
+                        // s3 owner -> 1 draw, s3 selected
+  [27, 1, 100],         // s1 owner, s2 canTrade(101,100)=1, s3 canTrade(102,100)=1 -> 3 draws
+  [27, 1, 101],         // s1 canTrade(100,101)=1, s2 owner, s3 canTrade(102,101) miss -> 2 draws
+]);
+// empty trade set -> null, no draws.
+runTSN("clu_rtd_empty", [
+  [0, 77],
+  [1, 100, 0],
+  [2, 1, 13, 7, 70, 97, 99, 116, 111, 114, 121, 100, 1, 1],
+  [20],
+  [22, 1, 1],           // Factory only: tradeStations empty
+  [27, 1, 100], [26, 1, 100], [28, 1, 100],
+]);
+// availableForTrade: order + filtering.
+runTSN("clu_avail", [
+  [0, 79],
+  [1, 100, 2, 101, 1, 102, 0],
+  [1, 101, 1, 100, 1],
+  [1, 102, 0],
+  [2, 1, 11, 4, 67, 105, 116, 121, 100, 1, 1],
+  [2, 2, 12, 4, 80, 111, 114, 116, 101, 2, 1],
+  [2, 3, 13, 7, 70, 97, 99, 116, 111, 114, 121, 100, 3, 1],
+  [20],
+  [22, 1, 1], [22, 1, 2], [22, 1, 3],
+  [28, 1, 102],         // s1 false, s2 canTrade(101,102) miss -> []
+  [28, 1, 101],         // s1 true (100->101=1), s2 false (101->102? no: owner 101===101 true!)
+  [28, 1, 100],         // s1 owner true, s2 canTrade(101,100)=1 true
+]);
+// clear + removeStation interplay with the trade subset.
+runTSN("clu_clear", [
+  [0, 83],
+  [2, 1, 11, 4, 67, 105, 116, 121, 100, 1, 1],
+  [2, 2, 12, 4, 80, 111, 114, 116, 101, 2, 1],
+  [20],
+  [22, 1, 1], [22, 1, 2],
+  [23, 1, 1],           // trade subset drops s1
+  [31, 1],
+  [30, 1],              // clear: both sets empty, pointers untouched
+  [31, 1], [14, 1], [14, 2],
+]);
+// delete + re-add moves to the tail in both cluster sets.
+runTSN("clu_reorder", [
+  [0, 89],
+  [2, 1, 11, 4, 67, 105, 116, 121, 100, 1, 1],
+  [2, 2, 12, 4, 80, 111, 114, 116, 101, 2, 1],
+  [2, 3, 13, 4, 67, 105, 116, 121, 100, 3, 1],
+  [20],
+  [22, 1, 1], [22, 1, 2], [22, 1, 3],
+  [23, 1, 2],
+  [22, 1, 2],           // tail in stations AND tradeStations
+  [31, 1],
+]);
+// setId models the StationManager's external id write; dump rides it.
+runTSN("tsn_setid", [
+  [0, 97],
+  [2, 1, 11, 4, 67, 105, 116, 121, 100, 1, 1],
+  [17, 1, 5],
+  [16, 1], [32, 1],
+]);
+
 const structures = {
   minheap: mhScenarios,
   bucket: bqScenarios,
@@ -9391,6 +10022,8 @@ const structures = {
   nationutils: nuScenarios,
   executionmanager: emScenarios,
   sharedwatercache: swcScenarios,
+  stationmanager: stmScenarios,
+  trainstation: tsnScenarios,
   statsimpl: siScenarios,
   waterpathmemo: wpmScenarios,
   astar: asScenarios,
@@ -11949,6 +12582,88 @@ for (const s of structures.sharedwatercache) {
 }
 L.push("pub const SWC_SCENARIOS: &[SwcScenario] = &[");
 for (const s of structures.sharedwatercache) L.push(`    ${s.name.toUpperCase()},`);
+L.push("];");
+L.push("");
+
+L.push("/// One `RailNetworkImpl.ts` StationManagerImpl op: `kind` + flat `args` /");
+L.push("/// `res` token streams (see the Rust `station_manager::RigHarness::run_op`");
+L.push("/// docs). kind 0 construct `[0]`->`[0]`, 1 addStation `[refid,unit]`->`[id]`,");
+L.push("/// 2 removeStation `[refid]`->`[]`, 3 findStation `[unit]`->`[0]`|`[1,refid]`,");
+L.push("/// 4 getById `[id]`->`[0]`|`[1,refid]`, 5 count->`[nextId]` (NOT set size),");
+L.push("/// 6 dump getAll->`[n,(refid)*,(id)*]`, 7 dump stationsById->`[len,");
+L.push("/// (0|1,refid?)*]` (0 = hole/undefined slot).");
+L.push("pub struct StmOp {");
+L.push("    pub kind: u8,");
+L.push("    pub args: &'static [f64],");
+L.push("    pub res: &'static [f64],");
+L.push("}");
+L.push("/// One manager scenario: the op stream replayed against a fresh harness");
+L.push("/// (kind 0 constructs the manager).");
+L.push("pub struct StmScenario {");
+L.push("    pub name: &'static str,");
+L.push("    pub ops: &'static [StmOp],");
+L.push("}");
+L.push("");
+for (const s of structures.stationmanager) {
+  const id = s.name.toUpperCase();
+  L.push(`const ${id}_OPS: &[StmOp] = &[`);
+  for (const o of s.ops)
+    L.push(
+      `    StmOp { kind: ${o.kind}, args: &[${o.args.map(utilResLit).join(", ")}], res: &[${o.res.map(utilResLit).join(", ")}] },`,
+    );
+  L.push("];");
+  L.push(`pub const ${id}: StmScenario = StmScenario {`);
+  L.push(`    name: "${s.name}",`);
+  L.push(`    ops: ${id}_OPS,`);
+  L.push("};");
+  L.push("");
+}
+L.push("pub const STM_SCENARIOS: &[StmScenario] = &[");
+for (const s of structures.stationmanager) L.push(`    ${s.name.toUpperCase()},`);
+L.push("];");
+L.push("");
+
+L.push("/// One `TrainStation.ts` op: `kind` + flat `args` / `res` token streams");
+L.push("/// (see the Rust `train_station::RigHarness::run_op` docs). res is");
+L.push("/// `[traceLen,(trace)*,payload*]`; trace events 10 type [10,uref,(str)],");
+L.push("/// 11 owner [11,uref,pref], 12 tile [12,uref,tile], 13 isActive");
+L.push("/// [13,uref,0|1], 14 canTrade [14,pref,other,0|1], 15 addUpdate");L.push("/// [15,16,railId], 16 nextInt [16,0,seen,r]. Strings cross as [len,u0,..]");
+L.push("/// UTF-16. kind table: 0 construct `[seed]`, 1 player, 2 station, 3 rail,");
+L.push("/// 4 addRailroad, 5 removeRailroad, 6 clearRailroads, 7 removeNeighboringRails,");
+L.push("/// 8 neighbors, 9 tile, 10 isActive, 11 getRailroads, 12 getRailroadTo,");
+L.push("/// 13 setCluster (0=null), 14 getCluster, 15 tradeAvailable, 16 getId,");
+L.push("/// 17 setId, 20 newCluster, 21 has, 22 clusterAddStation, 23 clusterRemoveStation,");
+L.push("/// 24 clusterAddStations, 25 clusterMerge, 26 hasAnyTradeDestination,");
+L.push("/// 27 randomTradeDestination, 28 availableForTrade, 29 clusterSize,");
+L.push("/// 30 clusterClear, 31 dumpCluster, 32 dumpStation.");
+L.push("pub struct TsnOp {");
+L.push("    pub kind: u8,");
+L.push("    pub args: &'static [f64],");
+L.push("    pub res: &'static [f64],");
+L.push("}");
+L.push("/// One station scenario: the op stream replayed against a fresh harness");
+L.push("/// (kind 0 resets the tables and seeds the scenario `PseudoRandom`).");
+L.push("pub struct TsnScenario {");
+L.push("    pub name: &'static str,");
+L.push("    pub ops: &'static [TsnOp],");
+L.push("}");
+L.push("");
+for (const s of structures.trainstation) {
+  const id = s.name.toUpperCase();
+  L.push(`const ${id}_OPS: &[TsnOp] = &[`);
+  for (const o of s.ops)
+    L.push(
+      `    TsnOp { kind: ${o.kind}, args: &[${o.args.map(utilResLit).join(", ")}], res: &[${o.res.map(utilResLit).join(", ")}] },`,
+    );
+  L.push("];");
+  L.push(`pub const ${id}: TsnScenario = TsnScenario {`);
+  L.push(`    name: "${s.name}",`);
+  L.push(`    ops: ${id}_OPS,`);
+  L.push("};");
+  L.push("");
+}
+L.push("pub const TSN_SCENARIOS: &[TsnScenario] = &[");
+for (const s of structures.trainstation) L.push(`    ${s.name.toUpperCase()},`);
 L.push("];");
 L.push("");
 

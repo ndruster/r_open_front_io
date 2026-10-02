@@ -114,6 +114,8 @@ for (const name of [
   "probe_rr_arg", "probe_rr_op", "probe_rr_out_at",
   "probe_rsg_reset", "probe_rsg_arg", "probe_rsg_op", "probe_rsg_out_at",
   "probe_ug_reset", "probe_ug_arg", "probe_ug_op", "probe_ug_out_at",
+  "probe_stm_reset", "probe_stm_arg", "probe_stm_op", "probe_stm_out_at",
+  "probe_tsn_reset", "probe_tsn_arg", "probe_tsn_op", "probe_tsn_out_at",
   "probe_tts_reset", "probe_tts_arg", "probe_tts_op", "probe_tts_out_at",
   "probe_eb_reset", "probe_eb_arg", "probe_eb_op", "probe_eb_out_at",
 ]) {
@@ -2130,6 +2132,48 @@ for (const s of S.railgrid) {
     for (let i = 0; i < len; i++) {
       checks++;
       const g = ex.probe_rsg_out_at(i);
+      const w = numTok(op.res[i]);
+      if (!Object.is(g, w)) fail(`${s.name} op${op.kind} res[${i}]`, 0, g, w);
+    }
+  }
+}
+
+// --- game/RailNetworkImpl.ts StationManagerImpl (station_manager) -------------
+// Replays the stateful op stream (construct / add / remove / find / getById /
+// count / dumps) through the wasm RigHarness. Each scenario resets first.
+for (const s of S.stationmanager) {
+  ex.probe_stm_reset();
+  for (const op of s.ops) {
+    for (const a of op.args) ex.probe_stm_arg(numTok(a));
+    const len = Number(ex.probe_stm_op(op.kind));
+    if (len !== op.res.length) {
+      fail(`${s.name} op${op.kind} res len`, 0, len, op.res.length);
+      continue;
+    }
+    for (let i = 0; i < len; i++) {
+      checks++;
+      const g = ex.probe_stm_out_at(i);
+      const w = numTok(op.res[i]);
+      if (!Object.is(g, w)) fail(`${s.name} op${op.kind} res[${i}]`, 0, g, w);
+    }
+  }
+}
+
+// --- game/TrainStation.ts (train_station) -------------------------------------
+// Replays the stateful op stream (stations / rails / clusters / trade probes /
+// dumps) through the wasm RigHarness. Each scenario resets first.
+for (const s of S.trainstation) {
+  ex.probe_tsn_reset();
+  for (const op of s.ops) {
+    for (const a of op.args) ex.probe_tsn_arg(numTok(a));
+    const len = Number(ex.probe_tsn_op(op.kind));
+    if (len !== op.res.length) {
+      fail(`${s.name} op${op.kind} res len`, 0, len, op.res.length);
+      continue;
+    }
+    for (let i = 0; i < len; i++) {
+      checks++;
+      const g = ex.probe_tsn_out_at(i);
       const w = numTok(op.res[i]);
       if (!Object.is(g, w)) fail(`${s.name} op${op.kind} res[${i}]`, 0, g, w);
     }

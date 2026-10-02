@@ -2797,3 +2797,68 @@ fn replay_watermanager_scenarios() {
         }
     }
 }
+
+// RailNetworkImpl.ts StationManagerImpl: replay the stateful op stream
+// (construct / addStation / removeStation / findStation / getById / count /
+// getAll + stationsById dumps) through `RigHarness::run_op` and compare every
+// op's flat token stream (nextId-not-size count, sparse-array holes, the
+// first-match `===` findStation, NaN/-0 through obj_is).
+#[test]
+fn replay_stationmanager_scenarios() {
+    use openfront_core::station_manager::RigHarness;
+    for s in vectors::STM_SCENARIOS {
+        let mut rig = RigHarness::new();
+        for op in s.ops {
+            let got = rig.run_op(op.kind, op.args);
+            assert_eq!(
+                got.len(),
+                op.res.len(),
+                "{} op[{:?}] res len: got {got:?} want {:?}",
+                s.name,
+                op.kind,
+                op.res
+            );
+            for (j, (g, w)) in got.iter().zip(op.res.iter()).enumerate() {
+                assert!(
+                    obj_is(*g, *w),
+                    "{} op[{:?}] res[{j}]: got {g} want {w}",
+                    s.name,
+                    op.kind
+                );
+            }
+        }
+    }
+}
+
+// TrainStation.ts: replay the stateful op stream (TrainStation rail graph +
+// Cluster membership / merge / trade queries) through `RigHarness::run_op`
+// and compare every op's flat token stream — the scripted Unit/Player facade
+// trace prefix, the addUpdate event, the reservoir nextInt draws, the
+// first-match removeNeighboringRails, the setCluster disconnect quirk and the
+// merge live-iteration order.
+#[test]
+fn replay_trainstation_scenarios() {
+    use openfront_core::train_station::RigHarness;
+    for s in vectors::TSN_SCENARIOS {
+        let mut rig = RigHarness::new();
+        for op in s.ops {
+            let got = rig.run_op(op.kind, op.args);
+            assert_eq!(
+                got.len(),
+                op.res.len(),
+                "{} op[{:?}] res len: got {got:?} want {:?}",
+                s.name,
+                op.kind,
+                op.res
+            );
+            for (j, (g, w)) in got.iter().zip(op.res.iter()).enumerate() {
+                assert!(
+                    obj_is(*g, *w),
+                    "{} op[{:?}] res[{j}]: got {g} want {w}",
+                    s.name,
+                    op.kind
+                );
+            }
+        }
+    }
+}

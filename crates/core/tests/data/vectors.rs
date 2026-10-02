@@ -40090,6 +40090,608 @@ pub const SWC_SCENARIOS: &[SwcScenario] = &[
     SWC_REUSE_MIXED_ACROSS_REBUILD,
 ];
 
+/// One `RailNetworkImpl.ts` StationManagerImpl op: `kind` + flat `args` /
+/// `res` token streams (see the Rust `station_manager::RigHarness::run_op`
+/// docs). kind 0 construct `[0]`->`[0]`, 1 addStation `[refid,unit]`->`[id]`,
+/// 2 removeStation `[refid]`->`[]`, 3 findStation `[unit]`->`[0]`|`[1,refid]`,
+/// 4 getById `[id]`->`[0]`|`[1,refid]`, 5 count->`[nextId]` (NOT set size),
+/// 6 dump getAll->`[n,(refid)*,(id)*]`, 7 dump stationsById->`[len,
+/// (0|1,refid?)*]` (0 = hole/undefined slot).
+pub struct StmOp {
+    pub kind: u8,
+    pub args: &'static [f64],
+    pub res: &'static [f64],
+}
+/// One manager scenario: the op stream replayed against a fresh harness
+/// (kind 0 constructs the manager).
+pub struct StmScenario {
+    pub name: &'static str,
+    pub ops: &'static [StmOp],
+}
+
+const STM_BASIC_0_OPS: &[StmOp] = &[
+    StmOp { kind: 0, args: &[0f64], res: &[0f64] },
+    StmOp { kind: 1, args: &[1f64, 10f64], res: &[1f64] },
+    StmOp { kind: 1, args: &[2f64, 20f64], res: &[2f64] },
+    StmOp { kind: 1, args: &[3f64, 30f64], res: &[3f64] },
+    StmOp { kind: 5, args: &[], res: &[4f64] },
+    StmOp { kind: 4, args: &[1f64], res: &[1f64, 1f64] },
+    StmOp { kind: 4, args: &[2f64], res: &[1f64, 2f64] },
+    StmOp { kind: 4, args: &[3f64], res: &[1f64, 3f64] },
+    StmOp { kind: 4, args: &[0f64], res: &[0f64] },
+    StmOp { kind: 4, args: &[4f64], res: &[0f64] },
+    StmOp { kind: 3, args: &[20f64], res: &[1f64, 2f64] },
+    StmOp { kind: 3, args: &[99f64], res: &[0f64] },
+    StmOp { kind: 6, args: &[], res: &[3f64, 1f64, 2f64, 3f64, 1f64, 2f64, 3f64] },
+    StmOp { kind: 7, args: &[], res: &[4f64, 0f64, 1f64, 1f64, 1f64, 2f64, 1f64, 3f64] },
+];
+pub const STM_BASIC_0: StmScenario = StmScenario {
+    name: "stm_basic_0",
+    ops: STM_BASIC_0_OPS,
+};
+
+const STM_COUNT_EMPTY_1_OPS: &[StmOp] = &[
+    StmOp { kind: 0, args: &[0f64], res: &[0f64] },
+    StmOp { kind: 5, args: &[], res: &[1f64] },
+];
+pub const STM_COUNT_EMPTY_1: StmScenario = StmScenario {
+    name: "stm_count_empty_1",
+    ops: STM_COUNT_EMPTY_1_OPS,
+};
+
+const STM_READD_2_OPS: &[StmOp] = &[
+    StmOp { kind: 0, args: &[0f64], res: &[0f64] },
+    StmOp { kind: 1, args: &[1f64, 10f64], res: &[1f64] },
+    StmOp { kind: 1, args: &[2f64, 20f64], res: &[2f64] },
+    StmOp { kind: 1, args: &[1f64, 10f64], res: &[3f64] },
+    StmOp { kind: 5, args: &[], res: &[4f64] },
+    StmOp { kind: 6, args: &[], res: &[2f64, 1f64, 2f64, 3f64, 2f64] },
+    StmOp { kind: 7, args: &[], res: &[4f64, 0f64, 1f64, 1f64, 1f64, 2f64, 1f64, 1f64] },
+];
+pub const STM_READD_2: StmScenario = StmScenario {
+    name: "stm_readd_2",
+    ops: STM_READD_2_OPS,
+};
+
+const STM_REMOVE_3_OPS: &[StmOp] = &[
+    StmOp { kind: 0, args: &[0f64], res: &[0f64] },
+    StmOp { kind: 1, args: &[1f64, 10f64], res: &[1f64] },
+    StmOp { kind: 1, args: &[2f64, 20f64], res: &[2f64] },
+    StmOp { kind: 2, args: &[1f64], res: &[] },
+    StmOp { kind: 4, args: &[1f64], res: &[0f64] },
+    StmOp { kind: 4, args: &[2f64], res: &[1f64, 2f64] },
+    StmOp { kind: 5, args: &[], res: &[3f64] },
+    StmOp { kind: 6, args: &[], res: &[1f64, 2f64, 2f64] },
+    StmOp { kind: 7, args: &[], res: &[3f64, 0f64, 0f64, 1f64, 2f64] },
+];
+pub const STM_REMOVE_3: StmScenario = StmScenario {
+    name: "stm_remove_3",
+    ops: STM_REMOVE_3_OPS,
+};
+
+const STM_DUP_UNITS_4_OPS: &[StmOp] = &[
+    StmOp { kind: 0, args: &[0f64], res: &[0f64] },
+    StmOp { kind: 1, args: &[1f64, 10f64], res: &[1f64] },
+    StmOp { kind: 1, args: &[2f64, 10f64], res: &[2f64] },
+    StmOp { kind: 3, args: &[10f64], res: &[1f64, 1f64] },
+    StmOp { kind: 2, args: &[1f64], res: &[] },
+    StmOp { kind: 3, args: &[10f64], res: &[1f64, 2f64] },
+    StmOp { kind: 3, args: &[11f64], res: &[0f64] },
+];
+pub const STM_DUP_UNITS_4: StmScenario = StmScenario {
+    name: "stm_dup_units_4",
+    ops: STM_DUP_UNITS_4_OPS,
+};
+
+const STM_REORDER_5_OPS: &[StmOp] = &[
+    StmOp { kind: 0, args: &[0f64], res: &[0f64] },
+    StmOp { kind: 1, args: &[1f64, 10f64], res: &[1f64] },
+    StmOp { kind: 1, args: &[2f64, 20f64], res: &[2f64] },
+    StmOp { kind: 1, args: &[3f64, 30f64], res: &[3f64] },
+    StmOp { kind: 2, args: &[2f64], res: &[] },
+    StmOp { kind: 1, args: &[2f64, 20f64], res: &[4f64] },
+    StmOp { kind: 6, args: &[], res: &[3f64, 1f64, 3f64, 2f64, 1f64, 3f64, 4f64] },
+];
+pub const STM_REORDER_5: StmScenario = StmScenario {
+    name: "stm_reorder_5",
+    ops: STM_REORDER_5_OPS,
+};
+
+const STM_FIND_SPECIAL_6_OPS: &[StmOp] = &[
+    StmOp { kind: 0, args: &[0f64], res: &[0f64] },
+    StmOp { kind: 1, args: &[1f64, f64::NAN], res: &[1f64] },
+    StmOp { kind: 1, args: &[2f64, -0.0f64], res: &[2f64] },
+    StmOp { kind: 3, args: &[f64::NAN], res: &[0f64] },
+    StmOp { kind: 3, args: &[0f64], res: &[1f64, 2f64] },
+    StmOp { kind: 3, args: &[-0.0f64], res: &[1f64, 2f64] },
+];
+pub const STM_FIND_SPECIAL_6: StmScenario = StmScenario {
+    name: "stm_find_special_6",
+    ops: STM_FIND_SPECIAL_6_OPS,
+};
+
+const STM_GETBYID_WEIRD_7_OPS: &[StmOp] = &[
+    StmOp { kind: 0, args: &[0f64], res: &[0f64] },
+    StmOp { kind: 1, args: &[1f64, 10f64], res: &[1f64] },
+    StmOp { kind: 4, args: &[-1f64], res: &[0f64] },
+    StmOp { kind: 4, args: &[1.5f64], res: &[0f64] },
+    StmOp { kind: 4, args: &[f64::NAN], res: &[0f64] },
+    StmOp { kind: 4, args: &[f64::INFINITY], res: &[0f64] },
+    StmOp { kind: 4, args: &[0f64], res: &[0f64] },
+    StmOp { kind: 4, args: &[1f64], res: &[1f64, 1f64] },
+];
+pub const STM_GETBYID_WEIRD_7: StmScenario = StmScenario {
+    name: "stm_getbyid_weird_7",
+    ops: STM_GETBYID_WEIRD_7_OPS,
+};
+
+const STM_REMOVE_UNADDED_8_OPS: &[StmOp] = &[
+    StmOp { kind: 0, args: &[0f64], res: &[0f64] },
+    StmOp { kind: 1, args: &[1f64, 10f64], res: &[1f64] },
+    StmOp { kind: 2, args: &[1f64], res: &[] },
+    StmOp { kind: 2, args: &[1f64], res: &[] },
+    StmOp { kind: 4, args: &[1f64], res: &[0f64] },
+    StmOp { kind: 6, args: &[], res: &[0f64] },
+    StmOp { kind: 7, args: &[], res: &[2f64, 0f64, 0f64] },
+    StmOp { kind: 5, args: &[], res: &[2f64] },
+];
+pub const STM_REMOVE_UNADDED_8: StmScenario = StmScenario {
+    name: "stm_remove_unadded_8",
+    ops: STM_REMOVE_UNADDED_8_OPS,
+};
+
+const STM_SLOT_SURVIVES_9_OPS: &[StmOp] = &[
+    StmOp { kind: 0, args: &[0f64], res: &[0f64] },
+    StmOp { kind: 1, args: &[1f64, 10f64], res: &[1f64] },
+    StmOp { kind: 1, args: &[1f64, 10f64], res: &[2f64] },
+    StmOp { kind: 2, args: &[1f64], res: &[] },
+    StmOp { kind: 4, args: &[1f64], res: &[1f64, 1f64] },
+    StmOp { kind: 4, args: &[2f64], res: &[0f64] },
+    StmOp { kind: 7, args: &[], res: &[3f64, 0f64, 1f64, 1f64, 0f64] },
+    StmOp { kind: 6, args: &[], res: &[0f64] },
+];
+pub const STM_SLOT_SURVIVES_9: StmScenario = StmScenario {
+    name: "stm_slot_survives_9",
+    ops: STM_SLOT_SURVIVES_9_OPS,
+};
+
+pub const STM_SCENARIOS: &[StmScenario] = &[
+    STM_BASIC_0,
+    STM_COUNT_EMPTY_1,
+    STM_READD_2,
+    STM_REMOVE_3,
+    STM_DUP_UNITS_4,
+    STM_REORDER_5,
+    STM_FIND_SPECIAL_6,
+    STM_GETBYID_WEIRD_7,
+    STM_REMOVE_UNADDED_8,
+    STM_SLOT_SURVIVES_9,
+];
+
+/// One `TrainStation.ts` op: `kind` + flat `args` / `res` token streams
+/// (see the Rust `train_station::RigHarness::run_op` docs). res is
+/// `[traceLen,(trace)*,payload*]`; trace events 10 type [10,uref,(str)],
+/// 11 owner [11,uref,pref], 12 tile [12,uref,tile], 13 isActive
+/// [13,uref,0|1], 14 canTrade [14,pref,other,0|1], 15 addUpdate
+/// [15,16,railId], 16 nextInt [16,0,seen,r]. Strings cross as [len,u0,..]
+/// UTF-16. kind table: 0 construct `[seed]`, 1 player, 2 station, 3 rail,
+/// 4 addRailroad, 5 removeRailroad, 6 clearRailroads, 7 removeNeighboringRails,
+/// 8 neighbors, 9 tile, 10 isActive, 11 getRailroads, 12 getRailroadTo,
+/// 13 setCluster (0=null), 14 getCluster, 15 tradeAvailable, 16 getId,
+/// 17 setId, 20 newCluster, 21 has, 22 clusterAddStation, 23 clusterRemoveStation,
+/// 24 clusterAddStations, 25 clusterMerge, 26 hasAnyTradeDestination,
+/// 27 randomTradeDestination, 28 availableForTrade, 29 clusterSize,
+/// 30 clusterClear, 31 dumpCluster, 32 dumpStation.
+pub struct TsnOp {
+    pub kind: u8,
+    pub args: &'static [f64],
+    pub res: &'static [f64],
+}
+/// One station scenario: the op stream replayed against a fresh harness
+/// (kind 0 resets the tables and seeds the scenario `PseudoRandom`).
+pub struct TsnScenario {
+    pub name: &'static str,
+    pub ops: &'static [TsnOp],
+}
+
+const TSN_BASICS_0_OPS: &[TsnOp] = &[
+    TsnOp { kind: 0, args: &[42f64], res: &[0f64, 0f64] },
+    TsnOp { kind: 2, args: &[1f64, 11f64, 4f64, 67f64, 105f64, 116f64, 121f64, 100f64, 5f64, 1f64], res: &[0f64] },
+    TsnOp { kind: 2, args: &[2f64, 12f64, 4f64, 80f64, 111f64, 114f64, 116f64, 101f64, 6f64, 1f64], res: &[0f64] },
+    TsnOp { kind: 16, args: &[1f64], res: &[0f64, -1f64] },
+    TsnOp { kind: 9, args: &[1f64], res: &[3f64, 12f64, 11f64, 5f64, 5f64] },
+    TsnOp { kind: 10, args: &[1f64], res: &[3f64, 13f64, 11f64, 1f64, 1f64] },
+    TsnOp { kind: 3, args: &[500f64, 1f64, 2f64, 77f64], res: &[0f64] },
+    TsnOp { kind: 4, args: &[1f64, 500f64], res: &[0f64] },
+    TsnOp { kind: 4, args: &[2f64, 500f64], res: &[0f64] },
+    TsnOp { kind: 8, args: &[1f64], res: &[0f64, 1f64, 2f64] },
+    TsnOp { kind: 8, args: &[2f64], res: &[0f64, 1f64, 1f64] },
+    TsnOp { kind: 11, args: &[1f64], res: &[0f64, 1f64, 500f64] },
+    TsnOp { kind: 12, args: &[1f64, 2f64], res: &[0f64, 1f64, 500f64] },
+    TsnOp { kind: 12, args: &[1f64, 1f64], res: &[0f64, 0f64] },
+    TsnOp { kind: 32, args: &[1f64], res: &[0f64, -1f64, 0f64, 1f64, 500f64, 1f64, 2f64, 500f64] },
+];
+pub const TSN_BASICS_0: TsnScenario = TsnScenario {
+    name: "tsn_basics_0",
+    ops: TSN_BASICS_0_OPS,
+};
+
+const TSN_NEIGHBOR_RULE_1_OPS: &[TsnOp] = &[
+    TsnOp { kind: 0, args: &[7f64], res: &[0f64, 0f64] },
+    TsnOp { kind: 2, args: &[1f64, 11f64, 4f64, 67f64, 105f64, 116f64, 121f64, 100f64, 1f64, 1f64], res: &[0f64] },
+    TsnOp { kind: 2, args: &[2f64, 12f64, 4f64, 80f64, 111f64, 114f64, 116f64, 101f64, 2f64, 1f64], res: &[0f64] },
+    TsnOp { kind: 2, args: &[3f64, 13f64, 7f64, 70f64, 97f64, 99f64, 116f64, 111f64, 114f64, 121f64, 100f64, 3f64, 1f64], res: &[0f64] },
+    TsnOp { kind: 3, args: &[500f64, 3f64, 1f64, 9f64], res: &[0f64] },
+    TsnOp { kind: 4, args: &[1f64, 500f64], res: &[0f64] },
+    TsnOp { kind: 8, args: &[1f64], res: &[0f64, 1f64, 3f64] },
+    TsnOp { kind: 12, args: &[1f64, 3f64], res: &[0f64, 1f64, 500f64] },
+    TsnOp { kind: 12, args: &[1f64, 2f64], res: &[0f64, 0f64] },
+    TsnOp { kind: 32, args: &[1f64], res: &[0f64, -1f64, 0f64, 1f64, 500f64, 1f64, 3f64, 500f64] },
+];
+pub const TSN_NEIGHBOR_RULE_1: TsnScenario = TsnScenario {
+    name: "tsn_neighbor_rule_1",
+    ops: TSN_NEIGHBOR_RULE_1_OPS,
+};
+
+const TSN_RNR_FIRST_ONLY_2_OPS: &[TsnOp] = &[
+    TsnOp { kind: 0, args: &[9f64], res: &[0f64, 0f64] },
+    TsnOp { kind: 2, args: &[1f64, 11f64, 4f64, 67f64, 105f64, 116f64, 121f64, 100f64, 1f64, 1f64], res: &[0f64] },
+    TsnOp { kind: 2, args: &[2f64, 12f64, 4f64, 80f64, 111f64, 114f64, 116f64, 101f64, 2f64, 1f64], res: &[0f64] },
+    TsnOp { kind: 3, args: &[500f64, 1f64, 2f64, 77f64], res: &[0f64] },
+    TsnOp { kind: 3, args: &[501f64, 1f64, 2f64, 88f64], res: &[0f64] },
+    TsnOp { kind: 4, args: &[1f64, 500f64], res: &[0f64] },
+    TsnOp { kind: 4, args: &[1f64, 501f64], res: &[0f64] },
+    TsnOp { kind: 4, args: &[2f64, 500f64], res: &[0f64] },
+    TsnOp { kind: 7, args: &[1f64, 2f64], res: &[3f64, 15f64, 16f64, 77f64] },
+    TsnOp { kind: 11, args: &[1f64], res: &[0f64, 1f64, 501f64] },
+    TsnOp { kind: 11, args: &[2f64], res: &[0f64, 1f64, 500f64] },
+    TsnOp { kind: 12, args: &[1f64, 2f64], res: &[0f64, 0f64] },
+    TsnOp { kind: 7, args: &[1f64, 2f64], res: &[3f64, 15f64, 16f64, 88f64] },
+    TsnOp { kind: 11, args: &[1f64], res: &[0f64, 0f64] },
+    TsnOp { kind: 32, args: &[1f64], res: &[0f64, -1f64, 0f64, 0f64, 0f64] },
+];
+pub const TSN_RNR_FIRST_ONLY_2: TsnScenario = TsnScenario {
+    name: "tsn_rnr_first_only_2",
+    ops: TSN_RNR_FIRST_ONLY_2_OPS,
+};
+
+const TSN_RNR_MISS_3_OPS: &[TsnOp] = &[
+    TsnOp { kind: 0, args: &[3f64], res: &[0f64, 0f64] },
+    TsnOp { kind: 2, args: &[1f64, 11f64, 4f64, 67f64, 105f64, 116f64, 121f64, 100f64, 1f64, 1f64], res: &[0f64] },
+    TsnOp { kind: 2, args: &[2f64, 12f64, 4f64, 80f64, 111f64, 114f64, 116f64, 101f64, 2f64, 1f64], res: &[0f64] },
+    TsnOp { kind: 2, args: &[3f64, 13f64, 7f64, 70f64, 97f64, 99f64, 116f64, 111f64, 114f64, 121f64, 100f64, 3f64, 1f64], res: &[0f64] },
+    TsnOp { kind: 3, args: &[500f64, 1f64, 3f64, 77f64], res: &[0f64] },
+    TsnOp { kind: 4, args: &[1f64, 500f64], res: &[0f64] },
+    TsnOp { kind: 7, args: &[1f64, 2f64], res: &[0f64] },
+    TsnOp { kind: 11, args: &[1f64], res: &[0f64, 1f64, 500f64] },
+];
+pub const TSN_RNR_MISS_3: TsnScenario = TsnScenario {
+    name: "tsn_rnr_miss_3",
+    ops: TSN_RNR_MISS_3_OPS,
+};
+
+const TSN_CLEAR_RAILS_4_OPS: &[TsnOp] = &[
+    TsnOp { kind: 0, args: &[5f64], res: &[0f64, 0f64] },
+    TsnOp { kind: 2, args: &[1f64, 11f64, 4f64, 67f64, 105f64, 116f64, 121f64, 100f64, 1f64, 1f64], res: &[0f64] },
+    TsnOp { kind: 2, args: &[2f64, 12f64, 4f64, 80f64, 111f64, 114f64, 116f64, 101f64, 2f64, 1f64], res: &[0f64] },
+    TsnOp { kind: 3, args: &[500f64, 1f64, 2f64, 77f64], res: &[0f64] },
+    TsnOp { kind: 4, args: &[1f64, 500f64], res: &[0f64] },
+    TsnOp { kind: 4, args: &[2f64, 500f64], res: &[0f64] },
+    TsnOp { kind: 6, args: &[1f64], res: &[0f64] },
+    TsnOp { kind: 11, args: &[1f64], res: &[0f64, 0f64] },
+    TsnOp { kind: 8, args: &[1f64], res: &[0f64, 0f64] },
+    TsnOp { kind: 12, args: &[1f64, 2f64], res: &[0f64, 0f64] },
+    TsnOp { kind: 32, args: &[1f64], res: &[0f64, -1f64, 0f64, 0f64, 0f64] },
+    TsnOp { kind: 11, args: &[2f64], res: &[0f64, 1f64, 500f64] },
+];
+pub const TSN_CLEAR_RAILS_4: TsnScenario = TsnScenario {
+    name: "tsn_clear_rails_4",
+    ops: TSN_CLEAR_RAILS_4_OPS,
+};
+
+const TSN_TRADE_SELF_5_OPS: &[TsnOp] = &[
+    TsnOp { kind: 0, args: &[11f64], res: &[0f64, 0f64] },
+    TsnOp { kind: 1, args: &[100f64, 2f64, 101f64, 1f64, 102f64, 0f64], res: &[0f64] },
+    TsnOp { kind: 1, args: &[101f64, 1f64, 100f64, 1f64], res: &[0f64] },
+    TsnOp { kind: 1, args: &[102f64, 0f64], res: &[0f64] },
+    TsnOp { kind: 1, args: &[103f64, 0f64], res: &[0f64] },
+    TsnOp { kind: 2, args: &[1f64, 11f64, 4f64, 67f64, 105f64, 116f64, 121f64, 100f64, 1f64, 1f64], res: &[0f64] },
+    TsnOp { kind: 15, args: &[1f64, 100f64], res: &[3f64, 11f64, 11f64, 100f64, 1f64] },
+    TsnOp { kind: 15, args: &[1f64, 101f64], res: &[7f64, 11f64, 11f64, 100f64, 14f64, 100f64, 101f64, 1f64, 1f64] },
+    TsnOp { kind: 15, args: &[1f64, 102f64], res: &[7f64, 11f64, 11f64, 100f64, 14f64, 100f64, 102f64, 0f64, 0f64] },
+    TsnOp { kind: 15, args: &[1f64, 103f64], res: &[7f64, 11f64, 11f64, 100f64, 14f64, 100f64, 103f64, 0f64, 0f64] },
+];
+pub const TSN_TRADE_SELF_5: TsnScenario = TsnScenario {
+    name: "tsn_trade_self_5",
+    ops: TSN_TRADE_SELF_5_OPS,
+};
+
+const TSN_SETCLUSTER_6_OPS: &[TsnOp] = &[
+    TsnOp { kind: 0, args: &[13f64], res: &[0f64, 0f64] },
+    TsnOp { kind: 2, args: &[1f64, 11f64, 4f64, 67f64, 105f64, 116f64, 121f64, 100f64, 1f64, 1f64], res: &[0f64] },
+    TsnOp { kind: 20, args: &[], res: &[0f64, 1f64] },
+    TsnOp { kind: 20, args: &[], res: &[0f64, 2f64] },
+    TsnOp { kind: 13, args: &[1f64, 0f64], res: &[0f64] },
+    TsnOp { kind: 14, args: &[1f64], res: &[0f64, 0f64] },
+    TsnOp { kind: 13, args: &[1f64, 1f64], res: &[0f64] },
+    TsnOp { kind: 14, args: &[1f64], res: &[0f64, 1f64, 1f64] },
+    TsnOp { kind: 13, args: &[1f64, 1f64], res: &[0f64] },
+    TsnOp { kind: 21, args: &[1f64, 1f64], res: &[0f64, 0f64] },
+    TsnOp { kind: 23, args: &[1f64, 1f64], res: &[0f64] },
+    TsnOp { kind: 14, args: &[1f64], res: &[0f64, 1f64, 1f64] },
+    TsnOp { kind: 21, args: &[1f64, 1f64], res: &[0f64, 0f64] },
+    TsnOp { kind: 13, args: &[1f64, 2f64], res: &[0f64] },
+    TsnOp { kind: 14, args: &[1f64], res: &[0f64, 1f64, 2f64] },
+    TsnOp { kind: 22, args: &[1f64, 1f64], res: &[7f64, 10f64, 11f64, 4f64, 67f64, 105f64, 116f64, 121f64] },
+    TsnOp { kind: 13, args: &[1f64, 2f64], res: &[0f64] },
+    TsnOp { kind: 21, args: &[1f64, 1f64], res: &[0f64, 0f64] },
+    TsnOp { kind: 21, args: &[2f64, 1f64], res: &[0f64, 0f64] },
+];
+pub const TSN_SETCLUSTER_6: TsnScenario = TsnScenario {
+    name: "tsn_setcluster_6",
+    ops: TSN_SETCLUSTER_6_OPS,
+};
+
+const TSN_GETRRTO_7_OPS: &[TsnOp] = &[
+    TsnOp { kind: 0, args: &[17f64], res: &[0f64, 0f64] },
+    TsnOp { kind: 2, args: &[1f64, 11f64, 4f64, 67f64, 105f64, 116f64, 121f64, 100f64, 1f64, 1f64], res: &[0f64] },
+    TsnOp { kind: 2, args: &[2f64, 12f64, 4f64, 80f64, 111f64, 114f64, 116f64, 101f64, 2f64, 1f64], res: &[0f64] },
+    TsnOp { kind: 12, args: &[1f64, 2f64], res: &[0f64, 0f64] },
+    TsnOp { kind: 3, args: &[500f64, 1f64, 2f64, 77f64], res: &[0f64] },
+    TsnOp { kind: 4, args: &[1f64, 500f64], res: &[0f64] },
+    TsnOp { kind: 12, args: &[1f64, 2f64], res: &[0f64, 1f64, 500f64] },
+    TsnOp { kind: 5, args: &[1f64, 500f64], res: &[0f64] },
+    TsnOp { kind: 12, args: &[1f64, 2f64], res: &[0f64, 0f64] },
+];
+pub const TSN_GETRRTO_7: TsnScenario = TsnScenario {
+    name: "tsn_getrrto_7",
+    ops: TSN_GETRRTO_7_OPS,
+};
+
+const TSN_DOUBLE_ADD_8_OPS: &[TsnOp] = &[
+    TsnOp { kind: 0, args: &[19f64], res: &[0f64, 0f64] },
+    TsnOp { kind: 2, args: &[1f64, 11f64, 4f64, 67f64, 105f64, 116f64, 121f64, 100f64, 1f64, 1f64], res: &[0f64] },
+    TsnOp { kind: 2, args: &[2f64, 12f64, 4f64, 80f64, 111f64, 114f64, 116f64, 101f64, 2f64, 1f64], res: &[0f64] },
+    TsnOp { kind: 2, args: &[3f64, 13f64, 7f64, 70f64, 97f64, 99f64, 116f64, 111f64, 114f64, 121f64, 100f64, 3f64, 1f64], res: &[0f64] },
+    TsnOp { kind: 3, args: &[500f64, 1f64, 2f64, 1f64], res: &[0f64] },
+    TsnOp { kind: 3, args: &[501f64, 1f64, 3f64, 2f64], res: &[0f64] },
+    TsnOp { kind: 4, args: &[1f64, 500f64], res: &[0f64] },
+    TsnOp { kind: 4, args: &[1f64, 501f64], res: &[0f64] },
+    TsnOp { kind: 4, args: &[1f64, 500f64], res: &[0f64] },
+    TsnOp { kind: 11, args: &[1f64], res: &[0f64, 2f64, 500f64, 501f64] },
+    TsnOp { kind: 8, args: &[1f64], res: &[0f64, 2f64, 2f64, 3f64] },
+    TsnOp { kind: 32, args: &[1f64], res: &[0f64, -1f64, 0f64, 2f64, 500f64, 501f64, 2f64, 2f64, 500f64, 3f64, 501f64] },
+];
+pub const TSN_DOUBLE_ADD_8: TsnScenario = TsnScenario {
+    name: "tsn_double_add_8",
+    ops: TSN_DOUBLE_ADD_8_OPS,
+};
+
+const CLU_CLASSIFY_9_OPS: &[TsnOp] = &[
+    TsnOp { kind: 0, args: &[23f64], res: &[0f64, 0f64] },
+    TsnOp { kind: 1, args: &[100f64, 0f64], res: &[0f64] },
+    TsnOp { kind: 2, args: &[1f64, 11f64, 4f64, 67f64, 105f64, 116f64, 121f64, 100f64, 1f64, 1f64], res: &[0f64] },
+    TsnOp { kind: 2, args: &[2f64, 12f64, 4f64, 80f64, 111f64, 114f64, 116f64, 101f64, 2f64, 1f64], res: &[0f64] },
+    TsnOp { kind: 2, args: &[3f64, 13f64, 7f64, 70f64, 97f64, 99f64, 116f64, 111f64, 114f64, 121f64, 100f64, 3f64, 1f64], res: &[0f64] },
+    TsnOp { kind: 2, args: &[4f64, 14f64, 7f64, 65f64, 114f64, 99f64, 104f64, 101f64, 114f64, 121f64, 100f64, 4f64, 1f64], res: &[0f64] },
+    TsnOp { kind: 20, args: &[], res: &[0f64, 1f64] },
+    TsnOp { kind: 22, args: &[1f64, 1f64], res: &[7f64, 10f64, 11f64, 4f64, 67f64, 105f64, 116f64, 121f64] },
+    TsnOp { kind: 22, args: &[1f64, 2f64], res: &[7f64, 10f64, 12f64, 4f64, 80f64, 111f64, 114f64, 116f64] },
+    TsnOp { kind: 22, args: &[1f64, 3f64], res: &[10f64, 10f64, 13f64, 7f64, 70f64, 97f64, 99f64, 116f64, 111f64, 114f64, 121f64] },
+    TsnOp { kind: 22, args: &[1f64, 4f64], res: &[10f64, 10f64, 14f64, 7f64, 65f64, 114f64, 99f64, 104f64, 101f64, 114f64, 121f64] },
+    TsnOp { kind: 29, args: &[1f64], res: &[0f64, 4f64] },
+    TsnOp { kind: 31, args: &[1f64], res: &[0f64, 4f64, 1f64, 2f64, 3f64, 4f64, 2f64, 1f64, 2f64] },
+    TsnOp { kind: 22, args: &[1f64, 1f64], res: &[7f64, 10f64, 11f64, 4f64, 67f64, 105f64, 116f64, 121f64] },
+    TsnOp { kind: 31, args: &[1f64], res: &[0f64, 4f64, 1f64, 2f64, 3f64, 4f64, 2f64, 1f64, 2f64] },
+];
+pub const CLU_CLASSIFY_9: TsnScenario = TsnScenario {
+    name: "clu_classify_9",
+    ops: CLU_CLASSIFY_9_OPS,
+};
+
+const CLU_ADDSTATIONS_10_OPS: &[TsnOp] = &[
+    TsnOp { kind: 0, args: &[29f64], res: &[0f64, 0f64] },
+    TsnOp { kind: 2, args: &[1f64, 11f64, 4f64, 67f64, 105f64, 116f64, 121f64, 100f64, 1f64, 1f64], res: &[0f64] },
+    TsnOp { kind: 2, args: &[2f64, 12f64, 4f64, 80f64, 111f64, 114f64, 116f64, 101f64, 2f64, 1f64], res: &[0f64] },
+    TsnOp { kind: 20, args: &[], res: &[0f64, 1f64] },
+    TsnOp { kind: 24, args: &[1f64, 2f64, 2f64, 1f64], res: &[14f64, 10f64, 12f64, 4f64, 80f64, 111f64, 114f64, 116f64, 10f64, 11f64, 4f64, 67f64, 105f64, 116f64, 121f64] },
+    TsnOp { kind: 31, args: &[1f64], res: &[0f64, 2f64, 2f64, 1f64, 2f64, 2f64, 1f64] },
+    TsnOp { kind: 14, args: &[1f64], res: &[0f64, 1f64, 1f64] },
+    TsnOp { kind: 14, args: &[2f64], res: &[0f64, 1f64, 1f64] },
+];
+pub const CLU_ADDSTATIONS_10: TsnScenario = TsnScenario {
+    name: "clu_addstations_10",
+    ops: CLU_ADDSTATIONS_10_OPS,
+};
+
+const CLU_MERGE_11_OPS: &[TsnOp] = &[
+    TsnOp { kind: 0, args: &[31f64], res: &[0f64, 0f64] },
+    TsnOp { kind: 2, args: &[1f64, 11f64, 4f64, 67f64, 105f64, 116f64, 121f64, 100f64, 1f64, 1f64], res: &[0f64] },
+    TsnOp { kind: 2, args: &[2f64, 12f64, 4f64, 80f64, 111f64, 114f64, 116f64, 101f64, 2f64, 1f64], res: &[0f64] },
+    TsnOp { kind: 2, args: &[3f64, 13f64, 7f64, 70f64, 97f64, 99f64, 116f64, 111f64, 114f64, 121f64, 100f64, 3f64, 1f64], res: &[0f64] },
+    TsnOp { kind: 20, args: &[], res: &[0f64, 1f64] },
+    TsnOp { kind: 20, args: &[], res: &[0f64, 2f64] },
+    TsnOp { kind: 22, args: &[2f64, 1f64], res: &[7f64, 10f64, 11f64, 4f64, 67f64, 105f64, 116f64, 121f64] },
+    TsnOp { kind: 22, args: &[2f64, 2f64], res: &[7f64, 10f64, 12f64, 4f64, 80f64, 111f64, 114f64, 116f64] },
+    TsnOp { kind: 22, args: &[2f64, 3f64], res: &[10f64, 10f64, 13f64, 7f64, 70f64, 97f64, 99f64, 116f64, 111f64, 114f64, 121f64] },
+    TsnOp { kind: 25, args: &[1f64, 2f64], res: &[24f64, 10f64, 11f64, 4f64, 67f64, 105f64, 116f64, 121f64, 10f64, 12f64, 4f64, 80f64, 111f64, 114f64, 116f64, 10f64, 13f64, 7f64, 70f64, 97f64, 99f64, 116f64, 111f64, 114f64, 121f64] },
+    TsnOp { kind: 31, args: &[1f64], res: &[0f64, 3f64, 1f64, 2f64, 3f64, 2f64, 1f64, 2f64] },
+    TsnOp { kind: 31, args: &[2f64], res: &[0f64, 0f64, 0f64] },
+    TsnOp { kind: 29, args: &[1f64], res: &[0f64, 3f64] },
+    TsnOp { kind: 29, args: &[2f64], res: &[0f64, 0f64] },
+];
+pub const CLU_MERGE_11: TsnScenario = TsnScenario {
+    name: "clu_merge_11",
+    ops: CLU_MERGE_11_OPS,
+};
+
+const CLU_MERGE_OVERLAP_12_OPS: &[TsnOp] = &[
+    TsnOp { kind: 0, args: &[37f64], res: &[0f64, 0f64] },
+    TsnOp { kind: 2, args: &[1f64, 11f64, 4f64, 67f64, 105f64, 116f64, 121f64, 100f64, 1f64, 1f64], res: &[0f64] },
+    TsnOp { kind: 2, args: &[2f64, 12f64, 4f64, 80f64, 111f64, 114f64, 116f64, 101f64, 2f64, 1f64], res: &[0f64] },
+    TsnOp { kind: 20, args: &[], res: &[0f64, 1f64] },
+    TsnOp { kind: 20, args: &[], res: &[0f64, 2f64] },
+    TsnOp { kind: 22, args: &[1f64, 1f64], res: &[7f64, 10f64, 11f64, 4f64, 67f64, 105f64, 116f64, 121f64] },
+    TsnOp { kind: 22, args: &[2f64, 1f64], res: &[7f64, 10f64, 11f64, 4f64, 67f64, 105f64, 116f64, 121f64] },
+    TsnOp { kind: 22, args: &[2f64, 2f64], res: &[7f64, 10f64, 12f64, 4f64, 80f64, 111f64, 114f64, 116f64] },
+    TsnOp { kind: 31, args: &[1f64], res: &[0f64, 0f64, 0f64] },
+    TsnOp { kind: 25, args: &[1f64, 2f64], res: &[14f64, 10f64, 11f64, 4f64, 67f64, 105f64, 116f64, 121f64, 10f64, 12f64, 4f64, 80f64, 111f64, 114f64, 116f64] },
+    TsnOp { kind: 31, args: &[1f64], res: &[0f64, 2f64, 1f64, 2f64, 2f64, 1f64, 2f64] },
+    TsnOp { kind: 31, args: &[2f64], res: &[0f64, 0f64, 0f64] },
+];
+pub const CLU_MERGE_OVERLAP_12: TsnScenario = TsnScenario {
+    name: "clu_merge_overlap_12",
+    ops: CLU_MERGE_OVERLAP_12_OPS,
+};
+
+const CLU_HASANY_13_OPS: &[TsnOp] = &[
+    TsnOp { kind: 0, args: &[41f64], res: &[0f64, 0f64] },
+    TsnOp { kind: 1, args: &[100f64, 2f64, 101f64, 0f64, 102f64, 1f64], res: &[0f64] },
+    TsnOp { kind: 1, args: &[101f64, 1f64, 100f64, 0f64], res: &[0f64] },
+    TsnOp { kind: 1, args: &[102f64, 0f64], res: &[0f64] },
+    TsnOp { kind: 2, args: &[1f64, 11f64, 4f64, 67f64, 105f64, 116f64, 121f64, 100f64, 1f64, 1f64], res: &[0f64] },
+    TsnOp { kind: 2, args: &[2f64, 12f64, 4f64, 80f64, 111f64, 114f64, 116f64, 101f64, 2f64, 1f64], res: &[0f64] },
+    TsnOp { kind: 20, args: &[], res: &[0f64, 1f64] },
+    TsnOp { kind: 22, args: &[1f64, 1f64], res: &[7f64, 10f64, 11f64, 4f64, 67f64, 105f64, 116f64, 121f64] },
+    TsnOp { kind: 22, args: &[1f64, 2f64], res: &[7f64, 10f64, 12f64, 4f64, 80f64, 111f64, 114f64, 116f64] },
+    TsnOp { kind: 26, args: &[1f64, 102f64], res: &[7f64, 11f64, 11f64, 100f64, 14f64, 100f64, 102f64, 1f64, 1f64] },
+    TsnOp { kind: 26, args: &[1f64, 101f64], res: &[10f64, 11f64, 11f64, 100f64, 14f64, 100f64, 101f64, 0f64, 11f64, 12f64, 101f64, 1f64] },
+    TsnOp { kind: 26, args: &[1f64, 100f64], res: &[3f64, 11f64, 11f64, 100f64, 1f64] },
+];
+pub const CLU_HASANY_13: TsnScenario = TsnScenario {
+    name: "clu_hasany_13",
+    ops: CLU_HASANY_13_OPS,
+};
+
+const CLU_RTD_14_OPS: &[TsnOp] = &[
+    TsnOp { kind: 0, args: &[2026f64], res: &[0f64, 0f64] },
+    TsnOp { kind: 1, args: &[100f64, 2f64, 101f64, 1f64, 102f64, 0f64], res: &[0f64] },
+    TsnOp { kind: 1, args: &[101f64, 1f64, 100f64, 1f64], res: &[0f64] },
+    TsnOp { kind: 1, args: &[102f64, 1f64, 100f64, 1f64], res: &[0f64] },
+    TsnOp { kind: 2, args: &[1f64, 11f64, 4f64, 67f64, 105f64, 116f64, 121f64, 100f64, 1f64, 1f64], res: &[0f64] },
+    TsnOp { kind: 2, args: &[2f64, 12f64, 4f64, 80f64, 111f64, 114f64, 116f64, 101f64, 2f64, 1f64], res: &[0f64] },
+    TsnOp { kind: 2, args: &[3f64, 13f64, 4f64, 67f64, 105f64, 116f64, 121f64, 102f64, 3f64, 1f64], res: &[0f64] },
+    TsnOp { kind: 20, args: &[], res: &[0f64, 1f64] },
+    TsnOp { kind: 22, args: &[1f64, 1f64], res: &[7f64, 10f64, 11f64, 4f64, 67f64, 105f64, 116f64, 121f64] },
+    TsnOp { kind: 22, args: &[1f64, 2f64], res: &[7f64, 10f64, 12f64, 4f64, 80f64, 111f64, 114f64, 116f64] },
+    TsnOp { kind: 22, args: &[1f64, 3f64], res: &[7f64, 10f64, 13f64, 4f64, 67f64, 105f64, 116f64, 121f64] },
+    TsnOp { kind: 27, args: &[1f64, 102f64], res: &[21f64, 11f64, 11f64, 100f64, 14f64, 100f64, 102f64, 0f64, 11f64, 12f64, 101f64, 14f64, 101f64, 102f64, 0f64, 11f64, 13f64, 102f64, 16f64, 0f64, 1f64, 0f64, 1f64, 3f64] },
+    TsnOp { kind: 27, args: &[1f64, 100f64], res: &[29f64, 11f64, 11f64, 100f64, 16f64, 0f64, 1f64, 0f64, 11f64, 12f64, 101f64, 14f64, 101f64, 100f64, 1f64, 16f64, 0f64, 2f64, 0f64, 11f64, 13f64, 102f64, 14f64, 102f64, 100f64, 1f64, 16f64, 0f64, 3f64, 2f64, 1f64, 2f64] },
+    TsnOp { kind: 27, args: &[1f64, 101f64], res: &[25f64, 11f64, 11f64, 100f64, 14f64, 100f64, 101f64, 1f64, 16f64, 0f64, 1f64, 0f64, 11f64, 12f64, 101f64, 16f64, 0f64, 2f64, 0f64, 11f64, 13f64, 102f64, 14f64, 102f64, 101f64, 0f64, 1f64, 2f64] },
+];
+pub const CLU_RTD_14: TsnScenario = TsnScenario {
+    name: "clu_rtd_14",
+    ops: CLU_RTD_14_OPS,
+};
+
+const CLU_RTD_EMPTY_15_OPS: &[TsnOp] = &[
+    TsnOp { kind: 0, args: &[77f64], res: &[0f64, 0f64] },
+    TsnOp { kind: 1, args: &[100f64, 0f64], res: &[0f64] },
+    TsnOp { kind: 2, args: &[1f64, 13f64, 7f64, 70f64, 97f64, 99f64, 116f64, 111f64, 114f64, 121f64, 100f64, 1f64, 1f64], res: &[0f64] },
+    TsnOp { kind: 20, args: &[], res: &[0f64, 1f64] },
+    TsnOp { kind: 22, args: &[1f64, 1f64], res: &[10f64, 10f64, 13f64, 7f64, 70f64, 97f64, 99f64, 116f64, 111f64, 114f64, 121f64] },
+    TsnOp { kind: 27, args: &[1f64, 100f64], res: &[0f64, 0f64] },
+    TsnOp { kind: 26, args: &[1f64, 100f64], res: &[0f64, 0f64] },
+    TsnOp { kind: 28, args: &[1f64, 100f64], res: &[0f64, 0f64] },
+];
+pub const CLU_RTD_EMPTY_15: TsnScenario = TsnScenario {
+    name: "clu_rtd_empty_15",
+    ops: CLU_RTD_EMPTY_15_OPS,
+};
+
+const CLU_AVAIL_16_OPS: &[TsnOp] = &[
+    TsnOp { kind: 0, args: &[79f64], res: &[0f64, 0f64] },
+    TsnOp { kind: 1, args: &[100f64, 2f64, 101f64, 1f64, 102f64, 0f64], res: &[0f64] },
+    TsnOp { kind: 1, args: &[101f64, 1f64, 100f64, 1f64], res: &[0f64] },
+    TsnOp { kind: 1, args: &[102f64, 0f64], res: &[0f64] },
+    TsnOp { kind: 2, args: &[1f64, 11f64, 4f64, 67f64, 105f64, 116f64, 121f64, 100f64, 1f64, 1f64], res: &[0f64] },
+    TsnOp { kind: 2, args: &[2f64, 12f64, 4f64, 80f64, 111f64, 114f64, 116f64, 101f64, 2f64, 1f64], res: &[0f64] },
+    TsnOp { kind: 2, args: &[3f64, 13f64, 7f64, 70f64, 97f64, 99f64, 116f64, 111f64, 114f64, 121f64, 100f64, 3f64, 1f64], res: &[0f64] },
+    TsnOp { kind: 20, args: &[], res: &[0f64, 1f64] },
+    TsnOp { kind: 22, args: &[1f64, 1f64], res: &[7f64, 10f64, 11f64, 4f64, 67f64, 105f64, 116f64, 121f64] },
+    TsnOp { kind: 22, args: &[1f64, 2f64], res: &[7f64, 10f64, 12f64, 4f64, 80f64, 111f64, 114f64, 116f64] },
+    TsnOp { kind: 22, args: &[1f64, 3f64], res: &[10f64, 10f64, 13f64, 7f64, 70f64, 97f64, 99f64, 116f64, 111f64, 114f64, 121f64] },
+    TsnOp { kind: 28, args: &[1f64, 102f64], res: &[14f64, 11f64, 11f64, 100f64, 14f64, 100f64, 102f64, 0f64, 11f64, 12f64, 101f64, 14f64, 101f64, 102f64, 0f64, 0f64] },
+    TsnOp { kind: 28, args: &[1f64, 101f64], res: &[10f64, 11f64, 11f64, 100f64, 14f64, 100f64, 101f64, 1f64, 11f64, 12f64, 101f64, 2f64, 1f64, 2f64] },
+    TsnOp { kind: 28, args: &[1f64, 100f64], res: &[10f64, 11f64, 11f64, 100f64, 11f64, 12f64, 101f64, 14f64, 101f64, 100f64, 1f64, 2f64, 1f64, 2f64] },
+];
+pub const CLU_AVAIL_16: TsnScenario = TsnScenario {
+    name: "clu_avail_16",
+    ops: CLU_AVAIL_16_OPS,
+};
+
+const CLU_CLEAR_17_OPS: &[TsnOp] = &[
+    TsnOp { kind: 0, args: &[83f64], res: &[0f64, 0f64] },
+    TsnOp { kind: 2, args: &[1f64, 11f64, 4f64, 67f64, 105f64, 116f64, 121f64, 100f64, 1f64, 1f64], res: &[0f64] },
+    TsnOp { kind: 2, args: &[2f64, 12f64, 4f64, 80f64, 111f64, 114f64, 116f64, 101f64, 2f64, 1f64], res: &[0f64] },
+    TsnOp { kind: 20, args: &[], res: &[0f64, 1f64] },
+    TsnOp { kind: 22, args: &[1f64, 1f64], res: &[7f64, 10f64, 11f64, 4f64, 67f64, 105f64, 116f64, 121f64] },
+    TsnOp { kind: 22, args: &[1f64, 2f64], res: &[7f64, 10f64, 12f64, 4f64, 80f64, 111f64, 114f64, 116f64] },
+    TsnOp { kind: 23, args: &[1f64, 1f64], res: &[0f64] },
+    TsnOp { kind: 31, args: &[1f64], res: &[0f64, 1f64, 2f64, 1f64, 2f64] },
+    TsnOp { kind: 30, args: &[1f64], res: &[0f64] },
+    TsnOp { kind: 31, args: &[1f64], res: &[0f64, 0f64, 0f64] },
+    TsnOp { kind: 14, args: &[1f64], res: &[0f64, 1f64, 1f64] },
+    TsnOp { kind: 14, args: &[2f64], res: &[0f64, 1f64, 1f64] },
+];
+pub const CLU_CLEAR_17: TsnScenario = TsnScenario {
+    name: "clu_clear_17",
+    ops: CLU_CLEAR_17_OPS,
+};
+
+const CLU_REORDER_18_OPS: &[TsnOp] = &[
+    TsnOp { kind: 0, args: &[89f64], res: &[0f64, 0f64] },
+    TsnOp { kind: 2, args: &[1f64, 11f64, 4f64, 67f64, 105f64, 116f64, 121f64, 100f64, 1f64, 1f64], res: &[0f64] },
+    TsnOp { kind: 2, args: &[2f64, 12f64, 4f64, 80f64, 111f64, 114f64, 116f64, 101f64, 2f64, 1f64], res: &[0f64] },
+    TsnOp { kind: 2, args: &[3f64, 13f64, 4f64, 67f64, 105f64, 116f64, 121f64, 100f64, 3f64, 1f64], res: &[0f64] },
+    TsnOp { kind: 20, args: &[], res: &[0f64, 1f64] },
+    TsnOp { kind: 22, args: &[1f64, 1f64], res: &[7f64, 10f64, 11f64, 4f64, 67f64, 105f64, 116f64, 121f64] },
+    TsnOp { kind: 22, args: &[1f64, 2f64], res: &[7f64, 10f64, 12f64, 4f64, 80f64, 111f64, 114f64, 116f64] },
+    TsnOp { kind: 22, args: &[1f64, 3f64], res: &[7f64, 10f64, 13f64, 4f64, 67f64, 105f64, 116f64, 121f64] },
+    TsnOp { kind: 23, args: &[1f64, 2f64], res: &[0f64] },
+    TsnOp { kind: 22, args: &[1f64, 2f64], res: &[7f64, 10f64, 12f64, 4f64, 80f64, 111f64, 114f64, 116f64] },
+    TsnOp { kind: 31, args: &[1f64], res: &[0f64, 3f64, 1f64, 3f64, 2f64, 3f64, 1f64, 3f64, 2f64] },
+];
+pub const CLU_REORDER_18: TsnScenario = TsnScenario {
+    name: "clu_reorder_18",
+    ops: CLU_REORDER_18_OPS,
+};
+
+const TSN_SETID_19_OPS: &[TsnOp] = &[
+    TsnOp { kind: 0, args: &[97f64], res: &[0f64, 0f64] },
+    TsnOp { kind: 2, args: &[1f64, 11f64, 4f64, 67f64, 105f64, 116f64, 121f64, 100f64, 1f64, 1f64], res: &[0f64] },
+    TsnOp { kind: 17, args: &[1f64, 5f64], res: &[0f64] },
+    TsnOp { kind: 16, args: &[1f64], res: &[0f64, 5f64] },
+    TsnOp { kind: 32, args: &[1f64], res: &[0f64, 5f64, 0f64, 0f64, 0f64] },
+];
+pub const TSN_SETID_19: TsnScenario = TsnScenario {
+    name: "tsn_setid_19",
+    ops: TSN_SETID_19_OPS,
+};
+
+pub const TSN_SCENARIOS: &[TsnScenario] = &[
+    TSN_BASICS_0,
+    TSN_NEIGHBOR_RULE_1,
+    TSN_RNR_FIRST_ONLY_2,
+    TSN_RNR_MISS_3,
+    TSN_CLEAR_RAILS_4,
+    TSN_TRADE_SELF_5,
+    TSN_SETCLUSTER_6,
+    TSN_GETRRTO_7,
+    TSN_DOUBLE_ADD_8,
+    CLU_CLASSIFY_9,
+    CLU_ADDSTATIONS_10,
+    CLU_MERGE_11,
+    CLU_MERGE_OVERLAP_12,
+    CLU_HASANY_13,
+    CLU_RTD_14,
+    CLU_RTD_EMPTY_15,
+    CLU_AVAIL_16,
+    CLU_CLEAR_17,
+    CLU_REORDER_18,
+    TSN_SETID_19,
+];
+
 /// game/StatsImpl.ts scenario: one `stats_impl::run_op(0, args)` call replaying
 /// a whole scripted op sequence over the real TS accumulator against the
 /// Player mocks. args: `[0,nPlayers,(cidEnc,typeStr,isPlayer)*,nOps,(op)*]`

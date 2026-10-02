@@ -150,6 +150,13 @@ rust/
 │   │   │                          (Executor intent dispatcher; the 24
 │   │   │                          Execution classes stubbed as construction
 │   │   │                          recorders over a pinned trace)
+│   │   ├── station_manager.rs     port of game/RailNetworkImpl.ts
+│   │   │                          (StationManagerImpl only; count()=nextId
+│   │   │                          quirk, sparse stationsById, Set order)
+│   │   ├── train_station.rs       port of game/TrainStation.ts
+│   │   │                          (TrainStation graph node + Cluster;
+│   │   │                          Unit/Game/Player facades scripted-mocked,
+│   │   │                          stop-handler surface excluded)
 │   │   ├── wasm_probe.rs          `extern "C"` surface, feature-gated
 │   │   └── pathfinding/
 │   │       ├── mod.rs
@@ -1085,6 +1092,44 @@ desync, not a rounding nit. Two things enforce that here:
     `map` (already-built executions dropped, remaining intents skipped, never
     dispatched). The switch matches `intent.type` with `===` — a missing type
     falls through to the throw. 28 scenarios (1,359 result tokens).
+56. **`game/RailNetworkImpl.ts` + `game/TrainStation.ts`** (`station_manager`,
+    `train_station`) — the rail-network container trio. `RailNetworkImpl`,
+    `RailPathFinderServiceImpl` and `createRailNetwork` are *not* ported (later
+    phase — heavy pathService/config/nearbyUnits facade surface).
+    `StationManagerImpl`: the `stations` `Set` (insertion order, delete+re-add
+    moves to tail), the sparse `stationsById` array (`removeStation` writes
+    `undefined` into the slot — length and holes survive), `nextId` starting at
+    1, and the `count()` quirk — it returns `this.nextId`, **not**
+    `stations.size` (three adds → 4; removals never decrease it). Re-adding the
+    same station object re-assigns a fresh id and appends a second slot while
+    the `Set` add is a no-op. `findStation` scans the `Set` in insertion order
+    comparing `station.unit === unit` (JS `===`: `+0 === -0` true, `NaN` never
+    matches) and returns the **first** hit or `null`.
+    `TrainStation` + `Cluster` (the stop-handler surface — `stopHandlers`,
+    `onTrainStop`, the ctor's `createTrainStopHandlers(new
+    PseudoRandom(mg.ticks()))` side effect, `rel` — is excluded; the capture's
+    `ts_load` block strips it so construction is observable-free):
+    `railroads: Set` / `railroadByNeighbor: Map` insertion-order semantics with
+    the `from === this ? to : from` neighbor rule; `removeNeighboringRails`
+    removes only the **first** matching rail (`find`, not `filter`) with the
+    `RailroadDestructionEvent` `addUpdate` emitted *before* the removal — and
+    the parallel-rail quirk where `railroadByNeighbor.delete(neighbor)` drops
+    the map key while a second rail survives in the set, so `getRailroadTo`
+    returns `null` for a still-connected neighbor (pinned); `neighbors()`
+    iteration order; `setCluster` disconnects the old cluster only when it is
+    non-null *and* different (same-cluster re-set is a pure no-op) while
+    `Cluster.removeStation` does **not** clear the station's cluster pointer;
+    `Cluster.addStation` re-reads `unit.type()` on every call (even for an
+    existing member — trace count pinned); `merge(other)` iterates
+    `other.stations` while each `addStation → setCluster → removeStation`
+    deletes the *current* element — JS `Set` iteration visits every element
+    when only the current one is deleted (verified against real TS), replayed
+    as snapshot + has-check; `tradeAvailable`'s `otherPlayer === player ||`
+    short-circuit pins the `canTrade` call count (self → zero calls);
+    `randomTradeDestination` reservoir sampling draws `nextInt(0,
+    eligibleSeen)` once per **eligible** station only, over the real ported
+    `PseudoRandom`; `isTradeStation` = unit type `===` the `"City"` / `"Port"`
+    string-enum values (Factory excluded). 30 scenarios (1,875 total tokens).
 
 Regenerate whenever a ported source changes:
 
@@ -1118,7 +1163,7 @@ node rust/tools/run_wasm_parity.mjs
 
 `wasm-probe` exposes the ported functions through `extern "C"` scalar
 entrypoints (`src/wasm_probe.rs`); the runner imports `data/vectors.json` and
-compares every value. Last run: **116,813 comparisons, all bit-identical**.
+compares every value. Last run: **117,803 comparisons, all bit-identical**.
 
 ### Windows: the linker environment
 

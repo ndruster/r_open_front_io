@@ -4389,3 +4389,77 @@ pub extern "C" fn probe_swc_op(kind: u32) -> usize {
 pub extern "C" fn probe_swc_out_at(i: usize) -> f64 {
     SWC_OUT.with(|o| o.borrow()[i])
 }
+
+// ====== P54: game/RailNetworkImpl.ts StationManagerImpl (station_manager) ====
+
+thread_local! {
+    static STM_HARNESS: std::cell::RefCell<crate::station_manager::RigHarness> =
+        std::cell::RefCell::new(crate::station_manager::RigHarness::new());
+    static STM_ARGS: std::cell::RefCell<Vec<f64>> = const { std::cell::RefCell::new(Vec::new()) };
+    static STM_OUT: std::cell::RefCell<Vec<f64>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
+/// Drop the current manager (one scenario's op stream ends; the next begins
+/// with a construct op).
+#[no_mangle]
+pub extern "C" fn probe_stm_reset() {
+    STM_HARNESS.with(|h| h.borrow_mut().reset());
+}
+
+/// Push one flat token of the op's arg stream.
+#[no_mangle]
+pub extern "C" fn probe_stm_arg(v: f64) {
+    STM_ARGS.with(|t| t.borrow_mut().push(v));
+}
+
+/// Run `RigHarness::run_op(kind, args)`; returns the result-stream length.
+#[no_mangle]
+pub extern "C" fn probe_stm_op(kind: u32) -> usize {
+    let a = STM_ARGS.with(|t| std::mem::take(&mut *t.borrow_mut()));
+    let out = STM_HARNESS.with(|h| h.borrow_mut().run_op(kind as u8, &a));
+    let len = out.len();
+    STM_OUT.with(|o| *o.borrow_mut() = out);
+    len
+}
+
+#[no_mangle]
+pub extern "C" fn probe_stm_out_at(i: usize) -> f64 {
+    STM_OUT.with(|o| o.borrow()[i])
+}
+
+// ============ P54: game/TrainStation.ts (train_station) ======================
+
+thread_local! {
+    static TSN_HARNESS: std::cell::RefCell<crate::train_station::RigHarness> =
+        std::cell::RefCell::new(crate::train_station::RigHarness::new());
+    static TSN_ARGS: std::cell::RefCell<Vec<f64>> = const { std::cell::RefCell::new(Vec::new()) };
+    static TSN_OUT: std::cell::RefCell<Vec<f64>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
+/// Drop the station / cluster / player / rail tables (one scenario's op stream
+/// ends; the next begins with a construct op).
+#[no_mangle]
+pub extern "C" fn probe_tsn_reset() {
+    TSN_HARNESS.with(|h| h.borrow_mut().reset());
+}
+
+/// Push one flat token of the op's arg stream.
+#[no_mangle]
+pub extern "C" fn probe_tsn_arg(v: f64) {
+    TSN_ARGS.with(|t| t.borrow_mut().push(v));
+}
+
+/// Run `RigHarness::run_op(kind, args)`; returns the result-stream length.
+#[no_mangle]
+pub extern "C" fn probe_tsn_op(kind: u32) -> usize {
+    let a = TSN_ARGS.with(|t| std::mem::take(&mut *t.borrow_mut()));
+    let out = TSN_HARNESS.with(|h| h.borrow_mut().run_op(kind as u8, &a));
+    let len = out.len();
+    TSN_OUT.with(|o| *o.borrow_mut() = out);
+    len
+}
+
+#[no_mangle]
+pub extern "C" fn probe_tsn_out_at(i: usize) -> f64 {
+    TSN_OUT.with(|o| o.borrow()[i])
+}

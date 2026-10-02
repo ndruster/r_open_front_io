@@ -2537,6 +2537,114 @@ function prepare(rel) {
     );
   }
 
+  if (rel.endsWith("game/TrainStation.ts")) {
+    // TrainStation + Cluster are captured against scripted Unit / Player /
+    // Game mocks (precedent: nation_utils / shared_water_cache). GameUpdateType
+    // (the RailroadDestructionEvent lookup in removeNeighboringRails) and
+    // UnitType (the City / Port comparisons in Cluster.isTradeStation) are
+    // *value* uses and redirect to the prepared GameUpdates.ts / Game.ts
+    // copies (enums inlined as plain objects). TrainExecution / Game / Player /
+    // Unit / TileRef / Railroad are type-only annotations erased by strip mode
+    // -> dropped. PseudoRandom is dropped with the ctor's stopHandlers line:
+    // the excluded `createTrainStopHandlers(new PseudoRandom(mg.ticks()))`
+    // side effect is stripped (TrainStation::new must NOT replicate it); the
+    // function declaration itself survives untouched (never called). The
+    // `constructor(private mg: Game, public unit: Unit)` parameter properties
+    // are expanded for strip mode.
+    if (!prepared.has("src/core/game/Game.ts")) prepare("src/core/game/Game.ts");
+    const tsGuRel = "src/core/game/GameUpdates.ts";
+    if (!prepared.has(tsGuRel)) prepare(tsGuRel);
+    out = must(
+      out,
+      'import { TrainExecution } from "../execution/TrainExecution";\n' +
+        'import { PseudoRandom } from "../PseudoRandom";\n' +
+        'import { Game, Player, Unit, UnitType } from "./Game";\n' +
+        'import { TileRef } from "./GameMap";\n' +
+        'import { GameUpdateType } from "./GameUpdates";\n' +
+        'import { Railroad } from "./Railroad";\n',
+      `import { UnitType } from "./${prepared.get("src/core/game/Game.ts")}";\n` +
+        `import { GameUpdateType } from "./${prepared.get(tsGuRel)}";\n`,
+      "TrainStation imports",
+    );
+    out = must(
+      out,
+      "  constructor(\n" +
+        "    private mg: Game,\n" +
+        "    public unit: Unit,\n" +
+        "  ) {\n" +
+        "    this.stopHandlers = createTrainStopHandlers(new PseudoRandom(mg.ticks()));\n" +
+        "  }",
+      "  mg: Game;\n" +
+        "  unit: Unit;\n\n" +
+        "  constructor(\n" +
+        "    mg: Game,\n" +
+        "    unit: Unit,\n" +
+        "  ) {\n" +
+        "    this.mg = mg;\n" +
+        "    this.unit = unit;\n" +
+        "  }",
+      "TrainStation ctor",
+    );
+  }
+
+  if (rel.endsWith("game/RailNetworkImpl.ts")) {
+    // Only StationManagerImpl is captured (P54); RailNetworkImpl /
+    // RailPathFinderServiceImpl / createRailNetwork stay in the file but are
+    // never instantiated (their bodies reference the dropped imports only
+    // inside method bodies, which class declarations never evaluate). All
+    // eight imports are therefore dropped outright: StationManagerImpl's
+    // field initialisers (`new Set()`, `[]`, `1`) are the module's only
+    // load-time runtime surface. The `implements StationManager` /
+    // `RailNetwork` clauses and the interface declarations are type-only and
+    // erased by strip mode.
+    out = must(
+      out,
+      'import { PathFinding } from "../pathfinding/PathFinder";\n' +
+        'import { Game, Unit, UnitType } from "./Game";\n' +
+        'import { TileRef } from "./GameMap";\n' +
+        'import { GameUpdateType } from "./GameUpdates";\n' +
+        'import { RailNetwork } from "./RailNetwork";\n' +
+        'import { Railroad } from "./Railroad";\n' +
+        'import { RailSpatialGrid } from "./RailroadSpatialGrid";\n' +
+        'import { Cluster, TrainStation } from "./TrainStation";\n',
+      "",
+      "RailNetworkImpl imports",
+    );
+    // Parameter properties (strip mode rejects them, same as ExecutionManager
+    // / SharedWaterCache): expand both ctors. RailPathFinderServiceImpl and
+    // RailNetworkImpl are never instantiated by the capture, but the class
+    // *declarations* must still parse.
+    out = must(
+      out,
+      "class RailPathFinderServiceImpl implements RailPathFinderService {\n" +
+        "  constructor(private game: Game) {}",
+      "class RailPathFinderServiceImpl implements RailPathFinderService {\n" +
+        "  game: Game;\n\n" +
+        "  constructor(game: Game) { this.game = game; }",
+      "RailPathFinderServiceImpl ctor",
+    );
+    out = must(
+      out,
+      "  constructor(\n" +
+        "    private game: Game,\n" +
+        "    private _stationManager: StationManager,\n" +
+        "    private pathService: RailPathFinderService,\n" +
+        "  ) {",
+      "  game: Game;\n" +
+        "  _stationManager: StationManager;\n" +
+        "  pathService: RailPathFinderService;\n\n" +
+        "  constructor(\n" +
+        "    game: Game,\n" +
+        "    _stationManager: StationManager,\n" +
+        "    pathService: RailPathFinderService,\n" +
+        "  ) {\n" +
+        "    this.game = game;\n" +
+        "    this._stationManager = _stationManager;\n" +
+        "    this.pathService = pathService;",
+      "RailNetworkImpl ctor",
+    );
+  }
+
   mkdirSync(cacheDir, { recursive: true });
   const hash = createHash("sha1").update(out).digest("hex").slice(0, 10);
   const base = `${basename(rel, ".ts")}-${hash}.ts`;

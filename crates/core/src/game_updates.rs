@@ -123,6 +123,147 @@ impl GameUpdateType {
 // kind table (mirrors the capture):
 //   0 [0] -> [24, (name, value)*24]      full enum dump
 //   1 [name] -> [value | -1]             name lookup
+//   2 [2] -> [n, (key, isArray, len)*n]  createGameUpdatesMap() dump
+//   3 [3] -> [n, (0,value | 1,str)*n, m, (kept)*m]  Object.values + filter
+
+/// One runtime value of the enum object: a forward numeric value or a reverse
+/// mapping name. The V8 numeric enum carries both, and `Object.values` walks
+/// the integer-index (reverse) keys *before* the string (forward) keys — the
+/// ECMAScript own-key order (integer keys ascending, then insertion order).
+enum GiVal {
+    Num(f64),
+    Str(&'static str),
+}
+
+/// The enum object's `Object.values` table in enumeration order: the 24
+/// reverse-mapping names (keys "0".."23") first, then the 24 forward numbers.
+fn enum_values() -> Vec<GiVal> {
+    let mut v: Vec<GiVal> = NAMES.iter().map(|n| GiVal::Str(n)).collect();
+    v.extend((0..NAMES.len()).map(|i| GiVal::Num(i as f64)));
+    v
+}
+
+/// JS `Number(s)` for the string values the enum table can hold: trimmed
+/// whitespace, empty -> `0`, the exact `Infinity` spellings, and a decimal /
+/// exponent / hex literal; anything else (every enum name) is `NaN`. The enum
+/// object's strings are member names only, so the numeric spellings are
+/// defensive.
+fn js_number_str(s: &str) -> f64 {
+    let t = s.trim();
+    if t.is_empty() {
+        return 0.0;
+    }
+    if t == "Infinity" || t == "+Infinity" {
+        return f64::INFINITY;
+    }
+    if t == "-Infinity" {
+        return f64::NEG_INFINITY;
+    }
+    // Only JS-numeric characters may appear; this rejects every enum name
+    // (JS would too) before handing the literal to Rust's parser, which
+    // otherwise also accepts spellings like "inf" / "NaN" that JS reads as
+    // NaN.
+    let hex_body = t
+        .strip_prefix("0x")
+        .or_else(|| t.strip_prefix("0X"))
+        .or_else(|| t.strip_prefix("+0x"))
+        .or_else(|| t.strip_prefix("+0X"))
+        .or_else(|| t.strip_prefix("-0x"))
+        .or_else(|| t.strip_prefix("-0X"));
+    if let Some(body) = hex_body {
+        if body.is_empty() || !body.chars().all(|c| c.is_ascii_hexdigit()) {
+            return f64::NAN;
+        }
+        let mut mag = 0.0f64;
+        for c in body.chars() {
+            mag = mag * 16.0 + f64::from(c.to_digit(16).unwrap());
+        }
+        return if t.starts_with('-') { -mag } else { mag };
+    }
+    let ok = t
+        .chars()
+        .all(|c| c.is_ascii_digit() || matches!(c, '+' | '-' | '.' | 'e' | 'E'));
+    if !ok {
+        return f64::NAN;
+    }
+    t.parse::<f64>().unwrap_or(f64::NAN)
+}
+
+/// `!isNaN(Number(key))` on one enum-object value.
+fn is_numeric_value(v: &GiVal) -> bool {
+    match v {
+        GiVal::Num(n) => !n.is_nan(),
+        GiVal::Str(s) => !js_number_str(s).is_nan(),
+    }
+}
+
+/// `createGameUpdatesMap` (`GameImpl.ts` module tail): walk the enum object's
+/// values in enumeration order, keep the ones `!isNaN(Number(key))` passes,
+/// and write `map[key] = []` — the property name is the JS number→string
+/// (`js_num_str`) of the kept value. Returns the insertion-ordered key table
+/// with one empty array per key (the array slots are `[isArray=1, len=0]` in
+/// the dump).
+pub fn create_game_updates_map() -> Vec<Vec<u16>> {
+    let mut keys: Vec<Vec<u16>> = Vec::new();
+    for v in enum_values() {
+        if !is_numeric_value(&v) {
+            continue;
+        }
+        // `map[key as GameUpdateType] = []` — key is a number here, so the
+        // property name is Number→string.
+        let n = match v {
+            GiVal::Num(n) => n,
+            GiVal::Str(_) => unreachable!("filtered out above"),
+        };
+        keys.push(crate::game_ts::js_num_str(n).encode_utf16().collect());
+    }
+    keys
+}
+
+fn run_gi_map(out: &mut Vec<f64>) {
+    // Faithful replay of the traverse-filter-write, then dump the result
+    // object like the capture: keys in own-key order (all integer-index, so
+    // ascending "0".."23"), each value an empty array.
+    let keys = create_game_updates_map();
+    out.push(keys.len() as f64);
+    for k in &keys {
+        push_string_units(out, k);
+        out.push(1.0); // Array.isArray(map[key])
+        out.push(0.0); // map[key].length
+    }
+}
+
+fn run_gi_values(out: &mut Vec<f64>) {
+    let vals = enum_values();
+    out.push(vals.len() as f64);
+    for v in &vals {
+        match v {
+            GiVal::Num(n) => {
+                out.push(0.0);
+                out.push(*n);
+            }
+            GiVal::Str(s) => {
+                out.push(1.0);
+                push_string(out, s);
+            }
+        }
+    }
+    let kept: Vec<f64> = vals
+        .iter()
+        .filter(|v| is_numeric_value(v))
+        .map(|v| match v {
+            GiVal::Num(n) => *n,
+            GiVal::Str(_) => unreachable!("not numeric"),
+        })
+        .collect();
+    out.push(kept.len() as f64);
+    out.extend(kept.iter().copied());
+}
+
+fn push_string_units(out: &mut Vec<f64>, u: &[u16]) {
+    out.push(u.len() as f64);
+    out.extend(u.iter().map(|&x| f64::from(x)));
+}
 
 struct Cur<'a>(&'a [f64], usize);
 impl<'a> Cur<'a> {
@@ -163,6 +304,8 @@ pub fn run_op(kind: u8, args: &[f64]) -> Vec<f64> {
             let v = NAMES.iter().position(|n| *n == name).unwrap_or(usize::MAX);
             out.push(if v == usize::MAX { -1.0 } else { v as f64 });
         }
+        2 => run_gi_map(&mut out),
+        3 => run_gi_values(&mut out),
         _ => {}
     }
     out

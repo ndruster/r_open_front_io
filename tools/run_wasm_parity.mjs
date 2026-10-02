@@ -106,6 +106,7 @@ for (const name of [
   "probe_as_arg", "probe_as_op", "probe_as_out_at",
   "probe_tml_arg", "probe_tml_op", "probe_tml_out_at",
   "probe_nu_arg", "probe_nu_op", "probe_nu_out_at",
+  "probe_tni_arg", "probe_tni_op", "probe_tni_out_at",
   "probe_wpm_arg", "probe_wpm_op", "probe_wpm_out_at",
   "probe_rr_arg", "probe_rr_op", "probe_rr_out_at",
   "probe_rsg_reset", "probe_rsg_arg", "probe_rsg_op", "probe_rsg_out_at",
@@ -1800,6 +1801,41 @@ for (const s of S.nationutils) {
   for (let i = 0; i < len; i++) {
     checks++;
     const g = ex.probe_nu_out_at(i);
+    const w = numTok(s.res[i]);
+    if (!Object.is(g, w)) fail(`${s.name} res[${i}]`, 0, g, w);
+  }
+}
+
+// --- game/GameImpl.ts createGameUpdatesMap (game_updates kinds 2/3) ----------
+// Replays the map() dump and the Object.values + filter pin through the same
+// game_updates run_op runner as the gupd scenarios.
+for (const s of S.gameimpl) {
+  for (const a of s.args) ex.probe_gupd_arg(numTok(a));
+  const len = Number(ex.probe_gupd_op(s.kind));
+  if (len !== s.res.length) {
+    fail(`${s.name} res len`, 0, len, s.res.length);
+    continue;
+  }
+  for (let i = 0; i < len; i++) {
+    checks++;
+    const g = ex.probe_gupd_out_at(i);
+    const w = numTok(s.res[i]);
+    if (!Object.is(g, w)) fail(`${s.name} res[${i}]`, 0, g, w);
+  }
+}
+
+// --- game/TerraNulliusImpl.ts (terra_nullius) --------------------------------
+// Replays the four constant-return methods through the shared run_op runner.
+for (const s of S.terranulliusimpl) {
+  for (const a of s.args) ex.probe_tni_arg(numTok(a));
+  const len = Number(ex.probe_tni_op(s.kind));
+  if (len !== s.res.length) {
+    fail(`${s.name} res len`, 0, len, s.res.length);
+    continue;
+  }
+  for (let i = 0; i < len; i++) {
+    checks++;
+    const g = ex.probe_tni_out_at(i);
     const w = numTok(s.res[i]);
     if (!Object.is(g, w)) fail(`${s.name} res[${i}]`, 0, g, w);
   }

@@ -2430,6 +2430,38 @@ fn replay_nationutils_scenarios() {
     }
 }
 
+// game/GameImpl.ts createGameUpdatesMap: replay the map() result dump and the
+// Object.values + `!isNaN(Number(key))` filter pin (the reverse-mapping
+// iteration order, the kept-number stream, the Number→string keys) through the
+// shared `game_updates::run_op` runner and compare the flat token streams.
+#[test]
+fn replay_gameimpl_scenarios() {
+    use openfront_core::game_updates::run_op;
+    for s in vectors::GI_SCENARIOS {
+        let got = run_op(s.kind, s.args);
+        assert_eq!(got.len(), s.res.len(), "{} res len: got {got:?} want {:?}", s.name, s.res);
+        for (j, (g, w)) in got.iter().zip(s.res.iter()).enumerate() {
+            assert!(obj_is(*g, *w), "{} res[{j}]: got {g} want {w}", s.name);
+        }
+    }
+}
+
+// game/TerraNulliusImpl.ts: replay the four constant-return methods (smallID
+// 0, clientID the literal string, id JS null as the -1 sentinel, isPlayer the
+// literal false) through the shared `run_op` runner and compare the flat token
+// streams.
+#[test]
+fn replay_terranulliusimpl_scenarios() {
+    use openfront_core::terra_nullius::run_op;
+    for s in vectors::TNI_SCENARIOS {
+        let got = run_op(s.kind, s.args);
+        assert_eq!(got.len(), s.res.len(), "{} res len: got {got:?} want {:?}", s.name, s.res);
+        for (j, (g, w)) in got.iter().zip(s.res.iter()).enumerate() {
+            assert!(obj_is(*g, *w), "{} res[{j}]: got {g} want {w}", s.name);
+        }
+    }
+}
+
 // pathfinding/PathFinder.ts WaterPathMemo: replay the scripted-inner memo
 // scenarios (miss / hit / null accounting / LRU re-insert / waterVersion
 // clears / array-from passthrough / over-budget eviction / key collision /

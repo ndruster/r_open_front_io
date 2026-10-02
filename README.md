@@ -90,7 +90,9 @@ rust/
 │   │   │                          templates + noun bank, pluralize, unique
 │   │   │                          name generation, createRandomNations)
 │   │   ├── game_updates.rs        port of game/GameUpdates.ts (GameUpdateType
-│   │   │                          24-member numeric wire-tag enum)
+│   │   │                          24-member numeric wire-tag enum + the
+│   │   │                          GameImpl.ts createGameUpdatesMap traverse-
+│   │   │                          filter-write over the reverse-mapped enum)
 │   │   ├── nation_emoji.rs        port of Util.ts emojiTable /
 │   │   │                          flattenedEmojiTable + NationEmojiBehavior.ts
 │   │   │                          EMOJI_* constants
@@ -130,6 +132,9 @@ rust/
 │   │   │                          strict-gt best scan; Game / Player /
 │   │   │                          PseudoRandom facades scripted-mocked with
 │   │   │                          a pinned call trace)
+│   │   ├── terra_nullius.rs       port of game/TerraNulliusImpl.ts (stateless
+│   │   │                          neutral player: smallID=0 / clientID
+│   │   │                          literal / id()=null / isPlayer()=false)
 │   │   ├── wasm_probe.rs          `extern "C"` surface, feature-gated
 │   │   └── pathfinding/
 │   │       ├── mod.rs
@@ -956,6 +961,23 @@ desync, not a rounding nit. Two things enforce that here:
     `GameMap`-shaped `x`/`y`; the `??=` default path is dead through the public
     API (an empty `borderTiles` yields `(±Infinity)` bounds, never null —
     pinned). 17 scenarios (5,436 result tokens) over kinds 0–1 of the nu runner.
+51. **`game/GameImpl.ts` tail + `game/TerraNulliusImpl.ts`** (`game_updates`
+    kinds 2–3, `terra_nullius`) — `createGameUpdatesMap` (the `GameImpl.ts`
+    module tail; the rest of the file — `createGame` and the `GameImpl` class —
+    depends on the `Config` / `PlayerImpl` / `StatsImpl` facades and is out of
+    scope): a faithful traverse-filter-write over the *reverse-mapped* numeric
+    enum object (`Object.values` yields the 24 reverse names first, then the 24
+    forward numbers, per the ECMAScript own-key rule — the `ts_load.mjs`
+    inlined enum now carries the reverse mapping so the capture runs real
+    numeric-enum semantics), keeping the values `!isNaN(Number(key))` passes
+    (`Number(0)` is not NaN, so `0` survives; every name is NaN) and writing
+    `map[key] = []` under the JS `Number`→string property name. The `gi_values`
+    scenario pins the raw enumeration order and the filter's kept set; the
+    `gi_map` scenario dumps the result object's key order / count and each
+    value's `Array.isArray` + `length`. `TerraNulliusImpl` is the stateless
+    neutral player: `smallID()` = `0`, `clientID()` = the literal
+    `"TERRA_NULLIUS_CLIENT_ID"`, `id()` = JS `null` (encoded with the
+    `[-1]` sentinel), `isPlayer()` = `false`. 6 scenarios (553 result tokens).
 
 Regenerate whenever a ported source changes:
 
@@ -989,7 +1011,7 @@ node rust/tools/run_wasm_parity.mjs
 
 `wasm-probe` exposes the ported functions through `extern "C"` scalar
 entrypoints (`src/wasm_probe.rs`); the runner imports `data/vectors.json` and
-compares every value. Last run: **109,453 comparisons, all bit-identical**.
+compares every value. Last run: **110,006 comparisons, all bit-identical**.
 
 ### Windows: the linker environment
 

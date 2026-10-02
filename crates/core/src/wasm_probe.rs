@@ -4236,3 +4236,33 @@ pub extern "C" fn probe_nu_op(kind: u32) -> usize {
 pub extern "C" fn probe_nu_out_at(i: usize) -> f64 {
     NU_OUT.with(|o| o.borrow()[i])
 }
+
+// ====== P49: game/GameImpl.ts createGameUpdatesMap (game_updates kinds 2/3) ==
+// ======      + game/TerraNulliusImpl.ts (terra_nullius) ======================
+// The gi_ scenarios ride the existing `probe_gupd_*` runner (same run_op).
+
+thread_local! {
+    static TNI_ARGS: std::cell::RefCell<Vec<f64>> = const { std::cell::RefCell::new(Vec::new()) };
+    static TNI_OUT: std::cell::RefCell<Vec<f64>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
+/// Push one flat token (string length, code unit…).
+#[no_mangle]
+pub extern "C" fn probe_tni_arg(v: f64) {
+    TNI_ARGS.with(|t| t.borrow_mut().push(v));
+}
+
+/// Run `terra_nullius::run_op(kind, args)`; returns the result-stream length.
+#[no_mangle]
+pub extern "C" fn probe_tni_op(kind: u32) -> usize {
+    let a = TNI_ARGS.with(|t| std::mem::take(&mut *t.borrow_mut()));
+    let out = crate::terra_nullius::run_op(kind as u8, &a);
+    let len = out.len();
+    TNI_OUT.with(|o| *o.borrow_mut() = out);
+    len
+}
+
+#[no_mangle]
+pub extern "C" fn probe_tni_out_at(i: usize) -> f64 {
+    TNI_OUT.with(|o| o.borrow()[i])
+}

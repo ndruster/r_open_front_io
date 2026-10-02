@@ -916,7 +916,14 @@ function prepare(rel) {
     // Wire-shape module: every import is type-only (zod schema types, the
     // Game.ts type surface, the branded TileRef) -> dropped; strip mode
     // erases the annotations that referenced them. `export enum` is inlined
-    // as a plain object with the same numeric values (Tile=0 .. DonateEvent=23).
+    // as a plain object with the same numeric values (Tile=0 .. DonateEvent=23)
+    // PLUS the reverse mapping the V8 numeric-enum runtime object carries
+    // (0:"Tile" .. 23:"DonateEvent") - GameImpl.ts's createGameUpdatesMap
+    // filters `Object.values(GameUpdateType)` through `!isNaN(Number(key))`,
+    // which only has reverse entries to filter out when they exist. Object
+    // property order follows the ECMAScript own-key rule: integer-index keys
+    // ascending first, then string keys in insertion order, so the forward /
+    // reverse split here reproduces the compiled enum's iteration semantics.
     out = must(
       out,
       'import { AllPlayersStats, ClientID, Winner } from "../Schemas";\n',
@@ -1000,8 +1007,72 @@ function prepare(rel) {
         "  SpawnPhaseEnd: 21,\n" +
         "  GamePaused: 22,\n" +
         "  DonateEvent: 23,\n" +
+        "  0: \"Tile\",\n" +
+        "  1: \"Unit\",\n" +
+        "  2: \"Player\",\n" +
+        "  3: \"DisplayEvent\",\n" +
+        "  4: \"DisplayChatEvent\",\n" +
+        "  5: \"AllianceRequest\",\n" +
+        "  6: \"AllianceRequestReply\",\n" +
+        "  7: \"BrokeAlliance\",\n" +
+        "  8: \"AllianceExpired\",\n" +
+        "  9: \"AllianceExtension\",\n" +
+        "  10: \"TargetPlayer\",\n" +
+        "  11: \"Emoji\",\n" +
+        "  12: \"Win\",\n" +
+        "  13: \"Hash\",\n" +
+        "  14: \"UnitIncoming\",\n" +
+        "  15: \"BonusEvent\",\n" +
+        "  16: \"RailroadDestructionEvent\",\n" +
+        "  17: \"RailroadConstructionEvent\",\n" +
+        "  18: \"RailroadSnapEvent\",\n" +
+        "  19: \"ConquestEvent\",\n" +
+        "  20: \"EmbargoEvent\",\n" +
+        "  21: \"SpawnPhaseEnd\",\n" +
+        "  22: \"GamePaused\",\n" +
+        "  23: \"DonateEvent\",\n" +
         "};",
       "GameUpdates enum",
+    );
+  }
+
+  if (rel.endsWith("game/GameImpl.ts")) {
+    // Only the module-tail `createGameUpdatesMap` is ported; the GameImpl
+    // class body and the createGame factory ride on the Config / PlayerImpl /
+    // StatsImpl facades (out of scope). Truncate the file to the tail
+    // function, export it for the capture, and import the (reverse-mapped)
+    // GameUpdateType object from the prepared GameUpdates copy. The whole
+    // import header is dropped with the head slice; strip mode erases the
+    // `GameUpdates` type annotations syntactically, so no import is needed
+    // for them.
+    const marker = "// Or a more dynamic approach";
+    const idx = out.indexOf(marker);
+    if (idx < 0) {
+      throw new Error(
+        "ts_load: expected pattern not found (GameImpl tail marker) - the TS source changed, update this shim",
+      );
+    }
+    const guRel = "src/core/game/GameUpdates.ts";
+    if (!prepared.has(guRel)) prepare(guRel);
+    out = must(
+      `import { GameUpdateType } from "./${prepared.get(guRel)}";\n` + out.slice(idx),
+      "const createGameUpdatesMap",
+      "export const createGameUpdatesMap",
+      "GameImpl createGameUpdatesMap export",
+    );
+  }
+
+  if (rel.endsWith("game/TerraNulliusImpl.ts")) {
+    // ClientID / TerraNullius are type-only (the branded id type + the
+    // interface); drop both imports and the `implements` clause so the class
+    // loads standalone. The method bodies are four constant returns.
+    out = must(out, 'import { ClientID } from "../Schemas";\n', "", "TNImpl Schemas import");
+    out = must(out, 'import { TerraNullius } from "./Game";\n', "", "TNImpl Game import");
+    out = must(
+      out,
+      "export class TerraNulliusImpl implements TerraNullius {",
+      "export class TerraNulliusImpl {",
+      "TNImpl implements clause",
     );
   }
 

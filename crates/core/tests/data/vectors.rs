@@ -39322,3 +39322,80 @@ pub const NU_SCENARIOS: &[NuScenario] = &[
     NU_JUICE_NEGZERO,
 ];
 
+/// game/GameImpl.ts createGameUpdatesMap scenario: one `game_updates::
+/// run_op(kind, args)` call. kind 2 dumps the map() result object
+/// `[n,(key,isArray,len)*n]`, kind 3 pins the `Object.values` +
+/// `!isNaN(Number(key))` filter `[n,(0,value|1,str)*n,m,(kept)*m]`.
+/// Strings cross as `[len,u0,..]` UTF-16.
+pub struct GiScenario {
+    pub name: &'static str,
+    pub kind: u8,
+    pub args: &'static [f64],
+    pub res: &'static [f64],
+}
+
+pub const GI_VALUES: GiScenario = GiScenario {
+    name: "gi_values",
+    kind: 3u8,
+    args: &[3f64],
+    res: &[48f64, 1f64, 4f64, 84f64, 105f64, 108f64, 101f64, 1f64, 4f64, 85f64, 110f64, 105f64, 116f64, 1f64, 6f64, 80f64, 108f64, 97f64, 121f64, 101f64, 114f64, 1f64, 12f64, 68f64, 105f64, 115f64, 112f64, 108f64, 97f64, 121f64, 69f64, 118f64, 101f64, 110f64, 116f64, 1f64, 16f64, 68f64, 105f64, 115f64, 112f64, 108f64, 97f64, 121f64, 67f64, 104f64, 97f64, 116f64, 69f64, 118f64, 101f64, 110f64, 116f64, 1f64, 15f64, 65f64, 108f64, 108f64, 105f64, 97f64, 110f64, 99f64, 101f64, 82f64, 101f64, 113f64, 117f64, 101f64, 115f64, 116f64, 1f64, 20f64, 65f64, 108f64, 108f64, 105f64, 97f64, 110f64, 99f64, 101f64, 82f64, 101f64, 113f64, 117f64, 101f64, 115f64, 116f64, 82f64, 101f64, 112f64, 108f64, 121f64, 1f64, 13f64, 66f64, 114f64, 111f64, 107f64, 101f64, 65f64, 108f64, 108f64, 105f64, 97f64, 110f64, 99f64, 101f64, 1f64, 15f64, 65f64, 108f64, 108f64, 105f64, 97f64, 110f64, 99f64, 101f64, 69f64, 120f64, 112f64, 105f64, 114f64, 101f64, 100f64, 1f64, 17f64, 65f64, 108f64, 108f64, 105f64, 97f64, 110f64, 99f64, 101f64, 69f64, 120f64, 116f64, 101f64, 110f64, 115f64, 105f64, 111f64, 110f64, 1f64, 12f64, 84f64, 97f64, 114f64, 103f64, 101f64, 116f64, 80f64, 108f64, 97f64, 121f64, 101f64, 114f64, 1f64, 5f64, 69f64, 109f64, 111f64, 106f64, 105f64, 1f64, 3f64, 87f64, 105f64, 110f64, 1f64, 4f64, 72f64, 97f64, 115f64, 104f64, 1f64, 12f64, 85f64, 110f64, 105f64, 116f64, 73f64, 110f64, 99f64, 111f64, 109f64, 105f64, 110f64, 103f64, 1f64, 10f64, 66f64, 111f64, 110f64, 117f64, 115f64, 69f64, 118f64, 101f64, 110f64, 116f64, 1f64, 24f64, 82f64, 97f64, 105f64, 108f64, 114f64, 111f64, 97f64, 100f64, 68f64, 101f64, 115f64, 116f64, 114f64, 117f64, 99f64, 116f64, 105f64, 111f64, 110f64, 69f64, 118f64, 101f64, 110f64, 116f64, 1f64, 25f64, 82f64, 97f64, 105f64, 108f64, 114f64, 111f64, 97f64, 100f64, 67f64, 111f64, 110f64, 115f64, 116f64, 114f64, 117f64, 99f64, 116f64, 105f64, 111f64, 110f64, 69f64, 118f64, 101f64, 110f64, 116f64, 1f64, 17f64, 82f64, 97f64, 105f64, 108f64, 114f64, 111f64, 97f64, 100f64, 83f64, 110f64, 97f64, 112f64, 69f64, 118f64, 101f64, 110f64, 116f64, 1f64, 13f64, 67f64, 111f64, 110f64, 113f64, 117f64, 101f64, 115f64, 116f64, 69f64, 118f64, 101f64, 110f64, 116f64, 1f64, 12f64, 69f64, 109f64, 98f64, 97f64, 114f64, 103f64, 111f64, 69f64, 118f64, 101f64, 110f64, 116f64, 1f64, 13f64, 83f64, 112f64, 97f64, 119f64, 110f64, 80f64, 104f64, 97f64, 115f64, 101f64, 69f64, 110f64, 100f64, 1f64, 10f64, 71f64, 97f64, 109f64, 101f64, 80f64, 97f64, 117f64, 115f64, 101f64, 100f64, 1f64, 11f64, 68f64, 111f64, 110f64, 97f64, 116f64, 101f64, 69f64, 118f64, 101f64, 110f64, 116f64, 0f64, 0f64, 0f64, 1f64, 0f64, 2f64, 0f64, 3f64, 0f64, 4f64, 0f64, 5f64, 0f64, 6f64, 0f64, 7f64, 0f64, 8f64, 0f64, 9f64, 0f64, 10f64, 0f64, 11f64, 0f64, 12f64, 0f64, 13f64, 0f64, 14f64, 0f64, 15f64, 0f64, 16f64, 0f64, 17f64, 0f64, 18f64, 0f64, 19f64, 0f64, 20f64, 0f64, 21f64, 0f64, 22f64, 0f64, 23f64, 24f64, 0f64, 1f64, 2f64, 3f64, 4f64, 5f64, 6f64, 7f64, 8f64, 9f64, 10f64, 11f64, 12f64, 13f64, 14f64, 15f64, 16f64, 17f64, 18f64, 19f64, 20f64, 21f64, 22f64, 23f64],
+};
+
+pub const GI_MAP: GiScenario = GiScenario {
+    name: "gi_map",
+    kind: 2u8,
+    args: &[2f64],
+    res: &[24f64, 1f64, 48f64, 1f64, 0f64, 1f64, 49f64, 1f64, 0f64, 1f64, 50f64, 1f64, 0f64, 1f64, 51f64, 1f64, 0f64, 1f64, 52f64, 1f64, 0f64, 1f64, 53f64, 1f64, 0f64, 1f64, 54f64, 1f64, 0f64, 1f64, 55f64, 1f64, 0f64, 1f64, 56f64, 1f64, 0f64, 1f64, 57f64, 1f64, 0f64, 2f64, 49f64, 48f64, 1f64, 0f64, 2f64, 49f64, 49f64, 1f64, 0f64, 2f64, 49f64, 50f64, 1f64, 0f64, 2f64, 49f64, 51f64, 1f64, 0f64, 2f64, 49f64, 52f64, 1f64, 0f64, 2f64, 49f64, 53f64, 1f64, 0f64, 2f64, 49f64, 54f64, 1f64, 0f64, 2f64, 49f64, 55f64, 1f64, 0f64, 2f64, 49f64, 56f64, 1f64, 0f64, 2f64, 49f64, 57f64, 1f64, 0f64, 2f64, 50f64, 48f64, 1f64, 0f64, 2f64, 50f64, 49f64, 1f64, 0f64, 2f64, 50f64, 50f64, 1f64, 0f64, 2f64, 50f64, 51f64, 1f64, 0f64],
+};
+
+pub const GI_SCENARIOS: &[GiScenario] = &[
+    GI_VALUES,
+    GI_MAP,
+];
+
+/// game/TerraNulliusImpl.ts scenario: one `terra_nullius::run_op(kind,
+/// args)` call over the four constant-return methods. kind 0 smallID
+/// `[0]`, 1 clientID `[len,u0,..]`, 2 id `[-1]` (JS null sentinel), 3
+/// isPlayer `[0|1]`. Strings cross as `[len,u0,..]` UTF-16.
+pub struct TniScenario {
+    pub name: &'static str,
+    pub kind: u8,
+    pub args: &'static [f64],
+    pub res: &'static [f64],
+}
+
+pub const TN_SMALL_ID: TniScenario = TniScenario {
+    name: "tn_small_id",
+    kind: 0u8,
+    args: &[0f64],
+    res: &[0f64],
+};
+
+pub const TN_CLIENT_ID: TniScenario = TniScenario {
+    name: "tn_client_id",
+    kind: 1u8,
+    args: &[1f64],
+    res: &[23f64, 84f64, 69f64, 82f64, 82f64, 65f64, 95f64, 78f64, 85f64, 76f64, 76f64, 73f64, 85f64, 83f64, 95f64, 67f64, 76f64, 73f64, 69f64, 78f64, 84f64, 95f64, 73f64, 68f64],
+};
+
+pub const TN_ID: TniScenario = TniScenario {
+    name: "tn_id",
+    kind: 2u8,
+    args: &[2f64],
+    res: &[-1f64],
+};
+
+pub const TN_IS_PLAYER: TniScenario = TniScenario {
+    name: "tn_is_player",
+    kind: 3u8,
+    args: &[3f64],
+    res: &[0f64],
+};
+
+pub const TNI_SCENARIOS: &[TniScenario] = &[
+    TN_SMALL_ID,
+    TN_CLIENT_ID,
+    TN_ID,
+    TN_IS_PLAYER,
+];
+

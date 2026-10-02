@@ -177,6 +177,8 @@ const Sc = await loadTs("src/core/Schemas.ts");
 const Api = await loadTs("src/core/ApiSchemas.ts");
 const Tml = await loadTs("src/core/game/TerrainMapLoader.ts");
 const Nu = await loadTs("src/core/execution/nation/NationUtils.ts");
+const GI = await loadTs("src/core/game/GameImpl.ts");
+const TNI = await loadTs("src/core/game/TerraNulliusImpl.ts");
 const PF = await loadTs("src/core/pathfinding/PathFinder.ts");
 const { AStar } = await loadTs("src/core/pathfinding/algorithms/AStar.ts");
 const { AStarRail } = await loadTs("src/core/pathfinding/algorithms/AStar.Rail.ts");
@@ -2413,8 +2415,14 @@ for (const [i, [seed, target, man, ext]] of ncCases.entries()) {
 // --- GameUpdateType scenario runner -------------------------------------------
 // Exercises the GameUpdates.ts GameUpdateType enum through the shared run_op
 // runner (the prepared copy inlines the enum as a plain object with the same
-// numeric values). Strings cross as `[len, u0, ..]` (UTF-16 code units); the
-// Rust twin is `game_updates::*`.
+// numeric values PLUS the V8 reverse mapping 0:"Tile" .. 23:"DonateEvent", so
+// GameImpl's createGameUpdatesMap capture runs against real enum semantics).
+// The dump / name-lookup scenarios pin the FORWARD mapping only, so the key
+// list drops the integer-index (reverse) keys - `Object.keys` of the
+// reverse-mapped object starts with "0".."23" (integer-index keys sort first),
+// and filtering them back out keeps these token streams identical to the
+// forward-only object the earlier captures saw. Strings cross as
+// `[len, u0, ..]` (UTF-16 code units); the Rust twin is `game_updates::*`.
 //
 // kind table (matches the Rust dispatch):
 //   0 dump all 24 (name, value) pairs   args [0]  res [24,(name,val)*24]
@@ -2430,7 +2438,7 @@ function captureGUPD(name, kind, args, res) {
   });
 }
 const GUT = GUPD.GameUpdateType;
-const GUT_NAMES = Object.keys(GUT);
+const GUT_NAMES = Object.keys(GUT).filter((k) => isNaN(Number(k)));
 
 // kind 0: the full enum dump (declaration order = numeric order).
 captureGUPD("gupd_dump", 0, [0], [
@@ -3876,6 +3884,76 @@ captureNU("nu_juice_negzero", nuArgs1([
   nuCand(2, 0, 2, 5, [["Port", 0]]),
 ]));
 
+
+// --- GameImpl.ts createGameUpdatesMap scenario runner -------------------------
+// Exercises the module-tail `createGameUpdatesMap` of game/GameImpl.ts against
+// the prepared (reverse-mapped) GameUpdateType object. kind 2 calls the real
+// function and dumps `Object.keys` order/count plus, per entry, Array.isArray
+// and length. kind 3 pins the intermediate `Object.values` + `filter(!isNaN
+// (Number(key)))` the function runs: the full value table in enumeration order
+// (integer-index keys sort first, so the reverse-mapping strings come before
+// the forward numeric values) with a 0=number / 1=string tag, then the kept
+// numbers. The Rust twin is `game_updates::run_op` kinds 2 / 3.
+const giScenarios = [];
+const giname = (s) => s.replace(/[^A-Za-z0-9]+/g, "_");
+function captureGI(name, kind, args, res) {
+  giScenarios.push({
+    name: giname(name),
+    kind,
+    args: args.flat(Infinity).map(uenc),
+    res: res.flat(Infinity).map(uenc),
+  });
+}
+
+// kind 3 first: the raw Object.values + filter over the enum object (this is
+// what pins the reverse mapping's presence and the filter semantics).
+{
+  const vals = Object.values(GUT);
+  const filtered = vals.filter((key) => !isNaN(Number(key)));
+  captureGI("gi_values", 3, [3], [
+    vals.length,
+    ...vals.map((v) => (typeof v === "number" ? [0, v] : [1, ...encS(String(v))])),
+    filtered.length,
+    ...filtered,
+  ]);
+}
+
+// kind 2: the whole createGameUpdatesMap() result object.
+{
+  const map = GI.createGameUpdatesMap();
+  const keys = Object.keys(map);
+  captureGI("gi_map", 2, [2], [
+    keys.length,
+    ...keys.flatMap((k) => [
+      ...encS(k),
+      Array.isArray(map[k]) ? 1 : 0,
+      map[k].length,
+    ]),
+  ]);
+}
+
+// --- TerraNulliusImpl.ts scenario runner --------------------------------------
+// Exercises the four constant-return methods of game/TerraNulliusImpl.ts on a
+// real instance. kind 0 smallID -> [0]; kind 1 clientID -> [encS]; kind 2 id
+// -> [-1] for JS null (the server_list encOut precedent); kind 3 isPlayer ->
+// [0|1]. The Rust twin is `terra_nullius::run_op`.
+const tniScenarios = [];
+const tniname = (s) => s.replace(/[^A-Za-z0-9]+/g, "_");
+function captureTNI(name, kind, args, res) {
+  tniScenarios.push({
+    name: tniname(name),
+    kind,
+    args: args.flat(Infinity).map(uenc),
+    res: res.flat(Infinity).map(uenc),
+  });
+}
+{
+  const tn = new TNI.TerraNulliusImpl();
+  captureTNI("tn_small_id", 0, [0], [tn.smallID()]);
+  captureTNI("tn_client_id", 1, [1], [encS(tn.clientID())]);
+  captureTNI("tn_id", 2, [2], [tn.id() === null ? -1 : 0]);
+  captureTNI("tn_is_player", 3, [3], [tn.isPlayer() ? 1 : 0]);
+}
 
 // --- WaterPathMemo scenario runner -------------------------------------------
 // Exercises the real PathFinder.ts WaterPathMemo against a scripted inner
@@ -7497,6 +7575,8 @@ const structures = {
   game: gameScenarios,
   nationcreation: ncScenarios,
   gameupdates: gupdScenarios,
+  gameimpl: giScenarios,
+  terranulliusimpl: tniScenarios,
   nationemoji: neScenarios,
   cosmeticschemas: csScenarios,
   statschemas: stScenarios,
@@ -9945,6 +10025,59 @@ for (const s of structures.nationutils) {
 }
 L.push("pub const NU_SCENARIOS: &[NuScenario] = &[");
 for (const s of structures.nationutils) L.push(`    ${s.name.toUpperCase()},`);
+L.push("];");
+L.push("");
+
+L.push("/// game/GameImpl.ts createGameUpdatesMap scenario: one `game_updates::");
+L.push("/// run_op(kind, args)` call. kind 2 dumps the map() result object");
+L.push("/// `[n,(key,isArray,len)*n]`, kind 3 pins the `Object.values` +");
+L.push("/// `!isNaN(Number(key))` filter `[n,(0,value|1,str)*n,m,(kept)*m]`.");
+L.push("/// Strings cross as `[len,u0,..]` UTF-16.");
+L.push("pub struct GiScenario {");
+L.push("    pub name: &'static str,");
+L.push("    pub kind: u8,");
+L.push("    pub args: &'static [f64],");
+L.push("    pub res: &'static [f64],");
+L.push("}");
+L.push("");
+for (const s of structures.gameimpl) {
+  const id = s.name.toUpperCase();
+  L.push(`pub const ${id}: GiScenario = GiScenario {`);
+  L.push(`    name: "${s.name}",`);
+  L.push(`    kind: ${s.kind}u8,`);
+  L.push(`    args: &[${s.args.map(utilResLit).join(", ")}],`);
+  L.push(`    res: &[${s.res.map(utilResLit).join(", ")}],`);
+  L.push("};");
+  L.push("");
+}
+L.push("pub const GI_SCENARIOS: &[GiScenario] = &[");
+for (const s of structures.gameimpl) L.push(`    ${s.name.toUpperCase()},`);
+L.push("];");
+L.push("");
+
+L.push("/// game/TerraNulliusImpl.ts scenario: one `terra_nullius::run_op(kind,");
+L.push("/// args)` call over the four constant-return methods. kind 0 smallID");
+L.push("/// `[0]`, 1 clientID `[len,u0,..]`, 2 id `[-1]` (JS null sentinel), 3");
+L.push("/// isPlayer `[0|1]`. Strings cross as `[len,u0,..]` UTF-16.");
+L.push("pub struct TniScenario {");
+L.push("    pub name: &'static str,");
+L.push("    pub kind: u8,");
+L.push("    pub args: &'static [f64],");
+L.push("    pub res: &'static [f64],");
+L.push("}");
+L.push("");
+for (const s of structures.terranulliusimpl) {
+  const id = s.name.toUpperCase();
+  L.push(`pub const ${id}: TniScenario = TniScenario {`);
+  L.push(`    name: "${s.name}",`);
+  L.push(`    kind: ${s.kind}u8,`);
+  L.push(`    args: &[${s.args.map(utilResLit).join(", ")}],`);
+  L.push(`    res: &[${s.res.map(utilResLit).join(", ")}],`);
+  L.push("};");
+  L.push("");
+}
+L.push("pub const TNI_SCENARIOS: &[TniScenario] = &[");
+for (const s of structures.terranulliusimpl) L.push(`    ${s.name.toUpperCase()},`);
 L.push("];");
 L.push("");
 

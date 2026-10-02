@@ -145,7 +145,11 @@
 //! * [`game_updates`] — `src/core/game/GameUpdates.ts` (`GameUpdateType`:
 //!   the 24-member numeric wire-tag enum with explicit discriminants,
 //!   name/value conversions; the update interfaces have no runtime and are
-//!   not ported)
+//!   not ported). Also covers `GameImpl.ts`'s module-tail
+//!   `createGameUpdatesMap` — the traverse / `!isNaN(Number(key))` filter /
+//!   write loop over the numeric enum's reverse-mapped runtime values; the
+//!   `GameImpl` class body and `createGame` factory ride on the Config /
+//!   PlayerImpl facades and are not ported)
 //! * [`nation_emoji`] — `src/core/Util.ts` (`emojiTable` / 
 //!   `flattenedEmojiTable`) + `src/core/execution/nation/NationEmojiBehavior.ts`
 //!   (the 23 `EMOJI_*` id arrays as literals and `emojiId`'s `indexOf`
@@ -201,6 +205,9 @@
 //!   `findJuiciestTarget` normalize / strict-`>` best scan; the `Game` /
 //!   `Player` / `PseudoRandom` facades are scripted mocks whose call traces
 //!   ride in the res stream, same pattern as `water_path_memo`)
+//! * [`terra_nullius`] — `src/core/game/TerraNulliusImpl.ts` (the stateless
+//!   neutral-player facade: four constant returns — `smallID` 0, `clientID`
+//!   the literal string, `id` JS `null`, `isPlayer` the literal `false`)
 //!
 //! Two rules govern every future port into this crate:
 //!
@@ -245,6 +252,7 @@ pub mod schemas;
 pub mod server_list;
 pub mod stats_schemas;
 pub mod team_assignment;
+pub mod terra_nullius;
 pub mod terrain_map_loader;
 pub mod terrain_search_map;
 pub mod tile_set;

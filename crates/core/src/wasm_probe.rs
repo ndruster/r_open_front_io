@@ -4274,6 +4274,35 @@ pub extern "C" fn probe_nu_out_at(i: usize) -> f64 {
     NU_OUT.with(|o| o.borrow()[i])
 }
 
+// ====== P53: execution/ExecutionManager.ts (execution_manager) ==============
+
+thread_local! {
+    static EM_ARGS: std::cell::RefCell<Vec<f64>> = const { std::cell::RefCell::new(Vec::new()) };
+    static EM_OUT: std::cell::RefCell<Vec<f64>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
+/// Push one flat token (string length, code unit, refid…).
+#[no_mangle]
+pub extern "C" fn probe_em_arg(v: f64) {
+    EM_ARGS.with(|t| t.borrow_mut().push(v));
+}
+
+/// Run `execution_manager::run_op(kind, args)`; returns the result-stream
+/// length.
+#[no_mangle]
+pub extern "C" fn probe_em_op(kind: u32) -> usize {
+    let a = EM_ARGS.with(|t| std::mem::take(&mut *t.borrow_mut()));
+    let out = crate::execution_manager::run_op(kind as u8, &a);
+    let len = out.len();
+    EM_OUT.with(|o| *o.borrow_mut() = out);
+    len
+}
+
+#[no_mangle]
+pub extern "C" fn probe_em_out_at(i: usize) -> f64 {
+    EM_OUT.with(|o| o.borrow()[i])
+}
+
 // ====== P49: game/GameImpl.ts createGameUpdatesMap (game_updates kinds 2/3) ==
 // ======      + game/TerraNulliusImpl.ts (terra_nullius) ======================
 // The gi_ scenarios ride the existing `probe_gupd_*` runner (same run_op).

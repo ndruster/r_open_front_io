@@ -222,6 +222,16 @@
 //!   `findJuiciestTarget` normalize / strict-`>` best scan; the `Game` /
 //!   `Player` / `PseudoRandom` facades are scripted mocks whose call traces
 //!   ride in the res stream, same pattern as `water_path_memo`)
+//! * [`execution_manager`] — `src/core/execution/ExecutionManager.ts` (the
+//!   `Executor` intent dispatcher: the `createExecs` / `createExec`
+//!   `playerByClientID` + `!player` warn/NoOp branch + the 24-case switch
+//!   arg-extraction orders, the `spawnTribes` nations/map/filter pipeline
+//!   into the `TribeSpawner` stub, the `PlayerSpawner` stub and the
+//!   `nationExecutions` loop; the ctor pins the real `simpleHash(gameID) + 1`
+//!   seed feeding the (never-used) `PseudoRandom`. The `XxxExecution` classes
+//!   and the spawners are not ported (existing exclusion) and are stubbed as
+//!   construction recorders whose events ride the res stream, same pattern as
+//!   `nation_utils`)
 //! * [`shared_water_cache`] — `src/core/execution/nation/SharedWaterCache.ts`
 //!   (the nation-AI shared-water cache: the `TTL_TICKS` rebuild from
 //!   `tick = -Infinity` with `this.tick = tick`, the strict-`===`
@@ -258,6 +268,7 @@ pub mod detmath;
 pub mod doomsday_clock;
 pub mod event_bus;
 pub mod exec_util;
+pub mod execution_manager;
 pub mod game_map;
 pub mod game_ts;
 pub mod game_update_utils;

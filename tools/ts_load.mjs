@@ -2382,6 +2382,161 @@ function prepare(rel) {
     );
   }
 
+  if (rel.endsWith("execution/ExecutionManager.ts")) {
+    // The Executor dispatcher is captured against a scripted Game facade;
+    // the 24 `XxxExecution` classes + TribeSpawner / PlayerSpawner are NOT
+    // ported (existing exclusion decision) and are replaced by construction
+    // recorders (precedent: nation_utils' facade mocks + trace pinning). The
+    // whole import block is swapped for the recorder definitions plus the two
+    // *value* imports the class body really executes — PseudoRandom (direct
+    // real module, no imports) and simpleHash (redirected to the prepared
+    // Util.ts copy, same pattern as TeamAssignment). The Execution / Game /
+    // ClientID / GameID / StampedIntent / Turn / SpawnExecution names are
+    // type-only annotations erased by strip mode. console.warn stays (the
+    // capture hooks globalThis console.warn to pin the message).
+    const emUtilRel = "src/core/Util.ts";
+    if (!prepared.has(emUtilRel)) prepare(emUtilRel);
+    out = must(
+      out,
+      'import { Execution, Game } from "../game/Game";\n' +
+        'import { PseudoRandom } from "../PseudoRandom";\n' +
+        'import { ClientID, GameID, StampedIntent, Turn } from "../Schemas";\n' +
+        'import { simpleHash } from "../Util";\n' +
+        'import { AllianceExtensionExecution } from "./alliance/AllianceExtensionExecution";\n' +
+        'import { AllianceRejectExecution } from "./alliance/AllianceRejectExecution";\n' +
+        'import { AllianceRequestExecution } from "./alliance/AllianceRequestExecution";\n' +
+        'import { BreakAllianceExecution } from "./alliance/BreakAllianceExecution";\n' +
+        'import { AttackExecution } from "./AttackExecution";\n' +
+        'import { BoatRetreatExecution } from "./BoatRetreatExecution";\n' +
+        'import { ConstructionExecution } from "./ConstructionExecution";\n' +
+        'import { DeleteUnitExecution } from "./DeleteUnitExecution";\n' +
+        'import { DonateGoldExecution } from "./DonateGoldExecution";\n' +
+        'import { DonateTroopsExecution } from "./DonateTroopExecution";\n' +
+        'import { EmbargoAllExecution } from "./EmbargoAllExecution";\n' +
+        'import { EmbargoExecution } from "./EmbargoExecution";\n' +
+        'import { EmojiExecution } from "./EmojiExecution";\n' +
+        'import { MarkDisconnectedExecution } from "./MarkDisconnectedExecution";\n' +
+        'import { MoveWarshipExecution } from "./MoveWarshipExecution";\n' +
+        'import { NationExecution } from "./NationExecution";\n' +
+        'import { NoOpExecution } from "./NoOpExecution";\n' +
+        'import { PauseExecution } from "./PauseExecution";\n' +
+        'import { QuickChatExecution } from "./QuickChatExecution";\n' +
+        'import { RetreatExecution } from "./RetreatExecution";\n' +
+        'import { SpawnExecution } from "./SpawnExecution";\n' +
+        'import { TargetPlayerExecution } from "./TargetPlayerExecution";\n' +
+        'import { TransportShipExecution } from "./TransportShipExecution";\n' +
+        'import { TribeSpawner } from "./TribeSpawner";\n' +
+        'import { UpgradeStructureExecution } from "./UpgradeStructureExecution";\n' +
+        'import { PlayerSpawner } from "./utils/PlayerSpawner";\n',
+      "import { PseudoRandom } from \"" + TS_URL + "src/core/PseudoRandom.ts\";\n" +
+        `import { simpleHash } from "./${prepared.get(emUtilRel)}";\n` +
+        "const __enc = (v) => {\n" +
+        "  if (v === undefined) return [0];\n" +
+        "  if (v === null) return [1];\n" +
+        "  if (v === true) return [2];\n" +
+        "  if (v === false) return [3];\n" +
+        "  if (typeof v === \"number\") return [4, v];\n" +
+        "  if (typeof v === \"string\")\n" +
+        "    return [5, v.length, ...Array.from({ length: v.length }, (_, i) => v.charCodeAt(i))];\n" +
+        "  if (Array.isArray(v)) return [6, v.length, ...v.flatMap(__enc)];\n" +
+        "  if (v && v.__nation) return [12, v.__ref];\n" +
+        "  if (v && v.__info !== undefined) return [8, v.__info];\n" +
+        "  if (v && v.__ref !== undefined) return [7, v.__ref];\n" +
+        "  throw new Error(\"em: unencodable \" + String(v));\n" +
+        "};\n" +
+        "const __ev = (a) => globalThis.__EMTRACE.push(...a.flat(Infinity));\n" +
+        "const __stub = (tag) =>\n" +
+        "  class {\n" +
+        "    constructor(...a) {\n" +
+        "      __ev([2, tag, ...a.flatMap(__enc)]);\n" +
+        "      return { __ref: ++globalThis.__EMREF };\n" +
+        "    }\n" +
+        "  };\n" +
+        "const NoOpExecution = __stub(0);\n" +
+        "const AttackExecution = __stub(1);\n" +
+        "const RetreatExecution = __stub(2);\n" +
+        "const BoatRetreatExecution = __stub(3);\n" +
+        "const MoveWarshipExecution = __stub(4);\n" +
+        "const SpawnExecution = __stub(5);\n" +
+        "const TransportShipExecution = __stub(6);\n" +
+        "const AllianceRequestExecution = __stub(7);\n" +
+        "const AllianceRejectExecution = __stub(8);\n" +
+        "const BreakAllianceExecution = __stub(9);\n" +
+        "const TargetPlayerExecution = __stub(10);\n" +
+        "const EmojiExecution = __stub(11);\n" +
+        "const DonateTroopsExecution = __stub(12);\n" +
+        "const DonateGoldExecution = __stub(13);\n" +
+        "const EmbargoExecution = __stub(14);\n" +
+        "const EmbargoAllExecution = __stub(15);\n" +
+        "const ConstructionExecution = __stub(16);\n" +
+        "const AllianceExtensionExecution = __stub(17);\n" +
+        "const UpgradeStructureExecution = __stub(18);\n" +
+        "const DeleteUnitExecution = __stub(19);\n" +
+        "const QuickChatExecution = __stub(20);\n" +
+        "const MarkDisconnectedExecution = __stub(21);\n" +
+        "const PauseExecution = __stub(22);\n" +
+        "const NationExecution = __stub(23);\n" +
+        "const TribeSpawner = class {\n" +
+        "  constructor(mg, gameID, cells) {\n" +
+        "    __ev([6, ...__enc(gameID), ...__enc(cells)]);\n" +
+        "  }\n" +
+        "  spawnTribes(n, names) {\n" +
+        "    const ret = globalThis.__EMRET.shift();\n" +
+        "    __ev([7, ...__enc(n), ...__enc(names), ret.length, ...ret]);\n" +
+        "    return ret.map((r) => ({ __ref: r }));\n" +
+        "  }\n" +
+        "};\n" +
+        "const PlayerSpawner = class {\n" +
+        "  constructor(mg, gameID) {\n" +
+        "    __ev([8, ...__enc(gameID)]);\n" +
+        "  }\n" +
+        "  spawnPlayers() {\n" +
+        "    const ret = globalThis.__EMRET.shift();\n" +
+        "    __ev([9, ret.length, ...ret]);\n" +
+        "    return ret.map((r) => ({ __ref: r }));\n" +
+        "  }\n" +
+        "};\n",
+      "ExecutionManager imports",
+    );
+    // Parameter properties (strip mode rejects them, same as MinHeap / BFS):
+    // expand the four ctor fields, keeping the `= []` default on the last one.
+    out = must(
+      out,
+      "  constructor(\n" +
+        "    private mg: Game,\n" +
+        "    private gameID: GameID,\n" +
+        "    private clientID: ClientID | undefined,\n" +
+        "    // Purchased bot tribe names drawn for this game (GameStartInfo.tribes).\n" +
+        "    private purchasedTribeNames: string[] = [],\n" +
+        "  ) {",
+      "  private mg: any;\n" +
+        "  private gameID: any;\n" +
+        "  private clientID: any;\n" +
+        "  private purchasedTribeNames: any;\n\n" +
+        "  constructor(\n" +
+        "    mg: any,\n" +
+        "    gameID: any,\n" +
+        "    clientID: any,\n" +
+        "    // Purchased bot tribe names drawn for this game (GameStartInfo.tribes).\n" +
+        "    purchasedTribeNames: any = [],\n" +
+        "  ) {\n" +
+        "    this.mg = mg;\n" +
+        "    this.gameID = gameID;\n" +
+        "    this.clientID = clientID;\n" +
+        "    this.purchasedTribeNames = purchasedTribeNames;",
+      "ExecutionManager ctor",
+    );
+    // The `(c): c is NonNullable<typeof c>` type-predicate arrow is beyond the
+    // strip loader's erasure here; rewrite it to the plain boolean arrow (the
+    // `c !== undefined` runtime test is untouched).
+    out = must(
+      out,
+      "      .filter((c): c is NonNullable<typeof c> => c !== undefined);",
+      "      .filter((c) => c !== undefined);",
+      "ExecutionManager filter predicate",
+    );
+  }
+
   mkdirSync(cacheDir, { recursive: true });
   const hash = createHash("sha1").update(out).digest("hex").slice(0, 10);
   const base = `${basename(rel, ".ts")}-${hash}.ts`;

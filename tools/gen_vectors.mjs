@@ -211,6 +211,7 @@ const { AbstractGraphAStar } = await loadTs(
 const { AStarWaterHierarchical } = await loadTs(
   "src/core/pathfinding/algorithms/AStar.WaterHierarchical.ts",
 );
+const { Executor } = await loadTs("src/core/execution/ExecutionManager.ts");
 
 // enc() maps JS-only values JSON cannot carry: undefined -> "u", NaN -> "n",
 // booleans -> 1/0, and -0 -> "-0" (JSON collapses -0 to 0, yet the f32 bit
@@ -5522,6 +5523,441 @@ captureSWC("swc_reuse_mixed_across_rebuild", swcArgs([100, 130, 160], [
 
 
 
+// --- execution/ExecutionManager.ts scenario runner ----------------------------
+// Exercises the real Executor dispatcher against a scripted Game facade: the
+// 24 XxxExecution classes + TribeSpawner / PlayerSpawner are construction
+// recorders injected by ts_load (existing exclusion: the execution class
+// bodies are not ported), so every `new XxxExecution(...)` lands in the trace
+// as [2, tag, encoded args...] and the orchestration (facade call order, the
+// !player warn branch, the per-case arg extraction order, the
+// nations().map(n => n.spawnCell).filter(c !== undefined) pipeline and the
+// default-throw message interpolation `intent type [object Object] not found`)
+// is pinned token-by-token. The ctor op pins the real simpleHash(gameID) + 1
+// seed feeding the (never-used afterwards) PseudoRandom. console.warn is
+// hooked to record the message into the trace (ev 4). Refids: players /
+// nations carry the scripted refs; constructed executions take a scenario-
+// global counter ++1..; spawner returns ride the retLists script.
+//
+// args: [0, gameIDEnc, clientIDEnc, purchasedEnc,
+//   nPlayers, (cidEnc, ref, infoEnc)*,      infoEnc [0] | [8, ref]
+//   nNations, (spawnCellEnc, ref)*,
+//   nRet, (len, refs*)*,
+//   nOps, (op)*]
+//   op: 0 ctor [0] | 1 createExecs [1,n,(intent)*] | 2 createExec [2,intent]
+//       3 spawnTribes [3,numEnc] | 4 spawnPlayers [4] | 5 nationExecs [5]
+//   intent: [typeEnc, nFields, (keyEnc, valEnc)*]
+//   valEnc: 0 undefined | 1 null | 2 true | 3 false | 4 num | 5 str | 6 arr
+//           | 7 player ref | 8 info ref (12 nation ref appears trace-side)
+// res: [traceLen, (trace)*, (opResult)*]
+//   trace: 0 ctor seed [0,hash,seed] | 1 playerByClientID [1,cidEnc,retEnc]
+//     2 exec ctor [2,tag,args*] | 3 info() [3,pref,iref] | 4 warn [4,msgEnc]
+//     5 throw [5,opKind,msgEnc] | 6 TribeSpawner ctor [6,gameIDEnc,cellsEnc]
+//     7 spawnTribes [7,numEnc,namesEnc,len,refs*] | 8 PlayerSpawner ctor
+//     [8,gameIDEnc] | 9 spawnPlayers [9,len,refs*] | 10 nations [10,n,refs*]
+//   opResult: [opKind, status, n, refs*] (status 1 = the op threw)
+//   exec ctor tags (stub-definition order, ts_load): 0 NoOp 1 Attack
+//     2 Retreat 3 BoatRetreat 4 MoveWarship 5 Spawn 6 TransportShip
+//     7 AllianceRequest 8 AllianceReject 9 BreakAlliance 10 TargetPlayer
+//     11 Emoji 12 DonateTroops 13 DonateGold 14 Embargo 15 EmbargoAll
+//     16 Construction 17 AllianceExtension 18 UpgradeStructure 19 DeleteUnit
+//     20 QuickChat 21 MarkDisconnected 22 Pause 23 Nation
+const emScenarios = [];
+const emname = (s) => s.replace(/[^A-Za-z0-9]+/g, "_");
+
+const emEnc = (v) => {
+  if (v === undefined) return [0];
+  if (v === null) return [1];
+  if (v === true) return [2];
+  if (v === false) return [3];
+  if (typeof v === "number") return [4, v];
+  if (typeof v === "string") return [5, ...encS(v)];
+  if (Array.isArray(v)) return [6, v.length, ...v.flatMap(emEnc)];
+  throw new Error(`em: unencodable ${String(v)}`);
+};
+
+const emIntentTok = (o) => {
+  const es = Object.entries(o);
+  const type = o.type;
+  const fields = es.filter(([k]) => k !== "type");
+  return [...emEnc(type), fields.length, ...fields.flatMap(([k, v]) => [...emEnc(k), ...emEnc(v)])];
+};
+
+const emOpTok = (op) => {
+  const k = op[0];
+  if (k === 0) return [0];
+  if (k === 1) return [1, op[1].length, ...op[1].flatMap(emIntentTok)];
+  if (k === 2) return [2, ...emIntentTok(op[1])];
+  if (k === 3) return [3, ...emEnc(op[1])];
+  return [k];
+};
+
+const emArgs = (spec) => [
+  0,
+  ...emEnc(spec.gameID),
+  ...emEnc(spec.clientID),
+  ...emEnc(spec.purchased),
+  spec.players.length,
+  ...spec.players.flatMap(([cid, ref, info]) => [
+    ...emEnc(cid),
+    ref,
+    ...(info === undefined ? [0] : [8, info]),
+  ]),
+  spec.nations.length,
+  ...spec.nations.flatMap(([sc, ref]) => [...emEnc(sc), ref]),
+  spec.retLists.length,
+  ...spec.retLists.flatMap((r) => [r.length, ...r]),
+  spec.ops.length,
+  ...spec.ops.flatMap(emOpTok),
+];
+
+function emRun(spec) {
+  const trace = [];
+  const ev = (...t) => trace.push(...t);
+  globalThis.__EMTRACE = trace;
+  globalThis.__EMREF = 0;
+  globalThis.__EMRET = spec.retLists.map((r) => [...r]);
+  const origWarn = console.warn;
+  console.warn = (m) => ev(4, 5, ...encS(String(m)));
+  const players = spec.players.map(([cid, ref, info]) => {
+    const p = { __ref: ref };
+    if (info !== undefined) {
+      p.info = () => {
+        ev(3, ref, info);
+        return { __info: info };
+      };
+    }
+    return [cid, p];
+  });
+  const mg = {
+    playerByClientID(cid) {
+      const hit = players.find(([c]) => c === cid);
+      const p = hit ? hit[1] : undefined;
+      ev(1, ...emEnc(cid), ...(p ? [7, p.__ref] : [0]));
+      return p;
+    },
+    nations() {
+      ev(10, spec.nations.length, ...spec.nations.map(([, r]) => r));
+      return spec.nations.map(([sc, ref]) => ({ __nation: true, __ref: ref, spawnCell: sc }));
+    },
+  };
+  const payload = [];
+  let ex = null;
+  for (const op of spec.ops) {
+    const k = op[0];
+    let status = 0;
+    let refs = [];
+    try {
+      if (k === 0) {
+        const h = Util.simpleHash(spec.gameID);
+        ev(0, h, h + 1);
+        ex = new Executor(mg, spec.gameID, spec.clientID, spec.purchased);
+      } else if (k === 1) {
+        const out = ex.createExecs({ intents: op[1] });
+        refs = out.map((e) => e.__ref);
+      } else if (k === 2) {
+        refs = [ex.createExec(op[1]).__ref];
+      } else if (k === 3) {
+        refs = ex.spawnTribes(op[1]).map((e) => e.__ref);
+      } else if (k === 4) {
+        refs = ex.spawnPlayers().map((e) => e.__ref);
+      } else {
+        refs = ex.nationExecutions().map((e) => e.__ref);
+      }
+    } catch (e) {
+      status = 1;
+      refs = [];
+      ev(5, op[0], 5, ...encS(String(e.message)));
+    }
+    payload.push(k, status, refs.length, ...refs);
+  }
+  console.warn = origWarn;
+  return [trace.length, ...trace, ...payload];
+}
+
+function captureEM(name, spec) {
+  emScenarios.push({
+    name: emname(name),
+    kind: 0,
+    args: emArgs(spec).flat(Infinity).map(uenc),
+    res: emRun(spec).flat(Infinity).map(uenc),
+  });
+}
+
+const emSpec = (o) => ({
+  gameID: "abcd1234",
+  clientID: undefined,
+  purchased: undefined,
+  players: [["c1", 1, 51], ["c2", 2, 52]],
+  nations: [],
+  retLists: [],
+  ops: [[0]],
+  ...o,
+});
+
+// 1. Plain ctor: the real simpleHash + 1 seed rides into the trace; the
+//    clientID / purchased ctor args are stored and never read (no events).
+captureEM("em_ctor_plain", emSpec({ ops: [[0]] }));
+
+// 2. Ctor with a hash near the i32 sign bit: the f64 `+ 1` and the PseudoRandom
+//    `| 0` truncation boundary. null clientID + explicit empty purchased.
+captureEM("em_ctor_long_id", emSpec({
+  gameID: "OpenFrontIO!!9x",
+  clientID: null,
+  purchased: [],
+  ops: [[0]],
+}));
+
+// 3. createExecs over three intents: the map order and the shared refid
+//    counter (1, 2, 3) pin the sequential construction.
+captureEM("em_createexecs_three", emSpec({
+  ops: [
+    [0],
+    [1, [
+      { type: "attack", clientID: "c1", troops: 10, targetID: "p2" },
+      { type: "emoji", clientID: "c2", recipient: "p1", emoji: 7 },
+      { type: "delete_unit", clientID: "c1", unitId: 42 },
+    ]],
+  ],
+}));
+
+// 4. Empty turn: map over zero intents, no facade calls at all.
+captureEM("em_createexecs_empty", emSpec({ ops: [[0], [1, []]] }));
+
+// 5. !player branch: playerByClientID misses -> console.warn message with the
+//    clientID interpolated + NoOpExecution (tag 0, no args).
+captureEM("em_player_notfound", emSpec({
+  ops: [
+    [0],
+    [2, { type: "attack", clientID: "ghost99", troops: 5, targetID: null }],
+  ],
+}));
+
+// 6. Missing clientID field: the template interpolates `undefined` and the
+//    facade lookup still misses -> warn "player with clientID undefined...".
+captureEM("em_player_undef_cid", emSpec({
+  ops: [[0], [2, { type: "quick_chat", quickChatKey: "hello" }]],
+}));
+
+// 7. attack arg shapes: number troops + string targetID, then null troops /
+//    null targetID (the schema's nullable pair) ride through untouched.
+captureEM("em_case_attack", emSpec({
+  ops: [
+    [0],
+    [1, [
+      { type: "attack", clientID: "c1", troops: 2.5, targetID: "p7" },
+      { type: "attack", clientID: "c2", troops: null, targetID: null },
+    ]],
+  ],
+}));
+
+// 8. cancel_attack (attackID string) + cancel_boat (unitID number).
+captureEM("em_case_cancel", emSpec({
+  ops: [
+    [0],
+    [1, [
+      { type: "cancel_attack", clientID: "c1", attackID: "atk-001" },
+      { type: "cancel_boat", clientID: "c2", unitID: 13 },
+    ]],
+  ],
+}));
+
+// 9. move_warship: unitIds array + tile.
+captureEM("em_case_move_warship", emSpec({
+  ops: [
+    [0],
+    [2, { type: "move_warship", clientID: "c1", unitIds: [3, 4, 5], tile: 999 }],
+  ],
+}));
+
+// 10. spawn: gameID string, the player.info() facade call (ev 3) and the
+//     literal `true` from the fromIntent gate arg.
+captureEM("em_case_spawn", emSpec({
+  ops: [
+    [0],
+    [2, { type: "spawn", clientID: "c2", tile: 1234 }],
+  ],
+}));
+
+// 11. boat: dst + fractional troops.
+captureEM("em_case_boat", emSpec({
+  ops: [
+    [0],
+    [2, { type: "boat", clientID: "c1", dst: 77, troops: 0.5 }],
+  ],
+}));
+
+// 12. The four alliance cases: allianceRequest / allianceReject (requestor
+//     FIRST) / breakAlliance / allianceExtension.
+captureEM("em_case_alliance", emSpec({
+  ops: [
+    [0],
+    [1, [
+      { type: "allianceRequest", clientID: "c1", recipient: "p2" },
+      { type: "allianceReject", clientID: "c2", requestor: "p1" },
+      { type: "breakAlliance", clientID: "c1", recipient: "p2" },
+      { type: "allianceExtension", clientID: "c2", recipient: "p1" },
+    ]],
+  ],
+}));
+
+// 13. targetPlayer + emoji (recipient string, emoji number).
+captureEM("em_case_target_emoji", emSpec({
+  ops: [
+    [0],
+    [1, [
+      { type: "targetPlayer", clientID: "c1", target: "p9" },
+      { type: "emoji", clientID: "c2", recipient: "AllPlayers", emoji: 0 },
+    ]],
+  ],
+}));
+
+// 14. donate_troops + donate_gold with the nullable float shapes (null, -0).
+captureEM("em_case_donate", emSpec({
+  ops: [
+    [0],
+    [1, [
+      { type: "donate_troops", clientID: "c1", recipient: "p2", troops: -0 },
+      { type: "donate_gold", clientID: "c2", recipient: "p1", gold: null },
+    ]],
+  ],
+}));
+
+// 15. embargo + embargo_all: the action string union.
+captureEM("em_case_embargo", emSpec({
+  ops: [
+    [0],
+    [1, [
+      { type: "embargo", clientID: "c1", targetID: "p3", action: "start" },
+      { type: "embargo_all", clientID: "c2", action: "stop" },
+    ]],
+  ],
+}));
+
+// 16. build_unit's five-field order incl. the two optional fields: present
+//     true/1 vs. absent -> undefined rides as the [0] sentinel.
+captureEM("em_case_build_unit", emSpec({
+  ops: [
+    [0],
+    [1, [
+      { type: "build_unit", clientID: "c1", unit: "Port", tile: 5, rocketDirectionUp: true, amount: 1 },
+      { type: "build_unit", clientID: "c2", unit: "City", tile: 6 },
+    ]],
+  ],
+}));
+
+// 17. upgrade_structure (unitId + optional amount) + delete_unit.
+captureEM("em_case_upgrade_delete", emSpec({
+  ops: [
+    [0],
+    [1, [
+      { type: "upgrade_structure", clientID: "c1", unitId: 8, amount: 3 },
+      { type: "upgrade_structure", clientID: "c2", unitId: 9 },
+      { type: "delete_unit", clientID: "c1", unitId: 10 },
+    ]],
+  ],
+}));
+
+// 18. quick_chat: optional target present vs. absent.
+captureEM("em_case_quick_chat", emSpec({
+  ops: [
+    [0],
+    [1, [
+      { type: "quick_chat", clientID: "c1", recipient: "p2", quickChatKey: "attack", target: "p3" },
+      { type: "quick_chat", clientID: "c2", recipient: "AllPlayers", quickChatKey: "defend" },
+    ]],
+  ],
+}));
+
+// 19. mark_disconnected (bool both ways) + toggle_pause.
+captureEM("em_case_disconnect_pause", emSpec({
+  ops: [
+    [0],
+    [1, [
+      { type: "mark_disconnected", clientID: "c1", isDisconnected: true },
+      { type: "mark_disconnected", clientID: "c2", isDisconnected: false },
+      { type: "toggle_pause", clientID: "c1", paused: true },
+    ]],
+  ],
+}));
+
+// 20. default throw: the template interpolates the intent OBJECT ->
+//     "intent type [object Object] not found" pinned in the trace.
+captureEM("em_default_throw", emSpec({
+  ops: [
+    [0],
+    [2, { type: "bogus", clientID: "c1", x: 1 }],
+  ],
+}));
+
+// 21. Missing type field: switch(undefined) falls into the default throw.
+captureEM("em_default_missing_type", emSpec({
+  ops: [[0], [2, { clientID: "c1" }]] ,
+}));
+
+// 22. createExecs with a throwing second intent: the first execution's facade
+//     trace + construction stay, then the throw aborts the map (status 1).
+captureEM("em_default_after_ok", emSpec({
+  ops: [
+    [0],
+    [1, [
+      { type: "delete_unit", clientID: "c1", unitId: 1 },
+      { type: "nope", clientID: "c2" },
+    ]],
+  ],
+}));
+
+// 23. spawnTribes: nations with number / null / undefined / string spawnCells
+//     — only undefined is filtered out; the TribeSpawner ctor + spawnTribes
+//     call + scripted return refs all ride the trace.
+captureEM("em_spawn_tribes_cells", emSpec({
+  nations: [[42, 91], [null, 92], [undefined, 93], ["s7", 94], [-0, 95]],
+  retLists: [[101, 102]],
+  ops: [[0], [3, 2]],
+}));
+
+// 24. spawnTribes with no nations: cells [] and an empty return.
+captureEM("em_spawn_tribes_empty", emSpec({
+  nations: [],
+  retLists: [[]],
+  ops: [[0], [3, 0]],
+}));
+
+// 25. spawnTribes carries the ctor purchasedTribeNames into the call args:
+//     the default-parameter path (undefined -> []) and the explicit list.
+captureEM("em_spawn_tribes_purchased", emSpec({
+  purchased: ["nordic", "desert"],
+  nations: [[7, 91]],
+  retLists: [[111]],
+  ops: [[0], [3, 1]],
+}));
+
+// 26. spawnPlayers: PlayerSpawner ctor + call + return refs.
+captureEM("em_spawn_players", emSpec({
+  nations: [[1, 91], [2, 92]],
+  retLists: [[201, 202, 203]],
+  ops: [[0], [4]],
+}));
+
+// 27. nationExecutions: one NationExecution(gameID, nation) per nation in
+//     iteration order, nation refs encoded [12, ref].
+captureEM("em_nation_execs", emSpec({
+  nations: [[10, 91], [20, 92], [30, 93]],
+  ops: [[0], [5]],
+}));
+
+// 28. Mixed sequence: ctor, createExecs, spawnTribes, nationExecutions share
+//     one refid counter across ops.
+captureEM("em_mixed_sequence", emSpec({
+  nations: [[5, 91], [undefined, 92]],
+  retLists: [[301]],
+  ops: [
+    [0],
+    [2, { type: "spawn", clientID: "c1", tile: 88 }],
+    [3, 1],
+    [5],
+  ],
+}));
+
 // --- PatternDecoder scenario runner -------------------------------------------
 // Exercises the real PatternDecoder.ts decode + isPrimary through the shared
 // run_op runner. The base64url layer is not ported: bytes cross as
@@ -8953,6 +9389,7 @@ const structures = {
   apischemas: asSchemasScenarios,
   terrainmaploader: tmlScenarios,
   nationutils: nuScenarios,
+  executionmanager: emScenarios,
   sharedwatercache: swcScenarios,
   statsimpl: siScenarios,
   waterpathmemo: wpmScenarios,
@@ -11435,6 +11872,44 @@ for (const s of structures.nationutils) {
 }
 L.push("pub const NU_SCENARIOS: &[NuScenario] = &[");
 for (const s of structures.nationutils) L.push(`    ${s.name.toUpperCase()},`);
+L.push("];");
+L.push("");
+
+L.push("/// execution/ExecutionManager.ts scenario: one `execution_manager::run_op(0,");
+L.push("/// args)` call replaying a whole scripted Executor op sequence against the");
+L.push("/// Game-facade mock + construction-recorder execution stubs. args: `[0,");
+L.push("/// gameIDEnc,clientIDEnc,purchasedEnc,nPlayers,(cidEnc,ref,infoEnc)*,");
+L.push("/// nNations,(spawnCellEnc,ref)*,nRet,(len,refs*)*,nOps,(op)*]` (op 0 ctor,");
+L.push("/// 1 createExecs [1,n,(intent)*], 2 createExec [2,intent], 3 spawnTribes");
+L.push("/// [3,numEnc], 4 spawnPlayers [4], 5 nationExecs [5]; intent [typeEnc,n,");
+L.push("/// (keyEnc,valEnc)*]; enc 0 undefined | 1 null | 2 true | 3 false | 4 num |");
+L.push("/// 5 str | 6 arr | 7 player ref | 8 info ref | 12 nation ref). res:");
+L.push("/// `[traceLen,(trace)*,(opResult)*]` - trace events 0 ctor seed [0,hash,");
+L.push("/// seed], 1 playerByClientID [1,cidEnc,retEnc], 2 exec ctor [2,tag,args*],");
+L.push("/// 3 info() [3,pref,iref], 4 warn [4,msgEnc], 5 throw [5,opKind,msgEnc],");
+L.push("/// 6 TribeSpawner ctor [6,gameIDEnc,cellsEnc], 7 spawnTribes [7,numEnc,");
+L.push("/// namesEnc,len,refs*], 8 PlayerSpawner ctor [8,gameIDEnc], 9 spawnPlayers");
+L.push("/// [9,len,refs*], 10 nations [10,n,refs*]; opResult [opKind,status,n,refs*].");
+L.push("/// Strings cross as `[len,u0,..]` UTF-16.");
+L.push("pub struct EmScenario {");
+L.push("    pub name: &'static str,");
+L.push("    pub kind: u8,");
+L.push("    pub args: &'static [f64],");
+L.push("    pub res: &'static [f64],");
+L.push("}");
+L.push("");
+for (const s of structures.executionmanager) {
+  const id = s.name.toUpperCase();
+  L.push(`pub const ${id}: EmScenario = EmScenario {`);
+  L.push(`    name: "${s.name}",`);
+  L.push(`    kind: ${s.kind}u8,`);
+  L.push(`    args: &[${s.args.map(utilResLit).join(", ")}],`);
+  L.push(`    res: &[${s.res.map(utilResLit).join(", ")}],`);
+  L.push("};");
+  L.push("");
+}
+L.push("pub const EM_SCENARIOS: &[EmScenario] = &[");
+for (const s of structures.executionmanager) L.push(`    ${s.name.toUpperCase()},`);
 L.push("];");
 L.push("");
 

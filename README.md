@@ -146,6 +146,10 @@ rust/
 │   │   │                          .ts (nation-AI shared-water TTL cache;
 │   │   │                          Game / Player facades scripted-mocked with
 │   │   │                          a pinned call trace)
+│   │   ├── execution_manager.rs   port of execution/ExecutionManager.ts
+│   │   │                          (Executor intent dispatcher; the 24
+│   │   │                          Execution classes stubbed as construction
+│   │   │                          recorders over a pinned trace)
 │   │   ├── wasm_probe.rs          `extern "C"` surface, feature-gated
 │   │   └── pathfinding/
 │   │       ├── mod.rs
@@ -1061,6 +1065,26 @@ desync, not a rounding nit. Two things enforce that here:
     (tag + arguments + return) pinned in the res trace; `map().waterVersion()`
     collapses to one event (the intermediate `map()` is unobservable). 19
     scenarios (1,860 result tokens).
+55. **`execution/ExecutionManager.ts`** (`execution_manager`) — the `Executor`
+    client-intent dispatcher. The 24 `XxxExecution` classes and the
+    `TribeSpawner` / `PlayerSpawner` helpers are *not* ported (existing
+    exclusion) — they are stubbed as construction recorders, so every
+    `new XxxExecution(args…)` lands in the trace as `[2, tag, args…]` and the
+    orchestration replays token-for-token: the `playerByClientID` facade call,
+    the `!player` warn branch (the warn message interpolates the clientID
+    *field* — `undefined` / `null` spell themselves), the per-case argument
+    extraction order (22 cases, e.g. `spawn` reads `gameID` / `player.info()` /
+    `tile` / `true` — the `info()` facade call is pinned only where it
+    happens), the `nations().map(n => n.spawnCell).filter(c => c !==
+    undefined)` pipeline (null and `-0` survive), the `purchasedTribeNames =
+    []` default parameter, and the default `throw` whose template literal
+    stringifies the intent *object* — `"[object Object]"` for a plain literal
+    (pinned). The ctor pins the real `simpleHash(gameID) + 1` seed feeding the
+    (never-used) `PseudoRandom` through the ported `util::simple_hash_units` /
+    `pseudo_random::PseudoRandom`; a throw inside `createExecs` aborts the
+    `map` (already-built executions dropped, remaining intents skipped, never
+    dispatched). The switch matches `intent.type` with `===` — a missing type
+    falls through to the throw. 28 scenarios (1,359 result tokens).
 
 Regenerate whenever a ported source changes:
 
@@ -1094,7 +1118,7 @@ node rust/tools/run_wasm_parity.mjs
 
 `wasm-probe` exposes the ported functions through `extern "C"` scalar
 entrypoints (`src/wasm_probe.rs`); the runner imports `data/vectors.json` and
-compares every value. Last run: **115,454 comparisons, all bit-identical**.
+compares every value. Last run: **116,813 comparisons, all bit-identical**.
 
 ### Windows: the linker environment
 

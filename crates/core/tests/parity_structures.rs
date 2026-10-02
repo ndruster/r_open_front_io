@@ -2430,6 +2430,25 @@ fn replay_nationutils_scenarios() {
     }
 }
 
+// execution/ExecutionManager.ts: replay the scripted-mock Executor scenarios
+// (the ctor simpleHash+1 seed pin, the createExecs order, every switch case's
+// arg-extraction order, the !player warn/NoOp branch, the default-throw
+// "[object Object]" message, the spawnTribes nations/map/filter pipeline into
+// the TribeSpawner stub, the PlayerSpawner stub and the nationExecutions loop)
+// through the shared `run_op` runner and compare the flat token streams
+// (facade + construction events pinned token-by-token, -0 through obj_is).
+#[test]
+fn replay_executionmanager_scenarios() {
+    use openfront_core::execution_manager::run_op;
+    for s in vectors::EM_SCENARIOS {
+        let got = run_op(s.kind, s.args);
+        assert_eq!(got.len(), s.res.len(), "{} res len: got {got:?} want {:?}", s.name, s.res);
+        for (j, (g, w)) in got.iter().zip(s.res.iter()).enumerate() {
+            assert!(obj_is(*g, *w), "{} res[{j}]: got {g} want {w}", s.name);
+        }
+    }
+}
+
 // execution/nation/SharedWaterCache.ts: replay the scripted-mock shared-water
 // cache scenarios (TTL rebuild from -Infinity, same-tick hit, the 29/30/31
 // boundaries, the tick-backwards no-rebuild, the strict-`===` NaN-never-hits

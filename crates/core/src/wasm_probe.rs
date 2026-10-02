@@ -4208,3 +4208,31 @@ pub extern "C" fn probe_tml_op(kind: u32) -> usize {
 pub extern "C" fn probe_tml_out_at(i: usize) -> f64 {
     TML_OUT.with(|o| o.borrow()[i])
 }
+
+// ====== P48: NationUtils.ts runtime subset (nation_utils) ====================
+
+thread_local! {
+    static NU_ARGS: std::cell::RefCell<Vec<f64>> = const { std::cell::RefCell::new(Vec::new()) };
+    static NU_OUT: std::cell::RefCell<Vec<f64>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
+/// Push one flat token (script value, player id, string length, code unit…).
+#[no_mangle]
+pub extern "C" fn probe_nu_arg(v: f64) {
+    NU_ARGS.with(|t| t.borrow_mut().push(v));
+}
+
+/// Run `nation_utils::run_op(kind, args)`; returns the result-stream length.
+#[no_mangle]
+pub extern "C" fn probe_nu_op(kind: u32) -> usize {
+    let a = NU_ARGS.with(|t| std::mem::take(&mut *t.borrow_mut()));
+    let out = crate::nation_utils::run_op(kind as u8, &a);
+    let len = out.len();
+    NU_OUT.with(|o| *o.borrow_mut() = out);
+    len
+}
+
+#[no_mangle]
+pub extern "C" fn probe_nu_out_at(i: usize) -> f64 {
+    NU_OUT.with(|o| o.borrow()[i])
+}

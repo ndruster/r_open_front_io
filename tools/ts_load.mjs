@@ -1582,6 +1582,30 @@ function prepare(rel) {
     );
   }
 
+  if (rel.endsWith("execution/nation/NationUtils.ts")) {
+    // Cell / Structures / UnitType are *value* uses (`new Cell`, the
+    // `Structures.has` membership and the DefensePost / MissileSilo string
+    // comparisons) and ride on the prepared Game.ts copy (UnitType inlined as
+    // a plain object); Game / Player / TileRef / PseudoRandom are type-only
+    // annotations erased by strip mode -> dropped outright (the capture feeds
+    // scripted mocks for the facades). calculateBoundingBox is a *value* use
+    // redirected to the prepared Util.ts copy (its own enum-inlined
+    // calculateBoundingBox + TileSet instanceof path).
+    if (!prepared.has("src/core/game/Game.ts")) prepare("src/core/game/Game.ts");
+    const nuUtilRel = "src/core/Util.ts";
+    if (!prepared.has(nuUtilRel)) prepare(nuUtilRel);
+    out = must(
+      out,
+      'import { Cell, Game, Player, Structures, UnitType } from "../../game/Game";\n' +
+        'import { TileRef } from "../../game/GameMap";\n' +
+        'import { PseudoRandom } from "../../PseudoRandom";\n' +
+        'import { calculateBoundingBox } from "../../Util";\n',
+      `import { Cell, Structures, UnitType } from "./${prepared.get("src/core/game/Game.ts")}";\n` +
+        `import { calculateBoundingBox } from "./${prepared.get(nuUtilRel)}";\n`,
+      "NationUtils imports",
+    );
+  }
+
   if (rel.endsWith("game/Maps.gen.ts")) {
     // Node's strip-only TS loader rejects `export enum`. GameMapType is a
     // string enum (member name = the folder id, value = the canonical wire

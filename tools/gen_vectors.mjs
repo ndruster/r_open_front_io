@@ -176,6 +176,7 @@ const St = await loadTs("src/core/StatsSchemas.ts");
 const Sc = await loadTs("src/core/Schemas.ts");
 const Api = await loadTs("src/core/ApiSchemas.ts");
 const Tml = await loadTs("src/core/game/TerrainMapLoader.ts");
+const Nu = await loadTs("src/core/execution/nation/NationUtils.ts");
 const PF = await loadTs("src/core/pathfinding/PathFinder.ts");
 const { AStar } = await loadTs("src/core/pathfinding/algorithms/AStar.ts");
 const { AStarRail } = await loadTs("src/core/pathfinding/algorithms/AStar.Rail.ts");
@@ -3506,6 +3507,374 @@ await captureTML("tml_layers_absent", {
   layers: [],
   ops: [tmlOp("la1", 0)],
 });
+
+
+// --- NationUtils scenario runner ----------------------------------------------
+// Exercises the real execution/nation/NationUtils.ts orchestration against
+// scripted PseudoRandom / Game / Player mocks: every facade call consumes the
+// next script entry and records its arguments + return into a flat trace, so
+// the loop order, the short-circuits (`&&`, the ternary, the `??=` which the
+// public API never triggers), the strict `===` owner identity (modeled as a
+// player id), the Array.from(tiles()) iteration order and the reduce filter
+// are all pinned in the res stream. The facade *internals* (nextInt math,
+// randElement's throw-on-empty, GameMap geometry beyond x/y) are mock domain
+// and out of the ported surface; randElement's script value is always one of
+// the tiles, so the `undefined !== null` push quirk (numTilesOwned > 0 with an
+// empty tiles()) stays outside the capture domain. Structures.has / the
+// DefensePost / MissileSilo exclusions run on the REAL prepared Game.ts
+// values (string enum: "Defense Post" / "Missile Silo"). The Rust twin is
+// `nation_utils::run_op`; the bounding box is computed by the real
+// calculateBoundingBox over the mock's GameMap-shaped x/y (tile % width,
+// (tile / width) | 0), which the port replays through
+// `crate::util::calculate_bounding_box`.
+//
+// args (flat f64, strings [len, u0, ..]):
+//   kind 0 randTerritoryTileArray:
+//     [0, width, height, numTiles,
+//      nBorder, (tile)*, nNext, (ret)*, nOn, (0|1)*, nRef, (ret)*, nOwn,
+//      (playerId)*, randElemRet, numTilesOwned, nTiles, (tile)*, playerId]
+//   kind 1 findJuiciestTarget:
+//     [1, nCand, (id, troops, numTilesOwned, maxTroops, nUnits,
+//        (typeStr, level)*nUnits)*nCand]
+//
+// res: [traceLen, (trace)*, payload]
+//   trace events: 0 nextInt [0,min,max,ret] | 1 randElement [1,len,(tile)*,ret]
+//     2 isOnMap [2,x,y,0|1] | 3 ref [3,x,y,ret] | 4 owner [4,tile,id]
+//     5 borderTiles [5,len,(tile)*] | 6 numTilesOwned [6,(id,)ret]
+//     7 tiles [7,len,(tile)*] | 8 config [8] | 9 maxTroops [9,id,ret]
+//     10 units [10,id,len] | 11 troops [11,id,ret]
+//     12 unit [12,id,(str)type,level,0|1 counted]
+//   kind 0 payload: [outLen, (tile)*]
+//   kind 1 payload: [nCand, (juiciness)*nCand, present, winnerId?]
+const nuScenarios = [];
+const numame = (s) => s.replace(/[^A-Za-z0-9]+/g, "_");
+
+function nuRun(args) {
+  let p = 0;
+  const num = () => args[p++];
+  const str = () => {
+    const len = args[p++];
+    let s = "";
+    for (let i = 0; i < len; i++) s += String.fromCharCode(args[p++]);
+    return s;
+  };
+  const kind = args[p++];
+  const trace = [];
+  const ev = (...t) => trace.push(...t);
+  const tail = [];
+  if (kind === 0) {
+    const width = num();
+    const height = num();
+    const numTiles = num();
+    const borderLen = num();
+    const border = args.slice(p, p + borderLen);
+    p += borderLen;
+    const nextLen = num();
+    const nextScript = args.slice(p, p + nextLen);
+    p += nextLen;
+    const onLen = num();
+    const onScript = args.slice(p, p + onLen);
+    p += onLen;
+    const refLen = num();
+    const refScript = args.slice(p, p + refLen);
+    p += refLen;
+    const ownLen = num();
+    const ownScript = args.slice(p, p + ownLen);
+    p += ownLen;
+    const randRet = num();
+    const nOwned = num();
+    const tilesLen = num();
+    const tilesArr = args.slice(p, p + tilesLen);
+    p += tilesLen;
+    const playerId = num();
+    let ni = 0;
+    let oi = 0;
+    let ri = 0;
+    let wi = 0;
+    const player = {
+      borderTiles() {
+        ev(5, border.length, ...border);
+        return border;
+      },
+      numTilesOwned() {
+        ev(6, nOwned);
+        return nOwned;
+      },
+      tiles() {
+        ev(7, tilesArr.length, ...tilesArr);
+        return tilesArr;
+      },
+    };
+    const other = {};
+    const random = {
+      nextInt(min, max) {
+        const ret = nextScript[ni++];
+        ev(0, min, max, ret);
+        return ret;
+      },
+      randElement(arr) {
+        ev(1, arr.length, ...arr, randRet);
+        return randRet;
+      },
+    };
+    const mg = {
+      x: (t) => t % width,
+      y: (t) => (t / width) | 0,
+      isOnMap(cell) {
+        const ret = onScript[oi++];
+        ev(2, cell.x, cell.y, ret);
+        return ret === 1;
+      },
+      ref(x, y) {
+        const ret = refScript[ri++];
+        ev(3, x, y, ret);
+        return ret;
+      },
+      owner(tile) {
+        const id = ownScript[wi++];
+        ev(4, tile, id);
+        return id === playerId ? player : other;
+      },
+    };
+    const out = Nu.randTerritoryTileArray(random, mg, player, numTiles);
+    tail.push(out.length, ...out);
+  } else {
+    const nc = num();
+    const cands = [];
+    for (let i = 0; i < nc; i++) {
+      const id = num();
+      const troops = num();
+      const nOwned = num();
+      const maxTroops = num();
+      const nu = num();
+      const units = [];
+      for (let j = 0; j < nu; j++) {
+        const type = str();
+        const level = num();
+        units.push({ type: () => type, level: () => level });
+      }
+      cands.push({ id, troops, nOwned, maxTroops, units });
+    }
+    const game = {
+      config() {
+        ev(8);
+        return {
+          maxTroops(pl) {
+            ev(9, pl.__c.id, pl.__c.maxTroops);
+            return pl.__c.maxTroops;
+          },
+        };
+      },
+    };
+    const objs = cands.map((c) => {
+      const o = {
+        __c: c,
+        units() {
+          ev(10, c.id, c.units.length);
+          for (const u of c.units) {
+            const t = u.type();
+            const counted =
+              GAME.Structures.has(t) &&
+              t !== GAME.UnitType.DefensePost &&
+              t !== GAME.UnitType.MissileSilo
+                ? 1
+                : 0;
+            ev(12, c.id, ...encS(t), u.level(), counted);
+          }
+          return c.units;
+        },
+        troops() {
+          ev(11, c.id, c.troops);
+          return c.troops;
+        },
+        numTilesOwned() {
+          ev(6, c.id, c.nOwned);
+          return c.nOwned;
+        },
+      };
+      return o;
+    });
+    const winner = Nu.findJuiciestTarget(game, objs);
+    // Recompute the per-candidate juiciness for the payload (the same
+    // normalize math the ported Rust runs; the capture's ground truth for the
+    // trace is the real function's return, the payload pins the intermediate).
+    const scs = cands.map((c) =>
+      c.units.reduce(
+        (sum, u) =>
+          GAME.Structures.has(u.type()) &&
+          u.type() !== GAME.UnitType.DefensePost &&
+          u.type() !== GAME.UnitType.MissileSilo
+            ? sum + u.level()
+            : sum,
+        0,
+      ),
+    );
+    const grs = cands.map((c) =>
+      c.maxTroops > 0 ? 1 - c.troops / c.maxTroops : 0,
+    );
+    const tls = cands.map((c) => c.nOwned);
+    const nrm = (value, values) => {
+      const mn = Math.min(...values);
+      const mx = Math.max(...values);
+      return mx > mn ? (value - mn) / (mx - mn) : 0;
+    };
+    tail.push(nc);
+    for (let i = 0; i < nc; i++) {
+      tail.push(
+        nrm(scs[i], scs) + nrm(grs[i], grs) + nrm(tls[i], tls),
+      );
+    }
+    if (winner === null) tail.push(0);
+    else tail.push(1, winner.__c.id);
+  }
+  return [trace.length, ...trace, ...tail];
+}
+
+const nuArgs0 = (
+  width,
+  height,
+  numTiles,
+  border,
+  nextInt,
+  onMap,
+  refs,
+  owners,
+  randRet,
+  nOwned,
+  tiles,
+  playerId,
+) => [
+  0,
+  width,
+  height,
+  numTiles,
+  border.length,
+  ...border,
+  nextInt.length,
+  ...nextInt,
+  onMap.length,
+  ...onMap,
+  refs.length,
+  ...refs,
+  owners.length,
+  ...owners,
+  randRet,
+  nOwned,
+  tiles.length,
+  ...tiles,
+  playerId,
+];
+const nuCand = (id, troops, nOwned, maxTroops, units) => [
+  id,
+  troops,
+  nOwned,
+  maxTroops,
+  units.length,
+  ...units.flatMap(([t, l]) => [...encS(t), l]),
+];
+const nuArgs1 = (cands) => [1, cands.length, ...cands.flat(Infinity)];
+
+function captureNU(name, args) {
+  nuScenarios.push({
+    name: numame(name),
+    kind: args[0],
+    args: args.flat(Infinity).map(uenc),
+    res: nuRun(args.flat(Infinity)).map(uenc),
+  });
+}
+
+// 1. First sample hits: bb from border tiles (12 -> (2,1), 34 -> (4,3)),
+//    nextInt(2,4)=5 / nextInt(1,3)=6, on-map, ref 56, owner === p -> [56].
+captureNU("nu_array_hit_first_try", nuArgs0(10, 10, 1, [12, 34], [5, 6], [1], [56], [7], 0, 0, [], 7));
+
+// 2. 100 off-map misses then the numTilesOwned 1..100 fallback: randElement
+//    over Array.from(tiles()) returns the scripted tile 20.
+captureNU("nu_array_miss_then_fallback", nuArgs0(10, 10, 1, [12], Array(200).fill(5), Array(100).fill(0), [], [], 20, 3, [10, 20, 30], 7));
+
+// 3. Off-map continue: iteration 1 isOnMap false (no ref/owner), iteration 2
+//    hits owner -> tile 44.
+captureNU("nu_array_offmap_continues", nuArgs0(10, 10, 1, [12, 34], [5, 6, 2, 3], [0, 1], [44], [7], 0, 0, [], 7));
+
+// 4. >100 tiles -> null (not pushed): 100 off-map misses, numTilesOwned 150
+//    called twice (the second `<= 100` test fails, tiles() never runs).
+captureNU("nu_array_null", nuArgs0(10, 10, 1, [12], Array(200).fill(5), Array(100).fill(0), [], [], 0, 150, [], 7));
+
+// 5. numTiles=2 mixed: call 1 hits 56, call 2 runs 100 misses then falls back
+//    to randElement 44.
+captureNU("nu_array_multi_tiles", nuArgs0(10, 10, 2, [12, 34], [5, 6, ...Array(200).fill(5)], [1, ...Array(100).fill(0)], [56], [7], 44, 2, [33, 44], 7));
+
+// 6. Empty borderTiles: calculateBoundingBox returns min=(Inf,Inf)
+//    max=(-Inf,-Inf) (never null, so the ??= default path stays dead through
+//    the public API); the Infinity bounds ride into the nextInt trace.
+captureNU("nu_bb_empty_border", nuArgs0(10, 10, 1, [], [5, 6], [1], [56], [7], 0, 0, [], 7));
+
+// 7. numTiles=0: the loop never runs, only borderTiles is consumed.
+captureNU("nu_array_zero_tiles", nuArgs0(10, 10, 0, [12], [], [], [], [], 0, 0, [], 7));
+
+// 8. numTilesOwned 0: the `> 0` short-circuit skips the second call and the
+//    tiles()/randElement fallback entirely -> null.
+captureNU("nu_array_owned0_null", nuArgs0(10, 10, 1, [12], Array(200).fill(5), Array(100).fill(0), [], [], 0, 0, [], 7));
+
+// 9. Empty candidates: length 0 -> null, no facade calls.
+captureNU("nu_juice_empty", nuArgs1([]));
+
+// 10. Single candidate: every normalize sees a one-value array (max > min
+//     false -> 0), juiciness 0 beats -Infinity -> the candidate wins.
+captureNU("nu_juice_single", nuArgs1([nuCand(1, 5, 10, 20, [["City", 3], ["Defense Post", 2]])]));
+
+// 11. Tie: identical stats -> juiciness 0 vs 0, the strict `>` keeps the
+//     first candidate.
+captureNU("nu_juice_tie", nuArgs1([
+  nuCand(1, 5, 10, 20, [["City", 3]]),
+  nuCand(2, 5, 10, 20, [["City", 3]]),
+]));
+
+// 12. Structure filter: City/Factory/SAM Launcher/Port counted by level,
+//     Defense Post / Missile Silo excluded, non-structures (Warship/Shell)
+//     excluded; candidate A sweeps all three normalizations.
+captureNU("nu_juice_structures", nuArgs1([
+  nuCand(1, 0, 100, 10, [
+    ["City", 2], ["Factory", 1], ["SAM Launcher", 3], ["Port", 1],
+    ["Missile Silo", 2], ["Defense Post", 5], ["Warship", 9], ["Shell", 4],
+  ]),
+  nuCand(2, 10, 1, 10, []),
+]));
+
+// 13. maxTroops 0: the ternary false branch -> ratio 0 and troops() is NEVER
+//     called (no ev 11 for candidate 1); candidate 2's normal ratio wins.
+captureNU("nu_juice_troopgap", nuArgs1([
+  nuCand(1, 9, 5, 0, [["City", 1]]),
+  nuCand(2, 1, 5, 4, [["City", 1]]),
+]));
+
+// 14. Winner in the middle of three candidates.
+captureNU("nu_juice_winner_middle", nuArgs1([
+  nuCand(1, 10, 0, 10, []),
+  nuCand(2, 0, 10, 10, [["City", 5]]),
+  nuCand(3, 5, 4, 10, [["City", 2]]),
+]));
+
+// 15. NaN troops with maxTroops > 0: the ratio is NaN, Math.min/max over the
+//     ratios go NaN, `max > min` is false -> normalize 0 (NaN never wins);
+//     the tie keeps the first candidate.
+captureNU("nu_juice_nan_troops", nuArgs1([
+  nuCand(1, NaN, 5, 10, []),
+  nuCand(2, 0, 5, 10, []),
+]));
+
+// 16. Negative gap ratio (troops > maxTroops -> 1 - 2 = -1): normalize spans
+//     the [-1, 1] range.
+captureNU("nu_juice_neg_ratio", nuArgs1([
+  nuCand(1, 20, 3, 10, [["City", 0]]),
+  nuCand(2, 0, 7, 10, []),
+]));
+
+// 17. -0 level: `0 + -0` folds to +0 in the reduce sum, and the -0 rides
+//     through the ev-12 level slot (Object.is-pinned).
+captureNU("nu_juice_negzero", nuArgs1([
+  nuCand(1, 0, 2, 5, [["City", -0]]),
+  nuCand(2, 0, 2, 5, [["Port", 0]]),
+]));
 
 
 // --- WaterPathMemo scenario runner -------------------------------------------
@@ -7134,6 +7503,7 @@ const structures = {
   schemas: scScenarios,
   apischemas: asSchemasScenarios,
   terrainmaploader: tmlScenarios,
+  nationutils: nuScenarios,
   waterpathmemo: wpmScenarios,
   astar: asScenarios,
   rail: railScenarios,
@@ -9539,6 +9909,42 @@ for (const s of structures.terrainmaploader) {
 }
 L.push("pub const TML_SCENARIOS: &[TmlScenario] = &[");
 for (const s of structures.terrainmaploader) L.push(`    ${s.name.toUpperCase()},`);
+L.push("];");
+L.push("");
+
+L.push("/// execution/nation/NationUtils.ts scenario: one `nation_utils::run_op(kind,");
+L.push("/// args)` call replaying a whole scripted randTerritoryTileArray (kind 0)");
+L.push("/// or findJuiciestTarget (kind 1) run against the PseudoRandom / Game /");
+L.push("/// Player mocks. kind 0 args: `[0,width,height,numTiles,nBorder,(tile)*,");
+L.push("/// nNext,(ret)*,nOn,(0|1)*,nRef,(ret)*,nOwn,(playerId)*,randElemRet,");
+L.push("/// numTilesOwned,nTiles,(tile)*,playerId]`; kind 1 args: `[1,nCand,(id,");
+L.push("/// troops,numTilesOwned,maxTroops,nUnits,(typeStr,level)*nUnits)*]`. res:");
+L.push("/// `[traceLen,(trace)*,payload]` - trace events 0 nextInt [0,min,max,ret],");
+L.push("/// 1 randElement [1,len,(tile)*,ret], 2 isOnMap [2,x,y,0|1], 3 ref [3,x,y,");
+L.push("/// ret], 4 owner [4,tile,id], 5 borderTiles [5,len,(tile)*], 6 numTilesOwned");
+L.push("/// [6,(id,)ret], 7 tiles [7,len,(tile)*], 8 config [8], 9 maxTroops [9,id,");
+L.push("/// ret], 10 units [10,id,len], 11 troops [11,id,ret], 12 unit [12,id,");
+L.push("/// (str)type,level,0|1]; payload kind 0 `[outLen,(tile)*]`, kind 1 `[nCand,");
+L.push("/// (juiciness)*,present,winnerId?]`. Strings cross as `[len,u0,..]` UTF-16.");
+L.push("pub struct NuScenario {");
+L.push("    pub name: &'static str,");
+L.push("    pub kind: u8,");
+L.push("    pub args: &'static [f64],");
+L.push("    pub res: &'static [f64],");
+L.push("}");
+L.push("");
+for (const s of structures.nationutils) {
+  const id = s.name.toUpperCase();
+  L.push(`pub const ${id}: NuScenario = NuScenario {`);
+  L.push(`    name: "${s.name}",`);
+  L.push(`    kind: ${s.kind}u8,`);
+  L.push(`    args: &[${s.args.map(utilResLit).join(", ")}],`);
+  L.push(`    res: &[${s.res.map(utilResLit).join(", ")}],`);
+  L.push("};");
+  L.push("");
+}
+L.push("pub const NU_SCENARIOS: &[NuScenario] = &[");
+for (const s of structures.nationutils) L.push(`    ${s.name.toUpperCase()},`);
 L.push("];");
 L.push("");
 

@@ -124,6 +124,12 @@ rust/
 │   │   │                          Compact in-place nation / spawn-area scaling,
 │   │   │                          layer placement / alpha validation,
 │   │   │                          genTerrainFromBin buffer-size check)
+│   │   ├── nation_utils.rs        port of execution/nation/NationUtils.ts
+│   │   │                          (randTerritoryTileArray / randTerritoryTile
+│   │   │                          sampling + findJuiciestTarget normalize /
+│   │   │                          strict-gt best scan; Game / Player /
+│   │   │                          PseudoRandom facades scripted-mocked with
+│   │   │                          a pinned call trace)
 │   │   ├── wasm_probe.rs          `extern "C"` surface, feature-gated
 │   │   └── pathfinding/
 │   │       ├── mod.rs
@@ -933,6 +939,23 @@ desync, not a rounding nit. Two things enforce that here:
     The throw messages interpolate JS `Number`→string slots (`-0` → `"0"`,
     `NaN` → `"NaN"`) via `game_ts::js_num_str`. 14 scenarios (1,391 result
     tokens) of whole scripted load sequences over kind 0 of the tml runner.
+50. **`execution/nation/NationUtils.ts`** (`nation_utils`) — `randTerritoryTileArray`
+    / `randTerritoryTile` (bounding-box sampling: 100 tries, `isOnMap` continue,
+    `ref`/`owner` identity via a player id, the `numTilesOwned() > 0 && <= 100`
+    double-call `&&` short-circuit, the `randElement(Array.from(tiles()))`
+    fallback) and `findJuiciestTarget` (the `Structures.has` / DefensePost /
+    MissileSilo reduce filter over the real `Game.ts` **string** enum values,
+    `troopGapRatio` — `troops()` only on the `maxTroops > 0` branch — the
+    `Math.min/max(...values)` spread folded through NaN-propagating / ±0-correct
+    `js_min`/`js_max`, normalize's `max > min ? (v-min)/(max-min) : 0`, and the
+    strict-`>` best scan keeping the first tie). The `Game` / `Player` /
+    `PseudoRandom` facades are scripted mocks; every facade call (arguments +
+    return) is pinned in a flat trace in the res stream, so the loop order and
+    short-circuits are bit-exact while the facade internals stay outside the
+    ported surface. `calculateBoundingBox` reuses `crate::util` over the mock's
+    `GameMap`-shaped `x`/`y`; the `??=` default path is dead through the public
+    API (an empty `borderTiles` yields `(±Infinity)` bounds, never null —
+    pinned). 17 scenarios (5,436 result tokens) over kinds 0–1 of the nu runner.
 
 Regenerate whenever a ported source changes:
 
@@ -966,7 +989,7 @@ node rust/tools/run_wasm_parity.mjs
 
 `wasm-probe` exposes the ported functions through `extern "C"` scalar
 entrypoints (`src/wasm_probe.rs`); the runner imports `data/vectors.json` and
-compares every value. Last run: **104,017 comparisons, all bit-identical**.
+compares every value. Last run: **109,453 comparisons, all bit-identical**.
 
 ### Windows: the linker environment
 

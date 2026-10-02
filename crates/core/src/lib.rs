@@ -195,6 +195,12 @@
 //!   interpolation, and `genTerrainFromBin`'s buffer-size check; the
 //!   `loadLayerImages` / `createImageBitmap` branch is host-bound and not
 //!   ported)
+//! * [`nation_utils`] — `src/core/execution/nation/NationUtils.ts` (the
+//!   `randTerritoryTileArray` / `randTerritoryTile` bounding-box sampling
+//!   loop with the `numTilesOwned` 1..100 `randElement` fallback and the
+//!   `findJuiciestTarget` normalize / strict-`>` best scan; the `Game` /
+//!   `Player` / `PseudoRandom` facades are scripted mocks whose call traces
+//!   ride in the res stream, same pattern as `water_path_memo`)
 //!
 //! Two rules govern every future port into this crate:
 //!
@@ -229,6 +235,7 @@ pub mod maps_gen;
 pub mod motion_plans;
 pub mod nation_creation;
 pub mod nation_emoji;
+pub mod nation_utils;
 pub mod pathfinding;
 pub mod pattern_decoder;
 pub mod pseudo_random;

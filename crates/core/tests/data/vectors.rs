@@ -33244,6 +33244,345 @@ pub const RSG_SCENARIOS: &[RsgScenario] = &[
     RSG_FRAC_CELL_10,
 ];
 
+/// One `UnitGrid.ts` op: `kind` + flat `args` / `res` token streams
+/// (see the Rust `RigHarness::run_op` docs). res is `[traceLen,(trace)*,
+/// status,payload*]`; trace events 10 tile [10,refid,tile], 11 type
+/// [11,refid,(str)], 12 isActive [12,refid,0|1], 13 isUnderConstruction
+/// [13,refid,0|1], 14 lastTile [14,refid,tile], 15 owner().id()
+/// [15,refid,id], 16 nearbyUnits predicate [16,refid,distSquared,ret],
+/// 17 anyUnitNearby predicate [17,refid,ret]; status 1 = the JS call
+/// threw (0-row grid[0].length). Strings cross as [len,u0,..] UTF-16.
+pub struct UgOp {
+    pub kind: u8,
+    pub args: &'static [f64],
+    pub res: &'static [f64],
+}
+/// One grid scenario: the op stream replayed against a fresh harness
+/// (kind 0 constructs the grid over a real all-land GameMap).
+pub struct UgScenario {
+    pub name: &'static str,
+    pub ops: &'static [UgOp],
+}
+
+const UG_CTOR_CEIL_0_OPS: &[UgOp] = &[
+    UgOp { kind: 0, args: &[250f64, 150f64], res: &[0f64, 0f64, 2f64, 3f64] },
+    UgOp { kind: 13, args: &[], res: &[0f64, 0f64, 2f64, 3f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64] },
+];
+pub const UG_CTOR_CEIL_0: UgScenario = UgScenario {
+    name: "ug_ctor_ceil_0",
+    ops: UG_CTOR_CEIL_0_OPS,
+};
+
+const UG_CTOR_EXACT_1_OPS: &[UgOp] = &[
+    UgOp { kind: 0, args: &[200f64, 100f64], res: &[0f64, 0f64, 1f64, 2f64] },
+    UgOp { kind: 13, args: &[], res: &[0f64, 0f64, 1f64, 2f64, 0f64, 0f64] },
+];
+pub const UG_CTOR_EXACT_1: UgScenario = UgScenario {
+    name: "ug_ctor_exact_1",
+    ops: UG_CTOR_EXACT_1_OPS,
+};
+
+const UG_CTOR_SMALL_2_OPS: &[UgOp] = &[
+    UgOp { kind: 0, args: &[50f64, 50f64], res: &[0f64, 0f64, 1f64, 1f64] },
+    UgOp { kind: 1, args: &[1f64, 4f64, 67f64, 105f64, 116f64, 121f64, 0f64, 0f64, 1f64, 0f64, 7f64], res: &[0f64, 0f64] },
+    UgOp { kind: 3, args: &[1f64], res: &[17f64, 10f64, 1f64, 0f64, 11f64, 1f64, 4f64, 67f64, 105f64, 116f64, 121f64, 11f64, 1f64, 4f64, 67f64, 105f64, 116f64, 121f64, 0f64] },
+    UgOp { kind: 13, args: &[], res: &[0f64, 0f64, 1f64, 1f64, 1f64, 4f64, 67f64, 105f64, 116f64, 121f64, 1f64, 1f64] },
+];
+pub const UG_CTOR_SMALL_2: UgScenario = UgScenario {
+    name: "ug_ctor_small_2",
+    ops: UG_CTOR_SMALL_2_OPS,
+};
+
+const UG_CTOR_1X1_3_OPS: &[UgOp] = &[
+    UgOp { kind: 0, args: &[1f64, 1f64], res: &[0f64, 0f64, 1f64, 1f64] },
+    UgOp { kind: 1, args: &[1f64, 4f64, 67f64, 105f64, 116f64, 121f64, 0f64, 0f64, 1f64, 0f64, 7f64], res: &[0f64, 0f64] },
+    UgOp { kind: 3, args: &[1f64], res: &[17f64, 10f64, 1f64, 0f64, 11f64, 1f64, 4f64, 67f64, 105f64, 116f64, 121f64, 11f64, 1f64, 4f64, 67f64, 105f64, 116f64, 121f64, 0f64] },
+    UgOp { kind: 10, args: &[0f64, 0f64, 1f64, 4f64, 67f64, 105f64, 116f64, 121f64, 0f64, 0f64, 0f64], res: &[0f64, 0f64, 0f64] },
+];
+pub const UG_CTOR_1X1_3: UgScenario = UgScenario {
+    name: "ug_ctor_1x1_3",
+    ops: UG_CTOR_1X1_3_OPS,
+};
+
+const UG_CTOR_W0_4_OPS: &[UgOp] = &[
+    UgOp { kind: 0, args: &[0f64, 100f64], res: &[0f64, 0f64, 1f64, 0f64] },
+    UgOp { kind: 13, args: &[], res: &[0f64, 0f64, 1f64, 0f64] },
+    UgOp { kind: 1, args: &[1f64, 4f64, 67f64, 105f64, 116f64, 121f64, 5f64, 5f64, 1f64, 0f64, 7f64], res: &[0f64, 0f64] },
+    UgOp { kind: 3, args: &[1f64], res: &[3f64, 10f64, 1f64, 5f64, 0f64] },
+    UgOp { kind: 13, args: &[], res: &[0f64, 0f64, 1f64, 0f64] },
+    UgOp { kind: 8, args: &[5f64, 50f64], res: &[0f64, 0f64, f64::NAN, f64::NAN, 0f64, 0f64] },
+    UgOp { kind: 10, args: &[5f64, 50f64, 1f64, 4f64, 67f64, 105f64, 116f64, 121f64, 0f64, 0f64, 0f64], res: &[0f64, 0f64, 0f64] },
+];
+pub const UG_CTOR_W0_4: UgScenario = UgScenario {
+    name: "ug_ctor_w0_4",
+    ops: UG_CTOR_W0_4_OPS,
+};
+
+const UG_CTOR_H0_5_OPS: &[UgOp] = &[
+    UgOp { kind: 0, args: &[100f64, 0f64], res: &[0f64, 0f64, 0f64, 0f64] },
+    UgOp { kind: 13, args: &[], res: &[0f64, 0f64, 0f64, 0f64] },
+    UgOp { kind: 1, args: &[1f64, 4f64, 67f64, 105f64, 116f64, 121f64, 5f64, 5f64, 1f64, 0f64, 7f64], res: &[0f64, 0f64] },
+    UgOp { kind: 3, args: &[1f64], res: &[3f64, 10f64, 1f64, 5f64, 1f64] },
+    UgOp { kind: 7, args: &[0f64, 0f64], res: &[0f64, 1f64] },
+    UgOp { kind: 7, args: &[-1f64, 0f64], res: &[0f64, 0f64, 0f64] },
+    UgOp { kind: 7, args: &[f64::NAN, 0f64], res: &[0f64, 0f64, 0f64] },
+    UgOp { kind: 8, args: &[5f64, 10f64], res: &[0f64, 1f64] },
+    UgOp { kind: 10, args: &[5f64, 10f64, 1f64, 4f64, 67f64, 105f64, 116f64, 121f64, 0f64, 0f64, 0f64], res: &[0f64, 1f64] },
+    UgOp { kind: 11, args: &[5f64, 10f64, 4f64, 67f64, 105f64, 116f64, 121f64, 0f64, 0f64, 0f64], res: &[0f64, 1f64] },
+    UgOp { kind: 6, args: &[1f64], res: &[6f64, 10f64, 1f64, 5f64, 14f64, 1f64, 5f64, 0f64] },
+    UgOp { kind: 2, args: &[1f64, 10005f64, 5f64], res: &[0f64, 0f64] },
+    UgOp { kind: 6, args: &[1f64], res: &[6f64, 10f64, 1f64, 10005f64, 14f64, 1f64, 5f64, 1f64] },
+];
+pub const UG_CTOR_H0_5: UgScenario = UgScenario {
+    name: "ug_ctor_h0_5",
+    ops: UG_CTOR_H0_5_OPS,
+};
+
+const UG_ADD_ORDER_6_OPS: &[UgOp] = &[
+    UgOp { kind: 0, args: &[300f64, 100f64], res: &[0f64, 0f64, 1f64, 3f64] },
+    UgOp { kind: 1, args: &[1f64, 4f64, 67f64, 105f64, 116f64, 121f64, 50f64, 50f64, 1f64, 0f64, 7f64], res: &[0f64, 0f64] },
+    UgOp { kind: 1, args: &[2f64, 4f64, 67f64, 105f64, 116f64, 121f64, 60f64, 60f64, 1f64, 0f64, 7f64], res: &[0f64, 0f64] },
+    UgOp { kind: 1, args: &[3f64, 4f64, 80f64, 111f64, 114f64, 116f64, 150f64, 150f64, 1f64, 0f64, 8f64], res: &[0f64, 0f64] },
+    UgOp { kind: 3, args: &[1f64], res: &[17f64, 10f64, 1f64, 50f64, 11f64, 1f64, 4f64, 67f64, 105f64, 116f64, 121f64, 11f64, 1f64, 4f64, 67f64, 105f64, 116f64, 121f64, 0f64] },
+    UgOp { kind: 3, args: &[2f64], res: &[10f64, 10f64, 2f64, 60f64, 11f64, 2f64, 4f64, 67f64, 105f64, 116f64, 121f64, 0f64] },
+    UgOp { kind: 3, args: &[1f64], res: &[10f64, 10f64, 1f64, 50f64, 11f64, 1f64, 4f64, 67f64, 105f64, 116f64, 121f64, 0f64] },
+    UgOp { kind: 3, args: &[3f64], res: &[17f64, 10f64, 3f64, 150f64, 11f64, 3f64, 4f64, 80f64, 111f64, 114f64, 116f64, 11f64, 3f64, 4f64, 80f64, 111f64, 114f64, 116f64, 0f64] },
+    UgOp { kind: 13, args: &[], res: &[0f64, 0f64, 1f64, 3f64, 1f64, 4f64, 67f64, 105f64, 116f64, 121f64, 2f64, 1f64, 2f64, 1f64, 4f64, 80f64, 111f64, 114f64, 116f64, 1f64, 3f64, 0f64] },
+];
+pub const UG_ADD_ORDER_6: UgScenario = UgScenario {
+    name: "ug_add_order_6",
+    ops: UG_ADD_ORDER_6_OPS,
+};
+
+const UG_REMOVE_TRACE_7_OPS: &[UgOp] = &[
+    UgOp { kind: 0, args: &[300f64, 100f64], res: &[0f64, 0f64, 1f64, 3f64] },
+    UgOp { kind: 1, args: &[1f64, 4f64, 67f64, 105f64, 116f64, 121f64, 50f64, 50f64, 1f64, 0f64, 7f64], res: &[0f64, 0f64] },
+    UgOp { kind: 1, args: &[2f64, 4f64, 67f64, 105f64, 116f64, 121f64, 60f64, 60f64, 1f64, 0f64, 7f64], res: &[0f64, 0f64] },
+    UgOp { kind: 3, args: &[1f64], res: &[17f64, 10f64, 1f64, 50f64, 11f64, 1f64, 4f64, 67f64, 105f64, 116f64, 121f64, 11f64, 1f64, 4f64, 67f64, 105f64, 116f64, 121f64, 0f64] },
+    UgOp { kind: 3, args: &[2f64], res: &[10f64, 10f64, 2f64, 60f64, 11f64, 2f64, 4f64, 67f64, 105f64, 116f64, 121f64, 0f64] },
+    UgOp { kind: 4, args: &[1f64], res: &[10f64, 10f64, 1f64, 50f64, 11f64, 1f64, 4f64, 67f64, 105f64, 116f64, 121f64, 0f64] },
+    UgOp { kind: 13, args: &[], res: &[0f64, 0f64, 1f64, 3f64, 1f64, 4f64, 67f64, 105f64, 116f64, 121f64, 1f64, 2f64, 0f64, 0f64] },
+    UgOp { kind: 4, args: &[1f64], res: &[10f64, 10f64, 1f64, 50f64, 11f64, 1f64, 4f64, 67f64, 105f64, 116f64, 121f64, 0f64] },
+    UgOp { kind: 5, args: &[2f64, 99999f64], res: &[0f64, 0f64] },
+    UgOp { kind: 4, args: &[2f64], res: &[10f64, 10f64, 2f64, 60f64, 11f64, 2f64, 4f64, 67f64, 105f64, 116f64, 121f64, 0f64] },
+    UgOp { kind: 13, args: &[], res: &[0f64, 0f64, 1f64, 3f64, 1f64, 4f64, 67f64, 105f64, 116f64, 121f64, 0f64, 0f64, 0f64] },
+];
+pub const UG_REMOVE_TRACE_7: UgScenario = UgScenario {
+    name: "ug_remove_trace_7",
+    ops: UG_REMOVE_TRACE_7_OPS,
+};
+
+const UG_DELETE_READD_8_OPS: &[UgOp] = &[
+    UgOp { kind: 0, args: &[300f64, 100f64], res: &[0f64, 0f64, 1f64, 3f64] },
+    UgOp { kind: 1, args: &[1f64, 4f64, 67f64, 105f64, 116f64, 121f64, 50f64, 50f64, 1f64, 0f64, 7f64], res: &[0f64, 0f64] },
+    UgOp { kind: 1, args: &[2f64, 4f64, 67f64, 105f64, 116f64, 121f64, 60f64, 60f64, 1f64, 0f64, 7f64], res: &[0f64, 0f64] },
+    UgOp { kind: 3, args: &[1f64], res: &[17f64, 10f64, 1f64, 50f64, 11f64, 1f64, 4f64, 67f64, 105f64, 116f64, 121f64, 11f64, 1f64, 4f64, 67f64, 105f64, 116f64, 121f64, 0f64] },
+    UgOp { kind: 3, args: &[2f64], res: &[10f64, 10f64, 2f64, 60f64, 11f64, 2f64, 4f64, 67f64, 105f64, 116f64, 121f64, 0f64] },
+    UgOp { kind: 5, args: &[1f64, 50f64], res: &[7f64, 11f64, 1f64, 4f64, 67f64, 105f64, 116f64, 121f64, 0f64] },
+    UgOp { kind: 3, args: &[1f64], res: &[10f64, 10f64, 1f64, 50f64, 11f64, 1f64, 4f64, 67f64, 105f64, 116f64, 121f64, 0f64] },
+    UgOp { kind: 13, args: &[], res: &[0f64, 0f64, 1f64, 3f64, 1f64, 4f64, 67f64, 105f64, 116f64, 121f64, 2f64, 2f64, 1f64, 0f64, 0f64] },
+];
+pub const UG_DELETE_READD_8: UgScenario = UgScenario {
+    name: "ug_delete_readd_8",
+    ops: UG_DELETE_READD_8_OPS,
+};
+
+const UG_UPDATE_SAME_9_OPS: &[UgOp] = &[
+    UgOp { kind: 0, args: &[300f64, 100f64], res: &[0f64, 0f64, 1f64, 3f64] },
+    UgOp { kind: 1, args: &[1f64, 4f64, 67f64, 105f64, 116f64, 121f64, 50f64, 50f64, 1f64, 0f64, 7f64], res: &[0f64, 0f64] },
+    UgOp { kind: 6, args: &[1f64], res: &[6f64, 10f64, 1f64, 50f64, 14f64, 1f64, 50f64, 0f64] },
+    UgOp { kind: 2, args: &[1f64, 60f64, 50f64], res: &[0f64, 0f64] },
+    UgOp { kind: 6, args: &[1f64], res: &[6f64, 10f64, 1f64, 60f64, 14f64, 1f64, 50f64, 0f64] },
+    UgOp { kind: 13, args: &[], res: &[0f64, 0f64, 1f64, 3f64, 0f64, 0f64, 0f64] },
+];
+pub const UG_UPDATE_SAME_9: UgScenario = UgScenario {
+    name: "ug_update_same_9",
+    ops: UG_UPDATE_SAME_9_OPS,
+};
+
+const UG_UPDATE_CROSS_10_OPS: &[UgOp] = &[
+    UgOp { kind: 0, args: &[300f64, 100f64], res: &[0f64, 0f64, 1f64, 3f64] },
+    UgOp { kind: 1, args: &[1f64, 4f64, 67f64, 105f64, 116f64, 121f64, 50f64, 50f64, 1f64, 0f64, 7f64], res: &[0f64, 0f64] },
+    UgOp { kind: 1, args: &[2f64, 4f64, 67f64, 105f64, 116f64, 121f64, 150f64, 150f64, 1f64, 0f64, 7f64], res: &[0f64, 0f64] },
+    UgOp { kind: 3, args: &[1f64], res: &[17f64, 10f64, 1f64, 50f64, 11f64, 1f64, 4f64, 67f64, 105f64, 116f64, 121f64, 11f64, 1f64, 4f64, 67f64, 105f64, 116f64, 121f64, 0f64] },
+    UgOp { kind: 3, args: &[2f64], res: &[17f64, 10f64, 2f64, 150f64, 11f64, 2f64, 4f64, 67f64, 105f64, 116f64, 121f64, 11f64, 2f64, 4f64, 67f64, 105f64, 116f64, 121f64, 0f64] },
+    UgOp { kind: 2, args: &[1f64, 150f64, 50f64], res: &[0f64, 0f64] },
+    UgOp { kind: 6, args: &[1f64], res: &[23f64, 10f64, 1f64, 150f64, 14f64, 1f64, 50f64, 11f64, 1f64, 4f64, 67f64, 105f64, 116f64, 121f64, 10f64, 1f64, 150f64, 11f64, 1f64, 4f64, 67f64, 105f64, 116f64, 121f64, 0f64] },
+    UgOp { kind: 13, args: &[], res: &[0f64, 0f64, 1f64, 3f64, 1f64, 4f64, 67f64, 105f64, 116f64, 121f64, 0f64, 1f64, 4f64, 67f64, 105f64, 116f64, 121f64, 2f64, 2f64, 1f64, 0f64] },
+    UgOp { kind: 1, args: &[3f64, 4f64, 80f64, 111f64, 114f64, 116f64, 250f64, 50f64, 1f64, 0f64, 7f64], res: &[0f64, 0f64] },
+    UgOp { kind: 3, args: &[3f64], res: &[17f64, 10f64, 3f64, 250f64, 11f64, 3f64, 4f64, 80f64, 111f64, 114f64, 116f64, 11f64, 3f64, 4f64, 80f64, 111f64, 114f64, 116f64, 0f64] },
+    UgOp { kind: 2, args: &[3f64, 150f64, 250f64], res: &[0f64, 0f64] },
+    UgOp { kind: 6, args: &[3f64], res: &[30f64, 10f64, 3f64, 150f64, 14f64, 3f64, 250f64, 11f64, 3f64, 4f64, 80f64, 111f64, 114f64, 116f64, 10f64, 3f64, 150f64, 11f64, 3f64, 4f64, 80f64, 111f64, 114f64, 116f64, 11f64, 3f64, 4f64, 80f64, 111f64, 114f64, 116f64, 0f64] },
+    UgOp { kind: 13, args: &[], res: &[0f64, 0f64, 1f64, 3f64, 1f64, 4f64, 67f64, 105f64, 116f64, 121f64, 0f64, 2f64, 4f64, 67f64, 105f64, 116f64, 121f64, 2f64, 2f64, 1f64, 4f64, 80f64, 111f64, 114f64, 116f64, 1f64, 3f64, 1f64, 4f64, 80f64, 111f64, 114f64, 116f64, 0f64] },
+];
+pub const UG_UPDATE_CROSS_10: UgScenario = UgScenario {
+    name: "ug_update_cross_10",
+    ops: UG_UPDATE_CROSS_10_OPS,
+};
+
+const UG_ISVALID_EDGES_11_OPS: &[UgOp] = &[
+    UgOp { kind: 0, args: &[300f64, 300f64], res: &[0f64, 0f64, 3f64, 3f64] },
+    UgOp { kind: 7, args: &[0f64, 0f64], res: &[0f64, 0f64, 1f64] },
+    UgOp { kind: 7, args: &[2f64, 2f64], res: &[0f64, 0f64, 1f64] },
+    UgOp { kind: 7, args: &[-1f64, 0f64], res: &[0f64, 0f64, 0f64] },
+    UgOp { kind: 7, args: &[0f64, -1f64], res: &[0f64, 0f64, 0f64] },
+    UgOp { kind: 7, args: &[3f64, 0f64], res: &[0f64, 0f64, 0f64] },
+    UgOp { kind: 7, args: &[0f64, 3f64], res: &[0f64, 0f64, 0f64] },
+    UgOp { kind: 7, args: &[f64::NAN, 0f64], res: &[0f64, 0f64, 0f64] },
+    UgOp { kind: 7, args: &[f64::INFINITY, 0f64], res: &[0f64, 0f64, 0f64] },
+    UgOp { kind: 7, args: &[0f64, f64::INFINITY], res: &[0f64, 0f64, 0f64] },
+    UgOp { kind: 7, args: &[-0.0f64, 0f64], res: &[0f64, 0f64, 1f64] },
+    UgOp { kind: 7, args: &[2.5f64, 2.5f64], res: &[0f64, 0f64, 1f64] },
+];
+pub const UG_ISVALID_EDGES_11: UgScenario = UgScenario {
+    name: "ug_isvalid_edges_11",
+    ops: UG_ISVALID_EDGES_11_OPS,
+};
+
+const UG_CELLS_MATH_12_OPS: &[UgOp] = &[
+    UgOp { kind: 0, args: &[300f64, 100f64], res: &[0f64, 0f64, 1f64, 3f64] },
+    UgOp { kind: 8, args: &[50f64, 0f64], res: &[0f64, 0f64, 0f64, 0f64, 0f64, -1f64] },
+    UgOp { kind: 8, args: &[50f64, 100f64], res: &[0f64, 0f64, 0f64, 1f64, 0f64, 0f64] },
+    UgOp { kind: 8, args: &[99f64, 50f64], res: &[0f64, 0f64, 0f64, 1f64, 0f64, 0f64] },
+    UgOp { kind: 8, args: &[100f64, -5f64], res: &[0f64, 0f64, 1f64, 0f64, 0f64, -1f64] },
+    UgOp { kind: 8, args: &[50f64, -5f64], res: &[0f64, 0f64, 0f64, 0f64, 0f64, -1f64] },
+    UgOp { kind: 8, args: &[50f64, f64::NAN], res: &[0f64, 0f64, f64::NAN, f64::NAN, f64::NAN, f64::NAN] },
+];
+pub const UG_CELLS_MATH_12: UgScenario = UgScenario {
+    name: "ug_cells_math_12",
+    ops: UG_CELLS_MATH_12_OPS,
+};
+
+const UG_NEARBY_ORDER_13_OPS: &[UgOp] = &[
+    UgOp { kind: 0, args: &[300f64, 100f64], res: &[0f64, 0f64, 1f64, 3f64] },
+    UgOp { kind: 1, args: &[1f64, 4f64, 67f64, 105f64, 116f64, 121f64, 50f64, 50f64, 1f64, 0f64, 7f64], res: &[0f64, 0f64] },
+    UgOp { kind: 1, args: &[2f64, 4f64, 80f64, 111f64, 114f64, 116f64, 60f64, 60f64, 1f64, 0f64, 7f64], res: &[0f64, 0f64] },
+    UgOp { kind: 1, args: &[3f64, 4f64, 67f64, 105f64, 116f64, 121f64, 150f64, 150f64, 1f64, 0f64, 7f64], res: &[0f64, 0f64] },
+    UgOp { kind: 3, args: &[1f64], res: &[17f64, 10f64, 1f64, 50f64, 11f64, 1f64, 4f64, 67f64, 105f64, 116f64, 121f64, 11f64, 1f64, 4f64, 67f64, 105f64, 116f64, 121f64, 0f64] },
+    UgOp { kind: 3, args: &[2f64], res: &[17f64, 10f64, 2f64, 60f64, 11f64, 2f64, 4f64, 80f64, 111f64, 114f64, 116f64, 11f64, 2f64, 4f64, 80f64, 111f64, 114f64, 116f64, 0f64] },
+    UgOp { kind: 3, args: &[3f64], res: &[17f64, 10f64, 3f64, 150f64, 11f64, 3f64, 4f64, 67f64, 105f64, 116f64, 121f64, 11f64, 3f64, 4f64, 67f64, 105f64, 116f64, 121f64, 0f64] },
+    UgOp { kind: 10, args: &[50f64, 1000f64, 1f64, 4f64, 67f64, 105f64, 116f64, 121f64, 0f64, 0f64, 0f64], res: &[18f64, 12f64, 1f64, 1f64, 13f64, 1f64, 0f64, 10f64, 1f64, 50f64, 12f64, 3f64, 1f64, 13f64, 3f64, 0f64, 10f64, 3f64, 150f64, 0f64, 2f64, 1f64, 0f64, 3f64, 10000f64] },
+    UgOp { kind: 10, args: &[50f64, 1000f64, 0f64, 2f64, 4f64, 80f64, 111f64, 114f64, 116f64, 4f64, 67f64, 105f64, 116f64, 121f64, 0f64, 0f64, 0f64], res: &[27f64, 12f64, 2f64, 1f64, 13f64, 2f64, 0f64, 10f64, 2f64, 60f64, 12f64, 1f64, 1f64, 13f64, 1f64, 0f64, 10f64, 1f64, 50f64, 12f64, 3f64, 1f64, 13f64, 3f64, 0f64, 10f64, 3f64, 150f64, 0f64, 3f64, 2f64, 100f64, 1f64, 0f64, 3f64, 10000f64] },
+    UgOp { kind: 10, args: &[50f64, 1000f64, 0f64, 2f64, 4f64, 67f64, 105f64, 116f64, 121f64, 4f64, 80f64, 111f64, 114f64, 116f64, 0f64, 0f64, 0f64], res: &[27f64, 12f64, 1f64, 1f64, 13f64, 1f64, 0f64, 10f64, 1f64, 50f64, 12f64, 2f64, 1f64, 13f64, 2f64, 0f64, 10f64, 2f64, 60f64, 12f64, 3f64, 1f64, 13f64, 3f64, 0f64, 10f64, 3f64, 150f64, 0f64, 3f64, 1f64, 0f64, 2f64, 100f64, 3f64, 10000f64] },
+    UgOp { kind: 10, args: &[50f64, 1000f64, 0f64, 0f64, 0f64, 0f64, 0f64], res: &[0f64, 0f64, 0f64] },
+];
+pub const UG_NEARBY_ORDER_13: UgScenario = UgScenario {
+    name: "ug_nearby_order_13",
+    ops: UG_NEARBY_ORDER_13_OPS,
+};
+
+const UG_NEARBY_FILTERS_14_OPS: &[UgOp] = &[
+    UgOp { kind: 0, args: &[300f64, 100f64], res: &[0f64, 0f64, 1f64, 3f64] },
+    UgOp { kind: 1, args: &[1f64, 4f64, 67f64, 105f64, 116f64, 121f64, 50f64, 50f64, 0f64, 0f64, 7f64], res: &[0f64, 0f64] },
+    UgOp { kind: 1, args: &[2f64, 4f64, 67f64, 105f64, 116f64, 121f64, 60f64, 60f64, 1f64, 1f64, 7f64], res: &[0f64, 0f64] },
+    UgOp { kind: 1, args: &[3f64, 4f64, 67f64, 105f64, 116f64, 121f64, 70f64, 70f64, 1f64, 0f64, 7f64], res: &[0f64, 0f64] },
+    UgOp { kind: 3, args: &[1f64], res: &[17f64, 10f64, 1f64, 50f64, 11f64, 1f64, 4f64, 67f64, 105f64, 116f64, 121f64, 11f64, 1f64, 4f64, 67f64, 105f64, 116f64, 121f64, 0f64] },
+    UgOp { kind: 3, args: &[2f64], res: &[10f64, 10f64, 2f64, 60f64, 11f64, 2f64, 4f64, 67f64, 105f64, 116f64, 121f64, 0f64] },
+    UgOp { kind: 3, args: &[3f64], res: &[10f64, 10f64, 3f64, 70f64, 11f64, 3f64, 4f64, 67f64, 105f64, 116f64, 121f64, 0f64] },
+    UgOp { kind: 10, args: &[50f64, 100f64, 1f64, 4f64, 67f64, 105f64, 116f64, 121f64, 0f64, 0f64, 0f64], res: &[18f64, 12f64, 1f64, 0f64, 12f64, 2f64, 1f64, 13f64, 2f64, 1f64, 12f64, 3f64, 1f64, 13f64, 3f64, 0f64, 10f64, 3f64, 70f64, 0f64, 1f64, 3f64, 400f64] },
+    UgOp { kind: 10, args: &[50f64, 100f64, 1f64, 4f64, 67f64, 105f64, 116f64, 121f64, 0f64, 0f64, 1f64], res: &[15f64, 12f64, 1f64, 0f64, 12f64, 2f64, 1f64, 10f64, 2f64, 60f64, 12f64, 3f64, 1f64, 10f64, 3f64, 70f64, 0f64, 2f64, 2f64, 100f64, 3f64, 400f64] },
+];
+pub const UG_NEARBY_FILTERS_14: UgScenario = UgScenario {
+    name: "ug_nearby_filters_14",
+    ops: UG_NEARBY_FILTERS_14_OPS,
+};
+
+const UG_NEARBY_BOUNDARY_15_OPS: &[UgOp] = &[
+    UgOp { kind: 0, args: &[300f64, 100f64], res: &[0f64, 0f64, 1f64, 3f64] },
+    UgOp { kind: 1, args: &[1f64, 4f64, 67f64, 105f64, 116f64, 121f64, 50f64, 50f64, 1f64, 0f64, 7f64], res: &[0f64, 0f64] },
+    UgOp { kind: 1, args: &[2f64, 4f64, 67f64, 105f64, 116f64, 121f64, 60f64, 60f64, 1f64, 0f64, 7f64], res: &[0f64, 0f64] },
+    UgOp { kind: 1, args: &[3f64, 4f64, 67f64, 105f64, 116f64, 121f64, 70f64, 70f64, 1f64, 0f64, 7f64], res: &[0f64, 0f64] },
+    UgOp { kind: 3, args: &[1f64], res: &[17f64, 10f64, 1f64, 50f64, 11f64, 1f64, 4f64, 67f64, 105f64, 116f64, 121f64, 11f64, 1f64, 4f64, 67f64, 105f64, 116f64, 121f64, 0f64] },
+    UgOp { kind: 3, args: &[2f64], res: &[10f64, 10f64, 2f64, 60f64, 11f64, 2f64, 4f64, 67f64, 105f64, 116f64, 121f64, 0f64] },
+    UgOp { kind: 3, args: &[3f64], res: &[10f64, 10f64, 3f64, 70f64, 11f64, 3f64, 4f64, 67f64, 105f64, 116f64, 121f64, 0f64] },
+    UgOp { kind: 10, args: &[50f64, 10f64, 1f64, 4f64, 67f64, 105f64, 116f64, 121f64, 0f64, 0f64, 0f64], res: &[27f64, 12f64, 1f64, 1f64, 13f64, 1f64, 0f64, 10f64, 1f64, 50f64, 12f64, 2f64, 1f64, 13f64, 2f64, 0f64, 10f64, 2f64, 60f64, 12f64, 3f64, 1f64, 13f64, 3f64, 0f64, 10f64, 3f64, 70f64, 0f64, 2f64, 1f64, 0f64, 2f64, 100f64] },
+    UgOp { kind: 10, args: &[50f64, 10f64, 1f64, 4f64, 67f64, 105f64, 116f64, 121f64, 1f64, 2f64, 1f64, 0f64, 0f64], res: &[35f64, 12f64, 1f64, 1f64, 13f64, 1f64, 0f64, 10f64, 1f64, 50f64, 16f64, 1f64, 0f64, 1f64, 12f64, 2f64, 1f64, 13f64, 2f64, 0f64, 10f64, 2f64, 60f64, 16f64, 2f64, 100f64, 0f64, 12f64, 3f64, 1f64, 13f64, 3f64, 0f64, 10f64, 3f64, 70f64, 0f64, 1f64, 1f64, 0f64] },
+    UgOp { kind: 10, args: &[50f64, 10f64, 1f64, 4f64, 67f64, 105f64, 116f64, 121f64, 1f64, 2f64, 0f64, 0f64, 0f64], res: &[35f64, 12f64, 1f64, 1f64, 13f64, 1f64, 0f64, 10f64, 1f64, 50f64, 16f64, 1f64, 0f64, 0f64, 12f64, 2f64, 1f64, 13f64, 2f64, 0f64, 10f64, 2f64, 60f64, 16f64, 2f64, 100f64, 0f64, 12f64, 3f64, 1f64, 13f64, 3f64, 0f64, 10f64, 3f64, 70f64, 0f64, 0f64] },
+];
+pub const UG_NEARBY_BOUNDARY_15: UgScenario = UgScenario {
+    name: "ug_nearby_boundary_15",
+    ops: UG_NEARBY_BOUNDARY_15_OPS,
+};
+
+const UG_HAS_SHORT_16_OPS: &[UgOp] = &[
+    UgOp { kind: 0, args: &[300f64, 100f64], res: &[0f64, 0f64, 1f64, 3f64] },
+    UgOp { kind: 1, args: &[1f64, 4f64, 67f64, 105f64, 116f64, 121f64, 50f64, 50f64, 0f64, 0f64, 7f64], res: &[0f64, 0f64] },
+    UgOp { kind: 1, args: &[2f64, 4f64, 67f64, 105f64, 116f64, 121f64, 60f64, 60f64, 1f64, 0f64, 8f64], res: &[0f64, 0f64] },
+    UgOp { kind: 1, args: &[3f64, 4f64, 67f64, 105f64, 116f64, 121f64, 70f64, 70f64, 1f64, 0f64, 7f64], res: &[0f64, 0f64] },
+    UgOp { kind: 3, args: &[1f64], res: &[17f64, 10f64, 1f64, 50f64, 11f64, 1f64, 4f64, 67f64, 105f64, 116f64, 121f64, 11f64, 1f64, 4f64, 67f64, 105f64, 116f64, 121f64, 0f64] },
+    UgOp { kind: 3, args: &[2f64], res: &[10f64, 10f64, 2f64, 60f64, 11f64, 2f64, 4f64, 67f64, 105f64, 116f64, 121f64, 0f64] },
+    UgOp { kind: 3, args: &[3f64], res: &[10f64, 10f64, 3f64, 70f64, 11f64, 3f64, 4f64, 67f64, 105f64, 116f64, 121f64, 0f64] },
+    UgOp { kind: 11, args: &[50f64, 10f64, 4f64, 67f64, 105f64, 116f64, 121f64, 0f64, 0f64, 0f64], res: &[15f64, 12f64, 1f64, 0f64, 12f64, 2f64, 1f64, 13f64, 2f64, 0f64, 10f64, 2f64, 60f64, 10f64, 2f64, 60f64, 0f64, 1f64] },
+    UgOp { kind: 11, args: &[50f64, 10f64, 4f64, 67f64, 105f64, 116f64, 121f64, 1f64, 7f64, 0f64], res: &[27f64, 12f64, 1f64, 0f64, 12f64, 2f64, 1f64, 13f64, 2f64, 0f64, 15f64, 2f64, 8f64, 12f64, 3f64, 1f64, 13f64, 3f64, 0f64, 15f64, 3f64, 7f64, 10f64, 3f64, 70f64, 10f64, 3f64, 70f64, 0f64, 0f64] },
+    UgOp { kind: 11, args: &[50f64, 10f64, 4f64, 80f64, 111f64, 114f64, 116f64, 0f64, 0f64, 0f64], res: &[0f64, 0f64, 0f64] },
+];
+pub const UG_HAS_SHORT_16: UgScenario = UgScenario {
+    name: "ug_has_short_16",
+    ops: UG_HAS_SHORT_16_OPS,
+};
+
+const UG_ANY_PRED_17_OPS: &[UgOp] = &[
+    UgOp { kind: 0, args: &[300f64, 100f64], res: &[0f64, 0f64, 1f64, 3f64] },
+    UgOp { kind: 1, args: &[1f64, 4f64, 67f64, 105f64, 116f64, 121f64, 50f64, 50f64, 1f64, 0f64, 7f64], res: &[0f64, 0f64] },
+    UgOp { kind: 1, args: &[2f64, 4f64, 80f64, 111f64, 114f64, 116f64, 60f64, 60f64, 1f64, 0f64, 7f64], res: &[0f64, 0f64] },
+    UgOp { kind: 1, args: &[3f64, 4f64, 67f64, 105f64, 116f64, 121f64, 70f64, 70f64, 1f64, 1f64, 7f64], res: &[0f64, 0f64] },
+    UgOp { kind: 3, args: &[1f64], res: &[17f64, 10f64, 1f64, 50f64, 11f64, 1f64, 4f64, 67f64, 105f64, 116f64, 121f64, 11f64, 1f64, 4f64, 67f64, 105f64, 116f64, 121f64, 0f64] },
+    UgOp { kind: 3, args: &[2f64], res: &[17f64, 10f64, 2f64, 60f64, 11f64, 2f64, 4f64, 80f64, 111f64, 114f64, 116f64, 11f64, 2f64, 4f64, 80f64, 111f64, 114f64, 116f64, 0f64] },
+    UgOp { kind: 3, args: &[3f64], res: &[10f64, 10f64, 3f64, 70f64, 11f64, 3f64, 4f64, 67f64, 105f64, 116f64, 121f64, 0f64] },
+    UgOp { kind: 12, args: &[50f64, 1000f64, 2f64, 4f64, 67f64, 105f64, 116f64, 121f64, 4f64, 80f64, 111f64, 114f64, 116f64, 2f64, 0f64, 1f64, 0f64, 0f64, 0f64], res: &[36f64, 12f64, 1f64, 1f64, 13f64, 1f64, 0f64, 10f64, 1f64, 50f64, 10f64, 1f64, 50f64, 17f64, 1f64, 0f64, 12f64, 3f64, 1f64, 13f64, 3f64, 1f64, 12f64, 2f64, 1f64, 13f64, 2f64, 0f64, 10f64, 2f64, 60f64, 10f64, 2f64, 60f64, 17f64, 2f64, 1f64, 0f64, 1f64] },
+    UgOp { kind: 12, args: &[50f64, 1000f64, 1f64, 4f64, 67f64, 105f64, 116f64, 121f64, 1f64, 0f64, 1f64, 8f64, 0f64], res: &[15f64, 12f64, 1f64, 1f64, 13f64, 1f64, 0f64, 15f64, 1f64, 7f64, 12f64, 3f64, 1f64, 13f64, 3f64, 1f64, 0f64, 0f64] },
+];
+pub const UG_ANY_PRED_17: UgScenario = UgScenario {
+    name: "ug_any_pred_17",
+    ops: UG_ANY_PRED_17_OPS,
+};
+
+const UG_SQDIST_18_OPS: &[UgOp] = &[
+    UgOp { kind: 0, args: &[300f64, 100f64], res: &[0f64, 0f64, 1f64, 3f64] },
+    UgOp { kind: 1, args: &[1f64, 4f64, 67f64, 105f64, 116f64, 121f64, 60f64, 60f64, 1f64, 0f64, 7f64], res: &[0f64, 0f64] },
+    UgOp { kind: 9, args: &[1f64, 50f64], res: &[6f64, 10f64, 1f64, 60f64, 10f64, 1f64, 60f64, 0f64, 100f64] },
+    UgOp { kind: 9, args: &[1f64, 150f64], res: &[6f64, 10f64, 1f64, 60f64, 10f64, 1f64, 60f64, 0f64, 8100f64] },
+];
+pub const UG_SQDIST_18: UgScenario = UgScenario {
+    name: "ug_sqdist_18",
+    ops: UG_SQDIST_18_OPS,
+};
+
+const UG_REMOVE_MISSING_KEY_19_OPS: &[UgOp] = &[
+    UgOp { kind: 0, args: &[300f64, 100f64], res: &[0f64, 0f64, 1f64, 3f64] },
+    UgOp { kind: 1, args: &[1f64, 4f64, 67f64, 105f64, 116f64, 121f64, 50f64, 50f64, 1f64, 0f64, 7f64], res: &[0f64, 0f64] },
+    UgOp { kind: 3, args: &[1f64], res: &[17f64, 10f64, 1f64, 50f64, 11f64, 1f64, 4f64, 67f64, 105f64, 116f64, 121f64, 11f64, 1f64, 4f64, 67f64, 105f64, 116f64, 121f64, 0f64] },
+    UgOp { kind: 5, args: &[1f64, 150f64], res: &[7f64, 11f64, 1f64, 4f64, 67f64, 105f64, 116f64, 121f64, 0f64] },
+    UgOp { kind: 13, args: &[], res: &[0f64, 0f64, 1f64, 3f64, 1f64, 4f64, 67f64, 105f64, 116f64, 121f64, 1f64, 1f64, 0f64, 0f64] },
+];
+pub const UG_REMOVE_MISSING_KEY_19: UgScenario = UgScenario {
+    name: "ug_remove_missing_key_19",
+    ops: UG_REMOVE_MISSING_KEY_19_OPS,
+};
+
+pub const UG_SCENARIOS: &[UgScenario] = &[
+    UG_CTOR_CEIL_0,
+    UG_CTOR_EXACT_1,
+    UG_CTOR_SMALL_2,
+    UG_CTOR_1X1_3,
+    UG_CTOR_W0_4,
+    UG_CTOR_H0_5,
+    UG_ADD_ORDER_6,
+    UG_REMOVE_TRACE_7,
+    UG_DELETE_READD_8,
+    UG_UPDATE_SAME_9,
+    UG_UPDATE_CROSS_10,
+    UG_ISVALID_EDGES_11,
+    UG_CELLS_MATH_12,
+    UG_NEARBY_ORDER_13,
+    UG_NEARBY_FILTERS_14,
+    UG_NEARBY_BOUNDARY_15,
+    UG_HAS_SHORT_16,
+    UG_ANY_PRED_17,
+    UG_SQDIST_18,
+    UG_REMOVE_MISSING_KEY_19,
+];
+
 /// One `TileTraversalScratch.ts` op: `kind` + flat `args` / `res` token
 /// streams (see the Rust `RigHarness::run_op` docs).
 pub struct TtsOp {

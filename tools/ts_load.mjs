@@ -1188,6 +1188,29 @@ function prepare(rel) {
     );
   }
 
+  if (rel.endsWith("game/UnitGrid.ts")) {
+    // UnitView / PlayerID / Unit / UnitType / GameMap / TileRef are all
+    // type-only here (the grid only calls methods on the injected GameMap and
+    // stores units by reference; UnitType appears only in erased annotations
+    // and type arguments). Dropping the imports keeps the Game / GameMap /
+    // client-view value graphs out of strip mode. The ctor uses a parameter
+    // property -> expand. The three private helpers the capture exercises
+    // (isValidCell / getCellsInRange / squaredDistanceFromTile) are exported
+    // for the parity harness (the Rust twin exposes them for the same reason).
+    out = must(out, 'import { UnitView } from "../../client/view";\n', "", "UnitGrid UnitView import");
+    out = must(out, 'import { PlayerID, Unit, UnitType } from "./Game";\n', "", "UnitGrid Game import");
+    out = must(out, 'import { GameMap, TileRef } from "./GameMap";\n', "", "UnitGrid GameMap import");
+    out = must(
+      out,
+      "  constructor(private gm: GameMap) {",
+      "  private gm: GameMap;\n\n  constructor(gm: GameMap) {\n    this.gm = gm;",
+      "UnitGrid ctor",
+    );
+    out = must(out, "  private isValidCell(", "  isValidCell(", "UnitGrid isValidCell export");
+    out = must(out, "  private getCellsInRange(", "  getCellsInRange(", "UnitGrid getCellsInRange export");
+    out = must(out, "  private squaredDistanceFromTile(", "  squaredDistanceFromTile(", "UnitGrid squaredDistanceFromTile export");
+  }
+
   if (rel.endsWith("game/TileTraversalScratch.ts")) {
     // Game / TileRef are type-only here (the scratch only calls game.width()/
     // height() and stores TileRef numbers in a plain array). Dropping the

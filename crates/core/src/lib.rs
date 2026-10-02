@@ -75,6 +75,15 @@
 //!   `` `${cx}:${cy}` `` template string; register / unregister / query over
 //!   `game.x/y`-decoded rail tiles, rails keyed by capture refid, insertion-
 //!   ordered `Map`/`Set` semantics preserved)
+//! * [`unit_grid`] — `src/core/game/UnitGrid.ts` (the 100-pixel-cell 2-D
+//!   spatial index: add / remove / updateUnitCell with the JS `Map`/`Set`
+//!   insertion-order semantics (dup `add` keeps position, `delete` + re-`add`
+//!   moves to the tail), `getCellsInRange`'s ceil/`js_min`/`js_max` window
+//!   math, the array-vs-scalar `nearbyUnits` loop orders, the
+//!   `isActive`/`isUnderConstruction`/`playerId` short-circuit chain and the
+//!   0-row `grid[0].length` `TypeError`; the `GameMap` is the real ported
+//!   `game_map` and the `Unit` facade is a scripted mock whose call trace
+//!   rides in the res stream, same pattern as `nation_utils`)
 //! * [`tile_traversal_scratch`] — `src/core/game/TileTraversalScratch.ts`
 //!   (per-game generation-stamped `Uint32Array` visited buffer + reusable
 //!   stack + `Int32Array` cluster map, `WeakMap`-cached by game refid; JS
@@ -267,6 +276,7 @@ pub mod terrain_search_map;
 pub mod tile_set;
 pub mod tile_traversal_scratch;
 pub mod tribe_names;
+pub mod unit_grid;
 pub mod util;
 pub mod veterancy;
 pub mod water_manager;

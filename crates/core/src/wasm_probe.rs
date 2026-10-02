@@ -3994,6 +3994,43 @@ pub extern "C" fn probe_rsg_out_at(i: usize) -> f64 {
     RSG_OUT.with(|o| o.borrow()[i])
 }
 
+// =============== P51: game/UnitGrid.ts (unit_grid) ===========================
+
+thread_local! {
+    static UG_HARNESS: std::cell::RefCell<crate::unit_grid::RigHarness> =
+        std::cell::RefCell::new(crate::unit_grid::RigHarness::new());
+    static UG_ARGS: std::cell::RefCell<Vec<f64>> = const { std::cell::RefCell::new(Vec::new()) };
+    static UG_OUT: std::cell::RefCell<Vec<f64>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
+/// Drop the current grid and unit table (one scenario's op stream ends; the
+/// next begins with a construct op).
+#[no_mangle]
+pub extern "C" fn probe_ug_reset() {
+    UG_HARNESS.with(|h| h.borrow_mut().reset());
+}
+
+/// Push one flat token of the op's arg stream.
+#[no_mangle]
+pub extern "C" fn probe_ug_arg(v: f64) {
+    UG_ARGS.with(|t| t.borrow_mut().push(v));
+}
+
+/// Run `RigHarness::run_op(kind, args)`; returns the result-stream length.
+#[no_mangle]
+pub extern "C" fn probe_ug_op(kind: u32) -> usize {
+    let a = UG_ARGS.with(|t| std::mem::take(&mut *t.borrow_mut()));
+    let out = UG_HARNESS.with(|h| h.borrow_mut().run_op(kind as u8, &a));
+    let len = out.len();
+    UG_OUT.with(|o| *o.borrow_mut() = out);
+    len
+}
+
+#[no_mangle]
+pub extern "C" fn probe_ug_out_at(i: usize) -> f64 {
+    UG_OUT.with(|o| o.borrow()[i])
+}
+
 // ============= P33: game/TileTraversalScratch.ts (tile_traversal_scratch) ====
 
 thread_local! {

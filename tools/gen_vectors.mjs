@@ -1,4 +1,4 @@
-// Generates golden vectors from the authoritative TypeScript implementation so
+﻿// Generates golden vectors from the authoritative TypeScript implementation so
 // the Rust port can be verified bit-for-bit against it.
 //
 //   node rust/tools/gen_vectors.mjs
@@ -162,6 +162,7 @@ const WM = await loadTs("src/core/game/WaterManager.ts");
 const GUU = await loadTs("src/core/game/GameUpdateUtils.ts");
 const RR = await loadTs("src/core/game/Railroad.ts");
 const RSG = await loadTs("src/core/game/RailroadSpatialGrid.ts");
+const UG = await loadTs("src/core/game/UnitGrid.ts");
 const TTS = await loadTs("src/core/game/TileTraversalScratch.ts");
 const EB = await loadTs("src/core/EventBus.ts");
 const AU = await loadTs("src/core/AssetUrls.ts");
@@ -1423,6 +1424,404 @@ runRSG("rsg_frac_cell", 10, 10, [
   [1, 1, [22, 77]], // (2,2)/2.5=0.8->0, (7,7)/2.5=2.8->2
   [4],
   [3, 22, 0],
+]);
+
+// --- UnitGrid scenario runner --------------------------------------------------
+// Exercises the real UnitGrid.ts through a stateful op stream. `game` is a real
+// GameMapImpl (all-land); units are scripted duck mocks (precedent:
+// nation_utils) whose facade calls are traced token-by-token:
+//   10 tile [10,refid,tile] | 11 type [11,refid,(str)] | 12 isActive [12,refid,0|1]
+//   13 isUnderConstruction [13,refid,0|1] | 14 lastTile [14,refid,tile]
+//   15 owner().id() [15,refid,id] (the two-stage facade collapses to one event:
+//      owner() always returns a player whose id() is the scripted id, so the
+//      observable pair is exactly one owner() + one id() call per probe)
+//   16 nearbyUnits predicate [16,refid,distSquared,ret] | 17 anyUnitNearby
+//      predicate [17,refid,ret].
+// Every op's res is `[traceLen,(trace)*,status,payload*]`; status 1 = the JS
+// call threw (isValidCell / getCellsInRange reading `grid[0].length` on a
+// 0-row grid). Ops: 0 construct [w,h] -> [rows,cols]; 1 define_unit
+// [refid,(str)type,tile,last,active,uc,owner]; 2 set_tile [refid,tile,last];
+// 3 addUnit [refid]; 4 removeUnit [refid]; 5 removeUnitByTile [refid,tile];
+// 6 updateUnitCell [refid]; 7 isValidCell [gx,gy] -> [0|1]; 8 getCellsInRange
+// [tile,range] -> [sx,ex,sy,ey]; 9 squaredDistanceFromTile [refid,tile] -> [d2];
+// 10 nearbyUnits [tile,range,mode,(types),predMode,(script),incUC] -> [len,
+// (refid,d2)*]; 11 hasUnitNearby [tile,range,(str)type,pidMode,pid,incUC] ->
+// [0|1]; 12 anyUnitNearby [tile,range,n,(types),n,(script),pidMode,pid,incUC]
+// -> [0|1]; 13 dump -> [rows,cols,(nkeys,(str key,m,(refid)*m)*)*].
+const ugScenarios = [];
+let ugIdx = 0;
+function runUG(name, ops) {
+  const played = [];
+  let grid = null;
+  const units = new Map();
+  // The mock units persist across ops, so their facade `ev` closures must
+  // write into the *current* op's trace: keep `trace` in the function scope
+  // and re-assign it at the top of every op (the closures capture the
+  // binding, not the array).
+  let trace = [];
+  for (const op of ops) {
+    const args = op.flat(Infinity);
+    let p = 0;
+    const num = () => args[p++];
+    const str = () => {
+      const l = num();
+      let s = "";
+      for (let i = 0; i < l; i++) s += String.fromCharCode(num());
+      return s;
+    };
+    const kind = num();
+    trace = [];
+    const ev = (...t) => trace.push(...t);
+    let status = 0;
+    let payload = [];
+    try {
+      if (kind === 0) {
+        const w = num();
+        const h = num();
+        const game = new GameMapImpl(w, h, new Uint8Array(w * h), w * h);
+        grid = new UG.UnitGrid(game);
+        payload = [grid.grid.length, grid.grid[0] ? grid.grid[0].length : 0];
+      } else if (kind === 1) {
+        const refid = num();
+        const type = str();
+        const tile = num();
+        const last = num();
+        const active = num();
+        const uc = num();
+        const owner = num();
+        const u = {
+          __refid: refid,
+          __tile: tile,
+          __last: last,
+          __active: active,
+          __uc: uc,
+          __owner: owner,
+          tile() { ev(10, refid, u.__tile); return u.__tile; },
+          type() { ev(11, refid, ...encS(u.__type)); return u.__type; },
+          isActive() { ev(12, refid, u.__active); return u.__active === 1; },
+          isUnderConstruction() { ev(13, refid, u.__uc); return u.__uc === 1; },
+          lastTile() { ev(14, refid, u.__last); return u.__last; },
+          owner() { ev(15, refid, u.__owner); return { id: () => u.__owner }; },
+        };
+        u.__type = type;
+        units.set(refid, u);
+      } else if (kind === 2) {
+        const u = units.get(num());
+        u.__tile = num();
+        u.__last = num();
+      } else if (kind === 3) {
+        grid.addUnit(units.get(num()));
+      } else if (kind === 4) {
+        grid.removeUnit(units.get(num()));
+      } else if (kind === 5) {
+        grid.removeUnitByTile(units.get(num()), num());
+      } else if (kind === 6) {
+        grid.updateUnitCell(units.get(num()));
+      } else if (kind === 7) {
+        payload = [grid.isValidCell(num(), num()) ? 1 : 0];
+      } else if (kind === 8) {
+        const r = grid.getCellsInRange(num(), num());
+        payload = [r.startGridX, r.endGridX, r.startGridY, r.endGridY];
+      } else if (kind === 9) {
+        payload = [grid.squaredDistanceFromTile(units.get(num()), num())];
+      } else if (kind === 10) {
+        const tile = num();
+        const range = num();
+        const mode = num();
+        let types;
+        if (mode === 0) {
+          const n = num();
+          types = [];
+          for (let i = 0; i < n; i++) types.push(str());
+        } else {
+          types = str();
+        }
+        const predMode = num();
+        const nscript = num();
+        const script = [];
+        for (let i = 0; i < nscript; i++) script.push(num());
+        const inc = num();
+        let pi = 0;
+        const pred = predMode === 0 ? undefined : (value) => {
+          const r = script[pi++];
+          ev(16, value.unit.__refid, value.distSquared, r);
+          return r;
+        };
+        const out = grid.nearbyUnits(tile, range, types, pred, inc === 1);
+        payload = [out.length];
+        for (const v of out) payload.push(v.unit.__refid, v.distSquared);
+      } else if (kind === 11) {
+        const tile = num();
+        const range = num();
+        const type = str();
+        const pidMode = num();
+        const pid = num();
+        const inc = num();
+        payload = [
+          grid.hasUnitNearby(tile, range, type, pidMode === 0 ? undefined : pid, inc === 1) ? 1 : 0,
+        ];
+      } else if (kind === 12) {
+        const tile = num();
+        const range = num();
+        const n = num();
+        const types = [];
+        for (let i = 0; i < n; i++) types.push(str());
+        const ns = num();
+        const script = [];
+        for (let i = 0; i < ns; i++) script.push(num());
+        const pidMode = num();
+        const pid = num();
+        const inc = num();
+        let pi = 0;
+        const pred = (unit) => {
+          const r = script[pi++];
+          ev(17, unit.__refid, r);
+          return r;
+        };
+        payload = [
+          grid.anyUnitNearby(tile, range, types, pred, pidMode === 0 ? undefined : pid, inc === 1) ? 1 : 0,
+        ];
+      } else {
+        payload = [grid.grid.length, grid.grid[0] ? grid.grid[0].length : 0];
+        for (const row of grid.grid) {
+          for (const cell of row) {
+            payload.push(cell.size);
+            for (const [key, set] of cell) {
+              payload.push(...encS(key), set.size);
+              for (const u of set) payload.push(u.__refid);
+            }
+          }
+        }
+      }
+    } catch {
+      status = 1;
+      payload = [];
+    }
+    played.push({
+      kind,
+      // The kind token is consumed here; the Rust `run_op(kind, args)` gets
+      // the remaining flat tokens.
+      args: args.slice(1).map(uenc),
+      res: [trace.length, ...trace, status, ...payload].map(uenc),
+    });
+  }
+  ugScenarios.push({ name: `${name}_${ugIdx++}`, ops: played });
+}
+
+const ugC = (w, h) => [0, w, h];
+const ugU = (r, t, tile, last, active, uc, owner) => [1, r, ...encS(t), tile, last, active, uc, owner];
+const ugSet = (r, tile, last) => [2, r, tile, last];
+const ugA = (r) => [3, r];
+const ugR = (r) => [4, r];
+const ugRT = (r, t) => [5, r, t];
+const ugUpd = (r) => [6, r];
+const ugV = (gx, gy) => [7, gx, gy];
+const ugCIR = (t, rng) => [8, t, rng];
+const ugSQ = (r, t) => [9, r, t];
+const ugN = (t, rng, types, pred, inc) =>
+  Array.isArray(types)
+    ? [10, t, rng, 0, types.length, ...types.flatMap(encS), pred ? 1 : 0, pred ? pred.length : 0, ...(pred ?? []), inc]
+    : [10, t, rng, 1, ...encS(types), pred ? 1 : 0, pred ? pred.length : 0, ...(pred ?? []), inc];
+const ugH = (t, rng, type, pid, inc) => [11, t, rng, ...encS(type), pid === undefined ? 0 : 1, pid ?? 0, inc];
+const ugAny = (t, rng, types, script, pid, inc) =>
+  [12, t, rng, types.length, ...types.flatMap(encS), script.length, ...script, pid === undefined ? 0 : 1, pid ?? 0, inc];
+const ugD = () => [13];
+
+// 1. Non-divisible map size: ceil(150/100)=2 rows, ceil(250/100)=3 cols.
+runUG("ug_ctor_ceil", [ugC(250, 150), ugD()]);
+
+// 2. Exact multiple: 200x100 -> 2x1 cells.
+runUG("ug_ctor_exact", [ugC(200, 100), ugD()]);
+
+// 3. Sub-cell map: 50x50 -> ceil -> 1x1.
+runUG("ug_ctor_small", [ugC(50, 50), ugU(1, "City", 0, 0, 1, 0, 7), ugA(1), ugD()]);
+
+// 4. 1x1 map, range 0: endGridX = min(0, 0 + ceil((0-100)/100)) = -1 -> the
+//    window inverts and the scan is empty (the cs - x%cs ceil edge).
+runUG("ug_ctor_1x1", [
+  ugC(1, 1), ugU(1, "City", 0, 0, 1, 0, 7), ugA(1),
+  ugN(0, 0, "City", null, 0),
+]);
+
+// 5. Zero-width map: cols 0 (grid[0] exists, empty). gm.x(tile) = tile % 0 =
+//    NaN -> gridX NaN -> isValidCell false via the `gx >= 0` short-circuit
+//    (no throw, no type() call); getCellsInRange yields NaN x-bounds and the
+//    cx loop never runs.
+runUG("ug_ctor_w0", [
+  ugC(0, 100), ugD(),
+  ugU(1, "City", 5, 5, 1, 0, 7), ugA(1), ugD(),
+  ugCIR(5, 50), ugN(5, 50, "City", null, 0),
+]);
+
+// 6. Zero-height map: rows 0 -> grid[0] undefined. isValidCell(0,0) (and any
+//    addUnit / getCellsInRange that reaches the `gx >= 0` arm) throws
+//    TypeError; isValidCell(-1,0) / (NaN,0) short-circuit before grid[0] and
+//    return false. updateUnitCell with tile===lastTile returns before any gm
+//    read; the cross-cell variant throws inside removeUnitByTile's isValidCell
+//    (trace stops at tile/lastTile, type() never reached).
+runUG("ug_ctor_h0", [
+  ugC(100, 0), ugD(),
+  ugU(1, "City", 5, 5, 1, 0, 7), ugA(1),
+  ugV(0, 0), ugV(-1, 0), ugV(NaN, 0),
+  ugCIR(5, 10), ugN(5, 10, "City", null, 0), ugH(5, 10, "City", undefined, 0),
+  ugUpd(1),
+  ugSet(1, 10005, 5), ugUpd(1),
+]);
+
+// 7. addUnit insertion orders: existing key Set.add (dup is a no-op that does
+//    NOT move the earlier member), new key appended to the Map tail.
+runUG("ug_add_order", [
+  ugC(300, 100),
+  ugU(1, "City", 50, 50, 1, 0, 7),
+  ugU(2, "City", 60, 60, 1, 0, 7),
+  ugU(3, "Port", 150, 150, 1, 0, 8),
+  ugA(1), ugA(2), ugA(1), ugA(3), ugD(),
+]);
+
+// 8. removeUnit calls tile() exactly once then delegates; an emptied Set
+//    keeps its Map key; deleting a member that is not in the set is a no-op;
+//    a tile whose cell is out of grid never reaches unit.type().
+runUG("ug_remove_trace", [
+  ugC(300, 100),
+  ugU(1, "City", 50, 50, 1, 0, 7),
+  ugU(2, "City", 60, 60, 1, 0, 7),
+  ugA(1), ugA(2),
+  ugR(1), ugD(), ugR(1),
+  ugRT(2, 99999), ugR(2), ugD(),
+]);
+
+// 9. Set delete then re-add moves the member to the tail.
+runUG("ug_delete_readd", [
+  ugC(300, 100),
+  ugU(1, "City", 50, 50, 1, 0, 7),
+  ugU(2, "City", 60, 60, 1, 0, 7),
+  ugA(1), ugA(2),
+  ugRT(1, 50), ugA(1), ugD(),
+]);
+
+// 10. updateUnitCell short-circuits: same tile (===, zero gm reads beyond the
+//     two facade calls) and same cell (four floor divisions, no remove/add).
+runUG("ug_update_same", [
+  ugC(300, 100),
+  ugU(1, "City", 50, 50, 1, 0, 7),
+  ugUpd(1),
+  ugSet(1, 60, 50), ugUpd(1), ugD(),
+]);
+
+// 11. updateUnitCell cross-cell: removeUnitByTile(oldTile) (no tile() call)
+//     then addUnit (tile() called AGAIN); existing type key -> one type() in
+//     add, new key -> two type() calls.
+runUG("ug_update_cross", [
+  ugC(300, 100),
+  ugU(1, "City", 50, 50, 1, 0, 7),
+  ugU(2, "City", 150, 150, 1, 0, 7),
+  ugA(1), ugA(2),
+  ugSet(1, 150, 50), ugUpd(1), ugD(),
+  ugU(3, "Port", 250, 50, 1, 0, 7), ugA(3),
+  ugSet(3, 150, 250), ugUpd(3), ugD(),
+]);
+
+// 12. isValidCell edges: four borders, NaN / ±Infinity, -0 (>= 0 true), and a
+//     fractional coordinate that PASSES (grid[i] indexing would crash later,
+//     but isValidCell itself only compares numbers).
+runUG("ug_isvalid_edges", [
+  ugC(300, 300),
+  ugV(0, 0), ugV(2, 2), ugV(-1, 0), ugV(0, -1), ugV(3, 0), ugV(0, 3),
+  ugV(NaN, 0), ugV(Infinity, 0), ugV(0, Infinity), ugV(-0, 0), ugV(2.5, 2.5),
+]);
+
+// 13. getCellsInRange math: range 0, a full-cell range, the x%cs=99 edge, the
+//     ceil(-0.05)/ceil(-0.55) -> -0 quirk (negative range can still leave a
+//     single cell), and the -1 arm that inverts the x window.
+runUG("ug_cells_math", [
+  ugC(300, 100),
+  ugCIR(50, 0), ugCIR(50, 100), ugCIR(99, 50),
+  ugCIR(100, -5), ugCIR(50, -5), ugCIR(50, NaN),
+]);
+
+// 14. nearbyUnits array vs scalar branch: the array branch iterates the
+//     declared types order inside each cell, the scalar branch the cell's
+//     single key — same grid, different result order. Empty types array -> [].
+runUG("ug_nearby_order", [
+  ugC(300, 100),
+  ugU(1, "City", 50, 50, 1, 0, 7),
+  ugU(2, "Port", 60, 60, 1, 0, 7),
+  ugU(3, "City", 150, 150, 1, 0, 7),
+  ugA(1), ugA(2), ugA(3),
+  ugN(50, 1000, "City", null, 0),
+  ugN(50, 1000, ["Port", "City"], null, 0),
+  ugN(50, 1000, ["City", "Port"], null, 0),
+  ugN(50, 1000, [], null, 0),
+]);
+
+// 15. isActive / isUnderConstruction filters: an inactive unit is probed by
+//     isActive ONLY (no isUnderConstruction call), a UC unit is dropped by
+//     default and included when includeUnderConstruction.
+runUG("ug_nearby_filters", [
+  ugC(300, 100),
+  ugU(1, "City", 50, 50, 0, 0, 7),
+  ugU(2, "City", 60, 60, 1, 1, 7),
+  ugU(3, "City", 70, 70, 1, 0, 7),
+  ugA(1), ugA(2), ugA(3),
+  ugN(50, 100, "City", null, 0),
+  ugN(50, 100, "City", null, 1),
+]);
+
+// 16. distSquared == rangeSquared survives the strict `>` filter; the
+//     predicate is a scripted stream (undefined / all-true / all-false).
+runUG("ug_nearby_boundary", [
+  ugC(300, 100),
+  ugU(1, "City", 50, 50, 1, 0, 7),
+  ugU(2, "City", 60, 60, 1, 0, 7),
+  ugU(3, "City", 70, 70, 1, 0, 7),
+  ugA(1), ugA(2), ugA(3),
+  ugN(50, 10, "City", null, 0),
+  ugN(50, 10, "City", [1, 0], 0),
+  ugN(50, 10, "City", [0, 0], 0),
+]);
+
+// 17. hasUnitNearby short-circuit: the first unitIsInRange true returns and
+//     the later members are never probed; a missing type key probes zero
+//     units; the playerId arm calls owner().id() only when defined.
+runUG("ug_has_short", [
+  ugC(300, 100),
+  ugU(1, "City", 50, 50, 0, 0, 7),
+  ugU(2, "City", 60, 60, 1, 0, 8),
+  ugU(3, "City", 70, 70, 1, 0, 7),
+  ugA(1), ugA(2), ugA(3),
+  ugH(50, 10, "City", undefined, 0),
+  ugH(50, 10, "City", 7, 0),
+  ugH(50, 10, "Port", undefined, 0),
+]);
+
+// 18. anyUnitNearby: cy->cx->types order, unitIsInRange gate before the
+//     predicate, predicate short-circuit on the first true.
+runUG("ug_any_pred", [
+  ugC(300, 100),
+  ugU(1, "City", 50, 50, 1, 0, 7),
+  ugU(2, "Port", 60, 60, 1, 0, 7),
+  ugU(3, "City", 70, 70, 1, 1, 7),
+  ugA(1), ugA(2), ugA(3),
+  ugAny(50, 1000, ["City", "Port"], [0, 1], undefined, 0),
+  ugAny(50, 1000, ["City"], [0], 8, 0),
+]);
+
+// 19. squaredDistanceFromTile: the query tile read first (gm.x/y), then
+//     unit.tile() TWICE (gm.x(unit.tile()) and gm.y(unit.tile()) each call
+//     it — the trace pins the double call).
+runUG("ug_sqdist", [
+  ugC(300, 100),
+  ugU(1, "City", 60, 60, 1, 0, 7),
+  ugSQ(1, 50), ugSQ(1, 150),
+]);
+
+// 20. removeUnitByTile with a missing type key: isValidCell passes, the Map
+//     get returns undefined, no delete happens (one type() call only).
+runUG("ug_remove_missing_key", [
+  ugC(300, 100),
+  ugU(1, "City", 50, 50, 1, 0, 7),
+  ugA(1),
+  ugRT(1, 150), ugD(),
 ]);
 
 // --- TileTraversalScratch scenario runner -------------------------------------
@@ -8129,6 +8528,7 @@ const structures = {
   gameupdateutils: guScenarios,
   railroad: rrScenarios,
   railgrid: rsgScenarios,
+  unitgrid: ugScenarios,
   tiletravscratch: ttsScenarios,
   eventbus: ebScenarios,
   asseturls: auScenarios,
@@ -10111,6 +10511,45 @@ for (const s of structures.railgrid) {
 }
 L.push("pub const RSG_SCENARIOS: &[RsgScenario] = &[");
 for (const s of structures.railgrid) L.push(`    ${s.name.toUpperCase()},`);
+L.push("];");
+L.push("");
+
+L.push("/// One `UnitGrid.ts` op: `kind` + flat `args` / `res` token streams");
+L.push("/// (see the Rust `RigHarness::run_op` docs). res is `[traceLen,(trace)*,");
+L.push("/// status,payload*]`; trace events 10 tile [10,refid,tile], 11 type");
+L.push("/// [11,refid,(str)], 12 isActive [12,refid,0|1], 13 isUnderConstruction");
+L.push("/// [13,refid,0|1], 14 lastTile [14,refid,tile], 15 owner().id()");
+L.push("/// [15,refid,id], 16 nearbyUnits predicate [16,refid,distSquared,ret],");
+L.push("/// 17 anyUnitNearby predicate [17,refid,ret]; status 1 = the JS call");
+L.push("/// threw (0-row grid[0].length). Strings cross as [len,u0,..] UTF-16.");
+L.push("pub struct UgOp {");
+L.push("    pub kind: u8,");
+L.push("    pub args: &'static [f64],");
+L.push("    pub res: &'static [f64],");
+L.push("}");
+L.push("/// One grid scenario: the op stream replayed against a fresh harness");
+L.push("/// (kind 0 constructs the grid over a real all-land GameMap).");
+L.push("pub struct UgScenario {");
+L.push("    pub name: &'static str,");
+L.push("    pub ops: &'static [UgOp],");
+L.push("}");
+L.push("");
+for (const s of structures.unitgrid) {
+  const id = s.name.toUpperCase();
+  L.push(`const ${id}_OPS: &[UgOp] = &[`);
+  for (const o of s.ops)
+    L.push(
+      `    UgOp { kind: ${o.kind}, args: &[${o.args.map(utilResLit).join(", ")}], res: &[${o.res.map(utilResLit).join(", ")}] },`,
+    );
+  L.push("];");
+  L.push(`pub const ${id}: UgScenario = UgScenario {`);
+  L.push(`    name: "${s.name}",`);
+  L.push(`    ops: ${id}_OPS,`);
+  L.push("};");
+  L.push("");
+}
+L.push("pub const UG_SCENARIOS: &[UgScenario] = &[");
+for (const s of structures.unitgrid) L.push(`    ${s.name.toUpperCase()},`);
 L.push("];");
 L.push("");
 

@@ -111,6 +111,7 @@ for (const name of [
   "probe_wpm_arg", "probe_wpm_op", "probe_wpm_out_at",
   "probe_rr_arg", "probe_rr_op", "probe_rr_out_at",
   "probe_rsg_reset", "probe_rsg_arg", "probe_rsg_op", "probe_rsg_out_at",
+  "probe_ug_reset", "probe_ug_arg", "probe_ug_op", "probe_ug_out_at",
   "probe_tts_reset", "probe_tts_arg", "probe_tts_op", "probe_tts_out_at",
   "probe_eb_reset", "probe_eb_arg", "probe_eb_op", "probe_eb_out_at",
 ]) {
@@ -2044,6 +2045,28 @@ for (const s of S.eventbus) {
     for (let i = 0; i < len; i++) {
       checks++;
       const g = ex.probe_eb_out_at(i);
+      const w = numTok(op.res[i]);
+      if (!Object.is(g, w)) fail(`${s.name} op${op.kind} res[${i}]`, 0, g, w);
+    }
+  }
+}
+
+// --- game/UnitGrid.ts (unit_grid) ---------------------------------------------
+// Replays the stateful op stream (construct / add / remove / update / probes /
+// nearby / has / any / dump) through the wasm RigHarness. Each scenario resets
+// the harness first.
+for (const s of S.unitgrid) {
+  ex.probe_ug_reset();
+  for (const op of s.ops) {
+    for (const a of op.args) ex.probe_ug_arg(numTok(a));
+    const len = Number(ex.probe_ug_op(op.kind));
+    if (len !== op.res.length) {
+      fail(`${s.name} op${op.kind} res len`, 0, len, op.res.length);
+      continue;
+    }
+    for (let i = 0; i < len; i++) {
+      checks++;
+      const g = ex.probe_ug_out_at(i);
       const w = numTok(op.res[i]);
       if (!Object.is(g, w)) fail(`${s.name} op${op.kind} res[${i}]`, 0, g, w);
     }

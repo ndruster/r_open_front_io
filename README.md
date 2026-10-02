@@ -138,6 +138,10 @@ rust/
 │   │   ├── stats_impl.rs          port of game/StatsImpl.ts (pure bigint
 │   │   │                          stats accumulator; Player facade
 │   │   │                          scripted-mocked with a pinned call trace)
+│   │   ├── unit_grid.rs           port of game/UnitGrid.ts (100-cell 2-D
+│   │   │                          spatial index over the real GameMap;
+│   │   │                          Unit facade scripted-mocked with a pinned
+│   │   │                          call trace)
 │   │   ├── wasm_probe.rs          `extern "C"` surface, feature-gated
 │   │   └── pathfinding/
 │   │       ├── mod.rs
@@ -1005,6 +1009,34 @@ desync, not a rounding nit. Two things enforce that here:
     `PlayerStats` / boats / bombs / units key insertion orders. The `in`
     prototype-chain quirk and the negative-index property write are out of
     domain (pinned in the module doc). 34 scenarios (2,137 result tokens).
+53. **`game/UnitGrid.ts`** (`unit_grid`) — the 100-pixel-cell 2-D spatial
+    index: a row-major `grid[ceil(h/cs)][ceil(w/cs)]` of insertion-ordered
+    `Map<UnitType-string, Set<unit>>` cells over the **real** ported `GameMap`
+    (so `gm.x/y/width/height` are already bit-exact), with the `Unit` facade a
+    scripted mock (every `tile()` / `type()` / `isActive()` /
+    `isUnderConstruction()` / `lastTile()` / `owner().id()` call recorded as a
+    trace event, pinning call *counts* — `removeUnit` reads `tile()` once and
+    `removeUnitByTile` never re-reads; the cross-cell `updateUnitCell` move
+    re-reads it inside `addUnit`; `addUnit` reads `type()` **twice** on the
+    missing-key branch, once otherwise). Faithful JS collection semantics:
+    `Set.add` of a present member is a no-op that does *not* move it, while
+    `delete` + re-`add` moves it to the tail; `Map.set` appends a new key and
+    overwrites an existing one in place. `isValidCell` short-circuits
+    left-to-right so a failing `gx >= 0` (NaN included) never touches
+    `grid[0]`, but a passing one on a 0-row grid (0-height map) reads
+    `.length` off `undefined` and throws a `TypeError` (pinned as op status 1
+    with the partial trace). `getCellsInRange` rides JS `%` and the
+    NaN-propagating / ±0-correct `js_min`/`js_max` (`Math.ceil(-0.05)` is `-0`,
+    so a negative range can still leave a one-cell window since `0 <= -0`).
+    `nearbyUnits`' array branch iterates `cy → cx → types → unitSet` while the
+    scalar branch iterates `cy → cx → unitSet` — the same grid yields different
+    result orders (pinned by `ug_nearby_order`); the distance filter is a
+    strict `> rangeSquared` (equality survives) and `hasUnitNearby` /
+    `anyUnitNearby` share `unitIsInRange`'s complementary `<=`, short-circuiting
+    `isActive → under-construction → playerId (owner touched only when defined)
+    → distance`. The `UnitPredicate` callbacks are scripted streams (a real JS
+    closure runs at capture, every invocation traced). 20 scenarios (1,451
+    result tokens).
 
 Regenerate whenever a ported source changes:
 
@@ -1038,7 +1070,7 @@ node rust/tools/run_wasm_parity.mjs
 
 `wasm-probe` exposes the ported functions through `extern "C"` scalar
 entrypoints (`src/wasm_probe.rs`); the runner imports `data/vectors.json` and
-compares every value. Last run: **112,143 comparisons, all bit-identical**.
+compares every value. Last run: **113,594 comparisons, all bit-identical**.
 
 ### Windows: the linker environment
 

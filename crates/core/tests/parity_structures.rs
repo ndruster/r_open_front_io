@@ -2559,6 +2559,39 @@ fn replay_railgrid_scenarios() {
     }
 }
 
+// UnitGrid.ts: replay the stateful op stream (construct / addUnit / removeUnit /
+// removeUnitByTile / updateUnitCell / isValidCell / getCellsInRange /
+// squaredDistanceFromTile / nearbyUnits / hasUnitNearby / anyUnitNearby / dump)
+// through `RigHarness::run_op` and compare every op's flat token stream (the
+// scripted Unit facade trace, the JS Map/Set insertion orders, the 0-row
+// grid[0].length throw as status 1, NaN/-0 through obj_is).
+#[test]
+fn replay_unitgrid_scenarios() {
+    use openfront_core::unit_grid::RigHarness;
+    for s in vectors::UG_SCENARIOS {
+        let mut rig = RigHarness::new();
+        for op in s.ops {
+            let got = rig.run_op(op.kind, op.args);
+            assert_eq!(
+                got.len(),
+                op.res.len(),
+                "{} op[{:?}] res len: got {got:?} want {:?}",
+                s.name,
+                op.kind,
+                op.res
+            );
+            for (j, (g, w)) in got.iter().zip(op.res.iter()).enumerate() {
+                assert!(
+                    obj_is(*g, *w),
+                    "{} op[{:?}] res[{j}]: got {g} want {w}",
+                    s.name,
+                    op.kind
+                );
+            }
+        }
+    }
+}
+
 // TileTraversalScratch.ts: replay the stateful op stream (allocate / bump /
 // typed-array writes / stack push) through `RigHarness::run_op` and compare
 // every op's flat token stream.

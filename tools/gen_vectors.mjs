@@ -168,6 +168,7 @@ const AU = await loadTs("src/core/AssetUrls.ts");
 const MG = await loadTs("src/core/game/Maps.gen.ts");
 const TN = await loadTs("src/core/execution/utils/TribeNames.ts");
 const GAME = await loadTs("src/core/game/Game.ts");
+const NC = await loadTs("src/core/game/NationCreation.ts");
 const { AStar } = await loadTs("src/core/pathfinding/algorithms/AStar.ts");
 const { AStarRail } = await loadTs("src/core/pathfinding/algorithms/AStar.Rail.ts");
 const { AStarWater } = await loadTs("src/core/pathfinding/algorithms/AStar.Water.ts");
@@ -2221,6 +2222,185 @@ captureGAME("g_consts", 9, [0], [
   GAME.STRUCTURE_BULK_STEPS.length,
   ...GAME.STRUCTURE_BULK_STEPS,
 ]);
+
+// --- NationCreation scenario runner ------------------------------------------
+// Exercises the real NationCreation.ts tables + name machinery through the
+// shared run_op runner. Strings cross as `[len, u0, ..]` (UTF-16 code units);
+// the Rust twin is `nation_creation::*`.
+//
+// kind table (matches the Rust dispatch):
+//   0 templates dump  args [0]   res [tN,(pN,(tag,lit?)*)*]  tag 0=lit 1=noun 2=plural
+//   1 nouns dump      args [0]   res [nN,(noun)*]
+//   2 O_TO_OES dump   args [0]   res [kN,(word)*]
+//   3 SPECIAL dump    args [0]   res [kN,(key,val)*]
+//   4 pluralize       args [noun] res [plural]
+//   5 generateName    args [seed] res [name]
+//   6 uniqueName      args [seed,uN,(used)*] res [name]
+//   7 compactCount    args [n,isCompact] res [count]
+//   8 createRandomNations args [seed,target,mN,(nat)*,eN,(nat)*] res [kN,(out)*]
+//     nat = [name,coordP,x,y,flagP,(flag)?]   out = nat + [id]
+const ncScenarios = [];
+const ncname = (s) => s.replace(/[^A-Za-z0-9]+/g, "_");
+function captureNC(name, kind, args, res) {
+  ncScenarios.push({
+    name: ncname(name),
+    kind,
+    args: args.flat(Infinity).map(uenc),
+    res: res.flat(Infinity).map(uenc),
+  });
+}
+
+// kind 0: NAME_TEMPLATES dump — parts tagged 0=lit / 1=NOUN / 2=PLURAL_NOUN.
+captureNC("nc_templates", 0, [0], [
+  NC.NAME_TEMPLATES.length,
+  ...NC.NAME_TEMPLATES.flatMap((t) => [
+    t.length,
+    ...t.flatMap((p) =>
+      p === NC.PLURAL_NOUN ? [2] : p === NC.NOUN ? [1] : [0, ...encS(p)],
+    ),
+  ]),
+]);
+
+// kind 1-3: the word bank, the -oes set and the irregular map (insertion order).
+captureNC("nc_nouns", 1, [0], [NC.NOUNS.length, ...NC.NOUNS.map(encS)]);
+captureNC("nc_otooes", 2, [0], [[...NC.O_TO_OES].length, [...NC.O_TO_OES].map(encS)]);
+captureNC("nc_special", 3, [0], [
+  NC.SPECIAL_PLURALS.size,
+  [...NC.SPECIAL_PLURALS.entries()].flatMap(([k, v]) => [encS(k), encS(v)]),
+]);
+
+// kind 4: pluralize over every bank word plus the UTF-16 / boundary cases.
+const ncPluralCases = [
+  ...NC.NOUNS,
+  "y",
+  "Key",
+  "Bus",
+  "Peach",
+  "Sphinx",
+  "Quiz",
+  "Kazoo",
+  "Kiwi",
+  "Ibis",
+  "",
+  "ss",
+  "ch",
+  "a",
+  "é",
+  "yo",
+];
+for (const [i, w] of ncPluralCases.entries()) {
+  captureNC(`nc_plural_${i}`, 4, [encS(w)], [encS(NC.pluralize(w))]);
+}
+
+// kind 5: generateNationName over a seed matrix (template draw, then noun).
+const ncSeeds = [0, 1, 7, 42, 20260922, -5, 1.9, 123456789, 2 ** 31, -(2 ** 31), 987654321, 555, 36 ** 8, 1e6, 2 ** 53 - 1];
+for (const [i, s] of ncSeeds.entries()) {
+  const r = new PseudoRandom(s);
+  captureNC(`nc_gen_${i}`, 5, [s], [encS(NC.generateNationName(r))]);
+}
+
+// kind 6: generateUniqueNationName — empty used, one collision, and the
+// fallback path (all 1000 retry draws pre-marked used -> `base 1`).
+{
+  const s = 20260922;
+  captureNC("nc_uniq_empty", 6, [s, 0], [encS(NC.generateUniqueNationName(new PseudoRandom(s), new Set()))]);
+
+  const r1 = new PseudoRandom(s);
+  const first = NC.generateNationName(r1);
+  captureNC("nc_uniq_one", 6, [s, 1, encS(first)], [
+    encS(NC.generateUniqueNationName(new PseudoRandom(s), new Set([first]))),
+  ]);
+
+  const rF = new PseudoRandom(777);
+  const used = new Set();
+  for (let i = 0; i < 1000; i++) used.add(NC.generateNationName(rF));
+  captureNC("nc_uniq_fallback", 6, [777, used.size, [...used].map(encS)], [
+    encS(NC.generateUniqueNationName(new PseudoRandom(777), used)),
+  ]);
+}
+
+// kind 7: getCompactMapNationCount matrix.
+for (const n of [0, 1, 2, 3, 4, 5, 8, 9, 13, 100]) {
+  for (const c of [0, 1]) {
+    captureNC(`nc_compact_${n}_${c}`, 7, [n, c], [NC.getCompactMapNationCount(n, c === 1)]);
+  }
+}
+
+// kind 8: createRandomNations through the real toNation callback (Cell +
+// PlayerInfo + shared-RNG nextID). nat = [name,coordP,x,y,flagP,(flag)?].
+const ncNat = (name, coord, flag) => [
+  encS(name),
+  coord ? 1 : 0,
+  ...(coord ? coord : [0, 0]),
+  flag ? 1 : 0,
+  ...(flag ? encS(flag) : []),
+];
+const ncRunRes = (seed, target, manifest, extras) => {
+  const r = new PseudoRandom(seed);
+  // Nation / Cell / PlayerInfo / PlayerType are Game.ts bindings (imported
+  // by NationCreation but not re-exported), so they come from GAME.
+  const toNation = (n) =>
+    new GAME.Nation(
+      n.coordinates !== undefined
+        ? new GAME.Cell(n.coordinates[0], n.coordinates[1])
+        : undefined,
+      new GAME.PlayerInfo(
+        n.name,
+        GAME.PlayerType.Nation,
+        null,
+        r.nextID(),
+        false,
+        null,
+        [],
+        null,
+        n.flag ?? null,
+      ),
+    );
+  const mk = (list) => list.map(([name, coord, flag]) => ({
+    name,
+    ...(coord ? { coordinates: coord } : {}),
+    ...(flag ? { flag } : {}),
+  }));
+  const nations = NC.createRandomNations(target, mk(manifest), mk(extras), toNation, r);
+  return [
+    nations.length,
+    ...nations.flatMap((n) => {
+      const pi = n.playerInfo;
+      const sc = n.spawnCell;
+      return [
+        encS(pi.name),
+        sc ? 1 : 0,
+        sc ? sc.x : 0,
+        sc ? sc.y : 0,
+        pi.nationFlag ? 1 : 0,
+        ...(pi.nationFlag ? encS(pi.nationFlag) : []),
+        encS(pi.id),
+      ];
+    }),
+  ];
+};
+const ncCases = [
+  // [seed, target, manifest, extras]
+  [11, 2, [["Alpha", [1, 2], "us"], ["Beta", null, null], ["Gamma", [7, 8], null]], []],
+  [11, 0, [["Alpha", [1, 2], "us"]], []],
+  [11, 5, [["Alpha", [1, 2], "us"], ["Beta", null, null]], []],
+  [42, 4, [["Alpha", null, null], ["Beta", [3, 4], "in"], ["Gamma", null, null]], [["Extra1", [5, 6], "pk"], ["Alpha", null, null], ["Extra3", null, null]]],
+  [42, 3, [], [["E1", null, null], ["E2", [9, 9], null]]],
+  [7, 2, [], []],
+  [20260922, 6, [["A", [0, 0], null], ["B", null, "us"], ["C", null, null]], [["D", [1, 1], null], ["E", null, null], ["F", null, null], ["G", null, null]]],
+];
+for (const [i, [seed, target, man, ext]] of ncCases.entries()) {
+  const args = [
+    seed,
+    target,
+    man.length,
+    ...man.flatMap(([n, c, f]) => ncNat(n, c, f)),
+    ext.length,
+    ...ext.flatMap(([n, c, f]) => ncNat(n, c, f)),
+  ];
+  captureNC(`nc_crn_${i}`, 8, args, ncRunRes(seed, target, man, ext));
+}
+
 
 // --- PatternDecoder scenario runner -------------------------------------------
 // Exercises the real PatternDecoder.ts decode + isPrimary through the shared
@@ -5515,6 +5695,7 @@ const structures = {
   maps: mgScenarios,
   tribenames: tnScenarios,
   game: gameScenarios,
+  nationcreation: ncScenarios,
   astar: asScenarios,
   rail: railScenarios,
   water: waterScenarios,
@@ -7649,6 +7830,33 @@ for (const s of structures.game) {
 }
 L.push("pub const GAME_SCENARIOS: &[GameScenario] = &[");
 for (const s of structures.game) L.push(`    ${s.name.toUpperCase()},`);
+L.push("];");
+L.push("");
+
+L.push("/// game/NationCreation.ts scenario: one `nation_creation::run_op(kind,");
+L.push("/// args)` call. kind 0-3 dump the template / noun / O_TO_OES /");
+L.push("/// SPECIAL_PLURALS tables, 4 pluralize, 5 generateNationName, 6");
+L.push("/// generateUniqueNationName, 7 getCompactMapNationCount, 8");
+L.push("/// createRandomNations. Strings cross as `[len, u0, ..]` UTF-16 units.");
+L.push("pub struct NcScenario {");
+L.push("    pub name: &'static str,");
+L.push("    pub kind: u8,");
+L.push("    pub args: &'static [f64],");
+L.push("    pub res: &'static [f64],");
+L.push("}");
+L.push("");
+for (const s of structures.nationcreation) {
+  const id = s.name.toUpperCase();
+  L.push(`pub const ${id}: NcScenario = NcScenario {`);
+  L.push(`    name: "${s.name}",`);
+  L.push(`    kind: ${s.kind}u8,`);
+  L.push(`    args: &[${s.args.map(utilResLit).join(", ")}],`);
+  L.push(`    res: &[${s.res.map(utilResLit).join(", ")}],`);
+  L.push("};");
+  L.push("");
+}
+L.push("pub const NC_SCENARIOS: &[NcScenario] = &[");
+for (const s of structures.nationcreation) L.push(`    ${s.name.toUpperCase()},`);
 L.push("];");
 L.push("");
 

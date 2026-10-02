@@ -1620,6 +1620,25 @@ for (const s of S.game) {
   }
 }
 
+// --- game/NationCreation.ts (nation_creation) --------------------------------
+// Replays the tables dump / pluralize / name generation / createRandomNations
+// through the shared run_op runner; args and res are flat f64 token streams,
+// compared element-by-element with Object.is.
+for (const s of S.nationcreation) {
+  for (const a of s.args) ex.probe_nc_arg(numTok(a));
+  const len = Number(ex.probe_nc_op(s.kind));
+  if (len !== s.res.length) {
+    fail(`${s.name} res len`, 0, len, s.res.length);
+    continue;
+  }
+  for (let i = 0; i < len; i++) {
+    checks++;
+    const g = ex.probe_nc_out_at(i);
+    const w = numTok(s.res[i]);
+    if (!Object.is(g, w)) fail(`${s.name} res[${i}]`, 0, g, w);
+  }
+}
+
 // --- PatternDecoder (PatternDecoder.ts) ----------------------------------------
 // Replays decode + isPrimary through the shared run_op runner; args and res
 // are flat f64 token streams, compared element-by-element with Object.is.

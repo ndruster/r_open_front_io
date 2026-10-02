@@ -133,6 +133,15 @@
 //!   `getMessageCategory`, `ColoredTeams`, `Cell`'s template-literal repr,
 //!   `PlayerInfo`'s display name + ctor defaults, and the bigint bulk-cost
 //!   math; the interfaces have no runtime and are not ported)
+//! * [`nation_creation`] — `src/core/game/NationCreation.ts` (the 194-entry
+//!   `NAME_TEMPLATES` with symbol markers as enum variants, the 236-word
+//!   `NOUNS` bank with its intentional duplicates, `O_TO_OES` /
+//!   `SPECIAL_PLURALS`, `pluralize` with JS UTF-16 indexing and the
+//!   `undefined`-vowel quirk, `generateNationName` /
+//!   `generateUniqueNationName`, `getCompactMapNationCount`, and
+//!   `createRandomNations`' shuffle/nextID draw order; `createNationsForGame`
+//!   is out of scope — its config branching rides on already-ported
+//!   `Game.ts` constants)
 //!
 //! Two rules govern every future port into this crate:
 //!
@@ -162,6 +171,7 @@ pub mod jsnum;
 pub mod line;
 pub mod maps_gen;
 pub mod motion_plans;
+pub mod nation_creation;
 pub mod pathfinding;
 pub mod pattern_decoder;
 pub mod pseudo_random;

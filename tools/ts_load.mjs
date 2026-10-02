@@ -1557,6 +1557,51 @@ function prepare(rel) {
     );
   }
 
+  if (rel.endsWith("game/NationCreation.ts")) {
+    // The Schemas / TerrainMapLoader imports are type-only (GameStartInfo,
+    // ManifestNation, AdditionalNation) and the PseudoRandom import is only
+    // used as a type annotation - all erased by strip mode. The Game.ts
+    // import is a *value* use (Cell / PlayerInfo / PlayerType / the enums
+    // behind createNationsForGame's config comparisons), so it redirects to
+    // the prepared Game.ts copy (whose enums are inlined plain objects and
+    // whose Nation ctor is expanded). The module's own tables and helpers
+    // (PLURAL_NOUN / NOUN / NAME_TEMPLATES / NOUNS / O_TO_OES /
+    // SPECIAL_PLURALS / pluralize / generateNationName /
+    // generateUniqueNationName / createRandomNations) are module-private;
+    // they are re-exported for the capture.
+    if (!prepared.has("src/core/game/Game.ts")) prepare("src/core/game/Game.ts");
+    out = must(
+      out,
+      'import { PseudoRandom } from "../PseudoRandom";\n' +
+        'import { GameStartInfo } from "../Schemas";\n' +
+        "import {\n" +
+        "  Cell,\n" +
+        "  GameMapSize,\n" +
+        "  GameMode,\n" +
+        "  GameType,\n" +
+        "  HumansVsNations,\n" +
+        "  Nation,\n" +
+        "  PlayerInfo,\n" +
+        "  PlayerType,\n" +
+        "} from \"./Game\";\n" +
+        'import { AdditionalNation, Nation as ManifestNation } from "./TerrainMapLoader";\n',
+      "import {\n" +
+        "  Cell,\n" +
+        "  GameMapSize,\n" +
+        "  GameMode,\n" +
+        "  GameType,\n" +
+        "  HumansVsNations,\n" +
+        "  Nation,\n" +
+        "  PlayerInfo,\n" +
+        "  PlayerType,\n" +
+      `} from "./${prepared.get("src/core/game/Game.ts")}";\n`,
+      "NationCreation imports",
+    );
+    out =
+      out +
+      "\nexport { PLURAL_NOUN, NOUN, NAME_TEMPLATES, NOUNS, O_TO_OES, SPECIAL_PLURALS, pluralize, generateNationName, generateUniqueNationName, createRandomNations };\n";
+  }
+
   mkdirSync(cacheDir, { recursive: true });
   const hash = createHash("sha1").update(out).digest("hex").slice(0, 10);
   const base = `${basename(rel, ".ts")}-${hash}.ts`;

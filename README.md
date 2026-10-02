@@ -84,6 +84,9 @@ rust/
 │   │   │                          12 enums, unitTypeGroup tables, isEnumValue
 │   │   │                          guards, message categories, Cell / PlayerInfo,
 │   │   │                          bulk-cost math; interfaces are type-only)
+│   │   ├── nation_creation.rs     port of game/NationCreation.ts (name
+│   │   │                          templates + noun bank, pluralize, unique
+│   │   │                          name generation, createRandomNations)
 │   │   ├── wasm_probe.rs          `extern "C"` surface, feature-gated
 │   │   └── pathfinding/
 │   │       ├── mod.rs
@@ -705,6 +708,31 @@ desync, not a rounding nit. Two things enforce that here:
     category miss keys (22 / -1 / 999), `Cell[0,1.5]`, unicode display names,
     and the bulk edges (amount 0, no-upgradeCosts linear to 50, break-at-
     length).
+41. **`game/NationCreation.ts`** (`nation_creation`) — the nation-name
+    machinery: the 194-entry `NAME_TEMPLATES` (the `NOUN` / `PLURAL_NOUN`
+    symbols become enum variants; a full dump pins every literal and marker
+    in order), the 236-word `NOUNS` bank *with* its intentional duplicates
+    (Fullsender ×3 / Mito ×3 / Mitochondria ×3) and the `é` tail of
+    "Soufflé", `O_TO_OES` / `SPECIAL_PLURALS` (Set/Map insertion order),
+    `pluralize` with its exact branch order (special → s/ch/sh/x/z+es →
+    consonant-y → ies → oes → s) and the UTF-16 quirk that a one-character
+    `"y"` indexes `noun[-1]` = `undefined`, which `includes` coerces to
+    `"undefined"` and still takes the `-ies` path. `generateNationName`
+    draws template *before* noun; `generateUniqueNationName` retries 1000×
+    then falls back to `base + " " + counter`. `getCompactMapNationCount`
+    pins the 0 / floor(·0.25) / max(1,·) matrix. `createRandomNations`
+    replays the exact RNG draw order (shuffle → one `nextID()` per manifest
+    nation in shuffled order → extras filter/shuffle/pick → unique-name +
+    nextID per procedural nation) against the real `toNation` callback; the
+    Nation/PlayerInfo construction crosses as name / spawnCell / flag / id
+    tokens. `createNationsForGame` is out of scope (pure zod-config
+    branching over already-ported `Game.ts` constants). The loader drops the
+    type-only imports, re-points the Game.ts value import at the prepared
+    copy, and re-exports the module-private bindings for capture. 300
+    scenarios (7,837 result tokens) cover every table, pluralize over the
+    whole bank + boundary words, 15 seeds, the collision/fallback paths, and
+    7 createRandomNations cases (target ≤ / > manifest, extras dedupe,
+    procedural fill).
 
 Regenerate whenever a ported source changes:
 
@@ -738,7 +766,7 @@ node rust/tools/run_wasm_parity.mjs
 
 `wasm-probe` exposes the ported functions through `extern "C"` scalar
 entrypoints (`src/wasm_probe.rs`); the runner imports `data/vectors.json` and
-compares every value. Last run: **89,027 comparisons, all bit-identical**.
+compares every value. Last run: **96,864 comparisons, all bit-identical**.
 
 ### Windows: the linker environment
 

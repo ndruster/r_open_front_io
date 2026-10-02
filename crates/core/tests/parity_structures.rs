@@ -2272,6 +2272,21 @@ fn replay_game_scenarios() {
     }
 }
 
+// game/NationCreation.ts: replay the tables dump / pluralize / name
+// generation / createRandomNations through the shared `run_op` runner and
+// compare the flat token streams.
+#[test]
+fn replay_nationcreation_scenarios() {
+    use openfront_core::nation_creation::run_op;
+    for s in vectors::NC_SCENARIOS {
+        let got = run_op(s.kind, s.args);
+        assert_eq!(got.len(), s.res.len(), "{} res len: got {got:?} want {:?}", s.name, s.res);
+        for (j, (g, w)) in got.iter().zip(s.res.iter()).enumerate() {
+            assert!(obj_is(*g, *w), "{} res[{j}]: got {g} want {w}", s.name);
+        }
+    }
+}
+
 // GameUpdateUtils.ts: replay diff / apply / pack through the shared `run_op`
 // runner and compare the flat token streams (reference identity rides in as
 // the capture's refid, NaN/-0 through obj_is).

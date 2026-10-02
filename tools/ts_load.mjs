@@ -1559,6 +1559,29 @@ function prepare(rel) {
     );
   }
 
+  if (rel.endsWith("game/TerrainMapLoader.ts")) {
+    // The runtime surface (loadTerrainMap + genTerrainFromBin + the module
+    // loadedMaps cache) needs two value imports: GameMapSize (the enum the
+    // mapSize branches compare against) and GameMapImpl (new'd by
+    // genTerrainFromBin). TeamGameSpawnAreas / GameMap / GameMapLoader are
+    // type-only (annotations erased by strip mode, but the *named imports*
+    // survive and would link-error against erased exports), so they are
+    // dropped from the import lists; both value imports redirect to the
+    // prepared copies (Game.ts inlines GameMapSize / re-exports GameMapType
+    // as plain objects, GameMap.ts keeps the expanded GameMapImpl ctor).
+    if (!prepared.has("src/core/game/Game.ts")) prepare("src/core/game/Game.ts");
+    if (!prepared.has("src/core/game/GameMap.ts")) prepare("src/core/game/GameMap.ts");
+    out = must(
+      out,
+      'import { GameMapSize, GameMapType, TeamGameSpawnAreas } from "./Game";\n' +
+        'import { GameMap, GameMapImpl } from "./GameMap";\n' +
+        'import { GameMapLoader } from "./GameMapLoader";\n',
+      `import { GameMapSize, GameMapType } from "./${prepared.get("src/core/game/Game.ts")}";\n` +
+        `import { GameMapImpl } from "./${prepared.get("src/core/game/GameMap.ts")}";\n`,
+      "TerrainMapLoader imports",
+    );
+  }
+
   if (rel.endsWith("game/Maps.gen.ts")) {
     // Node's strip-only TS loader rejects `export enum`. GameMapType is a
     // string enum (member name = the folder id, value = the canonical wire

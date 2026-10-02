@@ -104,6 +104,7 @@ for (const name of [
   "probe_ss_arg", "probe_ss_op", "probe_ss_out_at",
   "probe_sc_arg", "probe_sc_op", "probe_sc_out_at",
   "probe_as_arg", "probe_as_op", "probe_as_out_at",
+  "probe_tml_arg", "probe_tml_op", "probe_tml_out_at",
   "probe_wpm_arg", "probe_wpm_op", "probe_wpm_out_at",
   "probe_rr_arg", "probe_rr_op", "probe_rr_out_at",
   "probe_rsg_reset", "probe_rsg_arg", "probe_rsg_op", "probe_rsg_out_at",
@@ -1758,6 +1759,26 @@ for (const s of S.apischemas) {
   for (let i = 0; i < len; i++) {
     checks++;
     const g = ex.probe_as_out_at(i);
+    const w = numTok(s.res[i]);
+    if (!Object.is(g, w)) fail(`${s.name} res[${i}]`, 0, g, w);
+  }
+}
+
+// --- game/TerrainMapLoader.ts (terrain_map_loader) ----------------------------
+// Replays the scripted loadTerrainMap scenarios (cache hit / throw-never-
+// caches / in-place Compact scaling / spawn-area scaling / placement + alpha
+// validation) through the shared run_op runner; args and res are flat f64
+// token streams, compared element-by-element with Object.is.
+for (const s of S.terrainmaploader) {
+  for (const a of s.args) ex.probe_tml_arg(numTok(a));
+  const len = Number(ex.probe_tml_op(s.kind));
+  if (len !== s.res.length) {
+    fail(`${s.name} res len`, 0, len, s.res.length);
+    continue;
+  }
+  for (let i = 0; i < len; i++) {
+    checks++;
+    const g = ex.probe_tml_out_at(i);
     const w = numTok(s.res[i]);
     if (!Object.is(g, w)) fail(`${s.name} res[${i}]`, 0, g, w);
   }

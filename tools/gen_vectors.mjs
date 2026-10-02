@@ -175,6 +175,7 @@ const Cosmetic = await loadTs("src/core/CosmeticSchemas.ts");
 const St = await loadTs("src/core/StatsSchemas.ts");
 const Sc = await loadTs("src/core/Schemas.ts");
 const Api = await loadTs("src/core/ApiSchemas.ts");
+const Tml = await loadTs("src/core/game/TerrainMapLoader.ts");
 const PF = await loadTs("src/core/pathfinding/PathFinder.ts");
 const { AStar } = await loadTs("src/core/pathfinding/algorithms/AStar.ts");
 const { AStarRail } = await loadTs("src/core/pathfinding/algorithms/AStar.Rail.ts");
@@ -3156,6 +3157,355 @@ captureAS("as_is_granted_subscription_batch", 15, [
     return Api.isGrantedSubscription(sub) ? 1 : 0;
   }),
 ]);
+
+
+// --- TerrainMapLoader scenario runner ----------------------------------------
+// Exercises the real game/TerrainMapLoader.ts loadTerrainMap (loadImages fixed
+// false) against a scripted GameMapLoader mock: getMapData returns a *stable*
+// manifest object (so the Compact in-place nation scaling is observable across
+// ops through the shared array reference) and fresh Uint8Array bins per call;
+// the getMapData call counter pins the module loadedMaps cache (a hit skips
+// the loader, every throw path leaves the key uncached). binKind 1 hands back
+// a zero-length buffer so genTerrainFromBin throws its real message. The Rust
+// twin is `terrain_map_loader::run_op`.
+//
+// args layout (flat f64; strings [len, u0, ..]):
+//   [map.w, map.h, map.nlt, map4x.w, .., map16x.w, ..,
+//    n, (hasCoord, x?, y?, flag, name)*n,
+//    addPresent, m, (...)*m,
+//    tgsaPresent, k, (key, areasLen, (x,y,w,h)*areasLen)*k,
+//    layersPresent, l, (id, placement, hasAlpha, alpha?)*l,
+//    (binKind, len, (byte)*len)*3,      // mapBin, map4xBin, map16xBin
+//    opsLen, (mapName, size)*opsLen]    // size 0=Normal, 1=Compact
+//
+// res: [opsLen, (per call)*, getMapDataCalls]
+//   success: [0, gameMap, miniMap, nations, addNations, tgsa, layers]
+//     gameMap / miniMap: [w, h, nlt, terrainLen, (byte)*terrainLen]
+//     nations: [n, (hasCoord, x?, y?, flag, name)*n]
+//     addNations: [present, m, (...)*m]   // present = manifest field defined
+//     tgsa: [present, k, (key, areasLen, (x,y,w,h)*areasLen)*k]
+//     layers: [present, l, (id, placement, hasAlpha, alpha?)*l]
+//   throws: [1|2|3, (str)message]         // bin / placement / alpha
+const tmlScenarios = [];
+const tmlname = (s) => s.replace(/[^A-Za-z0-9]+/g, "_");
+
+async function tmlRun(args) {
+  let p = 0;
+  const num = () => args[p++];
+  const str = () => {
+    const len = args[p++];
+    let s = "";
+    for (let i = 0; i < len; i++) s += String.fromCharCode(args[p++]);
+    return s;
+  };
+  const meta = () => ({ width: num(), height: num(), num_land_tiles: num() });
+  const nation = () => {
+    const has = args[p++];
+    const n = {};
+    if (has === 1) n.coordinates = [num(), num()];
+    n.flag = str();
+    n.name = str();
+    return n;
+  };
+  const map = meta();
+  const map4x = meta();
+  const map16x = meta();
+  const nations = [];
+  for (let i = 0, n = args[p++]; i < n; i++) nations.push(nation());
+  const addPresent = args[p++];
+  const addNations = [];
+  for (let i = 0, m = args[p++]; i < m; i++) addNations.push(nation());
+  const tgsaPresent = args[p++];
+  const tgsa = {};
+  for (let i = 0, k = args[p++]; i < k; i++) {
+    const key = str();
+    const areas = [];
+    for (let j = 0, a = args[p++]; j < a; j++) {
+      areas.push({ x: num(), y: num(), width: num(), height: num() });
+    }
+    tgsa[key] = areas;
+  }
+  const layersPresent = args[p++];
+  const layers = [];
+  for (let i = 0, l = args[p++]; i < l; i++) {
+    const layer = { id: str(), placement: str() };
+    if (args[p++] === 1) layer.alpha = num();
+    layers.push(layer);
+  }
+  const bins = [];
+  for (let b = 0; b < 3; b++) {
+    const kind = args[p++];
+    const len = args[p++];
+    const bytes = args.slice(p, p + len);
+    p += len;
+    bins.push(kind === 1 ? [] : bytes);
+  }
+  const manifest = {
+    name: "cap",
+    map,
+    map4x,
+    map16x,
+    nations,
+    ...(addPresent === 1 ? { additionalNations: addNations } : {}),
+    ...(tgsaPresent === 1 ? { teamGameSpawnAreas: tgsa } : {}),
+    ...(layersPresent === 1 ? { layers } : {}),
+  };
+  let calls = 0;
+  const loader = {
+    getMapData(_map) {
+      calls++;
+      return {
+        manifest: () => Promise.resolve(manifest),
+        mapBin: () => Promise.resolve(new Uint8Array(bins[0])),
+        map4xBin: () => Promise.resolve(new Uint8Array(bins[1])),
+        map16xBin: () => Promise.resolve(new Uint8Array(bins[2])),
+      };
+    },
+  };
+  const pushMap = (gm) => {
+    const w = gm.width();
+    const h = gm.height();
+    res.push(w, h, gm.numLandTiles(), w * h);
+    for (let i = 0; i < w * h; i++) res.push(gm.terrainByte(i));
+  };
+  const pushNation = (n) => {
+    if (n.coordinates !== undefined) res.push(1, ...n.coordinates);
+    else res.push(0);
+    res.push(...encS(n.flag ?? ""));
+    res.push(...encS(n.name));
+  };
+  const opsLen = args[p++];
+  const res = [opsLen];
+  for (let o = 0; o < opsLen; o++) {
+    const mapName = str();
+    const size = args[p++];
+    try {
+      const r = await Tml.loadTerrainMap(
+        mapName,
+        size === 0 ? GAME.GameMapSize.Normal : GAME.GameMapSize.Compact,
+        loader,
+        false,
+      );
+      res.push(0);
+      pushMap(r.gameMap);
+      pushMap(r.miniGameMap);
+      res.push(r.nations.length);
+      for (const n of r.nations) pushNation(n);
+      res.push(manifest.additionalNations !== undefined ? 1 : 0);
+      res.push(r.additionalNations.length);
+      for (const n of r.additionalNations) pushNation(n);
+      if (r.teamGameSpawnAreas === undefined) {
+        res.push(0);
+      } else {
+        const entries = Object.entries(r.teamGameSpawnAreas);
+        res.push(1, entries.length);
+        for (const [key, areas] of entries) {
+          res.push(...encS(key));
+          res.push(areas.length);
+          for (const a of areas) res.push(a.x, a.y, a.width, a.height);
+        }
+      }
+      if (r.layers === undefined) {
+        res.push(0);
+      } else {
+        res.push(1, r.layers.length);
+        for (const l of r.layers) {
+          res.push(...encS(l.id));
+          res.push(...encS(l.placement));
+          if (l.alpha !== undefined) res.push(1, l.alpha);
+          else res.push(0);
+        }
+      }
+    } catch (e) {
+      const kind = e.message.startsWith("Invalid data:")
+        ? 1
+        : e.message.includes("invalid placement")
+          ? 2
+          : e.message.includes("invalid alpha")
+            ? 3
+            : -1;
+      if (kind === -1) throw e;
+      res.push(kind, ...encS(e.message));
+    }
+  }
+  res.push(calls);
+  return res;
+}
+
+const tmlMeta = (w, h, nlt) => [w, h, nlt];
+const tmlNation = (has, x, y, flag, name) => [
+  has,
+  ...(has ? [x, y] : []),
+  ...encS(flag),
+  ...encS(name),
+];
+const tmlTgsa = (key, areas) => [
+  ...encS(key),
+  areas.length,
+  ...areas.flat(),
+];
+const tmlLayer = (id, placement, hasAlpha, alpha) => [
+  ...encS(id),
+  ...encS(placement),
+  hasAlpha,
+  ...(hasAlpha ? [alpha] : []),
+];
+const tmlBin = (kind, bytes) => [kind, kind === 1 ? 0 : bytes.length, ...bytes];
+const tmlOp = (name, size) => [...encS(name), size];
+
+function captureTML(name, spec) {
+  const args = [
+    ...spec.map,
+    ...spec.map4x,
+    ...spec.map16x,
+    spec.nations.length,
+    spec.nations,
+    spec.addPresent,
+    spec.addNations.length,
+    spec.addNations,
+    spec.tgsaPresent,
+    spec.tgsa.length,
+    spec.tgsa,
+    spec.layersPresent,
+    spec.layers.length,
+    spec.layers,
+    spec.bins,
+    spec.ops.length,
+    spec.ops,
+  ].flat(Infinity);
+  return tmlRun(args).then((res) => {
+    tmlScenarios.push({
+      name: tmlname(name),
+      kind: 0,
+      args: args.map(uenc),
+      res: res.map(uenc),
+    });
+  });
+}
+
+const TML_META = {
+  map: tmlMeta(2, 2, 7),
+  map4x: tmlMeta(2, 2, 5),
+  map16x: tmlMeta(2, 2, 3),
+};
+const TML_BINS = [tmlBin(0, [1, 2, 3, 4]), tmlBin(0, [5, 6, 7, 8]), tmlBin(0, [9, 10, 11, 12])];
+const TML_LAND = [tmlLayer("L", "land", 0)];
+const TML_FULL = {
+  ...TML_META,
+  nations: [tmlNation(1, 5, 6, "f1", "Alpha"), tmlNation(0, 0, 0, "", "Beta")],
+  addPresent: 1,
+  addNations: [tmlNation(1, 3, 1, "", "Gamma")],
+  tgsaPresent: 1,
+  tgsa: [tmlTgsa("duo", [[3, 4, 5, 6], [1, 1, 1, 1]])],
+  layersPresent: 1,
+  layers: TML_LAND,
+  bins: TML_BINS,
+};
+
+// 1. Normal basic: gameMap = map + mapBin, mini = map4x + map4xBin (dead
+//    ternary pinned by the distinct nlt values 7 / 5); nations unscaled.
+await captureTML("tml_normal_basic", { ...TML_FULL, ops: [tmlOp("nb1", 0)] });
+
+// 2. Compact basic: gameMap = map4x + map4xBin, mini = map16x + map16xBin;
+//    nations / additionalNations scaled in place, spawn areas scaled with the
+//    max(1, floor(1/2)) = 1 edge (second area is all-ones).
+await captureTML("tml_compact_basic", {
+  ...TML_FULL,
+  ops: [tmlOp("cb1", 1)],
+});
+
+// 3. Cache hit: same (map, size) twice - the second op skips getMapData
+//    (calls = 1) and dumps the identical cached object.
+await captureTML("tml_cache_hit", {
+  ...TML_FULL,
+  ops: [tmlOp("ch1", 0), tmlOp("ch1", 0)],
+});
+
+// 4. Cache isolation + in-place scaling pollution: k1 / k2 are distinct keys
+//    (calls = 2) over the SAME manifest object, so k2's Compact load re-scales
+//    the nations k1 already scaled (5,6 -> 2,3 -> 1,1). The result objects
+//    alias the shared array, so the third k1 op hits the cache and dumps the
+//    DOUBLE-scaled (1,1) nations - not the (2,3) its own load produced.
+await captureTML("tml_pollution_isolation", {
+  ...TML_FULL,
+  ops: [tmlOp("pi1", 1), tmlOp("pi2", 1), tmlOp("pi1", 1)],
+});
+
+// 5. genTerrainFromBin throw: mapBin comes back zero-length against the 2x2
+//    map; the same key retried re-throws (calls = 2, throw never caches).
+await captureTML("tml_bin_throw", {
+  ...TML_FULL,
+  bins: [tmlBin(1, []), ...TML_BINS.slice(1)],
+  ops: [tmlOp("bt1", 0), tmlOp("bt1", 0)],
+});
+
+// 6. Mini-map throw: the game map builds, then map4xBin (zero-length) throws
+//    for the mini map - the whole result is discarded and uncached.
+await captureTML("tml_mini_throw", {
+  ...TML_FULL,
+  bins: [TML_BINS[0], tmlBin(1, []), TML_BINS[2]],
+  ops: [tmlOp("mt1", 0)],
+});
+
+// 7. Placement throw: layer.placement = "sky".
+await captureTML("tml_placement_throw", {
+  ...TML_FULL,
+  layers: [tmlLayer("L", "sky", 0)],
+  ops: [tmlOp("pt1", 0)],
+});
+
+// 8. Alpha throw NaN: the message interpolates JS Number->string "NaN".
+await captureTML("tml_alpha_nan", {
+  ...TML_FULL,
+  layers: [tmlLayer("L", "land", 1, NaN)],
+  ops: [tmlOp("an1", 0)],
+});
+
+// 9. Alpha throw -0.5: message slot "-0.5".
+await captureTML("tml_alpha_neg", {
+  ...TML_FULL,
+  layers: [tmlLayer("L", "land", 1, -0.5)],
+  ops: [tmlOp("ag1", 0)],
+});
+
+// 10. Alpha throw 1.5: message slot "1.5".
+await captureTML("tml_alpha_over", {
+  ...TML_FULL,
+  layers: [tmlLayer("L", "land", 1, 1.5)],
+  ops: [tmlOp("ao1", 0)],
+});
+
+// 11. Alpha -0 boundary: Number.isFinite(-0) is true and -0 < 0 is false, so
+//     the layer passes and the dump round-trips the -0 (Object.is-pinned).
+await captureTML("tml_alpha_negzero", {
+  ...TML_FULL,
+  layers: [tmlLayer("L", "land", 1, -0)],
+  ops: [tmlOp("az1", 0)],
+});
+
+// 12. additionalNations absent: ?? [] yields a fresh empty array (present 0).
+await captureTML("tml_addnations_absent", {
+  ...TML_FULL,
+  addPresent: 0,
+  addNations: [],
+  ops: [tmlOp("aa1", 0)],
+});
+
+// 13. teamGameSpawnAreas absent: result field undefined (present 0).
+await captureTML("tml_tgsa_absent", {
+  ...TML_FULL,
+  tgsaPresent: 0,
+  tgsa: [],
+  ops: [tmlOp("ta1", 0)] },
+);
+
+// 14. layers absent: result field undefined (present 0), no validation runs.
+await captureTML("tml_layers_absent", {
+  ...TML_FULL,
+  layersPresent: 0,
+  layers: [],
+  ops: [tmlOp("la1", 0)],
+});
 
 
 // --- WaterPathMemo scenario runner -------------------------------------------
@@ -6783,6 +7133,7 @@ const structures = {
   statschemas: stScenarios,
   schemas: scScenarios,
   apischemas: asSchemasScenarios,
+  terrainmaploader: tmlScenarios,
   waterpathmemo: wpmScenarios,
   astar: asScenarios,
   rail: railScenarios,
@@ -9152,6 +9503,42 @@ for (const s of structures.waterpathmemo) {
 }
 L.push("pub const WPM_SCENARIOS: &[WpmScenario] = &[");
 for (const s of structures.waterpathmemo) L.push(`    ${s.name.toUpperCase()},`);
+L.push("];");
+L.push("");
+
+L.push("/// game/TerrainMapLoader.ts scenario: one `terrain_map_loader::run_op(0,");
+L.push("/// args)` call replaying a whole scripted loadTerrainMap sequence");
+L.push("/// (loadImages=false) against the stable-manifest / fresh-bin mock");
+L.push("/// loader. args layout: map/map4x/map16x metadata triples, nations");
+L.push("/// `[n,(hasCoord,x?,y?,flag,name)*]`, additionalNations");
+L.push("/// `[present,m,(...)*]`, teamGameSpawnAreas `[present,k,(key,areasLen,");
+L.push("/// (x,y,w,h)*areasLen)*k]`, layers `[present,l,(id,placement,hasAlpha,");
+L.push("/// alpha?)*l]`, three bins `[kind,len,(byte)*len]` (kind 1 = throw with a");
+L.push("/// zero-length buffer), then ops `[opsLen,(mapName,size)*]` (size 0=");
+L.push("/// Normal, 1=Compact). res: `[opsLen, (per call)*, getMapDataCalls]` -");
+L.push("/// success `[0, gameMap, miniMap, nations, addNations, tgsa, layers]`");
+L.push("/// (maps as `[w,h,nlt,terrainLen,(byte)*]`), throws `[1|2|3,(str)msg]`");
+L.push("/// (bin length / placement / alpha). Strings cross as `[len, u0, ..]`");
+L.push("/// UTF-16 units.");
+L.push("pub struct TmlScenario {");
+L.push("    pub name: &'static str,");
+L.push("    pub kind: u8,");
+L.push("    pub args: &'static [f64],");
+L.push("    pub res: &'static [f64],");
+L.push("}");
+L.push("");
+for (const s of structures.terrainmaploader) {
+  const id = s.name.toUpperCase();
+  L.push(`pub const ${id}: TmlScenario = TmlScenario {`);
+  L.push(`    name: "${s.name}",`);
+  L.push(`    kind: ${s.kind}u8,`);
+  L.push(`    args: &[${s.args.map(utilResLit).join(", ")}],`);
+  L.push(`    res: &[${s.res.map(utilResLit).join(", ")}],`);
+  L.push("};");
+  L.push("");
+}
+L.push("pub const TML_SCENARIOS: &[TmlScenario] = &[");
+for (const s of structures.terrainmaploader) L.push(`    ${s.name.toUpperCase()},`);
 L.push("];");
 L.push("");
 

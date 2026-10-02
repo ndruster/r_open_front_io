@@ -184,6 +184,17 @@
 //!   three-state provider semantics; the zod schema declarations are inert
 //!   and the `TokenPayloadSchema` refine/transform callbacks are never
 //!   invoked — neither is ported)
+//! * [`terrain_map_loader`] — `src/core/game/TerrainMapLoader.ts` (the
+//!   `loadTerrainMap` orchestration with `loadImages` fixed `false`: the
+//!   module `loadedMaps` cache keyed by `` `${map}:${mapSize}` `` (hits skip
+//!   `getMapData`, throw paths never cache), the Normal/Compact game-map and
+//!   mini-map selection (the dead `mapSize === Normal` inner ternary), the
+//!   Compact in-place nation coordinate scaling shared by reference with the
+//!   cached results, the spawn-area `Math.max(1, floor(/2))` scaling, the
+//!   layer placement / alpha validation with JS `Number`→string message
+//!   interpolation, and `genTerrainFromBin`'s buffer-size check; the
+//!   `loadLayerImages` / `createImageBitmap` branch is host-bound and not
+//!   ported)
 //!
 //! Two rules govern every future port into this crate:
 //!
@@ -227,6 +238,7 @@ pub mod schemas;
 pub mod server_list;
 pub mod stats_schemas;
 pub mod team_assignment;
+pub mod terrain_map_loader;
 pub mod terrain_search_map;
 pub mod tile_set;
 pub mod tile_traversal_scratch;

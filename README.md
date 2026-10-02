@@ -118,6 +118,12 @@ rust/
 │   │   │                          arrays, isAdminRole / isTemporaryUsername /
 │   │   │                          isVerifiedUsername / isGrantedSubscription;
 │   │   │                          zod schemas inert, Base64 stubbed)
+│   │   ├── terrain_map_loader.rs  port of TerrainMapLoader.ts (loadTerrainMap
+│   │   │                          orchestration with loadImages=false: the
+│   │   │                          loadedMaps cache, the dead mini-map ternary,
+│   │   │                          Compact in-place nation / spawn-area scaling,
+│   │   │                          layer placement / alpha validation,
+│   │   │                          genTerrainFromBin buffer-size check)
 │   │   ├── wasm_probe.rs          `extern "C"` surface, feature-gated
 │   │   └── pathfinding/
 │   │       ├── mod.rs
@@ -907,6 +913,26 @@ desync, not a rounding nit. Two things enforce that here:
     refine/transform callbacks reference `base64urlToUuid` (a `jose`
     dependency) and never run — the loader stubs the import. 16 scenarios
     (400 result tokens) over kinds 0–15 of the as runner.
+49. **`game/TerrainMapLoader.ts`** (`terrain_map_loader`) — the `loadTerrainMap`
+    orchestration with `loadImages` fixed `false` (the `createImageBitmap`
+    layer-image branch is host-bound and not ported), captured against a
+    scripted `GameMapLoader` mock whose `getMapData` hands back a *stable*
+    manifest object so the JS reference semantics are observable: the
+    module-level `loadedMaps` cache (a hit skips `getMapData`, every throw path
+    leaves the key uncached — the call counter pins this), the dead mini-map
+    ternary (`Normal` always takes `map4x` metadata with the `map4xBin` data;
+    `Compact` takes `map16x` + `map16xBin`), the Compact **in-place** nation
+    coordinate scaling (`Math.floor(x / 2)` rewriting the shared manifest
+    arrays, so a second Compact load of the same manifest re-scales already
+    scaled values and a later cache hit dumps the mutated array — modelled
+    with `Rc<RefCell<Vec<_>>>`), the fresh-object `teamGameSpawnAreas` scaling
+    (`Math.max(1, floor(w/2))` via `js_max`), the per-layer placement-then-
+    alpha validation (`land`/`water` strict match; `!Number.isFinite(alpha) ||
+    alpha < 0 || alpha > 1`, with `-0` passing), and `genTerrainFromBin`'s
+    buffer-size check (`data.length !== width * height` before construction).
+    The throw messages interpolate JS `Number`→string slots (`-0` → `"0"`,
+    `NaN` → `"NaN"`) via `game_ts::js_num_str`. 14 scenarios (1,391 result
+    tokens) of whole scripted load sequences over kind 0 of the tml runner.
 
 Regenerate whenever a ported source changes:
 
@@ -940,7 +966,7 @@ node rust/tools/run_wasm_parity.mjs
 
 `wasm-probe` exposes the ported functions through `extern "C"` scalar
 entrypoints (`src/wasm_probe.rs`); the runner imports `data/vectors.json` and
-compares every value. Last run: **102,626 comparisons, all bit-identical**.
+compares every value. Last run: **104,017 comparisons, all bit-identical**.
 
 ### Windows: the linker environment
 

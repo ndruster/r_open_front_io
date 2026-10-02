@@ -266,7 +266,7 @@ pub fn get_message_category(message_type: f64) -> Option<&'static str> {
 /// (integers below `1e21`, `-0` as `"0"`). Fractional inputs use Rust's
 /// shortest round-trip `{}`, which agrees with JS for the exactly-representable
 /// values the capture uses (`1.5`, `2.25`).
-fn js_num_str(v: f64) -> String {
+pub(crate) fn js_num_str(v: f64) -> String {
     if v.is_nan() {
         "NaN".to_string()
     } else if v == f64::INFINITY {

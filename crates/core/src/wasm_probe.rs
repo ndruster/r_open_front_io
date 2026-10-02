@@ -4179,3 +4179,32 @@ pub extern "C" fn probe_as_op(kind: u32) -> usize {
 pub extern "C" fn probe_as_out_at(i: usize) -> f64 {
     AS_OUT.with(|o| o.borrow()[i])
 }
+
+// ====== P47: TerrainMapLoader.ts runtime subset (terrain_map_loader) =========
+
+thread_local! {
+    static TML_ARGS: std::cell::RefCell<Vec<f64>> = const { std::cell::RefCell::new(Vec::new()) };
+    static TML_OUT: std::cell::RefCell<Vec<f64>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
+/// Push one flat token (metadata value, string length, code unit, byte…).
+#[no_mangle]
+pub extern "C" fn probe_tml_arg(v: f64) {
+    TML_ARGS.with(|t| t.borrow_mut().push(v));
+}
+
+/// Run `terrain_map_loader::run_op(kind, args)`; returns the result-stream
+/// length.
+#[no_mangle]
+pub extern "C" fn probe_tml_op(kind: u32) -> usize {
+    let a = TML_ARGS.with(|t| std::mem::take(&mut *t.borrow_mut()));
+    let out = crate::terrain_map_loader::run_op(kind as u8, &a);
+    let len = out.len();
+    TML_OUT.with(|o| *o.borrow_mut() = out);
+    len
+}
+
+#[no_mangle]
+pub extern "C" fn probe_tml_out_at(i: usize) -> f64 {
+    TML_OUT.with(|o| o.borrow()[i])
+}

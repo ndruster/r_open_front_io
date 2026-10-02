@@ -1243,6 +1243,244 @@ function prepare(rel) {
     );
   }
 
+  if (rel.endsWith("core/Schemas.ts")) {
+    // The zod / zb schema declarations are wire-validation and are not
+    // ported, but unlike ServerList / StatsSchemas the capture must *read*
+    // z.enum results (.options), so the zod shim keeps a functional `enum`
+    // branch (options / exclude, every other chain falls through to the
+    // inert Proxy) and routes the rest lazily. zb stays fully inert. The
+    // JSON import needs an absolute URL + import attribute (precedent:
+    // TribeNames); the Game / StatsSchemas / Util / CosmeticSchemas value
+    // imports redirect to prepared copies. `import type { GameEvent }` is
+    // erased by strip mode untouched.
+    out = must(
+      out,
+      'import quickChatData from "resources/QuickChat.json";',
+      `import quickChatData from "${TS_URL}resources/QuickChat.json" with { type: "json" };`,
+      "Schemas QuickChat JSON import",
+    );
+    out = must(
+      out,
+      'import { z } from "zod";\n',
+      "const z = new Proxy(function () {}, {\n" +
+        "  get: (_t, k) => {\n" +
+        "    if (k === \"enum\") {\n" +
+        "      return (a) => {\n" +
+        "        const base = {\n" +
+        "          options: a,\n" +
+        "          exclude: (b) => ({ options: a.filter((o) => !b.includes(o)) }),\n" +
+        "        };\n" +
+        "        return new Proxy(base, { get: (t, kk) => (kk in t ? t[kk] : z), apply: () => z });\n" +
+        "      };\n" +
+        "    }\n" +
+        "    return z;\n" +
+        "  },\n" +
+        "  apply: () => z,\n" +
+        "});\n",
+      "Schemas zod import",
+    );
+    out = must(
+      out,
+      'import { zb } from "../../zbin";\n',
+      "const zb = new Proxy(function () {}, { get: () => zb, apply: () => zb });\n",
+      "Schemas zbin import",
+    );
+    const cosRel = "src/core/CosmeticSchemas.ts";
+    if (!prepared.has(cosRel)) prepare(cosRel);
+    out = must(
+      out,
+      "import {\n" +
+        "  ColorPaletteSchema,\n" +
+        "  CosmeticNameSchema,\n" +
+        "  EffectTypeSchema,\n" +
+        "  PatternDataSchema,\n" +
+        '} from "./CosmeticSchemas";\n',
+      "import {\n" +
+        "  ColorPaletteSchema,\n" +
+        "  CosmeticNameSchema,\n" +
+        "  EffectTypeSchema,\n" +
+        "  PatternDataSchema,\n" +
+        `} from "./${prepared.get(cosRel)}";\n`,
+      "Schemas CosmeticSchemas import",
+    );
+    if (!prepared.has("src/core/game/Game.ts")) prepare("src/core/game/Game.ts");
+    out = must(
+      out,
+      "import {\n" +
+        "  AllPlayers,\n" +
+        "  Difficulty,\n" +
+        "  Duos,\n" +
+        "  GameMapSize,\n" +
+        "  GameMapType,\n" +
+        "  GameMode,\n" +
+        "  GameType,\n" +
+        "  HumansVsNations,\n" +
+        "  MAX_UPGRADE_AMOUNT,\n" +
+        "  Quads,\n" +
+        "  RankedType,\n" +
+        "  Trios,\n" +
+        "  UnitType,\n" +
+        '} from "./game/Game";\n',
+      "import {\n" +
+        "  AllPlayers,\n" +
+        "  Difficulty,\n" +
+        "  Duos,\n" +
+        "  GameMapSize,\n" +
+        "  GameMapType,\n" +
+        "  GameMode,\n" +
+        "  GameType,\n" +
+        "  HumansVsNations,\n" +
+        "  MAX_UPGRADE_AMOUNT,\n" +
+        "  Quads,\n" +
+        "  RankedType,\n" +
+        "  Trios,\n" +
+        "  UnitType,\n" +
+        `} from "./${prepared.get("src/core/game/Game.ts")}";\n`,
+      "Schemas Game import",
+    );
+    const statsRel = "src/core/StatsSchemas.ts";
+    if (!prepared.has(statsRel)) prepare(statsRel);
+    out = must(
+      out,
+      'import { ArchivedPlayerStatsSchema, PlayerStatsSchema } from "./StatsSchemas";\n',
+      `import { ArchivedPlayerStatsSchema, PlayerStatsSchema } from "./${prepared.get(statsRel)}";\n`,
+      "Schemas StatsSchemas import",
+    );
+    const utilRel = "src/core/Util.ts";
+    if (!prepared.has(utilRel)) prepare(utilRel);
+    out = must(
+      out,
+      'import { flattenedEmojiTable, LOBBY_LABEL_MAX } from "./Util";\n',
+      `import { flattenedEmojiTable, LOBBY_LABEL_MAX } from "./${prepared.get(utilRel)}";\n`,
+      "Schemas Util import",
+    );
+    // The four ported z.enum declarations become explicit option objects (the
+    // capture reads .options; the schema fields chain .optional(), which the
+    // shim would also provide - spelled out here for determinism).
+    out = must(
+      out,
+      "export const PublicGameTypeSchema = z.enum([\n" +
+        '  "ffa",\n' +
+        '  "team",\n' +
+        '  "special",\n' +
+        '  "hosted",\n' +
+        "]);",
+      "export const PublicGameTypeSchema = {\n" +
+        '  options: ["ffa", "team", "special", "hosted"],\n' +
+        "  exclude: (b) => ({\n" +
+        "    options: PublicGameTypeSchema.options.filter((o) => !b.includes(o)),\n" +
+        "    optional: () => z,\n" +
+        "  }),\n" +
+        "  optional: () => z,\n" +
+        "};",
+      "Schemas PublicGameTypeSchema",
+    );
+    out = must(
+      out,
+      'export const LobbyAccentSchema = z.enum(["gold", "blue", "green", "red"]);',
+      'export const LobbyAccentSchema = {\n' +
+        '  options: ["gold", "blue", "green", "red"],\n' +
+        "  optional: () => z,\n" +
+        "};",
+      "Schemas LobbyAccentSchema",
+    );
+    out = must(
+      out,
+      "export const ReportReasonSchema = z.enum([\n" +
+        '  "botting",\n' +
+        '  "teaming",\n' +
+        '  "inappropriate_username",\n' +
+        '  "griefing",\n' +
+        "]);",
+      "export const ReportReasonSchema = {\n" +
+        '  options: ["botting", "teaming", "inappropriate_username", "griefing"],\n' +
+        "  optional: () => z,\n" +
+        "};",
+      "Schemas ReportReasonSchema",
+    );
+    out = must(
+      out,
+      'export const ClientPlatformSchema = z.enum(["web", "steam", "crazygames"]);',
+      'export const ClientPlatformSchema = {\n' +
+        '  options: ["web", "steam", "crazygames"],\n' +
+        "  optional: () => z,\n" +
+        "};",
+      "Schemas ClientPlatformSchema",
+    );
+    // QuickChatKeySchema derives its options from the JSON at module scope;
+    // drop the z.enum wrapper and the type assertion so the export is the
+    // plain derived array the capture dumps.
+    out = must(
+      out,
+      "export const QuickChatKeySchema = z.enum(\n" +
+        "  Object.entries(quickChatData).flatMap(([category, entries]) =>\n" +
+        "    entries.map((entry) => `${category}.${entry.key}`),\n" +
+        "  ) as [string, ...string[]],\n" +
+        ");",
+      "export const QuickChatKeySchema = Object.entries(quickChatData).flatMap(\n" +
+        "  ([category, entries]) => entries.map((entry) => `${category}.${entry.key}`),\n" +
+        ");",
+      "Schemas QuickChatKeySchema",
+    );
+    // Node's strip-only TS loader rejects `export enum`; LogSeverity is a
+    // string enum -> plain object (precedent: MotionPlans / TerrainSearchMap).
+    out = must(
+      out,
+      "export enum LogSeverity {\n" +
+        '  Debug = "DEBUG",\n' +
+        '  Info = "INFO",\n' +
+        '  Warn = "WARN",\n' +
+        '  Error = "ERROR",\n' +
+        '  Fatal = "FATAL",\n' +
+        "}",
+      "export const LogSeverity = {\n" +
+        '  Debug: "DEBUG",\n' +
+        '  Info: "INFO",\n' +
+        '  Warn: "WARN",\n' +
+        '  Error: "ERROR",\n' +
+        '  Fatal: "FATAL",\n' +
+        "};",
+      "Schemas LogSeverity enum",
+    );
+    // The two event classes use ctor parameter properties, which strip mode
+    // rejects; expand them (precedent: MinHeap / BFS / Air). The `implements
+    // GameEvent` clause rides on the erased type-only import -> dropped.
+    out = must(
+      out,
+      "export class LobbyInfoEvent implements GameEvent {\n" +
+        "  constructor(\n" +
+        "    public lobby: GameInfo,\n" +
+        "    public myClientID: ClientID,\n" +
+        "  ) {}\n" +
+        "}",
+      "export class LobbyInfoEvent {\n" +
+        "  public lobby: GameInfo;\n" +
+        "  public myClientID: ClientID;\n" +
+        "  constructor(\n" +
+        "    lobby: GameInfo,\n" +
+        "    myClientID: ClientID,\n" +
+        "  ) {\n" +
+        "    this.lobby = lobby;\n" +
+        "    this.myClientID = myClientID;\n" +
+        "  }\n" +
+        "}",
+      "Schemas LobbyInfoEvent ctor",
+    );
+    out = must(
+      out,
+      "export class GroupTokenEvent implements GameEvent {\n" +
+        "  constructor(public groupToken: string) {}\n" +
+        "}",
+      "export class GroupTokenEvent {\n" +
+        "  public groupToken: string;\n" +
+        "  constructor(groupToken: string) {\n" +
+        "    this.groupToken = groupToken;\n" +
+        "  }\n" +
+        "}",
+      "Schemas GroupTokenEvent ctor",
+    );
+  }
+
   if (rel.endsWith("game/Maps.gen.ts")) {
     // Node's strip-only TS loader rejects `export enum`. GameMapType is a
     // string enum (member name = the folder id, value = the canonical wire

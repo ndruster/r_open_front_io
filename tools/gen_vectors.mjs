@@ -173,6 +173,7 @@ const GUPD = await loadTs("src/core/game/GameUpdates.ts");
 const NE = await loadTs("src/core/execution/nation/NationEmojiBehavior.ts");
 const Cosmetic = await loadTs("src/core/CosmeticSchemas.ts");
 const St = await loadTs("src/core/StatsSchemas.ts");
+const Sc = await loadTs("src/core/Schemas.ts");
 const PF = await loadTs("src/core/pathfinding/PathFinder.ts");
 const { AStar } = await loadTs("src/core/pathfinding/algorithms/AStar.ts");
 const { AStarRail } = await loadTs("src/core/pathfinding/algorithms/AStar.Rail.ts");
@@ -2807,6 +2808,178 @@ for (const [i, c] of stBigIntCases.entries()) {
 captureST("st_bigint_batch", 6, [stBigIntCases.length, stBigIntCases.map(stBigIntArg)], [
   stBigIntCases.length,
   ...stBigIntCases.flatMap(stBigIntRes),
+]);
+
+// --- Schemas scenario runner ---------------------------------------------------
+// Exercises the Schemas.ts runtime values (the enum option arrays, the lobby
+// numeric/string constants, the LogSeverity table, the JSON-derived QuickChat
+// key list, and the three regex-backed predicates) through the shared run_op
+// runner. Strings cross as `[len, u0, ..]` (UTF-16 code units); the Rust twin
+// is `schemas::*`.
+//
+// kind table (matches the Rust dispatch):
+//   0 PublicGameTypeSchema.options dump  args [0]  res [4,(str)*4]
+//   1 SCHEDULED_PUBLIC_GAME_TYPES dump   args [0]  res [3,(str)*3]
+//   2 LobbyAccentSchema.options dump     args [0]  res [4,(str)*4]
+//   3 ClientPlatformSchema.options dump  args [0]  res [3,(str)*3]
+//   4 ReportReasonSchema.options dump    args [0]  res [4,(str)*4]
+//   5 numeric lobby consts               args [0]  res [3,(val)*3]
+//     (MAX_HOSTED_LOBBIES, HOSTED_LOBBY_AUTO_START_MS, FEATURED_LOBBY_AUTO_START_MS)
+//   6 string consts                      args [0]  res [5,(str)*5]
+//     (CLIENT_ID_MAPPING, ADMIN_BOT_CLIENT_ID, GAME_ID_REGEX.source,
+//      RENDERABLE_NAME_ALNUM, RENDERABLE_NAME_CHARS)
+//   7 LogSeverity dump                   args [0]  res [5,(name,val)*5]
+//   8 QuickChatKeySchema dump            args [0]  res [n,(str)*n]
+//   9 isValidGameID batch                args [n,(str)*n]  res [n,(0/1)*n]
+//  10 RENDERABLE_NAME_CHAR_RE.test batch args [n,(str)*n]  res [n,(0/1)*n]
+//  11 RENDERABLE_NAME_HAS_ALNUM_RE.test batch, same shape
+const scScenarios = [];
+const scname = (s) => s.replace(/[^A-Za-z0-9]+/g, "_");
+function captureSC(name, kind, args, res) {
+  scScenarios.push({
+    name: scname(name),
+    kind,
+    args: args.flat(Infinity).map(uenc),
+    res: res.flat(Infinity).map(uenc),
+  });
+}
+
+// kinds 0-4: the enum option arrays (declaration order).
+captureSC("sc_public_game_types", 0, [0], [
+  Sc.PublicGameTypeSchema.options.length,
+  ...Sc.PublicGameTypeSchema.options.map(encS),
+]);
+captureSC("sc_scheduled_types", 1, [0], [
+  Sc.SCHEDULED_PUBLIC_GAME_TYPES.length,
+  ...Sc.SCHEDULED_PUBLIC_GAME_TYPES.map(encS),
+]);
+captureSC("sc_lobby_accents", 2, [0], [
+  Sc.LobbyAccentSchema.options.length,
+  ...Sc.LobbyAccentSchema.options.map(encS),
+]);
+captureSC("sc_client_platforms", 3, [0], [
+  Sc.ClientPlatformSchema.options.length,
+  ...Sc.ClientPlatformSchema.options.map(encS),
+]);
+captureSC("sc_report_reasons", 4, [0], [
+  Sc.ReportReasonSchema.options.length,
+  ...Sc.ReportReasonSchema.options.map(encS),
+]);
+
+// kind 5: the three numeric lobby constants (TS declaration order).
+captureSC("sc_num_consts", 5, [0], [
+  3,
+  Sc.MAX_HOSTED_LOBBIES,
+  Sc.HOSTED_LOBBY_AUTO_START_MS,
+  Sc.FEATURED_LOBBY_AUTO_START_MS,
+]);
+
+// kind 6: the five string constants. The ALNUM/CHARS sources carry literal
+// `\u00C0`-style text (backslash-u-4hex), not real code points - the dump
+// pins the exact bytes.
+captureSC("sc_str_consts", 6, [0], [
+  5,
+  ...encS(Sc.CLIENT_ID_MAPPING),
+  ...encS(Sc.ADMIN_BOT_CLIENT_ID),
+  ...encS(Sc.GAME_ID_REGEX.source),
+  ...encS(Sc.RENDERABLE_NAME_ALNUM),
+  ...encS(Sc.RENDERABLE_NAME_CHARS),
+]);
+
+// kind 7: LogSeverity (name,value) pairs in declaration order.
+captureSC("sc_log_severities", 7, [0], [
+  Object.keys(Sc.LogSeverity).length,
+  ...Object.entries(Sc.LogSeverity).flatMap(([k, v]) => [encS(k), encS(v)]),
+]);
+
+// kind 8: the full JSON-derived QuickChat key list (Object.entries insertion
+// order over the six categories).
+captureSC("sc_quick_chat_keys", 8, [0], [
+  Sc.QuickChatKeySchema.length,
+  ...Sc.QuickChatKeySchema.map(encS),
+]);
+
+// kind 9: isValidGameID over the length boundaries (7/8/9/10/11) plus the
+// character-class edges (no u flag: JS tests UTF-16 code units, so a
+// surrogate pair or a Latin-1 letter fails).
+const scGameIds = [
+  "",
+  "a",
+  "abcdefgh",
+  "abcdefghi",
+  "ABCDEFGHIJ",
+  "abcdefg",
+  "abcdefghijk",
+  "abcd1234",
+  "12345678",
+  "0aZ9zA0a",
+  "abcdefg_",
+  "abcd 123",
+  "abcd-123",
+  "Àbcdefgh",
+  "\u{1F600}abcdefg",
+  "\uD83D\uDE00abcdef",
+  "AbCdEfGhIj",
+  "ADMINBOT",
+];
+captureSC("sc_game_ids_batch", 9, [scGameIds.length, scGameIds.map(encS)], [
+  scGameIds.length,
+  ...scGameIds.map((s) => (Sc.isValidGameID(s) ? 1 : 0)),
+]);
+
+// kind 10: RENDERABLE_NAME_CHAR_RE over every printable ASCII code point
+// (the `\\-` in the class source resolves to an escaped literal `-`, NOT a
+// U+005C-U+0061 range: `[` `]` `^` backtick `\` all test false, `-` tests
+// true) plus the Latin-1 range boundaries and the multi-unit cases (the u
+// flag anchors one code point, so empty / 2-code-point / lone-surrogate
+// strings test false).
+const scCharCases = [];
+for (let cp = 0x20; cp <= 0x7e; cp++) scCharCases.push(String.fromCodePoint(cp));
+for (const cp of [
+  0x00, 0x09, 0x1f, 0xa0, 0xbf, 0xc0, 0xd6, 0xd7, 0xd8, 0xf6, 0xf7, 0xf8,
+  0xff, 0x100, 0x178, 0x250, 0x1f600,
+]) {
+  scCharCases.push(String.fromCodePoint(cp));
+}
+for (const s of ["", "ab", "a ", "  ", "\u00C0\u00D6", "\uD83D", "\uD83DA"]) {
+  scCharCases.push(s);
+}
+captureSC("sc_char_re_batch", 10, [scCharCases.length, scCharCases.map(encS)], [
+  scCharCases.length,
+  ...scCharCases.map((s) => (Sc.RENDERABLE_NAME_CHAR_RE.test(s) ? 1 : 0)),
+]);
+
+// kind 11: RENDERABLE_NAME_HAS_ALNUM_RE (unanchored, u flag: any-code-point
+// search; lone surrogates are each their own code point and never match).
+const scHasCases = [
+  "",
+  " ",
+  "_.",
+  "-",
+  "\\",
+  "a",
+  "Z",
+  "9",
+  "  a",
+  "\u{1F600}",
+  "\uD83D",
+  "ab",
+  "~~~",
+  "\u00D7",
+  "\u00F7",
+  "\u20AC",
+  "\u00C0",
+  "\u00DF",
+  "\u00FF",
+  "\u0100",
+  "\u0178",
+  "a\u{1F600}",
+  "\uD83DA",
+  "\u00D6\u00D8",
+];
+captureSC("sc_has_alnum_batch", 11, [scHasCases.length, scHasCases.map(encS)], [
+  scHasCases.length,
+  ...scHasCases.map((s) => (Sc.RENDERABLE_NAME_HAS_ALNUM_RE.test(s) ? 1 : 0)),
 ]);
 
 // --- WaterPathMemo scenario runner -------------------------------------------
@@ -6432,6 +6605,7 @@ const structures = {
   nationemoji: neScenarios,
   cosmeticschemas: csScenarios,
   statschemas: stScenarios,
+  schemas: scScenarios,
   waterpathmemo: wpmScenarios,
   astar: asScenarios,
   rail: railScenarios,
@@ -8709,6 +8883,39 @@ for (const s of structures.statschemas) {
 }
 L.push("pub const SS_SCENARIOS: &[SsScenario] = &[");
 for (const s of structures.statschemas) L.push(`    ${s.name.toUpperCase()},`);
+L.push("];");
+L.push("");
+
+L.push("/// Schemas.ts scenario: one `schemas::run_op(kind, args)` call. kind 0");
+L.push("/// dumps PublicGameTypeSchema.options, 1 SCHEDULED_PUBLIC_GAME_TYPES,");
+L.push("/// 2 LobbyAccentSchema.options, 3 ClientPlatformSchema.options, 4");
+L.push("/// ReportReasonSchema.options, 5 the three numeric lobby constants, 6");
+L.push("/// the five string constants (CLIENT_ID_MAPPING, ADMIN_BOT_CLIENT_ID,");
+L.push("/// GAME_ID_REGEX.source, RENDERABLE_NAME_ALNUM, RENDERABLE_NAME_CHARS),");
+L.push("/// 7 the LogSeverity (name,value) pairs, 8 the full JSON-derived");
+L.push("/// QuickChat key list, 9 maps a string batch through isValidGameID, 10");
+L.push("/// through RENDERABLE_NAME_CHAR_RE.test, 11 through");
+L.push("/// RENDERABLE_NAME_HAS_ALNUM_RE.test. Strings cross as `[len, u0, ..]`");
+L.push("/// UTF-16 units; the boolean batches emit [n,(0/1)*n].");
+L.push("pub struct ScScenario {");
+L.push("    pub name: &'static str,");
+L.push("    pub kind: u8,");
+L.push("    pub args: &'static [f64],");
+L.push("    pub res: &'static [f64],");
+L.push("}");
+L.push("");
+for (const s of structures.schemas) {
+  const id = s.name.toUpperCase();
+  L.push(`pub const ${id}: ScScenario = ScScenario {`);
+  L.push(`    name: "${s.name}",`);
+  L.push(`    kind: ${s.kind}u8,`);
+  L.push(`    args: &[${s.args.map(utilResLit).join(", ")}],`);
+  L.push(`    res: &[${s.res.map(utilResLit).join(", ")}],`);
+  L.push("};");
+  L.push("");
+}
+L.push("pub const SC_SCENARIOS: &[ScScenario] = &[");
+for (const s of structures.schemas) L.push(`    ${s.name.toUpperCase()},`);
 L.push("];");
 L.push("");
 

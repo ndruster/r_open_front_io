@@ -107,6 +107,11 @@ rust/
 │   │   │                          the two UnitType->short-name tables, the 34
 │   │   │                          numeric index consts, toBigInt coercion;
 │   │   │                          zod/zbin schemas inert, UnitType inlined)
+│   │   ├── schemas.rs             port of Schemas.ts (runtime-value subset:
+│   │   │                          the five z.enum option arrays, lobby
+│   │   │                          constants, LogSeverity, QuickChat keys,
+│   │   │                          GAME_ID / renderable-name predicates;
+│   │   │                          zod schemas inert except z.enum options)
 │   │   ├── wasm_probe.rs          `extern "C"` surface, feature-gated
 │   │   └── pathfinding/
 │   │       ├── mod.rs
@@ -852,6 +857,27 @@ desync, not a rounding nit. Two things enforce that here:
     `i64` here; every scenario stays within `|v| ≤ 2^53` (the capture fails
     loudly beyond that). 23 scenarios (1,042 result tokens) over kinds 0–6
     of the st runner.
+47. **`Schemas.ts`** (`schemas`) — the runtime-value subset the zod wire
+    layer is built from: the five closed `z.enum` option arrays
+    (`PublicGameTypeSchema` 4 / `SCHEDULED_PUBLIC_GAME_TYPES` 3 /
+    `LobbyAccentSchema` 4 / `ClientPlatformSchema` 3 / `ReportReasonSchema`
+    4), the lobby constants (`MAX_HOSTED_LOBBIES` 10, the two auto-start
+    windows 300000/600000 ms, `CLIENT_ID_MAPPING`, `ADMIN_BOT_CLIENT_ID`),
+    the `LogSeverity` string-enum table (5 members), the 58-key
+    `QuickChatKeySchema` list derived from `resources/QuickChat.json` in
+    JSON insertion order, and the three regex-backed predicates:
+    `isValidGameID` (`/^[A-Za-z0-9]{8,10}$/`, no `u` flag → UTF-16
+    code-unit test), the renderable-name single-code-point test (the `u`-
+    flag `^[ _.\-…]+$` class — node probing settled the `\\-` ambiguity:
+    the backslash only escapes the hyphen, so `-` is a member but `\` is
+    not, and there is no U+005C–U+0061 range) and the has-alnum search.
+    The `z.*` / `zb.*` schema declarations are
+    inert at capture time except `z.enum`, whose shim returns real
+    `{options, exclude}` so the dumps read the actual arrays; the
+    `RENDERABLE_NAME_ALNUM` / `_CHARS` regex-source strings (literal
+    `\uXXXX` text) are ported verbatim. `LobbyInfoEvent` /
+    `GroupTokenEvent` are pure field-storage classes and are not ported.
+    12 scenarios (1,462 result tokens) over kinds 0–11 of the sc runner.
 
 Regenerate whenever a ported source changes:
 
@@ -885,7 +911,7 @@ node rust/tools/run_wasm_parity.mjs
 
 `wasm-probe` exposes the ported functions through `extern "C"` scalar
 entrypoints (`src/wasm_probe.rs`); the runner imports `data/vectors.json` and
-compares every value. Last run: **100,764 comparisons, all bit-identical**.
+compares every value. Last run: **102,226 comparisons, all bit-identical**.
 
 ### Windows: the linker environment
 

@@ -102,6 +102,7 @@ for (const name of [
   "probe_ne_arg", "probe_ne_op", "probe_ne_out_at",
   "probe_cs_arg", "probe_cs_op", "probe_cs_out_at",
   "probe_ss_arg", "probe_ss_op", "probe_ss_out_at",
+  "probe_sc_arg", "probe_sc_op", "probe_sc_out_at",
   "probe_wpm_arg", "probe_wpm_op", "probe_wpm_out_at",
   "probe_rr_arg", "probe_rr_op", "probe_rr_out_at",
   "probe_rsg_reset", "probe_rsg_arg", "probe_rsg_op", "probe_rsg_out_at",
@@ -1716,6 +1717,26 @@ for (const s of S.statschemas) {
   for (let i = 0; i < len; i++) {
     checks++;
     const g = ex.probe_ss_out_at(i);
+    const w = numTok(s.res[i]);
+    if (!Object.is(g, w)) fail(`${s.name} res[${i}]`, 0, g, w);
+  }
+}
+
+// --- Schemas.ts (schemas) ------------------------------------------------------
+// Replays the enum option-array dumps / the lobby constants / the LogSeverity
+// table / the QuickChat key dump / the isValidGameID and renderable-name regex
+// batches through the shared run_op runner; args and res are flat f64 token
+// streams, compared element-by-element with Object.is.
+for (const s of S.schemas) {
+  for (const a of s.args) ex.probe_sc_arg(numTok(a));
+  const len = Number(ex.probe_sc_op(s.kind));
+  if (len !== s.res.length) {
+    fail(`${s.name} res len`, 0, len, s.res.length);
+    continue;
+  }
+  for (let i = 0; i < len; i++) {
+    checks++;
+    const g = ex.probe_sc_out_at(i);
     const w = numTok(s.res[i]);
     if (!Object.is(g, w)) fail(`${s.name} res[${i}]`, 0, g, w);
   }

@@ -162,6 +162,14 @@
 //!   `effectMatchesSlot`, and `DefaultPattern`; the zod schema declarations
 //!   are inert, and `findEffect` / `findEffectForSlot` ride on the nested
 //!   catalog object and are not ported)
+//! * [`schemas`] — the runtime-value subset of `src/core/Schemas.ts` (the
+//!   enum option arrays `PublicGameType` / `ScheduledPublicGameType` /
+//!   `LobbyAccent` / `ClientPlatform` / `ReportReason`, the lobby numeric and
+//!   string constants, the `LogSeverity` table, the 58-key JSON-derived
+//!   `QuickChatKeySchema` list, and the `isValidGameID` / renderable-name
+//!   regex predicates with their probed `u`-flag semantics; the zod/zbin
+//!   schema declarations are inert and the two event classes are pure
+//!   field-storage — neither is ported)
 //! * [`stats_schemas`] — `src/core/StatsSchemas.ts` (the runtime-value
 //!   subset: `bombUnits` / `boatUnits` / `otherUnits`, the
 //!   `unitTypeToBombUnit` / `unitTypeToOtherUnit` lookup tables, the numeric
@@ -206,6 +214,7 @@ pub mod pattern_decoder;
 pub mod pseudo_random;
 pub mod railroad;
 pub mod railroad_spatial_grid;
+pub mod schemas;
 pub mod server_list;
 pub mod stats_schemas;
 pub mod team_assignment;

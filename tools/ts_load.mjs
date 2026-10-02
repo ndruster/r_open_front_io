@@ -1186,6 +1186,63 @@ function prepare(rel) {
     out = must(out, 'import { PlayerPattern } from "./Schemas";\n', "", "CosmeticSchemas Schemas import");
   }
 
+  if (rel.endsWith("StatsSchemas.ts")) {
+    // zod and zb are only used by the wire-validation schema declarations
+    // (not ported — the runtime values never touch them). Replace both
+    // imports with inert self-returning Proxies so the schema declarations
+    // still evaluate (same shim as ServerList.ts). ZbEncodeError must be a
+    // real class: the capture exercises toBigInt's throw branch.
+    out = must(
+      out,
+      'import { z } from "zod";\n',
+      "const z = new Proxy(function () {}, { get: () => z, apply: () => z });\n",
+      "StatsSchemas zod import",
+    );
+    out = must(
+      out,
+      'import { zb, ZbEncodeError } from "../../zbin";\n',
+      "const zb = new Proxy(function () {}, { get: () => zb, apply: () => zb });\n" +
+        "const ZbEncodeError = class extends Error {};\n",
+      "StatsSchemas zbin import",
+    );
+    // UnitType is a string enum in game/Game.ts; Node's strip-only loader
+    // rejects `export enum` and pulling the whole Game graph in for one
+    // lookup table is overkill. Inline all 16 members as a plain object with
+    // the exact upstream values (precedent: Maps.gen GameMapType).
+    out = must(
+      out,
+      'import { UnitType } from "./game/Game";\n',
+      "const UnitType = {\n" +
+        '  TransportShip: "Transport",\n' +
+        '  Warship: "Warship",\n' +
+        '  Shell: "Shell",\n' +
+        '  SAMMissile: "SAMMissile",\n' +
+        '  Port: "Port",\n' +
+        '  AtomBomb: "Atom Bomb",\n' +
+        '  HydrogenBomb: "Hydrogen Bomb",\n' +
+        '  TradeShip: "Trade Ship",\n' +
+        '  MissileSilo: "Missile Silo",\n' +
+        '  DefensePost: "Defense Post",\n' +
+        '  SAMLauncher: "SAM Launcher",\n' +
+        '  City: "City",\n' +
+        '  MIRV: "MIRV",\n' +
+        '  MIRVWarhead: "MIRV Warhead",\n' +
+        '  Train: "Train",\n' +
+        '  Factory: "Factory",\n' +
+        "};\n",
+      "StatsSchemas UnitType import",
+    );
+    // toBigInt is module-private in TS; export it so the capture can exercise
+    // its coercion branches directly (the Rust twin exposes it for the same
+    // reason).
+    out = must(
+      out,
+      "function toBigInt(v: unknown): bigint {",
+      "export function toBigInt(v: unknown): bigint {",
+      "StatsSchemas toBigInt export",
+    );
+  }
+
   if (rel.endsWith("game/Maps.gen.ts")) {
     // Node's strip-only TS loader rejects `export enum`. GameMapType is a
     // string enum (member name = the folder id, value = the canonical wire

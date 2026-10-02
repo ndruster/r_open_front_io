@@ -2346,6 +2346,22 @@ fn replay_cosmeticschemas_scenarios() {
     }
 }
 
+// StatsSchemas.ts: replay the unit-name array dumps / lookup-table dumps /
+// the 34 index-constant dump / the toBigInt coercion batches through the
+// shared `run_op` runner and compare the flat token streams (UTF-16
+// code-unit exact).
+#[test]
+fn replay_statschemas_scenarios() {
+    use openfront_core::stats_schemas::run_op;
+    for s in vectors::SS_SCENARIOS {
+        let got = run_op(s.kind, s.args);
+        assert_eq!(got.len(), s.res.len(), "{} res len: got {got:?} want {:?}", s.name, s.res);
+        for (j, (g, w)) in got.iter().zip(s.res.iter()).enumerate() {
+            assert!(obj_is(*g, *w), "{} res[{j}]: got {g} want {w}", s.name);
+        }
+    }
+}
+
 // pathfinding/PathFinder.ts WaterPathMemo: replay the scripted-inner memo
 // scenarios (miss / hit / null accounting / LRU re-insert / waterVersion
 // clears / array-from passthrough / over-budget eviction / key collision /

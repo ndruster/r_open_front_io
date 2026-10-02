@@ -4094,3 +4094,32 @@ pub extern "C" fn probe_cs_op(kind: u32) -> usize {
 pub extern "C" fn probe_cs_out_at(i: usize) -> f64 {
     CS_OUT.with(|o| o.borrow()[i])
 }
+
+// ====== P44: StatsSchemas.ts runtime values (stats_schemas) ===================
+// (`ss_` prefix: `probe_st_*` is taken by the heap-probe dispatcher.)
+
+thread_local! {
+    static SS_ARGS: std::cell::RefCell<Vec<f64>> = const { std::cell::RefCell::new(Vec::new()) };
+    static SS_OUT: std::cell::RefCell<Vec<f64>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
+/// Push one flat token (string length, code unit…).
+#[no_mangle]
+pub extern "C" fn probe_ss_arg(v: f64) {
+    SS_ARGS.with(|t| t.borrow_mut().push(v));
+}
+
+/// Run `stats_schemas::run_op(kind, args)`; returns the result-stream length.
+#[no_mangle]
+pub extern "C" fn probe_ss_op(kind: u32) -> usize {
+    let a = SS_ARGS.with(|t| std::mem::take(&mut *t.borrow_mut()));
+    let out = crate::stats_schemas::run_op(kind as u8, &a);
+    let len = out.len();
+    SS_OUT.with(|o| *o.borrow_mut() = out);
+    len
+}
+
+#[no_mangle]
+pub extern "C" fn probe_ss_out_at(i: usize) -> f64 {
+    SS_OUT.with(|o| o.borrow()[i])
+}

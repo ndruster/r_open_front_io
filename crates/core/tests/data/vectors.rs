@@ -38472,6 +38472,208 @@ pub const CS_SCENARIOS: &[CsScenario] = &[
     CS_MATCH_BATCH,
 ];
 
+/// StatsSchemas.ts scenario: one `stats_schemas::run_op(kind, args)`
+/// call. kind 0 dumps bombUnits, 1 boatUnits, 2 otherUnits, 3 the
+/// unitTypeToBombUnit (key,val) pairs, 4 the unitTypeToOtherUnit
+/// pairs (both in TS declaration order), 5 dumps the 40 numeric
+/// index constants (name,value) in TS order, 6 maps a toBigInt input
+/// batch ([0]=null, [1]=undefined, [2,str]=string, [3,str]=bigint
+/// decimal) to per-item results ([0,value] ok, [1] threw). Strings
+/// cross as `[len, u0, ..]` UTF-16 units.
+pub struct SsScenario {
+    pub name: &'static str,
+    pub kind: u8,
+    pub args: &'static [f64],
+    pub res: &'static [f64],
+}
+
+pub const ST_BOMB_UNITS: SsScenario = SsScenario {
+    name: "st_bomb_units",
+    kind: 0u8,
+    args: &[0f64],
+    res: &[4f64, 5f64, 97f64, 98f64, 111f64, 109f64, 98f64, 5f64, 104f64, 98f64, 111f64, 109f64, 98f64, 4f64, 109f64, 105f64, 114f64, 118f64, 5f64, 109f64, 105f64, 114f64, 118f64, 119f64],
+};
+
+pub const ST_BOAT_UNITS: SsScenario = SsScenario {
+    name: "st_boat_units",
+    kind: 1u8,
+    args: &[0f64],
+    res: &[2f64, 5f64, 116f64, 114f64, 97f64, 100f64, 101f64, 5f64, 116f64, 114f64, 97f64, 110f64, 115f64],
+};
+
+pub const ST_OTHER_UNITS: SsScenario = SsScenario {
+    name: "st_other_units",
+    kind: 2u8,
+    args: &[0f64],
+    res: &[7f64, 4f64, 99f64, 105f64, 116f64, 121f64, 4f64, 100f64, 101f64, 102f64, 112f64, 4f64, 112f64, 111f64, 114f64, 116f64, 4f64, 119f64, 115f64, 104f64, 112f64, 4f64, 115f64, 105f64, 108f64, 111f64, 4f64, 115f64, 97f64, 109f64, 108f64, 4f64, 102f64, 97f64, 99f64, 116f64],
+};
+
+pub const ST_BOMB_MAP: SsScenario = SsScenario {
+    name: "st_bomb_map",
+    kind: 3u8,
+    args: &[0f64],
+    res: &[4f64, 9f64, 65f64, 116f64, 111f64, 109f64, 32f64, 66f64, 111f64, 109f64, 98f64, 5f64, 97f64, 98f64, 111f64, 109f64, 98f64, 13f64, 72f64, 121f64, 100f64, 114f64, 111f64, 103f64, 101f64, 110f64, 32f64, 66f64, 111f64, 109f64, 98f64, 5f64, 104f64, 98f64, 111f64, 109f64, 98f64, 4f64, 77f64, 73f64, 82f64, 86f64, 4f64, 109f64, 105f64, 114f64, 118f64, 12f64, 77f64, 73f64, 82f64, 86f64, 32f64, 87f64, 97f64, 114f64, 104f64, 101f64, 97f64, 100f64, 5f64, 109f64, 105f64, 114f64, 118f64, 119f64],
+};
+
+pub const ST_OTHER_MAP: SsScenario = SsScenario {
+    name: "st_other_map",
+    kind: 4u8,
+    args: &[0f64],
+    res: &[7f64, 4f64, 67f64, 105f64, 116f64, 121f64, 4f64, 99f64, 105f64, 116f64, 121f64, 12f64, 68f64, 101f64, 102f64, 101f64, 110f64, 115f64, 101f64, 32f64, 80f64, 111f64, 115f64, 116f64, 4f64, 100f64, 101f64, 102f64, 112f64, 12f64, 77f64, 105f64, 115f64, 115f64, 105f64, 108f64, 101f64, 32f64, 83f64, 105f64, 108f64, 111f64, 4f64, 115f64, 105f64, 108f64, 111f64, 4f64, 80f64, 111f64, 114f64, 116f64, 4f64, 112f64, 111f64, 114f64, 116f64, 12f64, 83f64, 65f64, 77f64, 32f64, 76f64, 97f64, 117f64, 110f64, 99f64, 104f64, 101f64, 114f64, 4f64, 115f64, 97f64, 109f64, 108f64, 7f64, 87f64, 97f64, 114f64, 115f64, 104f64, 105f64, 112f64, 4f64, 119f64, 115f64, 104f64, 112f64, 7f64, 70f64, 97f64, 99f64, 116f64, 111f64, 114f64, 121f64, 4f64, 102f64, 97f64, 99f64, 116f64],
+};
+
+pub const ST_CONSTS: SsScenario = SsScenario {
+    name: "st_consts",
+    kind: 5u8,
+    args: &[0f64],
+    res: &[34f64, 17f64, 65f64, 84f64, 84f64, 65f64, 67f64, 75f64, 95f64, 73f64, 78f64, 68f64, 69f64, 88f64, 95f64, 83f64, 69f64, 78f64, 84f64, 0f64, 17f64, 65f64, 84f64, 84f64, 65f64, 67f64, 75f64, 95f64, 73f64, 78f64, 68f64, 69f64, 88f64, 95f64, 82f64, 69f64, 67f64, 86f64, 1f64, 19f64, 65f64, 84f64, 84f64, 65f64, 67f64, 75f64, 95f64, 73f64, 78f64, 68f64, 69f64, 88f64, 95f64, 67f64, 65f64, 78f64, 67f64, 69f64, 76f64, 2f64, 21f64, 65f64, 84f64, 84f64, 65f64, 67f64, 75f64, 95f64, 73f64, 78f64, 68f64, 69f64, 88f64, 95f64, 77f64, 65f64, 88f64, 95f64, 82f64, 69f64, 67f64, 86f64, 3f64, 15f64, 84f64, 73f64, 76f64, 69f64, 95f64, 73f64, 78f64, 68f64, 69f64, 88f64, 95f64, 80f64, 69f64, 65f64, 75f64, 0f64, 24f64, 84f64, 73f64, 76f64, 69f64, 95f64, 73f64, 78f64, 68f64, 69f64, 88f64, 95f64, 68f64, 82f64, 65f64, 87f64, 68f64, 79f64, 87f64, 78f64, 95f64, 80f64, 69f64, 65f64, 75f64, 1f64, 26f64, 84f64, 73f64, 76f64, 69f64, 95f64, 73f64, 78f64, 68f64, 69f64, 88f64, 95f64, 68f64, 82f64, 65f64, 87f64, 68f64, 79f64, 87f64, 78f64, 95f64, 84f64, 82f64, 79f64, 85f64, 71f64, 72f64, 2f64, 21f64, 65f64, 76f64, 76f64, 73f64, 65f64, 78f64, 67f64, 69f64, 95f64, 73f64, 78f64, 68f64, 69f64, 88f64, 95f64, 70f64, 79f64, 82f64, 77f64, 69f64, 68f64, 0f64, 30f64, 65f64, 76f64, 76f64, 73f64, 65f64, 78f64, 67f64, 69f64, 95f64, 73f64, 78f64, 68f64, 69f64, 88f64, 95f64, 66f64, 82f64, 79f64, 75f64, 69f64, 78f64, 95f64, 66f64, 89f64, 95f64, 79f64, 84f64, 72f64, 69f64, 82f64, 1f64, 22f64, 65f64, 76f64, 76f64, 73f64, 65f64, 78f64, 67f64, 69f64, 95f64, 73f64, 78f64, 68f64, 69f64, 88f64, 95f64, 69f64, 88f64, 80f64, 73f64, 82f64, 69f64, 68f64, 2f64, 26f64, 65f64, 76f64, 76f64, 73f64, 65f64, 78f64, 67f64, 69f64, 95f64, 73f64, 78f64, 68f64, 69f64, 88f64, 95f64, 72f64, 69f64, 76f64, 68f64, 95f64, 84f64, 79f64, 95f64, 69f64, 78f64, 68f64, 3f64, 30f64, 65f64, 76f64, 76f64, 73f64, 65f64, 78f64, 67f64, 69f64, 95f64, 73f64, 78f64, 68f64, 69f64, 88f64, 95f64, 80f64, 69f64, 65f64, 75f64, 95f64, 67f64, 79f64, 78f64, 67f64, 85f64, 82f64, 82f64, 69f64, 78f64, 84f64, 4f64, 27f64, 65f64, 76f64, 76f64, 73f64, 65f64, 78f64, 67f64, 69f64, 95f64, 73f64, 78f64, 68f64, 69f64, 88f64, 95f64, 76f64, 79f64, 78f64, 71f64, 69f64, 83f64, 84f64, 95f64, 72f64, 69f64, 76f64, 68f64, 5f64, 18f64, 80f64, 76f64, 65f64, 89f64, 69f64, 82f64, 95f64, 73f64, 78f64, 68f64, 69f64, 88f64, 95f64, 72f64, 85f64, 77f64, 65f64, 78f64, 0f64, 19f64, 80f64, 76f64, 65f64, 89f64, 69f64, 82f64, 95f64, 73f64, 78f64, 68f64, 69f64, 88f64, 95f64, 78f64, 65f64, 84f64, 73f64, 79f64, 78f64, 1f64, 16f64, 80f64, 76f64, 65f64, 89f64, 69f64, 82f64, 95f64, 73f64, 78f64, 68f64, 69f64, 88f64, 95f64, 66f64, 79f64, 84f64, 2f64, 15f64, 66f64, 79f64, 65f64, 84f64, 95f64, 73f64, 78f64, 68f64, 69f64, 88f64, 95f64, 83f64, 69f64, 78f64, 84f64, 0f64, 17f64, 66f64, 79f64, 65f64, 84f64, 95f64, 73f64, 78f64, 68f64, 69f64, 88f64, 95f64, 65f64, 82f64, 82f64, 73f64, 86f64, 69f64, 1f64, 18f64, 66f64, 79f64, 65f64, 84f64, 95f64, 73f64, 78f64, 68f64, 69f64, 88f64, 95f64, 67f64, 65f64, 80f64, 84f64, 85f64, 82f64, 69f64, 2f64, 18f64, 66f64, 79f64, 65f64, 84f64, 95f64, 73f64, 78f64, 68f64, 69f64, 88f64, 95f64, 68f64, 69f64, 83f64, 84f64, 82f64, 79f64, 89f64, 3f64, 17f64, 66f64, 79f64, 77f64, 66f64, 95f64, 73f64, 78f64, 68f64, 69f64, 88f64, 95f64, 76f64, 65f64, 85f64, 78f64, 67f64, 72f64, 0f64, 15f64, 66f64, 79f64, 77f64, 66f64, 95f64, 73f64, 78f64, 68f64, 69f64, 88f64, 95f64, 76f64, 65f64, 78f64, 68f64, 1f64, 20f64, 66f64, 79f64, 77f64, 66f64, 95f64, 73f64, 78f64, 68f64, 69f64, 88f64, 95f64, 73f64, 78f64, 84f64, 69f64, 82f64, 67f64, 69f64, 80f64, 84f64, 2f64, 15f64, 71f64, 79f64, 76f64, 68f64, 95f64, 73f64, 78f64, 68f64, 69f64, 88f64, 95f64, 87f64, 79f64, 82f64, 75f64, 0f64, 14f64, 71f64, 79f64, 76f64, 68f64, 95f64, 73f64, 78f64, 68f64, 69f64, 88f64, 95f64, 87f64, 65f64, 82f64, 1f64, 16f64, 71f64, 79f64, 76f64, 68f64, 95f64, 73f64, 78f64, 68f64, 69f64, 88f64, 95f64, 84f64, 82f64, 65f64, 68f64, 69f64, 2f64, 16f64, 71f64, 79f64, 76f64, 68f64, 95f64, 73f64, 78f64, 68f64, 69f64, 88f64, 95f64, 83f64, 84f64, 69f64, 65f64, 76f64, 3f64, 21f64, 71f64, 79f64, 76f64, 68f64, 95f64, 73f64, 78f64, 68f64, 69f64, 88f64, 95f64, 84f64, 82f64, 65f64, 73f64, 78f64, 95f64, 83f64, 69f64, 76f64, 70f64, 4f64, 22f64, 71f64, 79f64, 76f64, 68f64, 95f64, 73f64, 78f64, 68f64, 69f64, 88f64, 95f64, 84f64, 82f64, 65f64, 73f64, 78f64, 95f64, 79f64, 84f64, 72f64, 69f64, 82f64, 5f64, 17f64, 79f64, 84f64, 72f64, 69f64, 82f64, 95f64, 73f64, 78f64, 68f64, 69f64, 88f64, 95f64, 66f64, 85f64, 73f64, 76f64, 84f64, 0f64, 19f64, 79f64, 84f64, 72f64, 69f64, 82f64, 95f64, 73f64, 78f64, 68f64, 69f64, 88f64, 95f64, 68f64, 69f64, 83f64, 84f64, 82f64, 79f64, 89f64, 1f64, 19f64, 79f64, 84f64, 72f64, 69f64, 82f64, 95f64, 73f64, 78f64, 68f64, 69f64, 88f64, 95f64, 67f64, 65f64, 80f64, 84f64, 85f64, 82f64, 69f64, 2f64, 16f64, 79f64, 84f64, 72f64, 69f64, 82f64, 95f64, 73f64, 78f64, 68f64, 69f64, 88f64, 95f64, 76f64, 79f64, 83f64, 84f64, 3f64, 19f64, 79f64, 84f64, 72f64, 69f64, 82f64, 95f64, 73f64, 78f64, 68f64, 69f64, 88f64, 95f64, 85f64, 80f64, 71f64, 82f64, 65f64, 68f64, 69f64, 4f64],
+};
+
+pub const ST_BIGINT_0: SsScenario = SsScenario {
+    name: "st_bigint_0",
+    kind: 6u8,
+    args: &[1f64, 3f64, 1f64, 48f64],
+    res: &[1f64, 0f64, 0f64],
+};
+
+pub const ST_BIGINT_1: SsScenario = SsScenario {
+    name: "st_bigint_1",
+    kind: 6u8,
+    args: &[1f64, 3f64, 2f64, 45f64, 49f64],
+    res: &[1f64, 0f64, -1f64],
+};
+
+pub const ST_BIGINT_2: SsScenario = SsScenario {
+    name: "st_bigint_2",
+    kind: 6u8,
+    args: &[1f64, 3f64, 16f64, 57f64, 48f64, 48f64, 55f64, 49f64, 57f64, 57f64, 50f64, 53f64, 52f64, 55f64, 52f64, 48f64, 57f64, 57f64, 50f64],
+    res: &[1f64, 0f64, 9007199254740992f64],
+};
+
+pub const ST_BIGINT_3: SsScenario = SsScenario {
+    name: "st_bigint_3",
+    kind: 6u8,
+    args: &[1f64, 2f64, 3f64, 49f64, 50f64, 51f64],
+    res: &[1f64, 0f64, 123f64],
+};
+
+pub const ST_BIGINT_4: SsScenario = SsScenario {
+    name: "st_bigint_4",
+    kind: 6u8,
+    args: &[1f64, 2f64, 4f64, 45f64, 52f64, 53f64, 54f64],
+    res: &[1f64, 0f64, -456f64],
+};
+
+pub const ST_BIGINT_5: SsScenario = SsScenario {
+    name: "st_bigint_5",
+    kind: 6u8,
+    args: &[1f64, 2f64, 1f64, 48f64],
+    res: &[1f64, 0f64, 0f64],
+};
+
+pub const ST_BIGINT_6: SsScenario = SsScenario {
+    name: "st_bigint_6",
+    kind: 6u8,
+    args: &[1f64, 2f64, 3f64, 48f64, 48f64, 55f64],
+    res: &[1f64, 0f64, 7f64],
+};
+
+pub const ST_BIGINT_7: SsScenario = SsScenario {
+    name: "st_bigint_7",
+    kind: 6u8,
+    args: &[1f64, 2f64, 0f64],
+    res: &[1f64, 1f64],
+};
+
+pub const ST_BIGINT_8: SsScenario = SsScenario {
+    name: "st_bigint_8",
+    kind: 6u8,
+    args: &[1f64, 2f64, 3f64, 49f64, 46f64, 53f64],
+    res: &[1f64, 1f64],
+};
+
+pub const ST_BIGINT_9: SsScenario = SsScenario {
+    name: "st_bigint_9",
+    kind: 6u8,
+    args: &[1f64, 2f64, 3f64, 49f64, 101f64, 51f64],
+    res: &[1f64, 1f64],
+};
+
+pub const ST_BIGINT_10: SsScenario = SsScenario {
+    name: "st_bigint_10",
+    kind: 6u8,
+    args: &[1f64, 2f64, 2f64, 45f64, 48f64],
+    res: &[1f64, 0f64, 0f64],
+};
+
+pub const ST_BIGINT_11: SsScenario = SsScenario {
+    name: "st_bigint_11",
+    kind: 6u8,
+    args: &[1f64, 0f64],
+    res: &[1f64, 0f64, 0f64],
+};
+
+pub const ST_BIGINT_12: SsScenario = SsScenario {
+    name: "st_bigint_12",
+    kind: 6u8,
+    args: &[1f64, 1f64],
+    res: &[1f64, 0f64, 0f64],
+};
+
+pub const ST_BIGINT_13: SsScenario = SsScenario {
+    name: "st_bigint_13",
+    kind: 6u8,
+    args: &[1f64, 2f64, 2f64, 32f64, 49f64],
+    res: &[1f64, 1f64],
+};
+
+pub const ST_BIGINT_14: SsScenario = SsScenario {
+    name: "st_bigint_14",
+    kind: 6u8,
+    args: &[1f64, 2f64, 2f64, 43f64, 49f64],
+    res: &[1f64, 1f64],
+};
+
+pub const ST_BIGINT_15: SsScenario = SsScenario {
+    name: "st_bigint_15",
+    kind: 6u8,
+    args: &[1f64, 3f64, 16f64, 57f64, 48f64, 48f64, 55f64, 49f64, 57f64, 57f64, 50f64, 53f64, 52f64, 55f64, 52f64, 48f64, 57f64, 57f64, 49f64],
+    res: &[1f64, 0f64, 9007199254740991f64],
+};
+
+pub const ST_BIGINT_BATCH: SsScenario = SsScenario {
+    name: "st_bigint_batch",
+    kind: 6u8,
+    args: &[16f64, 3f64, 1f64, 48f64, 3f64, 2f64, 45f64, 49f64, 3f64, 16f64, 57f64, 48f64, 48f64, 55f64, 49f64, 57f64, 57f64, 50f64, 53f64, 52f64, 55f64, 52f64, 48f64, 57f64, 57f64, 50f64, 2f64, 3f64, 49f64, 50f64, 51f64, 2f64, 4f64, 45f64, 52f64, 53f64, 54f64, 2f64, 1f64, 48f64, 2f64, 3f64, 48f64, 48f64, 55f64, 2f64, 0f64, 2f64, 3f64, 49f64, 46f64, 53f64, 2f64, 3f64, 49f64, 101f64, 51f64, 2f64, 2f64, 45f64, 48f64, 0f64, 1f64, 2f64, 2f64, 32f64, 49f64, 2f64, 2f64, 43f64, 49f64, 3f64, 16f64, 57f64, 48f64, 48f64, 55f64, 49f64, 57f64, 57f64, 50f64, 53f64, 52f64, 55f64, 52f64, 48f64, 57f64, 57f64, 49f64],
+    res: &[16f64, 0f64, 0f64, 0f64, -1f64, 0f64, 9007199254740992f64, 0f64, 123f64, 0f64, -456f64, 0f64, 0f64, 0f64, 7f64, 1f64, 1f64, 1f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 1f64, 1f64, 0f64, 9007199254740991f64],
+};
+
+pub const SS_SCENARIOS: &[SsScenario] = &[
+    ST_BOMB_UNITS,
+    ST_BOAT_UNITS,
+    ST_OTHER_UNITS,
+    ST_BOMB_MAP,
+    ST_OTHER_MAP,
+    ST_CONSTS,
+    ST_BIGINT_0,
+    ST_BIGINT_1,
+    ST_BIGINT_2,
+    ST_BIGINT_3,
+    ST_BIGINT_4,
+    ST_BIGINT_5,
+    ST_BIGINT_6,
+    ST_BIGINT_7,
+    ST_BIGINT_8,
+    ST_BIGINT_9,
+    ST_BIGINT_10,
+    ST_BIGINT_11,
+    ST_BIGINT_12,
+    ST_BIGINT_13,
+    ST_BIGINT_14,
+    ST_BIGINT_15,
+    ST_BIGINT_BATCH,
+];
+
 /// pathfinding/PathFinder.ts WaterPathMemo scenario: one
 /// `water_path_memo::run_op(kind, args)` call. kind 0 replays the
 /// whole scenario (scripted inner mock + op sequence) and emits the

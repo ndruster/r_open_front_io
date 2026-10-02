@@ -172,6 +172,7 @@ const NC = await loadTs("src/core/game/NationCreation.ts");
 const GUPD = await loadTs("src/core/game/GameUpdates.ts");
 const NE = await loadTs("src/core/execution/nation/NationEmojiBehavior.ts");
 const Cosmetic = await loadTs("src/core/CosmeticSchemas.ts");
+const St = await loadTs("src/core/StatsSchemas.ts");
 const PF = await loadTs("src/core/pathfinding/PathFinder.ts");
 const { AStar } = await loadTs("src/core/pathfinding/algorithms/AStar.ts");
 const { AStarRail } = await loadTs("src/core/pathfinding/algorithms/AStar.Rail.ts");
@@ -2655,6 +2656,157 @@ for (const [i, c] of csMatchCases.entries()) {
 captureCS("cs_match_batch", 7, [csMatchCases.length, csMatchCases.map(csMatchArgs)], [
   csMatchCases.length,
   ...csMatchCases.map(([e, slot]) => enc(Cosmetic.effectMatchesSlot(e, slot))),
+]);
+
+// --- StatsSchemas scenario runner ---------------------------------------------
+// Exercises the StatsSchemas.ts runtime values (the three `as const` unit-name
+// arrays, the two UnitType->short-name lookup objects, the 34 numeric index
+// constants, and the module-private toBigInt coercion) through the shared
+// run_op runner. Strings cross as `[len, u0, ..]` (UTF-16 code units); the
+// Rust twin is `stats_schemas::*`.
+//
+// kind table (matches the Rust dispatch):
+//   0 bombUnits dump          args [0]  res [4,(str)*4]
+//   1 boatUnits dump          args [0]  res [2,(str)*2]
+//   2 otherUnits dump         args [0]  res [7,(str)*7]
+//   3 unitTypeToBombUnit dump args [0]  res [4,(key,val)*4]  (declaration
+//     order = the TS computed-key insertion order)
+//   4 unitTypeToOtherUnit dump args [0] res [7,(key,val)*7]
+//   5 index consts dump       args [0]  res [34,(name,value)*34] (TS order)
+//   6 toBigInt batch          args [n,(tag,str?)*n]  res [n,(per-item:
+//     [0,value] ok | [1] threw)*n]
+//     tag 0=null, 1=undefined, 2=string (followed by the string), 3=bigint
+//     (followed by its decimal string). Throw cases all carry values that
+//     stay within |v| <= 2^53 so the [0,value] token is exact; the arbitrary-
+//     precision side of TS BigInt is out of scope (doc-comment in the Rust
+//     twin).
+const stScenarios = [];
+const stname = (s) => s.replace(/[^A-Za-z0-9]+/g, "_");
+function captureST(name, kind, args, res) {
+  stScenarios.push({
+    name: stname(name),
+    kind,
+    args: args.flat(Infinity).map(uenc),
+    res: res.flat(Infinity).map(uenc),
+  });
+}
+
+// kinds 0-2: the three `as const` arrays.
+captureST("st_bomb_units", 0, [0], [
+  St.bombUnits.length,
+  ...St.bombUnits.map(encS),
+]);
+captureST("st_boat_units", 1, [0], [
+  St.boatUnits.length,
+  ...St.boatUnits.map(encS),
+]);
+captureST("st_other_units", 2, [0], [
+  St.otherUnits.length,
+  ...St.otherUnits.map(encS),
+]);
+
+// kinds 3-4: the lookup objects; Object.entries preserves the TS computed-key
+// insertion order (all keys are non-integer strings).
+captureST("st_bomb_map", 3, [0], [
+  Object.keys(St.unitTypeToBombUnit).length,
+  ...Object.entries(St.unitTypeToBombUnit).flatMap(([k, v]) => [encS(k), encS(v)]),
+]);
+captureST("st_other_map", 4, [0], [
+  Object.keys(St.unitTypeToOtherUnit).length,
+  ...Object.entries(St.unitTypeToOtherUnit).flatMap(([k, v]) => [encS(k), encS(v)]),
+]);
+
+// kind 5: the 34 numeric index constants in TS declaration order.
+const ST_INDEX_CONSTS = [
+  ["ATTACK_INDEX_SENT", St.ATTACK_INDEX_SENT],
+  ["ATTACK_INDEX_RECV", St.ATTACK_INDEX_RECV],
+  ["ATTACK_INDEX_CANCEL", St.ATTACK_INDEX_CANCEL],
+  ["ATTACK_INDEX_MAX_RECV", St.ATTACK_INDEX_MAX_RECV],
+  ["TILE_INDEX_PEAK", St.TILE_INDEX_PEAK],
+  ["TILE_INDEX_DRAWDOWN_PEAK", St.TILE_INDEX_DRAWDOWN_PEAK],
+  ["TILE_INDEX_DRAWDOWN_TROUGH", St.TILE_INDEX_DRAWDOWN_TROUGH],
+  ["ALLIANCE_INDEX_FORMED", St.ALLIANCE_INDEX_FORMED],
+  ["ALLIANCE_INDEX_BROKEN_BY_OTHER", St.ALLIANCE_INDEX_BROKEN_BY_OTHER],
+  ["ALLIANCE_INDEX_EXPIRED", St.ALLIANCE_INDEX_EXPIRED],
+  ["ALLIANCE_INDEX_HELD_TO_END", St.ALLIANCE_INDEX_HELD_TO_END],
+  ["ALLIANCE_INDEX_PEAK_CONCURRENT", St.ALLIANCE_INDEX_PEAK_CONCURRENT],
+  ["ALLIANCE_INDEX_LONGEST_HELD", St.ALLIANCE_INDEX_LONGEST_HELD],
+  ["PLAYER_INDEX_HUMAN", St.PLAYER_INDEX_HUMAN],
+  ["PLAYER_INDEX_NATION", St.PLAYER_INDEX_NATION],
+  ["PLAYER_INDEX_BOT", St.PLAYER_INDEX_BOT],
+  ["BOAT_INDEX_SENT", St.BOAT_INDEX_SENT],
+  ["BOAT_INDEX_ARRIVE", St.BOAT_INDEX_ARRIVE],
+  ["BOAT_INDEX_CAPTURE", St.BOAT_INDEX_CAPTURE],
+  ["BOAT_INDEX_DESTROY", St.BOAT_INDEX_DESTROY],
+  ["BOMB_INDEX_LAUNCH", St.BOMB_INDEX_LAUNCH],
+  ["BOMB_INDEX_LAND", St.BOMB_INDEX_LAND],
+  ["BOMB_INDEX_INTERCEPT", St.BOMB_INDEX_INTERCEPT],
+  ["GOLD_INDEX_WORK", St.GOLD_INDEX_WORK],
+  ["GOLD_INDEX_WAR", St.GOLD_INDEX_WAR],
+  ["GOLD_INDEX_TRADE", St.GOLD_INDEX_TRADE],
+  ["GOLD_INDEX_STEAL", St.GOLD_INDEX_STEAL],
+  ["GOLD_INDEX_TRAIN_SELF", St.GOLD_INDEX_TRAIN_SELF],
+  ["GOLD_INDEX_TRAIN_OTHER", St.GOLD_INDEX_TRAIN_OTHER],
+  ["OTHER_INDEX_BUILT", St.OTHER_INDEX_BUILT],
+  ["OTHER_INDEX_DESTROY", St.OTHER_INDEX_DESTROY],
+  ["OTHER_INDEX_CAPTURE", St.OTHER_INDEX_CAPTURE],
+  ["OTHER_INDEX_LOST", St.OTHER_INDEX_LOST],
+  ["OTHER_INDEX_UPGRADE", St.OTHER_INDEX_UPGRADE],
+];
+captureST("st_consts", 5, [0], [
+  ST_INDEX_CONSTS.length,
+  ...ST_INDEX_CONSTS.flatMap(([n, v]) => [encS(n), v]),
+]);
+
+// kind 6: toBigInt over every branch (bigint passthrough, null/undefined ->
+// 0n, decimal-string regex hit/miss, leading zeros, negative zero) plus the
+// throw path. Single-item and one-batch scenarios.
+const stBigIntCases = [
+  ["bigint", 0n],
+  ["bigint", -1n],
+  ["bigint", 2n ** 53n],
+  ["str", "123"],
+  ["str", "-456"],
+  ["str", "0"],
+  ["str", "007"],
+  ["str", ""],
+  ["str", "1.5"],
+  ["str", "1e3"],
+  ["str", "-0"],
+  ["null", null],
+  ["undef", undefined],
+  ["str", " 1"],
+  ["str", "+1"],
+  ["bigint", 9007199254740991n],
+];
+const stBigIntArg = ([tag, v]) =>
+  tag === "null"
+    ? [0]
+    : tag === "undef"
+      ? [1]
+      : tag === "str"
+        ? [2, encS(v)]
+        : [3, encS(v.toString())];
+const stBigIntRes = ([, v]) => {
+  let r;
+  try {
+    r = St.toBigInt(v);
+  } catch {
+    return [1];
+  }
+  if (typeof r !== "bigint") return [1];
+  // Every scenario value stays within |v| <= 2^53 so the f64 token is exact;
+  // if a future case breaks that, fail loudly instead of losing precision.
+  if (r > 2n ** 53n || r < -(2n ** 53n))
+    throw new Error(`st: toBigInt result out of f64-exact range: ${r}`);
+  return [0, Number(r)];
+};
+for (const [i, c] of stBigIntCases.entries()) {
+  captureST(`st_bigint_${i}`, 6, [1, stBigIntArg(c)], [1, stBigIntRes(c)]);
+}
+captureST("st_bigint_batch", 6, [stBigIntCases.length, stBigIntCases.map(stBigIntArg)], [
+  stBigIntCases.length,
+  ...stBigIntCases.flatMap(stBigIntRes),
 ]);
 
 // --- WaterPathMemo scenario runner -------------------------------------------
@@ -6279,6 +6431,7 @@ const structures = {
   gameupdates: gupdScenarios,
   nationemoji: neScenarios,
   cosmeticschemas: csScenarios,
+  statschemas: stScenarios,
   waterpathmemo: wpmScenarios,
   astar: asScenarios,
   rail: railScenarios,
@@ -8526,6 +8679,36 @@ for (const s of structures.cosmeticschemas) {
 }
 L.push("pub const CS_SCENARIOS: &[CsScenario] = &[");
 for (const s of structures.cosmeticschemas) L.push(`    ${s.name.toUpperCase()},`);
+L.push("];");
+L.push("");
+
+L.push("/// StatsSchemas.ts scenario: one `stats_schemas::run_op(kind, args)`");
+L.push("/// call. kind 0 dumps bombUnits, 1 boatUnits, 2 otherUnits, 3 the");
+L.push("/// unitTypeToBombUnit (key,val) pairs, 4 the unitTypeToOtherUnit");
+L.push("/// pairs (both in TS declaration order), 5 dumps the 40 numeric");
+L.push("/// index constants (name,value) in TS order, 6 maps a toBigInt input");
+L.push("/// batch ([0]=null, [1]=undefined, [2,str]=string, [3,str]=bigint");
+L.push("/// decimal) to per-item results ([0,value] ok, [1] threw). Strings");
+L.push("/// cross as `[len, u0, ..]` UTF-16 units.");
+L.push("pub struct SsScenario {");
+L.push("    pub name: &'static str,");
+L.push("    pub kind: u8,");
+L.push("    pub args: &'static [f64],");
+L.push("    pub res: &'static [f64],");
+L.push("}");
+L.push("");
+for (const s of structures.statschemas) {
+  const id = s.name.toUpperCase();
+  L.push(`pub const ${id}: SsScenario = SsScenario {`);
+  L.push(`    name: "${s.name}",`);
+  L.push(`    kind: ${s.kind}u8,`);
+  L.push(`    args: &[${s.args.map(utilResLit).join(", ")}],`);
+  L.push(`    res: &[${s.res.map(utilResLit).join(", ")}],`);
+  L.push("};");
+  L.push("");
+}
+L.push("pub const SS_SCENARIOS: &[SsScenario] = &[");
+for (const s of structures.statschemas) L.push(`    ${s.name.toUpperCase()},`);
 L.push("];");
 L.push("");
 

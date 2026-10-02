@@ -102,6 +102,11 @@ rust/
 │   │   │                          NUKE_EXPLOSION_TYPES, the four effect/slot
 │   │   │                          predicates, DefaultPattern; zod schemas
 │   │   │                          inert, findEffect* not ported)
+│   │   ├── stats_schemas.rs       port of StatsSchemas.ts (runtime-value
+│   │   │                          subset: bombUnits / boatUnits / otherUnits,
+│   │   │                          the two UnitType->short-name tables, the 34
+│   │   │                          numeric index consts, toBigInt coercion;
+│   │   │                          zod/zbin schemas inert, UnitType inlined)
 │   │   ├── wasm_probe.rs          `extern "C"` surface, feature-gated
 │   │   └── pathfinding/
 │   │       ├── mod.rs
@@ -830,6 +835,23 @@ desync, not a rounding nit. Two things enforce that here:
     `"nukeExplosion"` ≠ `"atom"`). 58 scenarios (511 result tokens) over
     kinds 0–7 of the cs runner; strings cross as `[len, u0, ..]` UTF-16
     code-unit streams.
+46. **`StatsSchemas.ts`** (`stats_schemas`) — the runtime-value subset: the
+    three `as const` unit-name arrays (`bombUnits` 4 / `boatUnits` 2 /
+    `otherUnits` 7), the two `UnitType`-keyed lookup tables
+    (`unitTypeToBombUnit` / `unitTypeToOtherUnit`; keys are the string-enum
+    values, TS computed-key insertion order pinned), the 34 numeric
+    `*_INDEX_*` constants in declaration order, and the module-private
+    `toBigInt` coercion (bigint passthrough, `null`/`undefined` → `0n`,
+    `/^-?\d+$/` decimal strings → parsed — `"007"` → 7, `"-0"` → 0 —
+    anything else throws `ZbEncodeError`). The `z.*` / `zb.*` schema
+    declarations are inert at capture time (zod/zb Proxy shims;
+    `ZbEncodeError` is a real class so the throw branch is observable);
+    `UnitType` is inlined as a plain object (strip-only loader cannot parse
+    `export enum`, same precedent as `Maps.gen`), and
+    `unitTypeToBoatUnit` is commented out in the TS. `toBigInt` returns
+    `i64` here; every scenario stays within `|v| ≤ 2^53` (the capture fails
+    loudly beyond that). 23 scenarios (1,042 result tokens) over kinds 0–6
+    of the st runner.
 
 Regenerate whenever a ported source changes:
 
@@ -863,7 +885,7 @@ node rust/tools/run_wasm_parity.mjs
 
 `wasm-probe` exposes the ported functions through `extern "C"` scalar
 entrypoints (`src/wasm_probe.rs`); the runner imports `data/vectors.json` and
-compares every value. Last run: **99,722 comparisons, all bit-identical**.
+compares every value. Last run: **100,764 comparisons, all bit-identical**.
 
 ### Windows: the linker environment
 

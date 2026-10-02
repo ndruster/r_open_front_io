@@ -162,6 +162,12 @@
 //!   `effectMatchesSlot`, and `DefaultPattern`; the zod schema declarations
 //!   are inert, and `findEffect` / `findEffectForSlot` ride on the nested
 //!   catalog object and are not ported)
+//! * [`stats_schemas`] — `src/core/StatsSchemas.ts` (the runtime-value
+//!   subset: `bombUnits` / `boatUnits` / `otherUnits`, the
+//!   `unitTypeToBombUnit` / `unitTypeToOtherUnit` lookup tables, the numeric
+//!   stats index constants, and the module-private `toBigInt` coercion; the
+//!   zod/zbin schema declarations are inert, and `unitTypeToBoatUnit` is
+//!   commented out upstream)
 //!
 //! Two rules govern every future port into this crate:
 //!
@@ -201,6 +207,7 @@ pub mod pseudo_random;
 pub mod railroad;
 pub mod railroad_spatial_grid;
 pub mod server_list;
+pub mod stats_schemas;
 pub mod team_assignment;
 pub mod terrain_search_map;
 pub mod tile_set;

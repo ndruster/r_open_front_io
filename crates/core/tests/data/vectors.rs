@@ -37990,6 +37990,488 @@ pub const NE_SCENARIOS: &[NeScenario] = &[
     NE_ID_BATCH,
 ];
 
+/// CosmeticSchemas.ts scenario: one `cosmetic_schemas::run_op(kind,
+/// args)` call. kind 0 dumps EFFECT_TYPES, 1 TRAIL_EFFECT_TYPES, 2
+/// NUKE_EXPLOSION_TYPES, 3 the DefaultPattern (name, patternData), 4
+/// maps a string batch through isTrailEffect, 5 through
+/// isNukeExplosionEffect, 6 through effectTypeForSlot ([1,str] when
+/// resolved, [0] for undefined), 7 through effectMatchesSlot ((et,
+/// np, ns?, slot) per case). Strings cross as `[len, u0, ..]` UTF-16
+/// units.
+pub struct CsScenario {
+    pub name: &'static str,
+    pub kind: u8,
+    pub args: &'static [f64],
+    pub res: &'static [f64],
+}
+
+pub const CS_EFFECT_TYPES: CsScenario = CsScenario {
+    name: "cs_effect_types",
+    kind: 0u8,
+    args: &[0f64],
+    res: &[7f64, 18f64, 116f64, 114f64, 97f64, 110f64, 115f64, 112f64, 111f64, 114f64, 116f64, 83f64, 104f64, 105f64, 112f64, 84f64, 114f64, 97f64, 105f64, 108f64, 9f64, 110f64, 117f64, 107f64, 101f64, 84f64, 114f64, 97f64, 105f64, 108f64, 13f64, 110f64, 117f64, 107f64, 101f64, 69f64, 120f64, 112f64, 108f64, 111f64, 115f64, 105f64, 111f64, 110f64, 10f64, 115f64, 116f64, 114f64, 117f64, 99f64, 116f64, 117f64, 114f64, 101f64, 115f64, 7f64, 119f64, 97f64, 114f64, 115f64, 104f64, 105f64, 112f64, 5f64, 116f64, 114f64, 97f64, 105f64, 110f64, 8f64, 114f64, 97f64, 105f64, 108f64, 114f64, 111f64, 97f64, 100f64],
+};
+
+pub const CS_TRAIL_TYPES: CsScenario = CsScenario {
+    name: "cs_trail_types",
+    kind: 1u8,
+    args: &[0f64],
+    res: &[2f64, 18f64, 116f64, 114f64, 97f64, 110f64, 115f64, 112f64, 111f64, 114f64, 116f64, 83f64, 104f64, 105f64, 112f64, 84f64, 114f64, 97f64, 105f64, 108f64, 9f64, 110f64, 117f64, 107f64, 101f64, 84f64, 114f64, 97f64, 105f64, 108f64],
+};
+
+pub const CS_NUKE_TYPES: CsScenario = CsScenario {
+    name: "cs_nuke_types",
+    kind: 2u8,
+    args: &[0f64],
+    res: &[3f64, 4f64, 97f64, 116f64, 111f64, 109f64, 5f64, 104f64, 121f64, 100f64, 114f64, 111f64, 11f64, 109f64, 105f64, 114f64, 118f64, 87f64, 97f64, 114f64, 104f64, 101f64, 97f64, 100f64],
+};
+
+pub const CS_DEFAULT_PATTERN: CsScenario = CsScenario {
+    name: "cs_default_pattern",
+    kind: 3u8,
+    args: &[0f64],
+    res: &[7f64, 100f64, 101f64, 102f64, 97f64, 117f64, 108f64, 116f64, 6f64, 65f64, 65f64, 65f64, 65f64, 65f64, 65f64],
+};
+
+pub const CS_TRAIL_0: CsScenario = CsScenario {
+    name: "cs_trail_0",
+    kind: 4u8,
+    args: &[1f64, 18f64, 116f64, 114f64, 97f64, 110f64, 115f64, 112f64, 111f64, 114f64, 116f64, 83f64, 104f64, 105f64, 112f64, 84f64, 114f64, 97f64, 105f64, 108f64],
+    res: &[1f64, 1f64],
+};
+
+pub const CS_NUKEFX_0: CsScenario = CsScenario {
+    name: "cs_nukefx_0",
+    kind: 5u8,
+    args: &[1f64, 18f64, 116f64, 114f64, 97f64, 110f64, 115f64, 112f64, 111f64, 114f64, 116f64, 83f64, 104f64, 105f64, 112f64, 84f64, 114f64, 97f64, 105f64, 108f64],
+    res: &[1f64, 0f64],
+};
+
+pub const CS_FORSLOT_0: CsScenario = CsScenario {
+    name: "cs_forslot_0",
+    kind: 6u8,
+    args: &[1f64, 18f64, 116f64, 114f64, 97f64, 110f64, 115f64, 112f64, 111f64, 114f64, 116f64, 83f64, 104f64, 105f64, 112f64, 84f64, 114f64, 97f64, 105f64, 108f64],
+    res: &[1f64, 1f64, 18f64, 116f64, 114f64, 97f64, 110f64, 115f64, 112f64, 111f64, 114f64, 116f64, 83f64, 104f64, 105f64, 112f64, 84f64, 114f64, 97f64, 105f64, 108f64],
+};
+
+pub const CS_TRAIL_1: CsScenario = CsScenario {
+    name: "cs_trail_1",
+    kind: 4u8,
+    args: &[1f64, 9f64, 110f64, 117f64, 107f64, 101f64, 84f64, 114f64, 97f64, 105f64, 108f64],
+    res: &[1f64, 1f64],
+};
+
+pub const CS_NUKEFX_1: CsScenario = CsScenario {
+    name: "cs_nukefx_1",
+    kind: 5u8,
+    args: &[1f64, 9f64, 110f64, 117f64, 107f64, 101f64, 84f64, 114f64, 97f64, 105f64, 108f64],
+    res: &[1f64, 0f64],
+};
+
+pub const CS_FORSLOT_1: CsScenario = CsScenario {
+    name: "cs_forslot_1",
+    kind: 6u8,
+    args: &[1f64, 9f64, 110f64, 117f64, 107f64, 101f64, 84f64, 114f64, 97f64, 105f64, 108f64],
+    res: &[1f64, 1f64, 9f64, 110f64, 117f64, 107f64, 101f64, 84f64, 114f64, 97f64, 105f64, 108f64],
+};
+
+pub const CS_TRAIL_2: CsScenario = CsScenario {
+    name: "cs_trail_2",
+    kind: 4u8,
+    args: &[1f64, 13f64, 110f64, 117f64, 107f64, 101f64, 69f64, 120f64, 112f64, 108f64, 111f64, 115f64, 105f64, 111f64, 110f64],
+    res: &[1f64, 0f64],
+};
+
+pub const CS_NUKEFX_2: CsScenario = CsScenario {
+    name: "cs_nukefx_2",
+    kind: 5u8,
+    args: &[1f64, 13f64, 110f64, 117f64, 107f64, 101f64, 69f64, 120f64, 112f64, 108f64, 111f64, 115f64, 105f64, 111f64, 110f64],
+    res: &[1f64, 1f64],
+};
+
+pub const CS_FORSLOT_2: CsScenario = CsScenario {
+    name: "cs_forslot_2",
+    kind: 6u8,
+    args: &[1f64, 13f64, 110f64, 117f64, 107f64, 101f64, 69f64, 120f64, 112f64, 108f64, 111f64, 115f64, 105f64, 111f64, 110f64],
+    res: &[1f64, 0f64],
+};
+
+pub const CS_TRAIL_3: CsScenario = CsScenario {
+    name: "cs_trail_3",
+    kind: 4u8,
+    args: &[1f64, 10f64, 115f64, 116f64, 114f64, 117f64, 99f64, 116f64, 117f64, 114f64, 101f64, 115f64],
+    res: &[1f64, 0f64],
+};
+
+pub const CS_NUKEFX_3: CsScenario = CsScenario {
+    name: "cs_nukefx_3",
+    kind: 5u8,
+    args: &[1f64, 10f64, 115f64, 116f64, 114f64, 117f64, 99f64, 116f64, 117f64, 114f64, 101f64, 115f64],
+    res: &[1f64, 0f64],
+};
+
+pub const CS_FORSLOT_3: CsScenario = CsScenario {
+    name: "cs_forslot_3",
+    kind: 6u8,
+    args: &[1f64, 10f64, 115f64, 116f64, 114f64, 117f64, 99f64, 116f64, 117f64, 114f64, 101f64, 115f64],
+    res: &[1f64, 1f64, 10f64, 115f64, 116f64, 114f64, 117f64, 99f64, 116f64, 117f64, 114f64, 101f64, 115f64],
+};
+
+pub const CS_TRAIL_4: CsScenario = CsScenario {
+    name: "cs_trail_4",
+    kind: 4u8,
+    args: &[1f64, 7f64, 119f64, 97f64, 114f64, 115f64, 104f64, 105f64, 112f64],
+    res: &[1f64, 0f64],
+};
+
+pub const CS_NUKEFX_4: CsScenario = CsScenario {
+    name: "cs_nukefx_4",
+    kind: 5u8,
+    args: &[1f64, 7f64, 119f64, 97f64, 114f64, 115f64, 104f64, 105f64, 112f64],
+    res: &[1f64, 0f64],
+};
+
+pub const CS_FORSLOT_4: CsScenario = CsScenario {
+    name: "cs_forslot_4",
+    kind: 6u8,
+    args: &[1f64, 7f64, 119f64, 97f64, 114f64, 115f64, 104f64, 105f64, 112f64],
+    res: &[1f64, 1f64, 7f64, 119f64, 97f64, 114f64, 115f64, 104f64, 105f64, 112f64],
+};
+
+pub const CS_TRAIL_5: CsScenario = CsScenario {
+    name: "cs_trail_5",
+    kind: 4u8,
+    args: &[1f64, 5f64, 116f64, 114f64, 97f64, 105f64, 110f64],
+    res: &[1f64, 0f64],
+};
+
+pub const CS_NUKEFX_5: CsScenario = CsScenario {
+    name: "cs_nukefx_5",
+    kind: 5u8,
+    args: &[1f64, 5f64, 116f64, 114f64, 97f64, 105f64, 110f64],
+    res: &[1f64, 0f64],
+};
+
+pub const CS_FORSLOT_5: CsScenario = CsScenario {
+    name: "cs_forslot_5",
+    kind: 6u8,
+    args: &[1f64, 5f64, 116f64, 114f64, 97f64, 105f64, 110f64],
+    res: &[1f64, 1f64, 5f64, 116f64, 114f64, 97f64, 105f64, 110f64],
+};
+
+pub const CS_TRAIL_6: CsScenario = CsScenario {
+    name: "cs_trail_6",
+    kind: 4u8,
+    args: &[1f64, 8f64, 114f64, 97f64, 105f64, 108f64, 114f64, 111f64, 97f64, 100f64],
+    res: &[1f64, 0f64],
+};
+
+pub const CS_NUKEFX_6: CsScenario = CsScenario {
+    name: "cs_nukefx_6",
+    kind: 5u8,
+    args: &[1f64, 8f64, 114f64, 97f64, 105f64, 108f64, 114f64, 111f64, 97f64, 100f64],
+    res: &[1f64, 0f64],
+};
+
+pub const CS_FORSLOT_6: CsScenario = CsScenario {
+    name: "cs_forslot_6",
+    kind: 6u8,
+    args: &[1f64, 8f64, 114f64, 97f64, 105f64, 108f64, 114f64, 111f64, 97f64, 100f64],
+    res: &[1f64, 1f64, 8f64, 114f64, 97f64, 105f64, 108f64, 114f64, 111f64, 97f64, 100f64],
+};
+
+pub const CS_TRAIL_7: CsScenario = CsScenario {
+    name: "cs_trail_7",
+    kind: 4u8,
+    args: &[1f64, 4f64, 97f64, 116f64, 111f64, 109f64],
+    res: &[1f64, 0f64],
+};
+
+pub const CS_NUKEFX_7: CsScenario = CsScenario {
+    name: "cs_nukefx_7",
+    kind: 5u8,
+    args: &[1f64, 4f64, 97f64, 116f64, 111f64, 109f64],
+    res: &[1f64, 0f64],
+};
+
+pub const CS_FORSLOT_7: CsScenario = CsScenario {
+    name: "cs_forslot_7",
+    kind: 6u8,
+    args: &[1f64, 4f64, 97f64, 116f64, 111f64, 109f64],
+    res: &[1f64, 1f64, 13f64, 110f64, 117f64, 107f64, 101f64, 69f64, 120f64, 112f64, 108f64, 111f64, 115f64, 105f64, 111f64, 110f64],
+};
+
+pub const CS_TRAIL_8: CsScenario = CsScenario {
+    name: "cs_trail_8",
+    kind: 4u8,
+    args: &[1f64, 5f64, 104f64, 121f64, 100f64, 114f64, 111f64],
+    res: &[1f64, 0f64],
+};
+
+pub const CS_NUKEFX_8: CsScenario = CsScenario {
+    name: "cs_nukefx_8",
+    kind: 5u8,
+    args: &[1f64, 5f64, 104f64, 121f64, 100f64, 114f64, 111f64],
+    res: &[1f64, 0f64],
+};
+
+pub const CS_FORSLOT_8: CsScenario = CsScenario {
+    name: "cs_forslot_8",
+    kind: 6u8,
+    args: &[1f64, 5f64, 104f64, 121f64, 100f64, 114f64, 111f64],
+    res: &[1f64, 1f64, 13f64, 110f64, 117f64, 107f64, 101f64, 69f64, 120f64, 112f64, 108f64, 111f64, 115f64, 105f64, 111f64, 110f64],
+};
+
+pub const CS_TRAIL_9: CsScenario = CsScenario {
+    name: "cs_trail_9",
+    kind: 4u8,
+    args: &[1f64, 11f64, 109f64, 105f64, 114f64, 118f64, 87f64, 97f64, 114f64, 104f64, 101f64, 97f64, 100f64],
+    res: &[1f64, 0f64],
+};
+
+pub const CS_NUKEFX_9: CsScenario = CsScenario {
+    name: "cs_nukefx_9",
+    kind: 5u8,
+    args: &[1f64, 11f64, 109f64, 105f64, 114f64, 118f64, 87f64, 97f64, 114f64, 104f64, 101f64, 97f64, 100f64],
+    res: &[1f64, 0f64],
+};
+
+pub const CS_FORSLOT_9: CsScenario = CsScenario {
+    name: "cs_forslot_9",
+    kind: 6u8,
+    args: &[1f64, 11f64, 109f64, 105f64, 114f64, 118f64, 87f64, 97f64, 114f64, 104f64, 101f64, 97f64, 100f64],
+    res: &[1f64, 1f64, 13f64, 110f64, 117f64, 107f64, 101f64, 69f64, 120f64, 112f64, 108f64, 111f64, 115f64, 105f64, 111f64, 110f64],
+};
+
+pub const CS_TRAIL_10: CsScenario = CsScenario {
+    name: "cs_trail_10",
+    kind: 4u8,
+    args: &[1f64, 0f64],
+    res: &[1f64, 0f64],
+};
+
+pub const CS_NUKEFX_10: CsScenario = CsScenario {
+    name: "cs_nukefx_10",
+    kind: 5u8,
+    args: &[1f64, 0f64],
+    res: &[1f64, 0f64],
+};
+
+pub const CS_FORSLOT_10: CsScenario = CsScenario {
+    name: "cs_forslot_10",
+    kind: 6u8,
+    args: &[1f64, 0f64],
+    res: &[1f64, 0f64],
+};
+
+pub const CS_TRAIL_11: CsScenario = CsScenario {
+    name: "cs_trail_11",
+    kind: 4u8,
+    args: &[1f64, 1f64, 97f64],
+    res: &[1f64, 0f64],
+};
+
+pub const CS_NUKEFX_11: CsScenario = CsScenario {
+    name: "cs_nukefx_11",
+    kind: 5u8,
+    args: &[1f64, 1f64, 97f64],
+    res: &[1f64, 0f64],
+};
+
+pub const CS_FORSLOT_11: CsScenario = CsScenario {
+    name: "cs_forslot_11",
+    kind: 6u8,
+    args: &[1f64, 1f64, 97f64],
+    res: &[1f64, 0f64],
+};
+
+pub const CS_TRAIL_12: CsScenario = CsScenario {
+    name: "cs_trail_12",
+    kind: 4u8,
+    args: &[1f64, 13f64, 84f64, 114f64, 97f64, 110f64, 115f64, 112f64, 111f64, 114f64, 116f64, 83f64, 104f64, 105f64, 112f64],
+    res: &[1f64, 0f64],
+};
+
+pub const CS_NUKEFX_12: CsScenario = CsScenario {
+    name: "cs_nukefx_12",
+    kind: 5u8,
+    args: &[1f64, 13f64, 84f64, 114f64, 97f64, 110f64, 115f64, 112f64, 111f64, 114f64, 116f64, 83f64, 104f64, 105f64, 112f64],
+    res: &[1f64, 0f64],
+};
+
+pub const CS_FORSLOT_12: CsScenario = CsScenario {
+    name: "cs_forslot_12",
+    kind: 6u8,
+    args: &[1f64, 13f64, 84f64, 114f64, 97f64, 110f64, 115f64, 112f64, 111f64, 114f64, 116f64, 83f64, 104f64, 105f64, 112f64],
+    res: &[1f64, 0f64],
+};
+
+pub const CS_TRAIL_13: CsScenario = CsScenario {
+    name: "cs_trail_13",
+    kind: 4u8,
+    args: &[1f64, 5f64, 97f64, 116f64, 111f64, 109f64, 32f64],
+    res: &[1f64, 0f64],
+};
+
+pub const CS_NUKEFX_13: CsScenario = CsScenario {
+    name: "cs_nukefx_13",
+    kind: 5u8,
+    args: &[1f64, 5f64, 97f64, 116f64, 111f64, 109f64, 32f64],
+    res: &[1f64, 0f64],
+};
+
+pub const CS_FORSLOT_13: CsScenario = CsScenario {
+    name: "cs_forslot_13",
+    kind: 6u8,
+    args: &[1f64, 5f64, 97f64, 116f64, 111f64, 109f64, 32f64],
+    res: &[1f64, 0f64],
+};
+
+pub const CS_TRAIL_BATCH: CsScenario = CsScenario {
+    name: "cs_trail_batch",
+    kind: 4u8,
+    args: &[14f64, 18f64, 116f64, 114f64, 97f64, 110f64, 115f64, 112f64, 111f64, 114f64, 116f64, 83f64, 104f64, 105f64, 112f64, 84f64, 114f64, 97f64, 105f64, 108f64, 9f64, 110f64, 117f64, 107f64, 101f64, 84f64, 114f64, 97f64, 105f64, 108f64, 13f64, 110f64, 117f64, 107f64, 101f64, 69f64, 120f64, 112f64, 108f64, 111f64, 115f64, 105f64, 111f64, 110f64, 10f64, 115f64, 116f64, 114f64, 117f64, 99f64, 116f64, 117f64, 114f64, 101f64, 115f64, 7f64, 119f64, 97f64, 114f64, 115f64, 104f64, 105f64, 112f64, 5f64, 116f64, 114f64, 97f64, 105f64, 110f64, 8f64, 114f64, 97f64, 105f64, 108f64, 114f64, 111f64, 97f64, 100f64, 4f64, 97f64, 116f64, 111f64, 109f64, 5f64, 104f64, 121f64, 100f64, 114f64, 111f64, 11f64, 109f64, 105f64, 114f64, 118f64, 87f64, 97f64, 114f64, 104f64, 101f64, 97f64, 100f64, 0f64, 1f64, 97f64, 13f64, 84f64, 114f64, 97f64, 110f64, 115f64, 112f64, 111f64, 114f64, 116f64, 83f64, 104f64, 105f64, 112f64, 5f64, 97f64, 116f64, 111f64, 109f64, 32f64],
+    res: &[14f64, 1f64, 1f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64],
+};
+
+pub const CS_NUKEFX_BATCH: CsScenario = CsScenario {
+    name: "cs_nukefx_batch",
+    kind: 5u8,
+    args: &[14f64, 18f64, 116f64, 114f64, 97f64, 110f64, 115f64, 112f64, 111f64, 114f64, 116f64, 83f64, 104f64, 105f64, 112f64, 84f64, 114f64, 97f64, 105f64, 108f64, 9f64, 110f64, 117f64, 107f64, 101f64, 84f64, 114f64, 97f64, 105f64, 108f64, 13f64, 110f64, 117f64, 107f64, 101f64, 69f64, 120f64, 112f64, 108f64, 111f64, 115f64, 105f64, 111f64, 110f64, 10f64, 115f64, 116f64, 114f64, 117f64, 99f64, 116f64, 117f64, 114f64, 101f64, 115f64, 7f64, 119f64, 97f64, 114f64, 115f64, 104f64, 105f64, 112f64, 5f64, 116f64, 114f64, 97f64, 105f64, 110f64, 8f64, 114f64, 97f64, 105f64, 108f64, 114f64, 111f64, 97f64, 100f64, 4f64, 97f64, 116f64, 111f64, 109f64, 5f64, 104f64, 121f64, 100f64, 114f64, 111f64, 11f64, 109f64, 105f64, 114f64, 118f64, 87f64, 97f64, 114f64, 104f64, 101f64, 97f64, 100f64, 0f64, 1f64, 97f64, 13f64, 84f64, 114f64, 97f64, 110f64, 115f64, 112f64, 111f64, 114f64, 116f64, 83f64, 104f64, 105f64, 112f64, 5f64, 97f64, 116f64, 111f64, 109f64, 32f64],
+    res: &[14f64, 0f64, 0f64, 1f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64],
+};
+
+pub const CS_FORSLOT_BATCH: CsScenario = CsScenario {
+    name: "cs_forslot_batch",
+    kind: 6u8,
+    args: &[14f64, 18f64, 116f64, 114f64, 97f64, 110f64, 115f64, 112f64, 111f64, 114f64, 116f64, 83f64, 104f64, 105f64, 112f64, 84f64, 114f64, 97f64, 105f64, 108f64, 9f64, 110f64, 117f64, 107f64, 101f64, 84f64, 114f64, 97f64, 105f64, 108f64, 13f64, 110f64, 117f64, 107f64, 101f64, 69f64, 120f64, 112f64, 108f64, 111f64, 115f64, 105f64, 111f64, 110f64, 10f64, 115f64, 116f64, 114f64, 117f64, 99f64, 116f64, 117f64, 114f64, 101f64, 115f64, 7f64, 119f64, 97f64, 114f64, 115f64, 104f64, 105f64, 112f64, 5f64, 116f64, 114f64, 97f64, 105f64, 110f64, 8f64, 114f64, 97f64, 105f64, 108f64, 114f64, 111f64, 97f64, 100f64, 4f64, 97f64, 116f64, 111f64, 109f64, 5f64, 104f64, 121f64, 100f64, 114f64, 111f64, 11f64, 109f64, 105f64, 114f64, 118f64, 87f64, 97f64, 114f64, 104f64, 101f64, 97f64, 100f64, 0f64, 1f64, 97f64, 13f64, 84f64, 114f64, 97f64, 110f64, 115f64, 112f64, 111f64, 114f64, 116f64, 83f64, 104f64, 105f64, 112f64, 5f64, 97f64, 116f64, 111f64, 109f64, 32f64],
+    res: &[14f64, 1f64, 18f64, 116f64, 114f64, 97f64, 110f64, 115f64, 112f64, 111f64, 114f64, 116f64, 83f64, 104f64, 105f64, 112f64, 84f64, 114f64, 97f64, 105f64, 108f64, 1f64, 9f64, 110f64, 117f64, 107f64, 101f64, 84f64, 114f64, 97f64, 105f64, 108f64, 0f64, 1f64, 10f64, 115f64, 116f64, 114f64, 117f64, 99f64, 116f64, 117f64, 114f64, 101f64, 115f64, 1f64, 7f64, 119f64, 97f64, 114f64, 115f64, 104f64, 105f64, 112f64, 1f64, 5f64, 116f64, 114f64, 97f64, 105f64, 110f64, 1f64, 8f64, 114f64, 97f64, 105f64, 108f64, 114f64, 111f64, 97f64, 100f64, 1f64, 13f64, 110f64, 117f64, 107f64, 101f64, 69f64, 120f64, 112f64, 108f64, 111f64, 115f64, 105f64, 111f64, 110f64, 1f64, 13f64, 110f64, 117f64, 107f64, 101f64, 69f64, 120f64, 112f64, 108f64, 111f64, 115f64, 105f64, 111f64, 110f64, 1f64, 13f64, 110f64, 117f64, 107f64, 101f64, 69f64, 120f64, 112f64, 108f64, 111f64, 115f64, 105f64, 111f64, 110f64, 0f64, 0f64, 0f64, 0f64],
+};
+
+pub const CS_MATCH_0: CsScenario = CsScenario {
+    name: "cs_match_0",
+    kind: 7u8,
+    args: &[1f64, 9f64, 110f64, 117f64, 107f64, 101f64, 84f64, 114f64, 97f64, 105f64, 108f64, 0f64, 9f64, 110f64, 117f64, 107f64, 101f64, 84f64, 114f64, 97f64, 105f64, 108f64],
+    res: &[1f64, 1f64],
+};
+
+pub const CS_MATCH_1: CsScenario = CsScenario {
+    name: "cs_match_1",
+    kind: 7u8,
+    args: &[1f64, 13f64, 110f64, 117f64, 107f64, 101f64, 69f64, 120f64, 112f64, 108f64, 111f64, 115f64, 105f64, 111f64, 110f64, 1f64, 4f64, 97f64, 116f64, 111f64, 109f64, 4f64, 97f64, 116f64, 111f64, 109f64],
+    res: &[1f64, 1f64],
+};
+
+pub const CS_MATCH_2: CsScenario = CsScenario {
+    name: "cs_match_2",
+    kind: 7u8,
+    args: &[1f64, 13f64, 110f64, 117f64, 107f64, 101f64, 69f64, 120f64, 112f64, 108f64, 111f64, 115f64, 105f64, 111f64, 110f64, 1f64, 4f64, 97f64, 116f64, 111f64, 109f64, 5f64, 104f64, 121f64, 100f64, 114f64, 111f64],
+    res: &[1f64, 0f64],
+};
+
+pub const CS_MATCH_3: CsScenario = CsScenario {
+    name: "cs_match_3",
+    kind: 7u8,
+    args: &[1f64, 13f64, 110f64, 117f64, 107f64, 101f64, 69f64, 120f64, 112f64, 108f64, 111f64, 115f64, 105f64, 111f64, 110f64, 1f64, 4f64, 97f64, 116f64, 111f64, 109f64, 13f64, 110f64, 117f64, 107f64, 101f64, 69f64, 120f64, 112f64, 108f64, 111f64, 115f64, 105f64, 111f64, 110f64],
+    res: &[1f64, 0f64],
+};
+
+pub const CS_MATCH_4: CsScenario = CsScenario {
+    name: "cs_match_4",
+    kind: 7u8,
+    args: &[1f64, 18f64, 116f64, 114f64, 97f64, 110f64, 115f64, 112f64, 111f64, 114f64, 116f64, 83f64, 104f64, 105f64, 112f64, 84f64, 114f64, 97f64, 105f64, 108f64, 0f64, 9f64, 110f64, 117f64, 107f64, 101f64, 84f64, 114f64, 97f64, 105f64, 108f64],
+    res: &[1f64, 0f64],
+};
+
+pub const CS_MATCH_5: CsScenario = CsScenario {
+    name: "cs_match_5",
+    kind: 7u8,
+    args: &[1f64, 10f64, 115f64, 116f64, 114f64, 117f64, 99f64, 116f64, 117f64, 114f64, 101f64, 115f64, 0f64, 10f64, 115f64, 116f64, 114f64, 117f64, 99f64, 116f64, 117f64, 114f64, 101f64, 115f64],
+    res: &[1f64, 1f64],
+};
+
+pub const CS_MATCH_6: CsScenario = CsScenario {
+    name: "cs_match_6",
+    kind: 7u8,
+    args: &[1f64, 5f64, 116f64, 114f64, 97f64, 105f64, 110f64, 0f64, 5f64, 98f64, 111f64, 103f64, 117f64, 115f64],
+    res: &[1f64, 0f64],
+};
+
+pub const CS_MATCH_7: CsScenario = CsScenario {
+    name: "cs_match_7",
+    kind: 7u8,
+    args: &[1f64, 4f64, 97f64, 116f64, 111f64, 109f64, 0f64, 4f64, 97f64, 116f64, 111f64, 109f64],
+    res: &[1f64, 0f64],
+};
+
+pub const CS_MATCH_BATCH: CsScenario = CsScenario {
+    name: "cs_match_batch",
+    kind: 7u8,
+    args: &[8f64, 9f64, 110f64, 117f64, 107f64, 101f64, 84f64, 114f64, 97f64, 105f64, 108f64, 0f64, 9f64, 110f64, 117f64, 107f64, 101f64, 84f64, 114f64, 97f64, 105f64, 108f64, 13f64, 110f64, 117f64, 107f64, 101f64, 69f64, 120f64, 112f64, 108f64, 111f64, 115f64, 105f64, 111f64, 110f64, 1f64, 4f64, 97f64, 116f64, 111f64, 109f64, 4f64, 97f64, 116f64, 111f64, 109f64, 13f64, 110f64, 117f64, 107f64, 101f64, 69f64, 120f64, 112f64, 108f64, 111f64, 115f64, 105f64, 111f64, 110f64, 1f64, 4f64, 97f64, 116f64, 111f64, 109f64, 5f64, 104f64, 121f64, 100f64, 114f64, 111f64, 13f64, 110f64, 117f64, 107f64, 101f64, 69f64, 120f64, 112f64, 108f64, 111f64, 115f64, 105f64, 111f64, 110f64, 1f64, 4f64, 97f64, 116f64, 111f64, 109f64, 13f64, 110f64, 117f64, 107f64, 101f64, 69f64, 120f64, 112f64, 108f64, 111f64, 115f64, 105f64, 111f64, 110f64, 18f64, 116f64, 114f64, 97f64, 110f64, 115f64, 112f64, 111f64, 114f64, 116f64, 83f64, 104f64, 105f64, 112f64, 84f64, 114f64, 97f64, 105f64, 108f64, 0f64, 9f64, 110f64, 117f64, 107f64, 101f64, 84f64, 114f64, 97f64, 105f64, 108f64, 10f64, 115f64, 116f64, 114f64, 117f64, 99f64, 116f64, 117f64, 114f64, 101f64, 115f64, 0f64, 10f64, 115f64, 116f64, 114f64, 117f64, 99f64, 116f64, 117f64, 114f64, 101f64, 115f64, 5f64, 116f64, 114f64, 97f64, 105f64, 110f64, 0f64, 5f64, 98f64, 111f64, 103f64, 117f64, 115f64, 4f64, 97f64, 116f64, 111f64, 109f64, 0f64, 4f64, 97f64, 116f64, 111f64, 109f64],
+    res: &[8f64, 1f64, 1f64, 0f64, 0f64, 0f64, 1f64, 0f64, 0f64],
+};
+
+pub const CS_SCENARIOS: &[CsScenario] = &[
+    CS_EFFECT_TYPES,
+    CS_TRAIL_TYPES,
+    CS_NUKE_TYPES,
+    CS_DEFAULT_PATTERN,
+    CS_TRAIL_0,
+    CS_NUKEFX_0,
+    CS_FORSLOT_0,
+    CS_TRAIL_1,
+    CS_NUKEFX_1,
+    CS_FORSLOT_1,
+    CS_TRAIL_2,
+    CS_NUKEFX_2,
+    CS_FORSLOT_2,
+    CS_TRAIL_3,
+    CS_NUKEFX_3,
+    CS_FORSLOT_3,
+    CS_TRAIL_4,
+    CS_NUKEFX_4,
+    CS_FORSLOT_4,
+    CS_TRAIL_5,
+    CS_NUKEFX_5,
+    CS_FORSLOT_5,
+    CS_TRAIL_6,
+    CS_NUKEFX_6,
+    CS_FORSLOT_6,
+    CS_TRAIL_7,
+    CS_NUKEFX_7,
+    CS_FORSLOT_7,
+    CS_TRAIL_8,
+    CS_NUKEFX_8,
+    CS_FORSLOT_8,
+    CS_TRAIL_9,
+    CS_NUKEFX_9,
+    CS_FORSLOT_9,
+    CS_TRAIL_10,
+    CS_NUKEFX_10,
+    CS_FORSLOT_10,
+    CS_TRAIL_11,
+    CS_NUKEFX_11,
+    CS_FORSLOT_11,
+    CS_TRAIL_12,
+    CS_NUKEFX_12,
+    CS_FORSLOT_12,
+    CS_TRAIL_13,
+    CS_NUKEFX_13,
+    CS_FORSLOT_13,
+    CS_TRAIL_BATCH,
+    CS_NUKEFX_BATCH,
+    CS_FORSLOT_BATCH,
+    CS_MATCH_0,
+    CS_MATCH_1,
+    CS_MATCH_2,
+    CS_MATCH_3,
+    CS_MATCH_4,
+    CS_MATCH_5,
+    CS_MATCH_6,
+    CS_MATCH_7,
+    CS_MATCH_BATCH,
+];
+
 /// pathfinding/PathFinder.ts WaterPathMemo scenario: one
 /// `water_path_memo::run_op(kind, args)` call. kind 0 replays the
 /// whole scenario (scripted inner mock + op sequence) and emits the

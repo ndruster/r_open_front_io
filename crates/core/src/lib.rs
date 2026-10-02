@@ -156,6 +156,12 @@
 //!   pathfinder — waterVersion entry check, insertion-order LRU with
 //!   hit-reinsert, null=16-byte accounting, `Uint32Array` coercion on hits,
 //!   f64 key arithmetic collisions; the rest of the file rides on `Game`)
+//! * [`cosmetic_schemas`] — `src/core/CosmeticSchemas.ts` (the runtime-value
+//!   subset: `EFFECT_TYPES` / `TRAIL_EFFECT_TYPES` / `NUKE_EXPLOSION_TYPES`,
+//!   `isTrailEffect` / `isNukeExplosionEffect` / `effectTypeForSlot` /
+//!   `effectMatchesSlot`, and `DefaultPattern`; the zod schema declarations
+//!   are inert, and `findEffect` / `findEffectForSlot` ride on the nested
+//!   catalog object and are not ported)
 //!
 //! Two rules govern every future port into this crate:
 //!
@@ -174,6 +180,7 @@
 pub mod anon_names;
 pub mod asset_urls;
 pub mod close_codes;
+pub mod cosmetic_schemas;
 pub mod detmath;
 pub mod doomsday_clock;
 pub mod event_bus;

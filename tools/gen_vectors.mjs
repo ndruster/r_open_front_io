@@ -171,6 +171,7 @@ const GAME = await loadTs("src/core/game/Game.ts");
 const NC = await loadTs("src/core/game/NationCreation.ts");
 const GUPD = await loadTs("src/core/game/GameUpdates.ts");
 const NE = await loadTs("src/core/execution/nation/NationEmojiBehavior.ts");
+const Cosmetic = await loadTs("src/core/CosmeticSchemas.ts");
 const PF = await loadTs("src/core/pathfinding/PathFinder.ts");
 const { AStar } = await loadTs("src/core/pathfinding/algorithms/AStar.ts");
 const { AStarRail } = await loadTs("src/core/pathfinding/algorithms/AStar.Rail.ts");
@@ -2527,6 +2528,133 @@ for (const [i, e] of neIdCases.entries()) {
 captureNE("ne_id_batch", 3, [neIdCases.length, neIdCases.map(encS)], [
   neIdCases.length,
   ...neIdCases.map((e) => Util.flattenedEmojiTable.indexOf(e)),
+]);
+
+// --- CosmeticSchemas scenario runner ------------------------------------------
+// Exercises the CosmeticSchemas.ts runtime values (EFFECT_TYPES /
+// TRAIL_EFFECT_TYPES / NUKE_EXPLOSION_TYPES, the four pure effect/slot
+// functions, and DefaultPattern) through the shared run_op runner. Strings
+// cross as `[len, u0, ..]` (UTF-16 code units); the Rust twin is
+// `cosmetic_schemas::*`.
+//
+// kind table (matches the Rust dispatch):
+//   0 EFFECT_TYPES dump       args [0]  res [7,(str)*7]
+//   1 TRAIL dump              args [0]  res [2,(str)*2]
+//   2 NUKE dump               args [0]  res [3,(str)*3]
+//   3 DefaultPattern          args [0]  res [(name),(data)]
+//   4 isTrailEffect batch     args [n,(str)*n]  res [n,(0/1)*n]
+//   5 isNukeExplosion batch   args [n,(str)*n]  res [n,(0/1)*n]
+//   6 effectTypeForSlot batch args [n,(str)*n]  res [n,([1,str]|[0])*n]
+//   7 effectMatchesSlot batch args [n,(et,np,ns?,slot)*n]  res [n,(0/1)*n]
+const csScenarios = [];
+const csname = (s) => s.replace(/[^A-Za-z0-9]+/g, "_");
+function captureCS(name, kind, args, res) {
+  csScenarios.push({
+    name: csname(name),
+    kind,
+    args: args.flat(Infinity).map(uenc),
+    res: res.flat(Infinity).map(uenc),
+  });
+}
+
+// kinds 0-2: the three `as const` arrays.
+captureCS("cs_effect_types", 0, [0], [
+  Cosmetic.EFFECT_TYPES.length,
+  ...Cosmetic.EFFECT_TYPES.map(encS),
+]);
+captureCS("cs_trail_types", 1, [0], [
+  Cosmetic.TRAIL_EFFECT_TYPES.length,
+  ...Cosmetic.TRAIL_EFFECT_TYPES.map(encS),
+]);
+captureCS("cs_nuke_types", 2, [0], [
+  Cosmetic.NUKE_EXPLOSION_TYPES.length,
+  ...Cosmetic.NUKE_EXPLOSION_TYPES.map(encS),
+]);
+
+// kind 3: DefaultPattern (colorPalette is undefined in the TS; the Rust twin
+// carries the two string fields only, and the capture never reads it).
+captureCS("cs_default_pattern", 3, [0], [
+  encS(Cosmetic.DefaultPattern.name),
+  encS(Cosmetic.DefaultPattern.patternData),
+]);
+
+// kinds 4-6: probe strings - every catalog member plus the boundaries
+// (empty, wrong case, trailing space; the bare "nukeExplosion" key rides in
+// via EFFECT_TYPES and must resolve to undefined in forSlot).
+const csCases = [
+  ...Cosmetic.EFFECT_TYPES,
+  ...Cosmetic.NUKE_EXPLOSION_TYPES,
+  "",
+  "a",
+  "TransportShip",
+  "atom ",
+];
+for (const [i, s] of csCases.entries()) {
+  captureCS(`cs_trail_${i}`, 4, [1, encS(s)], [
+    1,
+    enc(Cosmetic.isTrailEffect({ effectType: s })),
+  ]);
+  captureCS(`cs_nukefx_${i}`, 5, [1, encS(s)], [
+    1,
+    enc(Cosmetic.isNukeExplosionEffect({ effectType: s })),
+  ]);
+  const t = Cosmetic.effectTypeForSlot(s);
+  captureCS(`cs_forslot_${i}`, 6, [1, encS(s)], [
+    1,
+    t === undefined ? [0] : [1, encS(t)],
+  ]);
+}
+captureCS("cs_trail_batch", 4, [csCases.length, csCases.map(encS)], [
+  csCases.length,
+  ...csCases.map((s) => enc(Cosmetic.isTrailEffect({ effectType: s }))),
+]);
+captureCS("cs_nukefx_batch", 5, [csCases.length, csCases.map(encS)], [
+  csCases.length,
+  ...csCases.map((s) => enc(Cosmetic.isNukeExplosionEffect({ effectType: s }))),
+]);
+captureCS("cs_forslot_batch", 6, [csCases.length, csCases.map(encS)], [
+  csCases.length,
+  ...csCases.flatMap((s) => {
+    const t = Cosmetic.effectTypeForSlot(s);
+    return t === undefined ? [0] : [1, encS(t)];
+  }),
+]);
+
+// kind 7: effectMatchesSlot over (effect, slot) pairs; the nukeType token
+// rides along only for nukeExplosion effects (np=1). The last case pins the
+// quirk that an effect whose effectType is a nuke *type name* never matches
+// (effectTypeForSlot maps the slot to "nukeExplosion", not "atom").
+const csMatchCases = [
+  [{ effectType: "nukeTrail" }, "nukeTrail"],
+  [{ effectType: "nukeExplosion", attributes: { nukeType: "atom" } }, "atom"],
+  [{ effectType: "nukeExplosion", attributes: { nukeType: "atom" } }, "hydro"],
+  [
+    { effectType: "nukeExplosion", attributes: { nukeType: "atom" } },
+    "nukeExplosion",
+  ],
+  [{ effectType: "transportShipTrail" }, "nukeTrail"],
+  [{ effectType: "structures" }, "structures"],
+  [{ effectType: "train" }, "bogus"],
+  [{ effectType: "atom" }, "atom"],
+];
+const csMatchArgs = ([e, slot]) => {
+  const nuke = e.effectType === "nukeExplosion";
+  return [
+    encS(e.effectType),
+    nuke ? 1 : 0,
+    nuke ? encS(e.attributes.nukeType) : [],
+    encS(slot),
+  ];
+};
+for (const [i, c] of csMatchCases.entries()) {
+  captureCS(`cs_match_${i}`, 7, [1, csMatchArgs(c)], [
+    1,
+    enc(Cosmetic.effectMatchesSlot(c[0], c[1])),
+  ]);
+}
+captureCS("cs_match_batch", 7, [csMatchCases.length, csMatchCases.map(csMatchArgs)], [
+  csMatchCases.length,
+  ...csMatchCases.map(([e, slot]) => enc(Cosmetic.effectMatchesSlot(e, slot))),
 ]);
 
 // --- WaterPathMemo scenario runner -------------------------------------------
@@ -6150,6 +6278,7 @@ const structures = {
   nationcreation: ncScenarios,
   gameupdates: gupdScenarios,
   nationemoji: neScenarios,
+  cosmeticschemas: csScenarios,
   waterpathmemo: wpmScenarios,
   astar: asScenarios,
   rail: railScenarios,
@@ -8367,6 +8496,36 @@ for (const s of structures.nationemoji) {
 }
 L.push("pub const NE_SCENARIOS: &[NeScenario] = &[");
 for (const s of structures.nationemoji) L.push(`    ${s.name.toUpperCase()},`);
+L.push("];");
+L.push("");
+
+L.push("/// CosmeticSchemas.ts scenario: one `cosmetic_schemas::run_op(kind,");
+L.push("/// args)` call. kind 0 dumps EFFECT_TYPES, 1 TRAIL_EFFECT_TYPES, 2");
+L.push("/// NUKE_EXPLOSION_TYPES, 3 the DefaultPattern (name, patternData), 4");
+L.push("/// maps a string batch through isTrailEffect, 5 through");
+L.push("/// isNukeExplosionEffect, 6 through effectTypeForSlot ([1,str] when");
+L.push("/// resolved, [0] for undefined), 7 through effectMatchesSlot ((et,");
+L.push("/// np, ns?, slot) per case). Strings cross as `[len, u0, ..]` UTF-16");
+L.push("/// units.");
+L.push("pub struct CsScenario {");
+L.push("    pub name: &'static str,");
+L.push("    pub kind: u8,");
+L.push("    pub args: &'static [f64],");
+L.push("    pub res: &'static [f64],");
+L.push("}");
+L.push("");
+for (const s of structures.cosmeticschemas) {
+  const id = s.name.toUpperCase();
+  L.push(`pub const ${id}: CsScenario = CsScenario {`);
+  L.push(`    name: "${s.name}",`);
+  L.push(`    kind: ${s.kind}u8,`);
+  L.push(`    args: &[${s.args.map(utilResLit).join(", ")}],`);
+  L.push(`    res: &[${s.res.map(utilResLit).join(", ")}],`);
+  L.push("};");
+  L.push("");
+}
+L.push("pub const CS_SCENARIOS: &[CsScenario] = &[");
+for (const s of structures.cosmeticschemas) L.push(`    ${s.name.toUpperCase()},`);
 L.push("];");
 L.push("");
 

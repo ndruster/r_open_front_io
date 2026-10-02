@@ -97,6 +97,11 @@ rust/
 │   │   ├── water_path_memo.rs     port of pathfinding/PathFinder.ts
 │   │   │                          (WaterPathMemo only: LRU byte-budget memo
 │   │   │                          over a scripted inner pathfinder)
+│   │   ├── cosmetic_schemas.rs    port of CosmeticSchemas.ts (runtime-value
+│   │   │                          subset: EFFECT_TYPES / TRAIL_EFFECT_TYPES /
+│   │   │                          NUKE_EXPLOSION_TYPES, the four effect/slot
+│   │   │                          predicates, DefaultPattern; zod schemas
+│   │   │                          inert, findEffect* not ported)
 │   │   ├── wasm_probe.rs          `extern "C"` surface, feature-gated
 │   │   └── pathfinding/
 │   │       ├── mod.rs
@@ -808,6 +813,23 @@ desync, not a rounding nit. Two things enforce that here:
     Strings cross the boundary as `[len, u0, ..]` UTF-16 code-unit token
     streams. 61 scenarios (536 result tokens) over kinds 15–18 of the util
     runner.
+45. **`CosmeticSchemas.ts`** (`cosmetic_schemas`) — the runtime-value subset:
+    the three `as const` effect-type arrays (`EFFECT_TYPES` 7,
+    `TRAIL_EFFECT_TYPES` 2, `NUKE_EXPLOSION_TYPES` 3), the four pure
+    effect/slot predicates (`isTrailEffect` / `isNukeExplosionEffect` /
+    `effectTypeForSlot` / `effectMatchesSlot`) and the `DefaultPattern`
+    literal. The `z.*` schema declarations are inert at capture time (the
+    same zod-Proxy shim as `server_list`; `base64url` / `decodePatternData`
+    only feed `PatternDataSchema`'s refine callback, never invoked);
+    `findEffect` / `findEffectForSlot` ride on the nested `Cosmetics`
+    catalog object and are not ported. `effectTypeForSlot`'s quirk — the
+    bare `"nukeExplosion"` key resolves to `undefined` (the nuke-type
+    branch matches only `atom`/`hydro`/`mirvWarhead`, the effect-type
+    branch explicitly excludes `"nukeExplosion"`) — is pinned, as is
+    `effectMatchesSlot`'s `effectType:"atom"` mismatch (forSlot resolves to
+    `"nukeExplosion"` ≠ `"atom"`). 58 scenarios (511 result tokens) over
+    kinds 0–7 of the cs runner; strings cross as `[len, u0, ..]` UTF-16
+    code-unit streams.
 
 Regenerate whenever a ported source changes:
 
@@ -841,7 +863,7 @@ node rust/tools/run_wasm_parity.mjs
 
 `wasm-probe` exposes the ported functions through `extern "C"` scalar
 entrypoints (`src/wasm_probe.rs`); the runner imports `data/vectors.json` and
-compares every value. Last run: **99,211 comparisons, all bit-identical**.
+compares every value. Last run: **99,722 comparisons, all bit-identical**.
 
 ### Windows: the linker environment
 

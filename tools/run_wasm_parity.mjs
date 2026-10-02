@@ -100,6 +100,7 @@ for (const name of [
   "probe_gu_arg", "probe_gu_op", "probe_gu_out_at",
   "probe_gupd_arg", "probe_gupd_op", "probe_gupd_out_at",
   "probe_ne_arg", "probe_ne_op", "probe_ne_out_at",
+  "probe_cs_arg", "probe_cs_op", "probe_cs_out_at",
   "probe_wpm_arg", "probe_wpm_op", "probe_wpm_out_at",
   "probe_rr_arg", "probe_rr_op", "probe_rr_out_at",
   "probe_rsg_reset", "probe_rsg_arg", "probe_rsg_op", "probe_rsg_out_at",
@@ -1675,6 +1676,25 @@ for (const s of S.nationemoji) {
   for (let i = 0; i < len; i++) {
     checks++;
     const g = ex.probe_ne_out_at(i);
+    const w = numTok(s.res[i]);
+    if (!Object.is(g, w)) fail(`${s.name} res[${i}]`, 0, g, w);
+  }
+}
+
+// --- CosmeticSchemas.ts (cosmetic_schemas) -----------------------------------
+// Replays the effect-type array dumps / DefaultPattern / the pure effect-slot
+// function batches through the shared run_op runner; args and res are flat
+// f64 token streams, compared element-by-element with Object.is.
+for (const s of S.cosmeticschemas) {
+  for (const a of s.args) ex.probe_cs_arg(numTok(a));
+  const len = Number(ex.probe_cs_op(s.kind));
+  if (len !== s.res.length) {
+    fail(`${s.name} res len`, 0, len, s.res.length);
+    continue;
+  }
+  for (let i = 0; i < len; i++) {
+    checks++;
+    const g = ex.probe_cs_out_at(i);
     const w = numTok(s.res[i]);
     if (!Object.is(g, w)) fail(`${s.name} res[${i}]`, 0, g, w);
   }

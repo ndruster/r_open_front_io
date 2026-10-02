@@ -1162,6 +1162,30 @@ function prepare(rel) {
     );
   }
 
+  if (rel.endsWith("CosmeticSchemas.ts")) {
+    // zod is only used by the cosmetic schema declarations (not ported — the
+    // pure effect/slot functions never touch them at runtime). Replace the
+    // import with an inert self-returning Proxy so the schema declarations
+    // still evaluate (same shim as ServerList.ts). The other three imports
+    // are type-only or schema-only: base64url and decodePatternData are used
+    // exclusively inside PatternDataSchema's refine callback (never invoked
+    // by the capture), and PlayerPattern is a z.infer type -> drop.
+    out = must(out, 'import { base64url } from "jose";\n', "", "CosmeticSchemas jose import");
+    out = must(
+      out,
+      'import { z } from "zod/v4";\n',
+      "const z = new Proxy(function () {}, { get: () => z, apply: () => z });\n",
+      "CosmeticSchemas zod import",
+    );
+    out = must(
+      out,
+      'import { decodePatternData } from "./PatternDecoder";\n',
+      "",
+      "CosmeticSchemas PatternDecoder import",
+    );
+    out = must(out, 'import { PlayerPattern } from "./Schemas";\n', "", "CosmeticSchemas Schemas import");
+  }
+
   if (rel.endsWith("game/Maps.gen.ts")) {
     // Node's strip-only TS loader rejects `export enum`. GameMapType is a
     // string enum (member name = the folder id, value = the canonical wire

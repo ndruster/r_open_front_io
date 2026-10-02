@@ -525,6 +525,21 @@ fn replay_util_scenarios() {
                 let c = util::calculate_bounding_box_center(&gm, a[2..].to_vec());
                 vec![c.x, c.y]
             }
+            15 | 16 => {
+                let units: Vec<u16> = a[1..].iter().map(|u| *u as u16).collect();
+                let got = if s.kind == 15 {
+                    util::sanitize_clan_tag(&units)
+                } else {
+                    util::sanitize_lobby_label(&units)
+                };
+                let mut v = vec![got.len() as f64];
+                v.extend(got.iter().map(|u| f64::from(*u)));
+                v
+            }
+            17 | 18 => {
+                let gm = GameMap::new(a[0], a[1], vec![0x85; (a[0] * a[1]) as usize], a[0] * a[1]);
+                util::dist_sort(&gm, a[2], &a[3..])
+            }
             k => panic!("{} unexpected util kind {k}", s.name),
         };
         assert_eq!(got.len(), s.res.len(), "{} result length", s.name);

@@ -592,12 +592,12 @@ for (const s of S.tileset) {
 }
 
 // --- Util --- (single-call replay; kinds match the util runner in
-// gen_vectors.mjs). Kinds 12/13/14 need a GameMap built first; the map is
-// keyed by (w,h) so it is only rebuilt when the dimensions change.
+// gen_vectors.mjs). Kinds 12/13/14/17/18 need a GameMap built first; the map
+// is keyed by (w,h) so it is only rebuilt when the dimensions change.
 let utilMapKey = "";
 for (const s of S.util) {
   const args = s.args.map(numTok);
-  if (s.kind === 12 || s.kind === 13 || s.kind === 14) {
+  if (s.kind === 12 || s.kind === 13 || s.kind === 14 || s.kind === 17 || s.kind === 18) {
     const key = `${args[0]}x${args[1]}`;
     if (key !== utilMapKey) {
       const w = args[0];

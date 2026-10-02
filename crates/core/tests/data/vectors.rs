@@ -7364,7 +7364,8 @@ pub const TILESET_SCENARIOS: &[TileSetScenario] = &[
 /// Util scenario: one call of a ported `Util.ts` function. `kind`
 /// selects the function (table in the capture section above), `args`
 /// carries its scalar inputs (variable-length payloads for the
-/// list-taking kinds), `strs` the strings for simpleHash, `status`
+/// list-taking kinds; kinds 15/16 carry `[len, u0, ..]` UTF-16 code
+/// units), `strs` the strings for simpleHash, `status`
 /// 0 ok / 1 TS null / 2 TS threw, and `res` every f64 of the result
 /// (NaN and -0 are pinned by bit pattern, not by `==`).
 pub struct UtilScenario {
@@ -10499,6 +10500,555 @@ pub const U_BBT_80: UtilScenario = UtilScenario {
     res: &[7f64, 15f64],
 };
 
+pub const U_SCT_0: UtilScenario = UtilScenario {
+    name: "u_sct_0",
+    kind: 15u8,
+    args: &[0f64],
+    strs: &[],
+    status: 0u8,
+    res: &[0f64],
+};
+
+pub const U_SCT_1: UtilScenario = UtilScenario {
+    name: "u_sct_1",
+    kind: 15u8,
+    args: &[3f64, 97f64, 98f64, 99f64],
+    strs: &[],
+    status: 0u8,
+    res: &[3f64, 65f64, 66f64, 67f64],
+};
+
+pub const U_SCT_2: UtilScenario = UtilScenario {
+    name: "u_sct_2",
+    kind: 15u8,
+    args: &[12f64, 104f64, 101f64, 108f64, 108f64, 111f64, 32f64, 119f64, 111f64, 114f64, 108f64, 100f64, 33f64],
+    strs: &[],
+    status: 0u8,
+    res: &[5f64, 72f64, 69f64, 76f64, 76f64, 79f64],
+};
+
+pub const U_SCT_3: UtilScenario = UtilScenario {
+    name: "u_sct_3",
+    kind: 15u8,
+    args: &[5f64, 65f64, 66f64, 67f64, 68f64, 69f64],
+    strs: &[],
+    status: 0u8,
+    res: &[5f64, 65f64, 66f64, 67f64, 68f64, 69f64],
+};
+
+pub const U_SCT_4: UtilScenario = UtilScenario {
+    name: "u_sct_4",
+    kind: 15u8,
+    args: &[6f64, 65f64, 66f64, 67f64, 68f64, 69f64, 70f64],
+    strs: &[],
+    status: 0u8,
+    res: &[5f64, 65f64, 66f64, 67f64, 68f64, 69f64],
+};
+
+pub const U_SCT_5: UtilScenario = UtilScenario {
+    name: "u_sct_5",
+    kind: 15u8,
+    args: &[8f64, 97f64, 49f64, 66f64, 50f64, 99f64, 51f64, 68f64, 52f64],
+    strs: &[],
+    status: 0u8,
+    res: &[5f64, 65f64, 49f64, 66f64, 50f64, 67f64],
+};
+
+pub const U_SCT_6: UtilScenario = UtilScenario {
+    name: "u_sct_6",
+    kind: 15u8,
+    args: &[5f64, 55357f64, 56832f64, 97f64, 98f64, 99f64],
+    strs: &[],
+    status: 0u8,
+    res: &[3f64, 65f64, 66f64, 67f64],
+};
+
+pub const U_SCT_7: UtilScenario = UtilScenario {
+    name: "u_sct_7",
+    kind: 15u8,
+    args: &[3f64, 8551f64, 53f64, 120f64],
+    strs: &[],
+    status: 0u8,
+    res: &[2f64, 53f64, 88f64],
+};
+
+pub const U_SCT_8: UtilScenario = UtilScenario {
+    name: "u_sct_8",
+    kind: 15u8,
+    args: &[3f64, 97f64, 98f64, 223f64],
+    strs: &[],
+    status: 0u8,
+    res: &[2f64, 65f64, 66f64],
+};
+
+pub const U_SCT_9: UtilScenario = UtilScenario {
+    name: "u_sct_9",
+    kind: 15u8,
+    args: &[12f64, 32f64, 32f64, 97f64, 98f64, 99f64, 32f64, 32f64, 100f64, 101f64, 102f64, 32f64, 32f64],
+    strs: &[],
+    status: 0u8,
+    res: &[5f64, 65f64, 66f64, 67f64, 68f64, 69f64],
+};
+
+pub const U_SCT_10: UtilScenario = UtilScenario {
+    name: "u_sct_10",
+    kind: 15u8,
+    args: &[4f64, 55296f64, 97f64, 98f64, 99f64],
+    strs: &[],
+    status: 0u8,
+    res: &[3f64, 65f64, 66f64, 67f64],
+};
+
+pub const U_SCT_11: UtilScenario = UtilScenario {
+    name: "u_sct_11",
+    kind: 15u8,
+    args: &[10f64, 122f64, 122f64, 122f64, 122f64, 122f64, 122f64, 122f64, 122f64, 122f64, 122f64],
+    strs: &[],
+    status: 0u8,
+    res: &[5f64, 90f64, 90f64, 90f64, 90f64, 90f64],
+};
+
+pub const U_SCT_12: UtilScenario = UtilScenario {
+    name: "u_sct_12",
+    kind: 15u8,
+    args: &[11f64, 97f64, 45f64, 98f64, 45f64, 99f64, 45f64, 100f64, 45f64, 101f64, 45f64, 102f64],
+    strs: &[],
+    status: 0u8,
+    res: &[5f64, 65f64, 66f64, 67f64, 68f64, 69f64],
+};
+
+pub const U_SCT_13: UtilScenario = UtilScenario {
+    name: "u_sct_13",
+    kind: 15u8,
+    args: &[1f64, 57f64],
+    strs: &[],
+    status: 0u8,
+    res: &[1f64, 57f64],
+};
+
+pub const U_SCT_14: UtilScenario = UtilScenario {
+    name: "u_sct_14",
+    kind: 15u8,
+    args: &[9f64, 79f64, 112f64, 101f64, 110f64, 70f64, 114f64, 111f64, 110f64, 116f64],
+    strs: &[],
+    status: 0u8,
+    res: &[5f64, 79f64, 80f64, 69f64, 78f64, 70f64],
+};
+
+pub const U_SLL_0: UtilScenario = UtilScenario {
+    name: "u_sll_0",
+    kind: 16u8,
+    args: &[0f64],
+    strs: &[],
+    status: 0u8,
+    res: &[0f64],
+};
+
+pub const U_SLL_1: UtilScenario = UtilScenario {
+    name: "u_sll_1",
+    kind: 16u8,
+    args: &[42f64, 69f64, 117f64, 114f64, 111f64, 112f64, 101f64, 32f64, 8212f64, 32f64, 79f64, 102f64, 102f64, 105f64, 99f64, 105f64, 97f64, 108f64, 32f64, 79f64, 112f64, 101f64, 110f64, 70f64, 114f64, 111f64, 110f64, 116f64, 32f64, 77f64, 97f64, 115f64, 116f64, 101f64, 114f64, 115f64, 32f64, 83f64, 99f64, 114f64, 105f64, 109f64, 115f64],
+    strs: &[],
+    status: 0u8,
+    res: &[42f64, 69f64, 117f64, 114f64, 111f64, 112f64, 101f64, 32f64, 8212f64, 32f64, 79f64, 102f64, 102f64, 105f64, 99f64, 105f64, 97f64, 108f64, 32f64, 79f64, 112f64, 101f64, 110f64, 70f64, 114f64, 111f64, 110f64, 116f64, 32f64, 77f64, 97f64, 115f64, 116f64, 101f64, 114f64, 115f64, 32f64, 83f64, 99f64, 114f64, 105f64, 109f64, 115f64],
+};
+
+pub const U_SLL_2: UtilScenario = UtilScenario {
+    name: "u_sll_2",
+    kind: 16u8,
+    args: &[3f64, 97f64, 9f64, 98f64],
+    strs: &[],
+    status: 0u8,
+    res: &[3f64, 97f64, 32f64, 98f64],
+};
+
+pub const U_SLL_3: UtilScenario = UtilScenario {
+    name: "u_sll_3",
+    kind: 16u8,
+    args: &[4f64, 97f64, 13f64, 10f64, 98f64],
+    strs: &[],
+    status: 0u8,
+    res: &[3f64, 97f64, 32f64, 98f64],
+};
+
+pub const U_SLL_4: UtilScenario = UtilScenario {
+    name: "u_sll_4",
+    kind: 16u8,
+    args: &[3f64, 97f64, 11f64, 98f64],
+    strs: &[],
+    status: 0u8,
+    res: &[3f64, 97f64, 32f64, 98f64],
+};
+
+pub const U_SLL_5: UtilScenario = UtilScenario {
+    name: "u_sll_5",
+    kind: 16u8,
+    args: &[3f64, 97f64, 12f64, 98f64],
+    strs: &[],
+    status: 0u8,
+    res: &[3f64, 97f64, 32f64, 98f64],
+};
+
+pub const U_SLL_6: UtilScenario = UtilScenario {
+    name: "u_sll_6",
+    kind: 16u8,
+    args: &[7f64, 97f64, 98f64, 99f64, 27f64, 100f64, 101f64, 102f64],
+    strs: &[],
+    status: 0u8,
+    res: &[6f64, 97f64, 98f64, 99f64, 100f64, 101f64, 102f64],
+};
+
+pub const U_SLL_7: UtilScenario = UtilScenario {
+    name: "u_sll_7",
+    kind: 16u8,
+    args: &[7f64, 97f64, 98f64, 99f64, 127f64, 100f64, 101f64, 102f64],
+    strs: &[],
+    status: 0u8,
+    res: &[6f64, 97f64, 98f64, 99f64, 100f64, 101f64, 102f64],
+};
+
+pub const U_SLL_8: UtilScenario = UtilScenario {
+    name: "u_sll_8",
+    kind: 16u8,
+    args: &[7f64, 97f64, 98f64, 99f64, 133f64, 100f64, 101f64, 102f64],
+    strs: &[],
+    status: 0u8,
+    res: &[6f64, 97f64, 98f64, 99f64, 100f64, 101f64, 102f64],
+};
+
+pub const U_SLL_9: UtilScenario = UtilScenario {
+    name: "u_sll_9",
+    kind: 16u8,
+    args: &[7f64, 97f64, 98f64, 99f64, 159f64, 100f64, 101f64, 102f64],
+    strs: &[],
+    status: 0u8,
+    res: &[6f64, 97f64, 98f64, 99f64, 100f64, 101f64, 102f64],
+};
+
+pub const U_SLL_10: UtilScenario = UtilScenario {
+    name: "u_sll_10",
+    kind: 16u8,
+    args: &[7f64, 97f64, 98f64, 99f64, 8234f64, 100f64, 101f64, 102f64],
+    strs: &[],
+    status: 0u8,
+    res: &[6f64, 97f64, 98f64, 99f64, 100f64, 101f64, 102f64],
+};
+
+pub const U_SLL_11: UtilScenario = UtilScenario {
+    name: "u_sll_11",
+    kind: 16u8,
+    args: &[7f64, 97f64, 98f64, 99f64, 8238f64, 100f64, 101f64, 102f64],
+    strs: &[],
+    status: 0u8,
+    res: &[6f64, 97f64, 98f64, 99f64, 100f64, 101f64, 102f64],
+};
+
+pub const U_SLL_12: UtilScenario = UtilScenario {
+    name: "u_sll_12",
+    kind: 16u8,
+    args: &[7f64, 97f64, 98f64, 99f64, 8294f64, 100f64, 101f64, 102f64],
+    strs: &[],
+    status: 0u8,
+    res: &[6f64, 97f64, 98f64, 99f64, 100f64, 101f64, 102f64],
+};
+
+pub const U_SLL_13: UtilScenario = UtilScenario {
+    name: "u_sll_13",
+    kind: 16u8,
+    args: &[7f64, 97f64, 98f64, 99f64, 8297f64, 100f64, 101f64, 102f64],
+    strs: &[],
+    status: 0u8,
+    res: &[6f64, 97f64, 98f64, 99f64, 100f64, 101f64, 102f64],
+};
+
+pub const U_SLL_14: UtilScenario = UtilScenario {
+    name: "u_sll_14",
+    kind: 16u8,
+    args: &[7f64, 97f64, 98f64, 99f64, 8206f64, 100f64, 101f64, 102f64],
+    strs: &[],
+    status: 0u8,
+    res: &[6f64, 97f64, 98f64, 99f64, 100f64, 101f64, 102f64],
+};
+
+pub const U_SLL_15: UtilScenario = UtilScenario {
+    name: "u_sll_15",
+    kind: 16u8,
+    args: &[7f64, 97f64, 98f64, 99f64, 8207f64, 100f64, 101f64, 102f64],
+    strs: &[],
+    status: 0u8,
+    res: &[6f64, 97f64, 98f64, 99f64, 100f64, 101f64, 102f64],
+};
+
+pub const U_SLL_16: UtilScenario = UtilScenario {
+    name: "u_sll_16",
+    kind: 16u8,
+    args: &[7f64, 97f64, 98f64, 99f64, 1564f64, 100f64, 101f64, 102f64],
+    strs: &[],
+    status: 0u8,
+    res: &[6f64, 97f64, 98f64, 99f64, 100f64, 101f64, 102f64],
+};
+
+pub const U_SLL_17: UtilScenario = UtilScenario {
+    name: "u_sll_17",
+    kind: 16u8,
+    args: &[15f64, 55357f64, 56424f64, 8205f64, 55357f64, 56425f64, 8205f64, 55357f64, 56423f64, 32f64, 102f64, 97f64, 109f64, 105f64, 108f64, 121f64],
+    strs: &[],
+    status: 0u8,
+    res: &[15f64, 55357f64, 56424f64, 8205f64, 55357f64, 56425f64, 8205f64, 55357f64, 56423f64, 32f64, 102f64, 97f64, 109f64, 105f64, 108f64, 121f64],
+};
+
+pub const U_SLL_18: UtilScenario = UtilScenario {
+    name: "u_sll_18",
+    kind: 16u8,
+    args: &[4f64, 97f64, 160f64, 160f64, 98f64],
+    strs: &[],
+    status: 0u8,
+    res: &[3f64, 97f64, 32f64, 98f64],
+};
+
+pub const U_SLL_19: UtilScenario = UtilScenario {
+    name: "u_sll_19",
+    kind: 16u8,
+    args: &[3f64, 97f64, 8232f64, 98f64],
+    strs: &[],
+    status: 0u8,
+    res: &[3f64, 97f64, 32f64, 98f64],
+};
+
+pub const U_SLL_20: UtilScenario = UtilScenario {
+    name: "u_sll_20",
+    kind: 16u8,
+    args: &[3f64, 97f64, 65279f64, 98f64],
+    strs: &[],
+    status: 0u8,
+    res: &[3f64, 97f64, 32f64, 98f64],
+};
+
+pub const U_SLL_21: UtilScenario = UtilScenario {
+    name: "u_sll_21",
+    kind: 16u8,
+    args: &[3f64, 97f64, 8203f64, 98f64],
+    strs: &[],
+    status: 0u8,
+    res: &[3f64, 97f64, 8203f64, 98f64],
+};
+
+pub const U_SLL_22: UtilScenario = UtilScenario {
+    name: "u_sll_22",
+    kind: 16u8,
+    args: &[9f64, 32f64, 32f64, 104f64, 101f64, 108f64, 108f64, 111f64, 32f64, 32f64],
+    strs: &[],
+    status: 0u8,
+    res: &[5f64, 104f64, 101f64, 108f64, 108f64, 111f64],
+};
+
+pub const U_SLL_23: UtilScenario = UtilScenario {
+    name: "u_sll_23",
+    kind: 16u8,
+    args: &[7f64, 160f64, 104f64, 101f64, 108f64, 108f64, 111f64, 12288f64],
+    strs: &[],
+    status: 0u8,
+    res: &[5f64, 104f64, 101f64, 108f64, 108f64, 111f64],
+};
+
+pub const U_SLL_24: UtilScenario = UtilScenario {
+    name: "u_sll_24",
+    kind: 16u8,
+    args: &[3f64, 97f64, 0f64, 98f64],
+    strs: &[],
+    status: 0u8,
+    res: &[2f64, 97f64, 98f64],
+};
+
+pub const U_SLL_25: UtilScenario = UtilScenario {
+    name: "u_sll_25",
+    kind: 16u8,
+    args: &[2f64, 0f64, 1f64],
+    strs: &[],
+    status: 0u8,
+    res: &[0f64],
+};
+
+pub const U_SLL_26: UtilScenario = UtilScenario {
+    name: "u_sll_26",
+    kind: 16u8,
+    args: &[60f64, 120f64, 120f64, 120f64, 120f64, 120f64, 120f64, 120f64, 120f64, 120f64, 120f64, 120f64, 120f64, 120f64, 120f64, 120f64, 120f64, 120f64, 120f64, 120f64, 120f64, 120f64, 120f64, 120f64, 120f64, 120f64, 120f64, 120f64, 120f64, 120f64, 120f64, 120f64, 120f64, 120f64, 120f64, 120f64, 120f64, 120f64, 120f64, 120f64, 120f64, 120f64, 120f64, 120f64, 120f64, 120f64, 120f64, 120f64, 120f64, 120f64, 120f64, 120f64, 120f64, 120f64, 120f64, 120f64, 120f64, 120f64, 120f64, 120f64, 120f64],
+    strs: &[],
+    status: 0u8,
+    res: &[48f64, 120f64, 120f64, 120f64, 120f64, 120f64, 120f64, 120f64, 120f64, 120f64, 120f64, 120f64, 120f64, 120f64, 120f64, 120f64, 120f64, 120f64, 120f64, 120f64, 120f64, 120f64, 120f64, 120f64, 120f64, 120f64, 120f64, 120f64, 120f64, 120f64, 120f64, 120f64, 120f64, 120f64, 120f64, 120f64, 120f64, 120f64, 120f64, 120f64, 120f64, 120f64, 120f64, 120f64, 120f64, 120f64, 120f64, 120f64, 120f64],
+};
+
+pub const U_SLL_27: UtilScenario = UtilScenario {
+    name: "u_sll_27",
+    kind: 16u8,
+    args: &[50f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 55357f64, 56832f64, 98f64],
+    strs: &[],
+    status: 0u8,
+    res: &[49f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 55357f64, 56832f64],
+};
+
+pub const U_SLL_28: UtilScenario = UtilScenario {
+    name: "u_sll_28",
+    kind: 16u8,
+    args: &[50f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 55357f64, 56832f64],
+    strs: &[],
+    status: 0u8,
+    res: &[48f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64],
+};
+
+pub const U_SLL_29: UtilScenario = UtilScenario {
+    name: "u_sll_29",
+    kind: 16u8,
+    args: &[50f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 55357f64, 56832f64, 98f64, 99f64],
+    strs: &[],
+    status: 0u8,
+    res: &[49f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 55357f64, 56832f64, 98f64],
+};
+
+pub const U_SLL_30: UtilScenario = UtilScenario {
+    name: "u_sll_30",
+    kind: 16u8,
+    args: &[4f64, 9f64, 11f64, 32f64, 160f64],
+    strs: &[],
+    status: 0u8,
+    res: &[0f64],
+};
+
+pub const U_SLL_31: UtilScenario = UtilScenario {
+    name: "u_sll_31",
+    kind: 16u8,
+    args: &[11f64, 32f64, 32f64, 97f64, 32f64, 32f64, 10f64, 32f64, 32f64, 98f64, 32f64, 32f64],
+    strs: &[],
+    status: 0u8,
+    res: &[3f64, 97f64, 32f64, 98f64],
+};
+
+pub const U_SLL_32: UtilScenario = UtilScenario {
+    name: "u_sll_32",
+    kind: 16u8,
+    args: &[18f64, 32f64, 32f64, 69f64, 117f64, 114f64, 111f64, 112f64, 101f64, 8232f64, 160f64, 83f64, 99f64, 114f64, 105f64, 109f64, 115f64, 32f64, 32f64],
+    strs: &[],
+    status: 0u8,
+    res: &[13f64, 69f64, 117f64, 114f64, 111f64, 112f64, 101f64, 32f64, 83f64, 99f64, 114f64, 105f64, 109f64, 115f64],
+};
+
+pub const U_DS_0: UtilScenario = UtilScenario {
+    name: "u_ds_0",
+    kind: 17u8,
+    args: &[6f64, 5f64, 14f64, 0f64, 5f64, 29f64, 12f64, 17f64, 3f64, 26f64, 14f64],
+    strs: &[],
+    status: 0u8,
+    res: &[14f64, 12f64, 26f64, 17f64, 3f64, 0f64, 5f64, 29f64],
+};
+
+pub const U_DS_1: UtilScenario = UtilScenario {
+    name: "u_ds_1",
+    kind: 17u8,
+    args: &[6f64, 5f64, 0f64, 0f64, 1f64, 5f64, 6f64, 25f64, 29f64, 14f64],
+    strs: &[],
+    status: 0u8,
+    res: &[0f64, 1f64, 6f64, 14f64, 5f64, 25f64, 29f64],
+};
+
+pub const U_DS_2: UtilScenario = UtilScenario {
+    name: "u_ds_2",
+    kind: 17u8,
+    args: &[6f64, 5f64, f64::NAN, 0f64, 1f64, 2f64, 3f64],
+    strs: &[],
+    status: 0u8,
+    res: &[0f64, 1f64, 2f64, 3f64],
+};
+
+pub const U_DS_3: UtilScenario = UtilScenario {
+    name: "u_ds_3",
+    kind: 17u8,
+    args: &[6f64, 5f64, 14f64, 13f64, 15f64, 8f64, 20f64, 14f64, 2f64],
+    strs: &[],
+    status: 0u8,
+    res: &[14f64, 13f64, 15f64, 8f64, 20f64, 2f64],
+};
+
+pub const U_DS_4: UtilScenario = UtilScenario {
+    name: "u_ds_4",
+    kind: 17u8,
+    args: &[6f64, 5f64, 14f64, 13f64, f64::NAN, 15f64, f64::NAN, 8f64],
+    strs: &[],
+    status: 0u8,
+    res: &[13f64, f64::NAN, 15f64, f64::NAN, 8f64],
+};
+
+pub const U_DS_5: UtilScenario = UtilScenario {
+    name: "u_ds_5",
+    kind: 17u8,
+    args: &[10f64, 10f64, 55f64, 0f64, 9f64, 90f64, 99f64, 55f64, 1f64, 45f64, 5f64, 50f64, 60f64, 49f64, 61f64],
+    strs: &[],
+    status: 0u8,
+    res: &[55f64, 45f64, 5f64, 50f64, 49f64, 61f64, 60f64, 99f64, 9f64, 90f64, 1f64, 0f64],
+};
+
+pub const U_DS_6: UtilScenario = UtilScenario {
+    name: "u_ds_6",
+    kind: 17u8,
+    args: &[6f64, 5f64, 14f64],
+    strs: &[],
+    status: 0u8,
+    res: &[],
+};
+
+pub const U_DS_7: UtilScenario = UtilScenario {
+    name: "u_ds_7",
+    kind: 17u8,
+    args: &[6f64, 5f64, 14f64, 7f64],
+    strs: &[],
+    status: 0u8,
+    res: &[7f64],
+};
+
+pub const U_DS_8: UtilScenario = UtilScenario {
+    name: "u_ds_8",
+    kind: 17u8,
+    args: &[10f64, 10f64, 0f64, -1f64, 1f64, -10f64, 10f64, 20f64],
+    strs: &[],
+    status: 0u8,
+    res: &[-1f64, 1f64, -10f64, 10f64, 20f64],
+};
+
+pub const U_DSU_0: UtilScenario = UtilScenario {
+    name: "u_dsu_0",
+    kind: 18u8,
+    args: &[6f64, 5f64, 14f64, 0f64, 5f64, 29f64, 12f64],
+    strs: &[],
+    status: 0u8,
+    res: &[12f64, 0f64, 5f64, 29f64],
+};
+
+pub const U_DSU_1: UtilScenario = UtilScenario {
+    name: "u_dsu_1",
+    kind: 18u8,
+    args: &[6f64, 5f64, 14f64, 0f64, 25f64, 13f64, 15f64, 14f64],
+    strs: &[],
+    status: 0u8,
+    res: &[14f64, 13f64, 15f64, 25f64, 0f64],
+};
+
+pub const U_DSU_2: UtilScenario = UtilScenario {
+    name: "u_dsu_2",
+    kind: 18u8,
+    args: &[6f64, 5f64, f64::NAN, 3f64, f64::NAN, 7f64],
+    strs: &[],
+    status: 0u8,
+    res: &[3f64, f64::NAN, 7f64],
+};
+
+pub const U_DSU_3: UtilScenario = UtilScenario {
+    name: "u_dsu_3",
+    kind: 18u8,
+    args: &[10f64, 10f64, 55f64, 0f64, 99f64, 45f64, 5f64, 60f64],
+    strs: &[],
+    status: 0u8,
+    res: &[45f64, 5f64, 60f64, 99f64, 0f64],
+};
+
 pub const UTIL_SCENARIOS: &[UtilScenario] = &[
     U_MDW_0,
     U_MDW_1,
@@ -10847,6 +11397,67 @@ pub const UTIL_SCENARIOS: &[UtilScenario] = &[
     U_BBT_78,
     U_BBT_79,
     U_BBT_80,
+    U_SCT_0,
+    U_SCT_1,
+    U_SCT_2,
+    U_SCT_3,
+    U_SCT_4,
+    U_SCT_5,
+    U_SCT_6,
+    U_SCT_7,
+    U_SCT_8,
+    U_SCT_9,
+    U_SCT_10,
+    U_SCT_11,
+    U_SCT_12,
+    U_SCT_13,
+    U_SCT_14,
+    U_SLL_0,
+    U_SLL_1,
+    U_SLL_2,
+    U_SLL_3,
+    U_SLL_4,
+    U_SLL_5,
+    U_SLL_6,
+    U_SLL_7,
+    U_SLL_8,
+    U_SLL_9,
+    U_SLL_10,
+    U_SLL_11,
+    U_SLL_12,
+    U_SLL_13,
+    U_SLL_14,
+    U_SLL_15,
+    U_SLL_16,
+    U_SLL_17,
+    U_SLL_18,
+    U_SLL_19,
+    U_SLL_20,
+    U_SLL_21,
+    U_SLL_22,
+    U_SLL_23,
+    U_SLL_24,
+    U_SLL_25,
+    U_SLL_26,
+    U_SLL_27,
+    U_SLL_28,
+    U_SLL_29,
+    U_SLL_30,
+    U_SLL_31,
+    U_SLL_32,
+    U_DS_0,
+    U_DS_1,
+    U_DS_2,
+    U_DS_3,
+    U_DS_4,
+    U_DS_5,
+    U_DS_6,
+    U_DS_7,
+    U_DS_8,
+    U_DSU_0,
+    U_DSU_1,
+    U_DSU_2,
+    U_DSU_3,
 ];
 
 /// One `PlayerInfo` as `assignTeams` sees it. `player_type`: 0 BOT,

@@ -19,7 +19,9 @@ rust/
 │   │   ├── game_map.rs            port of game/GameMap.ts (GameMapImpl
 │   │   │                          + the distFN factories)
 │   │   ├── tile_set.rs            port of game/TileSet.ts
-│   │   ├── util.rs                port of Util.ts (deterministic core only)
+│   │   ├── util.rs                port of Util.ts (deterministic core +
+│   │   │                          clan-tag / lobby-label sanitizers +
+│   │   │                          dist-sort comparators)
 │   │   ├── team_assignment.rs     port of game/TeamAssignment.ts
 │   │   ├── line.rs                port of utilities/Line.ts
 │   │   │                          (DistanceBasedBezierCurve)
@@ -235,7 +237,9 @@ desync, not a rounding nit. Two things enforce that here:
    deterministic exp stream, `boundingBoxCenter`/`inscribed`, and
    `calculateBoundingBox` / `calculateBoundingBoxCenter` / `boundingBoxTiles`
    over real `GameMapImpl` maps through all three TS container branches
-   (Array, Set, TileSet). Results compare by IEEE-754 bit pattern.
+   (Array, Set, TileSet). Results compare by IEEE-754 bit pattern. The file's
+   remaining pure functions (the clan-tag / lobby-label sanitizers and the
+   dist-sort comparators, 61 more scenarios) are pinned in item 44.
 10. **`TeamAssignment.ts`** (`team_assignment.rs`) is pinned with 66 lobby
     scenarios over the real TS functions: server-pinned team slots (including
     the out-of-range / fractional / `NaN` pins that JS `teams[i]` leaves
@@ -782,6 +786,28 @@ desync, not a rounding nit. Two things enforce that here:
     scenarios (314 result tokens) cover miss, hit, null accounting, LRU
     re-insertion vs eviction order, waterVersion clears, array passthrough,
     over-budget self-eviction, key collision, and the Uint32 coercion.
+44. **`Util.ts` remaining pure functions** (extends `util.rs`) — the two
+    host-text sanitizers and the two distance comparator factories.
+    `sanitizeClanTag` strips every non-`[a-zA-Z0-9]` **code unit** (the
+    un-`u`-flagged regex), then `substring(0, 5)` + `toUpperCase()` — only
+    ASCII survives the strip, so `ß → SS`-style Unicode expansions are
+    unreachable; surrogate-pair emoji, `Ⅷ` and lone surrogates pin the
+    per-unit stripping. `sanitizeLobbyLabel` filters by **code point**
+    (`for...of`: tab/CR/LF/VT/FF → space; other C0, DEL, C1, the bidi
+    overrides U+202A–2E / isolates U+2066–69 / marks U+200E/0F/061C dropped;
+    U+200D ZWJ kept for emoji families), collapses `/\s+/g` and `trim`s with
+    a hand-written **JS `\s` set** predicate (`char::is_whitespace` is a
+    different set — NEL in, FEFF out), then caps at 48 **code points**
+    without ever splitting a surrogate pair. `distSort` / `distSortUnit`
+    share the numeric comparator `gm.manhattanDist(a, target) -`
+    `gm.manhattanDist(b, target)` (the unit variant's `tile()` resolution is
+    capture-side); the replay is a stable sort where a `NaN` distance
+    difference is `+0` (equal), the V8 `SortCompare` rule from
+    `closestTwoTiles` — NaN scenarios are shaped so every comparator result
+    is 0-or-NaN, avoiding the non-transitive-insertion-order divergence.
+    Strings cross the boundary as `[len, u0, ..]` UTF-16 code-unit token
+    streams. 61 scenarios (536 result tokens) over kinds 15–18 of the util
+    runner.
 
 Regenerate whenever a ported source changes:
 
@@ -815,7 +841,7 @@ node rust/tools/run_wasm_parity.mjs
 
 `wasm-probe` exposes the ported functions through `extern "C"` scalar
 entrypoints (`src/wasm_probe.rs`); the runner imports `data/vectors.json` and
-compares every value. Last run: **98,614 comparisons, all bit-identical**.
+compares every value. Last run: **99,211 comparisons, all bit-identical**.
 
 ### Windows: the linker environment
 

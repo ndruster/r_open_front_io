@@ -1,8 +1,11 @@
 //! Port of the deterministic core of `src/core/Util.ts`.
 //!
 //! Only the pure, simulation-relevant helpers are ported; the TS file's UI /
-//! record / sanitising surface (DOMPurify, nanoid, zod-schema plumbing,
-//! emoji tables, name sanitizers) is deliberately out of scope.
+//! record surface (DOMPurify, nanoid, zod-schema plumbing, emoji tables) is
+//! deliberately out of scope. The two host-text sanitizers
+//! ([`sanitize_clan_tag`] / [`sanitize_lobby_label`]) and the distance
+//! comparator factories ([`dist_sort`] / [`dist_sort_unit`]) are pure string /
+//! `GameMap` math and are ported here.
 //!
 //! Faithfulness notes:
 //!
@@ -26,6 +29,18 @@
 //! * [`sigmoid`] uses [`crate::detmath::exp`], never a platform
 //!   transcendental, and keeps the TS association order
 //!   `(-decayRate) * (value - midpoint)`.
+//! * [`sanitize_lobby_label`] filters by **code point** (JS `for...of`: a
+//!   valid surrogate pair is one code point, a lone surrogate is its own),
+//!   collapses whitespace runs with the **JS `\s` set** via
+//!   [`js_is_space_unit`] — `char::is_whitespace` is a different set (it
+//!   includes NEL, excludes FEFF) — and truncates at 48 code points without
+//!   ever splitting a surrogate pair.
+//! * [`sanitize_clan_tag`] strips every non-`[a-zA-Z0-9]` code unit first,
+//!   so the surviving `substring(0, 5)` / `toUpperCase()` pair only ever
+//!   sees ASCII — Unicode expansions like `ß → SS` are unreachable.
+//! * [`sort_by_dist`] reproduces V8 `SortCompare`'s "a `NaN` comparator
+//!   result is `+0`" rule with the `Less/Greater/else Equal` chain (the
+//!   `exec_util::closest_two_tiles` pattern) over a stable `sort_by`.
 
 use crate::detmath;
 use crate::game_map::{js_max, js_min};
@@ -324,4 +339,159 @@ pub fn bounding_box_tiles(
     }
 
     tiles
+}
+
+/// `LOBBY_LABEL_MAX` — the code-point cap of [`sanitize_lobby_label`].
+pub const LOBBY_LABEL_MAX: usize = 48;
+
+/// The JS `\s` character class over a UTF-16 code unit:
+/// `[\t\n\v\f\r \u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]`.
+/// Every member is BMP, so unit-level testing is exact. `char::is_whitespace`
+/// is *not* this set (it includes NEL U+0085 and excludes U+FEFF), hence the
+/// hand-written predicate. U+200B ZWSP is deliberately absent.
+pub fn js_is_space_unit(u: u16) -> bool {
+    matches!(
+        u,
+        0x09..=0x0d
+            | 0x20
+            | 0xa0
+            | 0x1680
+            | 0x2000..=0x200a
+            | 0x2028
+            | 0x2029
+            | 0x202f
+            | 0x205f
+            | 0x3000
+            | 0xfeff
+    )
+}
+
+/// `sanitizeClanTag(tag)`: strip every non-`[a-zA-Z0-9]` **code unit**
+/// (the un-`u`-flagged regex), `substring(0, 5)`, then `toUpperCase()`.
+/// Only ASCII survives the strip, so the uppercasing is ASCII-only — the
+/// Unicode expansions (`ß → SS`) are unreachable.
+pub fn sanitize_clan_tag(units: &[u16]) -> Vec<u16> {
+    units.iter().copied().filter(ascii_alnum).take(5).map(ascii_upper).collect()
+}
+
+/// ASCII `[0-9A-Za-z]` test for a UTF-16 code unit (the regex
+/// `[a-zA-Z0-9]` without the `u` flag matches per code unit).
+fn ascii_alnum(u: &u16) -> bool {
+    matches!(u, 0x30..=0x39 | 0x41..=0x5a | 0x61..=0x7a)
+}
+
+/// ASCII `toUpperCase()` for a code unit — only lowercase letters change;
+/// every surviving clan-tag unit is ASCII by construction.
+fn ascii_upper(u: u16) -> u16 {
+    if (0x61..=0x7a).contains(&u) {
+        u - 32
+    } else {
+        u
+    }
+}
+
+/// Decode one JS `for...of` item at `i`: a valid surrogate pair is a single
+/// code point (width 2), anything else — including a lone surrogate — is
+/// one unit (width 1) whose value is its code point.
+fn next_code_point(units: &[u16], i: usize) -> (u32, usize) {
+    let hi = units[i];
+    if (0xd800..=0xdbff).contains(&hi)
+        && i + 1 < units.len()
+        && (0xdc00..=0xdfff).contains(&units[i + 1])
+    {
+        let cp = 0x1_0000 + (((u32::from(hi) - 0xd800) << 10) | (u32::from(units[i + 1]) - 0xdc00));
+        (cp, 2)
+    } else {
+        (u32::from(hi), 1)
+    }
+}
+
+/// `sanitizeLobbyLabel(raw)` over UTF-16 code units. Filters by code point
+/// (tab/CR/LF/VT/FF become a space; other C0, DEL, C1, the bidi
+/// overrides/isolates/marks and U+061C are dropped; U+200D ZWJ is kept),
+/// collapses `/\s+/g` runs to one space with [`js_is_space_unit`], `trim`s
+/// the same set, then caps at [`LOBBY_LABEL_MAX`] **code points** without
+/// ever splitting a surrogate pair.
+pub fn sanitize_lobby_label(units: &[u16]) -> Vec<u16> {
+    let mut kept: Vec<u16> = Vec::with_capacity(units.len());
+    let mut i = 0;
+    while i < units.len() {
+        let (cp, w) = next_code_point(units, i);
+        if cp == 0x09 || (0x0a..=0x0d).contains(&cp) {
+            kept.push(0x20);
+        } else if cp < 0x20 || cp == 0x7f {
+            // other C0 controls and DEL — dropped
+        } else if (0x80..=0x9f).contains(&cp) {
+            // C1 controls — dropped
+        } else if (0x202a..=0x202e).contains(&cp) || (0x2066..=0x2069).contains(&cp) {
+            // bidi overrides / isolates — dropped
+        } else if cp == 0x200e || cp == 0x200f || cp == 0x061c {
+            // bidi marks — dropped
+        } else {
+            // kept verbatim (U+200D ZWJ included on purpose)
+            kept.extend_from_slice(&units[i..i + w]);
+        }
+        i += w;
+    }
+
+    // `replace(/\s+/g, " ")`: each maximal run of \s units -> one space.
+    let mut collapsed: Vec<u16> = Vec::with_capacity(kept.len());
+    let mut in_run = false;
+    for &u in &kept {
+        if js_is_space_unit(u) {
+            if !in_run {
+                collapsed.push(0x20);
+                in_run = true;
+            }
+        } else {
+            collapsed.push(u);
+            in_run = false;
+        }
+    }
+
+    // `trim()` over the same \s set.
+    let first = collapsed
+        .iter()
+        .position(|u| !js_is_space_unit(*u))
+        .unwrap_or(collapsed.len());
+    let last = collapsed
+        .iter()
+        .rposition(|u| !js_is_space_unit(*u))
+        .map_or(first, |p| p + 1);
+    let trimmed = &collapsed[first..last];
+
+    // `Array.from(...).slice(0, LOBBY_LABEL_MAX)`: code-point cap — one
+    // iteration consumes exactly one `for...of` item.
+    let mut out: Vec<u16> = Vec::new();
+    let mut j = 0;
+    let mut cps = 0;
+    while j < trimmed.len() && cps < LOBBY_LABEL_MAX {
+        let w = next_code_point(trimmed, j).1;
+        out.extend_from_slice(&trimmed[j..j + w]);
+        j += w;
+        cps += 1;
+    }
+    out
+}
+
+/// `distSort(gm, target)` / `distSortUnit(gm, target)` — both factories
+/// reduce to the same numeric comparator
+/// `gm.manhattanDist(a, target) - gm.manhattanDist(b, target)` (the unit
+/// variant only differs in *where* the refs come from). Returns the tiles
+/// sorted by that comparator: a stable sort where a `NaN` distance
+/// difference is `+0` (equal), exactly as V8 `SortCompare` treats it — the
+/// `exec_util::closest_two_tiles` pattern.
+pub fn dist_sort(gm: &crate::game_map::GameMap, target: f64, tiles: &[f64]) -> Vec<f64> {
+    let mut out = tiles.to_vec();
+    out.sort_by(|a, b| {
+        let d = gm.manhattan_dist(*a, target) - gm.manhattan_dist(*b, target);
+        if d < 0.0 {
+            std::cmp::Ordering::Less
+        } else if d > 0.0 {
+            std::cmp::Ordering::Greater
+        } else {
+            std::cmp::Ordering::Equal
+        }
+    });
+    out
 }

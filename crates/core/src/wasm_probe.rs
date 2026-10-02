@@ -1085,8 +1085,10 @@ pub extern "C" fn probe_ts_arr_get(field: u32, i: usize) -> f64 {
 // Single-call replay over the `util` port. The host queues the scalar args
 // (`probe_util_arg`) and, for simpleHash, the UTF-16 code units
 // (`probe_util_str_unit`) before each `probe_util_op(kind)`; kinds 12/13/14
-// read the map previously built by `probe_gm_new`. Array results (kinds 3/4/5
-// winners, 13 tiles) land in the out buffer.
+// and 17/18 read the map previously built by `probe_gm_new`; kinds 15/16
+// carry `[len, u0, ..]` UTF-16 code units in the arg stream. Array results
+// (kinds 3/4/5 winners, 13/17/18 tiles, 15/16 `[outlen, units..]`) land in
+// the out buffer.
 
 use crate::util;
 
@@ -1172,6 +1174,24 @@ pub extern "C" fn probe_util_op(kind: u32) -> f64 {
             let tiles = a[2..].to_vec();
             let c = with_gm(|gm| util::calculate_bounding_box_center(gm, tiles));
             vec![c.x, c.y]
+        }
+        15 => {
+            let units: Vec<u16> = a[1..].iter().map(|u| *u as u16).collect();
+            let got = util::sanitize_clan_tag(&units);
+            let mut v = vec![got.len() as f64];
+            v.extend(got.iter().map(|u| f64::from(*u)));
+            v
+        }
+        16 => {
+            let units: Vec<u16> = a[1..].iter().map(|u| *u as u16).collect();
+            let got = util::sanitize_lobby_label(&units);
+            let mut v = vec![got.len() as f64];
+            v.extend(got.iter().map(|u| f64::from(*u)));
+            v
+        }
+        17 | 18 => {
+            let tiles = a[3..].to_vec();
+            with_gm(|gm| util::dist_sort(gm, a[2], &tiles))
         }
         k => panic!("unexpected util op kind {k}"),
     };

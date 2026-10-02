@@ -4081,6 +4081,12 @@ runTs("ts_clear", [1, 2, 3], [
 //  12 calculateBoundingBox [w,h,containerKind,tile...] -> [minx,miny,maxx,maxy]
 //  13 boundingBoxTiles [w,h,center,radius] -> [tiles...]
 //  14 calculateBoundingBoxCenter [w,h,tile...] -> [cx,cy]
+//  15 sanitizeClanTag [len,u0..] -> [outlen,u0..]  (UTF-16 code units)
+//  16 sanitizeLobbyLabel [len,u0..] -> [outlen,u0..]
+//  17 distSort [w,h,target,tile...] -> [sorted tiles...]
+//  18 distSortUnit [w,h,target,unitTile...] -> [sorted tiles...]
+//     (the unit variant's target/unit `tile()` resolution happens in the
+//     capture; the numeric comparator core is identical to kind 17)
 const utilScenarios = [];
 function pushUtil(name, kind, args, res, strs = [], status = 0) {
   utilScenarios.push({ name, kind, args: args.map(uenc), strs, status, res: res.map(uenc) });
@@ -4285,6 +4291,126 @@ function pushUtil(name, kind, args, res, strs = [], status = 0) {
       pushUtil(`u_bbt_${n}`, 13, [w, h, center, radius], tiles.map(enc));
       n++;
     }
+  }
+}
+
+// --- Util.ts remaining pure functions (P42) --------------------------------
+// sanitizeClanTag / sanitizeLobbyLabel cross the boundary as UTF-16 code-unit
+// token streams `[len, u0, .. ]` (JS charCodeAt units, so lone surrogates and
+// surrogate pairs survive the JSON round trip verbatim). distSort /
+// distSortUnit replay against a real prepared GameMap (all-land 0x85 —
+// manhattanDist is terrain-independent).
+
+// kind 15: sanitizeClanTag.
+{
+  const u16tok = (s) => {
+    const out = [s.length];
+    for (let i = 0; i < s.length; i++) out.push(s.charCodeAt(i));
+    return out;
+  };
+  const cases = [
+    "", "abc", "hello world!", "ABCDE", "ABCDEF", "a1B2c3D4",
+    "\u{1F600}abc", "Ⅷ5x", "abß", "  abc  def  ",
+    "\ud800abc", "z".repeat(10), "a-b-c-d-e-f", "9", "OpenFront",
+  ];
+  for (const [i, s] of cases.entries()) {
+    const got = Util.sanitizeClanTag(s);
+    pushUtil(`u_sct_${i}`, 15, u16tok(s), u16tok(got));
+  }
+}
+
+// kind 16: sanitizeLobbyLabel — one case per filter branch, the JS \s
+// collapse/trim edges (NBSP / U+2028 / FEFF in, ZWSP out), and the 48-code-
+// point cap around surrogate pairs.
+{
+  const u16tok = (s) => {
+    const out = [s.length];
+    for (let i = 0; i < s.length; i++) out.push(s.charCodeAt(i));
+    return out;
+  };
+  const cases = [
+    "",
+    "Europe — Official OpenFront Masters Scrims",
+    "a\tb",
+    "a\r\nb",
+    "a\u000bb",
+    "a\u000cb",
+    "abc\u001bdef",
+    "abc\u007fdef",
+    "abc\u0085def",
+    "abc\u009fdef",
+    "abc\u202adef",
+    "abc\u202edef",
+    "abc\u2066def",
+    "abc\u2069def",
+    "abc\u200edef",
+    "abc\u200fdef",
+    "abc\u061cdef",
+    "\u{1F468}\u200D\u{1F469}\u200D\u{1F467} family",
+    "a\u00a0\u00a0b",
+    "a\u2028b",
+    "a\ufeffb",
+    "a\u200bb",
+    "  hello  ",
+    "\u00a0hello\u3000",
+    "a\u0000b",
+    "\u0000\u0001",
+    "x".repeat(60),
+    "a".repeat(47) + "\u{1F600}" + "b",
+    "a".repeat(48) + "\u{1F600}",
+    "a".repeat(46) + "\u{1F600}" + "bc",
+    "\t\u000b \u00a0",
+    "  a  \n  b  ",
+    "  Europe\u2028\u00a0Scrims  ",
+  ];
+  for (const [i, s] of cases.entries()) {
+    const got = Util.sanitizeLobbyLabel(s);
+    pushUtil(`u_sll_${i}`, 16, u16tok(s), u16tok(got));
+  }
+}
+
+// kinds 17/18: distSort / distSortUnit over real GameMapImpls. NaN cases are
+// shaped so every comparator result is either 0 or NaN (never a strict sign):
+// V8 SortCompare reads NaN as +0 and Rust's Less/Greater/else-Equal chain
+// reads it as Equal, so both stable sorts must return the input order —
+// pinning the "NaN distance propagates to equal" rule without relying on a
+// non-transitive comparator (where V8's binary insertion and Rust's linear
+// insertion could legitimately diverge; see exec_util's closestTwoTiles).
+{
+  const sortCases = [
+    // [w, h, target, tiles]
+    [6, 5, 14, [0, 5, 29, 12, 17, 3, 26, 14]],
+    [6, 5, 0, [0, 1, 5, 6, 25, 29, 14]],
+    [6, 5, NaN, [0, 1, 2, 3]],
+    [6, 5, 14, [13, 15, 8, 20, 14, 2]],
+    [6, 5, 14, [13, NaN, 15, NaN, 8]],
+    [10, 10, 55, [0, 9, 90, 99, 55, 1, 45, 5, 50, 60, 49, 61]],
+    [6, 5, 14, []],
+    [6, 5, 14, [7]],
+    [10, 10, 0, [-1, 1, -10, 10, 20]],
+  ];
+  for (const [i, [w, h, target, tiles]] of sortCases.entries()) {
+    const gm = new GameMapImpl(w, h, new Uint8Array(w * h).fill(0x85), w * h);
+    const cmp = Util.distSort(gm, target);
+    const sorted = tiles.slice().sort(cmp);
+    pushUtil(`u_ds_${i}`, 17, [w, h, target, ...tiles], sorted);
+  }
+  // distSortUnit: target as a plain number or a {tile()} object; units are
+  // {tile()} wrappers. The capture resolves everything to refs — the Rust
+  // twin replays the identical numeric comparator.
+  const unitCases = [
+    [6, 5, 14, false, [0, 5, 29, 12]],
+    [6, 5, 14, true, [0, 25, 13, 15, 14]],
+    [6, 5, NaN, true, [3, NaN, 7]],
+    [10, 10, 55, false, [0, 99, 45, 5, 60]],
+  ];
+  for (const [i, [w, h, target, targetIsUnit, tiles]] of unitCases.entries()) {
+    const gm = new GameMapImpl(w, h, new Uint8Array(w * h).fill(0x85), w * h);
+    const targetArg = targetIsUnit ? { tile: () => target } : target;
+    const units = tiles.map((t) => ({ tile: () => t }));
+    const cmp = Util.distSortUnit(gm, targetArg);
+    const sorted = units.slice().sort(cmp).map((u) => u.tile());
+    pushUtil(`u_dsu_${i}`, 18, [w, h, target, ...tiles], sorted);
   }
 }
 
@@ -6759,7 +6885,8 @@ L.push("");
 L.push("/// Util scenario: one call of a ported `Util.ts` function. `kind`");
 L.push("/// selects the function (table in the capture section above), `args`");
 L.push("/// carries its scalar inputs (variable-length payloads for the");
-L.push("/// list-taking kinds), `strs` the strings for simpleHash, `status`");
+L.push("/// list-taking kinds; kinds 15/16 carry `[len, u0, ..]` UTF-16 code");
+L.push("/// units), `strs` the strings for simpleHash, `status`");
 L.push("/// 0 ok / 1 TS null / 2 TS threw, and `res` every f64 of the result");
 L.push("/// (NaN and -0 are pinned by bit pattern, not by `==`).");
 L.push("pub struct UtilScenario {");

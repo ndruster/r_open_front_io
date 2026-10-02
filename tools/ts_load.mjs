@@ -1747,6 +1747,28 @@ function prepare(rel) {
     );
   }
 
+  if (rel.endsWith("execution/nation/SharedWaterCache.ts")) {
+    // PlayerType is a *value* use (`player.type() === PlayerType.Bot` — the
+    // Game.ts string enum, Bot = "BOT") and rides on the prepared Game.ts
+    // copy (enum inlined as a plain object); Game / Player are type-only
+    // annotations erased by strip mode -> dropped outright (the capture feeds
+    // scripted mocks for the facades, same pattern as NationUtils). The ctor's
+    // `private game: Game` parameter property is expanded for strip mode.
+    if (!prepared.has("src/core/game/Game.ts")) prepare("src/core/game/Game.ts");
+    out = must(
+      out,
+      'import { Game, Player, PlayerType } from "../../game/Game";\n',
+      `import { PlayerType } from "./${prepared.get("src/core/game/Game.ts")}";\n`,
+      "SharedWaterCache imports",
+    );
+    out = must(
+      out,
+      "  constructor(private game: Game) {}",
+      "  private game: Game;\n\n  constructor(game: Game) { this.game = game; }",
+      "SharedWaterCache ctor",
+    );
+  }
+
   if (rel.endsWith("game/Maps.gen.ts")) {
     // Node's strip-only TS loader rejects `export enum`. GameMapType is a
     // string enum (member name = the folder id, value = the canonical wire

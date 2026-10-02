@@ -222,6 +222,15 @@
 //!   `findJuiciestTarget` normalize / strict-`>` best scan; the `Game` /
 //!   `Player` / `PseudoRandom` facades are scripted mocks whose call traces
 //!   ride in the res stream, same pattern as `water_path_memo`)
+//! * [`shared_water_cache`] — `src/core/execution/nation/SharedWaterCache.ts`
+//!   (the nation-AI shared-water cache: the `TTL_TICKS` rebuild from
+//!   `tick = -Infinity` with `this.tick = tick`, the strict-`===`
+//!   tileVersion / waterVersion rescan check, the shore / neighbor border
+//!   walk with the `comp !== null` lake add, the bot-skip pass-1 / partner
+//!   `break` pass-2 over insertion-ordered `Map` / `Set` structures and the
+//!   `OCEAN_SENTINEL`-first shared sets; the `Game` / `Player` facades are
+//!   scripted mocks whose call traces ride in the res stream, same pattern
+//!   as `nation_utils`)
 //! * [`terra_nullius`] — `src/core/game/TerraNulliusImpl.ts` (the stateless
 //!   neutral-player facade: four constant returns — `smallID` 0, `clientID`
 //!   the literal string, `id` JS `null`, `isPlayer` the literal `false`)
@@ -267,6 +276,7 @@ pub mod railroad;
 pub mod railroad_spatial_grid;
 pub mod schemas;
 pub mod server_list;
+pub mod shared_water_cache;
 pub mod stats_impl;
 pub mod stats_schemas;
 pub mod team_assignment;

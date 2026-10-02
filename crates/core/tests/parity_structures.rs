@@ -2430,6 +2430,27 @@ fn replay_nationutils_scenarios() {
     }
 }
 
+// execution/nation/SharedWaterCache.ts: replay the scripted-mock shared-water
+// cache scenarios (TTL rebuild from -Infinity, same-tick hit, the 29/30/31
+// boundaries, the tick-backwards no-rebuild, the strict-`===` NaN-never-hits
+// waterFor double check, the bot skip, the lakePartners break / full-scan
+// canTrade counts, the self-exclusion null, the OCEAN_SENTINEL-first Set
+// order, the null-component skip, the get-miss null and the cross-rebuild
+// entry reuse) through the shared `run_op` runner and compare the flat token
+// streams (facade call traces, per-get dumps and the final internal state
+// pinned token-by-token, NaN / -0 / ±Inf through obj_is).
+#[test]
+fn replay_sharedwatercache_scenarios() {
+    use openfront_core::shared_water_cache::run_op;
+    for s in vectors::SWC_SCENARIOS {
+        let got = run_op(s.kind, s.args);
+        assert_eq!(got.len(), s.res.len(), "{} res len: got {got:?} want {:?}", s.name, s.res);
+        for (j, (g, w)) in got.iter().zip(s.res.iter()).enumerate() {
+            assert!(obj_is(*g, *w), "{} res[{j}]: got {g} want {w}", s.name);
+        }
+    }
+}
+
 // game/StatsImpl.ts: replay the scripted-mock accumulator scenarios (the
 // _bigint coercion / throw matrix, the ??= first-vs-reuse and while-growth,
 // the strict-`>` maxes, the MIRV counter, the conquest_by_type undefined

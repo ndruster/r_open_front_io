@@ -142,6 +142,10 @@ rust/
 │   │   │                          spatial index over the real GameMap;
 │   │   │                          Unit facade scripted-mocked with a pinned
 │   │   │                          call trace)
+│   │   ├── shared_water_cache.rs  port of execution/nation/SharedWaterCache
+│   │   │                          .ts (nation-AI shared-water TTL cache;
+│   │   │                          Game / Player facades scripted-mocked with
+│   │   │                          a pinned call trace)
 │   │   ├── wasm_probe.rs          `extern "C"` surface, feature-gated
 │   │   └── pathfinding/
 │   │       ├── mod.rs
@@ -1037,6 +1041,26 @@ desync, not a rounding nit. Two things enforce that here:
     → distance`. The `UnitPredicate` callbacks are scripted streams (a real JS
     closure runs at capture, every invocation traced). 20 scenarios (1,451
     result tokens).
+54. **`execution/nation/SharedWaterCache.ts`** (`shared_water_cache`) — the
+    nation-AI "which water bodies does each nation share with a valid trade
+    partner" cache: `TTL_TICKS = 30` / `OCEAN_SENTINEL = -1`, the `get`
+    rebuild gate (`tick - this.tick >= TTL_TICKS` starting from
+    `tick = -Infinity` so the first `get` always rebuilds; after a rebuild
+    `this.tick = tick` — *not* `++` — so a same-tick second `get` skips it,
+    with a negative diff (tick regression) also skipping), the `waterFor`
+    per-player rescan cache (strict `===` on both versions — a NaN
+    `tileChangeVersion` never hits and rescans every rebuild), the
+    border→shore→neighbor visit walk, the `comp !== null` lake add, and the
+    two-pass `build` (pass 1 skips `PlayerType.Bot` — the string-enum value
+    `"BOT"` — and collects `lakePartners` in `players()` order; pass 2
+    iterates `playerToWater` insertion order, seeds the shared set with the
+    `-1` ocean sentinel *first*, and per lake breaks on the first
+    `other !== player && player.canTrade(other)` partner, pinning the
+    `canTrade` call count; an empty shared set stores `null`, not a missing
+    key). The `Game` / `Player` facades are scripted mocks with every call
+    (tag + arguments + return) pinned in the res trace; `map().waterVersion()`
+    collapses to one event (the intermediate `map()` is unobservable). 19
+    scenarios (1,860 result tokens).
 
 Regenerate whenever a ported source changes:
 
@@ -1070,7 +1094,7 @@ node rust/tools/run_wasm_parity.mjs
 
 `wasm-probe` exposes the ported functions through `extern "C"` scalar
 entrypoints (`src/wasm_probe.rs`); the runner imports `data/vectors.json` and
-compares every value. Last run: **113,594 comparisons, all bit-identical**.
+compares every value. Last run: **115,454 comparisons, all bit-identical**.
 
 ### Windows: the linker environment
 

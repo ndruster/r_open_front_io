@@ -4331,3 +4331,32 @@ pub extern "C" fn probe_si_op(kind: u32) -> usize {
 pub extern "C" fn probe_si_out_at(i: usize) -> f64 {
     SI_OUT.with(|o| o.borrow()[i])
 }
+
+// ====== P52: execution/nation/SharedWaterCache.ts (shared_water_cache) =======
+
+thread_local! {
+    static SWC_ARGS: std::cell::RefCell<Vec<f64>> = const { std::cell::RefCell::new(Vec::new()) };
+    static SWC_OUT: std::cell::RefCell<Vec<f64>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
+/// Push one flat token (tick, player id, string length, code unit, tile…).
+#[no_mangle]
+pub extern "C" fn probe_swc_arg(v: f64) {
+    SWC_ARGS.with(|t| t.borrow_mut().push(v));
+}
+
+/// Run `shared_water_cache::run_op(kind, args)`; returns the result-stream
+/// length.
+#[no_mangle]
+pub extern "C" fn probe_swc_op(kind: u32) -> usize {
+    let a = SWC_ARGS.with(|t| std::mem::take(&mut *t.borrow_mut()));
+    let out = crate::shared_water_cache::run_op(kind as u8, &a);
+    let len = out.len();
+    SWC_OUT.with(|o| *o.borrow_mut() = out);
+    len
+}
+
+#[no_mangle]
+pub extern "C" fn probe_swc_out_at(i: usize) -> f64 {
+    SWC_OUT.with(|o| o.borrow()[i])
+}

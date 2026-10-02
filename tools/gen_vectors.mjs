@@ -178,6 +178,7 @@ const Sc = await loadTs("src/core/Schemas.ts");
 const Api = await loadTs("src/core/ApiSchemas.ts");
 const Tml = await loadTs("src/core/game/TerrainMapLoader.ts");
 const Nu = await loadTs("src/core/execution/nation/NationUtils.ts");
+const SWC = await loadTs("src/core/execution/nation/SharedWaterCache.ts");
 const GI = await loadTs("src/core/game/GameImpl.ts");
 const TNI = await loadTs("src/core/game/TerraNulliusImpl.ts");
 const SI = await loadTs("src/core/game/StatsImpl.ts");
@@ -5113,6 +5114,412 @@ captureWPM("wpm_uint32", wpmArgs(100, 100000, 1, [[-1, 4294967297, 2.9]], [
   [0, 1, 2],
 ]));
 
+// --- SharedWaterCache.ts scenario runner --------------------------------------
+// Exercises the real execution/nation/SharedWaterCache.ts against scripted
+// Game / Player mocks: every facade call (method tag + arguments + return)
+// rides into a flat trace, so the TTL rebuild condition (`tick - this.tick >=
+// 30`, the -Infinity first-get rebuild, the negative-diff no-rebuild), the
+// `this.tick = tick` (not ++) same-tick cache hit, the waterFor strict-`===`
+// (NaN never hits) tileVersion/waterVersion double-equality, the border/shore/
+// neighbor visit order, the `comp !== null` lake add, the Set insertion order
+// (OCEAN_SENTINEL -1 first when hasOcean), the lakePartners array order, the
+// `other !== player` self-exclusion (refid SameValueZero) and the first-valid-
+// partner `break` (canTrade call count pinned) are all observable. The
+// `game.map().waterVersion()` two-level facade is collapsed into one event
+// (tag 1) - the intermediate `map()` object has no observable behaviour.
+// PlayerType.Bot is the real Game.ts string enum value "BOT". The Rust twin is
+// `shared_water_cache::run_op` kind 0.
+//
+// args: [0, nTicks, (tick)*, nPlayers,
+//   (pid, typeStr, tileVersion, nBorder, (tile)*, nTrade, (other,0|1)*,
+//    inPlayers)*,
+//   waterVersion, nShore, (tile,0|1)*, nNbr, (tile,n,(nbr)*)*, nWater,
+//   (t,0|1)*, nOcean, (t,0|1)*, nComp, (t,0|null|[1,comp])*, nOps, (op)*]
+//   op 0 get [0,pid] | op 1 set tileChangeVersion [1,pid,v] |
+//   op 2 set waterVersion [2,v]
+//
+// res: [traceLen, (trace)*, nGets, (get)*, tick, byPlayer, playerWater]
+//   trace: 0 ticks [0,ret] | 1 waterVersion [1,ret] | 2 borderTiles
+//     [2,pid,n,(tile)*] | 3 tileChangeVersion [3,pid,ret] | 4 type
+//     [4,pid,(str)] | 5 canTrade [5,pid,other,0|1] | 6 isShore [6,t,0|1] |
+//     7 forEachNeighbor [7,t,n,(nbr)*] | 8 isWater [8,t,0|1] | 9 isOcean
+//     [9,t,0|1] | 10 getWaterComponent [10,t,0|null|1,comp?] | 11 players
+//     [11,n,(pid)*]
+//   get: [0]=null | [1,n,(v)*]; byPlayer: [0]=null | [1,n,(pid,0|1,[v]*)*];
+//   playerWater: [n,(pid,tileVersion,waterVersion,hasOcean,nLakes,(lake)*)*]
+const swcScenarios = [];
+const swcname = (s) => s.replace(/[^A-Za-z0-9]+/g, "_");
+
+function swcRun(args) {
+  let p = 0;
+  const num = () => args[p++];
+  const str = () => {
+    const l = args[p++];
+    let s = "";
+    for (let i = 0; i < l; i++) s += String.fromCharCode(args[p++]);
+    return s;
+  };
+  const kind = num();
+  if (kind !== 0) throw new Error(`swc: unknown kind ${kind}`);
+  const nTicks = num();
+  const tickScript = args.slice(p, p + nTicks);
+  p += nTicks;
+  let ti = 0;
+  const nPlayers = num();
+  const specs = [];
+  for (let i = 0; i < nPlayers; i++) {
+    const pid = num();
+    const type = str();
+    const tv = num();
+    const nb = num();
+    const border = args.slice(p, p + nb);
+    p += nb;
+    const nt = num();
+    const trades = new Map();
+    for (let j = 0; j < nt; j++) {
+      const o = num();
+      const r = num();
+      trades.set(`${pid}:${o}`, r);
+    }
+    const inP = num();
+    specs.push({ pid, type, tv, border, trades, inP });
+  }
+  let wv = num();
+  const need = (m, t, what) => {
+    if (!m.has(t)) throw new Error(`swc: missing ${what} script for ${t}`);
+    return m.get(t);
+  };
+  const shore = new Map();
+  const nShore = num();
+  for (let i = 0; i < nShore; i++) {
+    const t = num();
+    shore.set(t, num());
+  }
+  const nbrs = new Map();
+  const nNbr = num();
+  for (let i = 0; i < nNbr; i++) {
+    const t = num();
+    const n = num();
+    nbrs.set(t, args.slice(p, p + n));
+    p += n;
+  }
+  const water = new Map();
+  const nWater = num();
+  for (let i = 0; i < nWater; i++) {
+    const t = num();
+    water.set(t, num());
+  }
+  const ocean = new Map();
+  const nOcean = num();
+  for (let i = 0; i < nOcean; i++) {
+    const t = num();
+    ocean.set(t, num());
+  }
+  const comp = new Map();
+  const nComp = num();
+  for (let i = 0; i < nComp; i++) {
+    const t = num();
+    const k = num();
+    comp.set(t, k === 0 ? null : num());
+  }
+  const nOps = num();
+  const ops = [];
+  for (let i = 0; i < nOps; i++) {
+    const k = num();
+    if (k === 0) ops.push([0, num()]);
+    else if (k === 1) ops.push([1, num(), num()]);
+    else ops.push([2, num()]);
+  }
+  const trace = [];
+  const ev = (...t) => trace.push(...t);
+  const byPid = new Map(specs.map((s) => [s.pid, s]));
+  const objs = new Map();
+  for (const s of specs) {
+    const o = {
+      __pid: s.pid,
+      type() {
+        ev(4, s.pid, ...encS(s.type));
+        return s.type;
+      },
+      tileChangeVersion() {
+        ev(3, s.pid, s.tv);
+        return s.tv;
+      },
+      borderTiles() {
+        ev(2, s.pid, s.border.length, ...s.border);
+        return s.border;
+      },
+      canTrade(other) {
+        const r = need(s.trades, `${s.pid}:${other.__pid}`, "trade");
+        ev(5, s.pid, other.__pid, r);
+        return r === 1;
+      },
+    };
+    objs.set(s.pid, o);
+  }
+  const game = {
+    ticks() {
+      if (ti >= tickScript.length) throw new Error("swc: tick script exhausted");
+      const r = tickScript[ti++];
+      ev(0, r);
+      return r;
+    },
+    map() {
+      return {
+        waterVersion() {
+          ev(1, wv);
+          return wv;
+        },
+      };
+    },
+    players() {
+      const list = specs.filter((s) => s.inP === 1);
+      ev(11, list.length, ...list.map((s) => s.pid));
+      return list.map((s) => objs.get(s.pid));
+    },
+    isShore(t) {
+      const r = need(shore, t, "isShore");
+      ev(6, t, r);
+      return r === 1;
+    },
+    forEachNeighbor(t, visit) {
+      const ns = need(nbrs, t, "neighbors");
+      ev(7, t, ns.length, ...ns);
+      for (const n of ns) visit(n);
+    },
+    isWater(t) {
+      const r = need(water, t, "isWater");
+      ev(8, t, r);
+      return r === 1;
+    },
+    isOcean(t) {
+      const r = need(ocean, t, "isOcean");
+      ev(9, t, r);
+      return r === 1;
+    },
+    getWaterComponent(t) {
+      const c = need(comp, t, "getWaterComponent");
+      if (c === null) {
+        ev(10, t, 0);
+        return null;
+      }
+      ev(10, t, 1, c);
+      return c;
+    },
+  };
+  const inst = new SWC.SharedWaterCache(game);
+  const gets = [];
+  for (const op of ops) {
+    if (op[0] === 0) {
+      const r = inst.get(objs.get(op[1]));
+      if (r === null) gets.push([0]);
+      else gets.push([1, r.size, ...r]);
+    } else if (op[0] === 1) {
+      byPid.get(op[1]).tv = op[2];
+    } else {
+      wv = op[1];
+    }
+  }
+  const out = [gets.length];
+  for (const g of gets) out.push(...g);
+  out.push(inst.tick);
+  const bp = inst.byPlayer;
+  if (bp === null) out.push(0);
+  else {
+    out.push(1, bp.size);
+    for (const [pl, v] of bp) {
+      out.push(pl.__pid);
+      if (v === null) out.push(0);
+      else out.push(1, v.size, ...v);
+    }
+  }
+  const pw = inst.playerWater;
+  out.push(pw.size);
+  for (const [pl, e] of pw) {
+    out.push(pl.__pid, e.tileVersion, e.waterVersion, e.hasOcean ? 1 : 0, e.lakes.size, ...e.lakes);
+  }
+  return [trace.length, ...trace, ...out];
+}
+
+const swcP = (pid, type, tv, border, trades, inP = 1) => [
+  pid,
+  ...encS(type),
+  tv,
+  border.length,
+  ...border,
+  trades.length,
+  ...trades.flat(),
+  inP,
+];
+
+const swcArgs = (ticks, players, wv, shore, nbrs, water, ocean, comp, ops) => [
+  0,
+  ticks.length,
+  ...ticks,
+  players.length,
+  ...players.flat(),
+  wv,
+  shore.length,
+  ...shore.flat(),
+  nbrs.length,
+  ...nbrs.flatMap(([t, ns]) => [t, ns.length, ...ns]),
+  water.length,
+  ...water.flat(),
+  ocean.length,
+  ...ocean.flat(),
+  comp.length,
+  ...comp.flatMap(([t, c]) => (c === null ? [t, 0] : [t, 1, c])),
+  ops.length,
+  ...ops.flat(),
+];
+
+function captureSWC(name, args) {
+  swcScenarios.push({
+    name: swcname(name),
+    kind: 0,
+    args: args.flat(Infinity).map(uenc),
+    res: swcRun(args.flat(Infinity)).map(uenc),
+  });
+}
+
+// Shared single-player fixture: border [10,11], tile 10 shore (neighbors 20
+// ocean, 21 lake 3, 22 non-water), tile 11 not shore.
+const swcP1 = (tv = 5) => swcP(1, "HUMAN", tv, [10, 11], []);
+
+// 1. First get rebuilds: tick -Infinity -> +Infinity diff >= 30, the full
+//    facade walk, hasOcean + lake 3, the lake stays unshared (self-only
+//    partner), result {-1}.
+captureSWC("swc_first_get_rebuild", swcArgs([100], [swcP1()], 7,
+  [[10, 1], [11, 0]], [[10, [20, 21, 22]]], [[20, 1], [21, 1], [22, 0]],
+  [[20, 1], [21, 0]], [[21, 3]], [[0, 1]]));
+
+// 2. Same tick, second get: ticks() called again but the diff is 0 -> no
+//    rebuild, the same Set reference comes back (one build trace).
+captureSWC("swc_same_tick_hit", swcArgs([100, 100], [swcP1()], 7,
+  [[10, 1], [11, 0]], [[10, [20, 21]]], [[20, 1], [21, 1]],
+  [[20, 1], [21, 0]], [[21, 3]], [[0, 1], [0, 1]]));
+
+// 3. TTL boundary 29: diff 29 < 30 -> no rebuild.
+captureSWC("swc_ttl_29_no_rebuild", swcArgs([100, 129], [swcP1()], 7,
+  [[10, 1], [11, 0]], [[10, [20]]], [[20, 1]], [[20, 1]], [], [[0, 1], [0, 1]]));
+
+// 4. TTL boundary 30: diff 30 >= 30 -> rebuild, but waterFor hits (same
+//    tileVersion + waterVersion): type/tileChangeVersion only, no border walk.
+captureSWC("swc_ttl_30_rebuild_waterfor_hit", swcArgs([100, 130], [swcP1()], 7,
+  [[10, 1], [11, 0]], [[10, [20]]], [[20, 1]], [[20, 1]], [], [[0, 1], [0, 1]]));
+
+// 5. TTL boundary 31: rebuild again.
+captureSWC("swc_ttl_31_rebuild", swcArgs([100, 131], [swcP1()], 7,
+  [[10, 1], [11, 0]], [[10, [20]]], [[20, 1]], [[20, 1]], [], [[0, 1], [0, 1]]));
+
+// 6. Tick goes backwards: diff -10 < 30 -> no rebuild (this.tick stays 100).
+captureSWC("swc_tick_backwards_no_rebuild", swcArgs([100, 90], [swcP1()], 7,
+  [[10, 1], [11, 0]], [[10, [20]]], [[20, 1]], [[20, 1]], [], [[0, 1], [0, 1]]));
+
+// 7. tileChangeVersion bump between rebuilds -> the rescan runs again and the
+//    playerWater entry is overwritten in place with the new version.
+captureSWC("swc_tileversion_change_rescan", swcArgs([100, 130], [swcP1()], 7,
+  [[10, 1], [11, 0]], [[10, [20]]], [[20, 1]], [[20, 1]], [],
+  [[0, 1], [1, 1, 6], [0, 1]]));
+
+// 8. map waterVersion bump between rebuilds -> rescan, entry waterVersion 8.
+captureSWC("swc_water_version_change_rescan", swcArgs([100, 130], [swcP1()], 7,
+  [[10, 1], [11, 0]], [[10, [20]]], [[20, 1]], [[20, 1]], [],
+  [[0, 1], [2, 8], [0, 1]]));
+
+// 9. NaN tileChangeVersion: `cached.tileVersion === tileVersion` is false for
+//    NaN forever -> every rebuild rescans (two border walks).
+captureSWC("swc_nan_tileversion_always_rescans", swcArgs([100, 130, 160], [swcP1(NaN)], 7,
+  [[10, 1], [11, 0]], [[10, [20]]], [[20, 1]], [[20, 1]], [],
+  [[0, 1], [0, 1], [0, 1]]));
+
+// 10. Bot skipped in pass 1 (type() traced, then continue); get(bot) misses the
+//     byPlayer key -> null.
+captureSWC("swc_bot_skipped", swcArgs([100, 100], [swcP1(), swcP(2, "BOT", 1, [11], [])], 7,
+  [[10, 1], [11, 0]], [[10, [20]]], [[20, 1]], [[20, 1]], [],
+  [[0, 1], [0, 2]]));
+
+// 11. Two players share lake 3, canTrade true: the partners array is [1,2],
+//     pass 2 skips self by identity (no canTrade event for it) and breaks on
+//     the first valid partner -> exactly one canTrade per player.
+captureSWC("swc_shared_lake_break", swcArgs([100, 100], [
+  swcP(1, "HUMAN", 5, [10], [[2, 1]]),
+  swcP(2, "HUMAN", 5, [11], [[1, 1]]),
+], 7,
+  [[10, 1], [11, 1]], [[10, [20]], [11, [21]]], [[20, 1], [21, 1]],
+  [[20, 0], [21, 0]], [[20, 3], [21, 3]], [[0, 1], [0, 2]]));
+
+// 12. Same pair, canTrade false both ways: every partner is scanned (two
+//     canTrade events per player), the lake is not shared -> null stored.
+captureSWC("swc_cantrade_false_full_scan", swcArgs([100, 100], [
+  swcP(1, "HUMAN", 5, [10], [[2, 0]]),
+  swcP(2, "HUMAN", 5, [11], [[1, 0]]),
+], 7,
+  [[10, 1], [11, 1]], [[10, [20]], [11, [21]]], [[20, 1], [21, 1]],
+  [[20, 0], [21, 0]], [[20, 3], [21, 3]], [[0, 1], [0, 2]]));
+
+// 13. Single player, lake only (no ocean): partners = [self], the identity
+//     check excludes it, shared stays empty -> null stored (key present).
+captureSWC("swc_self_only_lake_null", swcArgs([100], [swcP(1, "HUMAN", 5, [10], [])], 7,
+  [[10, 1]], [[10, [20]]], [[20, 1]], [[20, 0]], [[20, 3]], [[0, 1]]));
+
+// 14. Ocean + shared lake: the sentinel -1 is added first, the lake second ->
+//     Set order [-1, 3].
+captureSWC("swc_ocean_sentinel_first", swcArgs([100], [
+  swcP(1, "HUMAN", 5, [10, 11], [[2, 1]]),
+  swcP(2, "HUMAN", 5, [12], [[1, 1]]),
+], 7,
+  [[10, 1], [11, 1], [12, 1]], [[10, [20]], [11, [21]], [12, [22]]],
+  [[20, 1], [21, 1], [22, 1]], [[20, 1], [21, 0], [22, 0]],
+  [[21, 3], [22, 3]], [[0, 1]]));
+
+// 15. getWaterComponent null: the neighbor is water but not ocean and has no
+//     component -> no lake, no ocean -> empty shared -> null.
+captureSWC("swc_comp_null_no_lake", swcArgs([100], [swcP(1, "HUMAN", 5, [10], [])], 7,
+  [[10, 1]], [[10, [20]]], [[20, 1]], [[20, 0]], [[20, null]], [[0, 1]]));
+
+// 16. get on a player absent from players(): the rebuild never keys it, the
+//     byPlayer.get misses -> null (undefined ?? null).
+captureSWC("swc_get_miss_player_null", swcArgs([100, 100], [
+  swcP(1, "HUMAN", 5, [10], []),
+  swcP(3, "HUMAN", 5, [11], [], 0),
+], 7,
+  [[10, 1], [11, 0]], [[10, [20]]], [[20, 1]], [[20, 1]], [], [[0, 1], [0, 3]]));
+
+// 17. Duplicate lake add: two shore neighbors both resolve to component 3,
+//     the Set keeps one member and pass 2 iterates it once (one canTrade).
+captureSWC("swc_dup_lake_add_noop", swcArgs([100], [
+  swcP(1, "HUMAN", 5, [10, 11], [[2, 1]]),
+  swcP(2, "HUMAN", 5, [12], [[1, 1]]),
+], 7,
+  [[10, 1], [11, 1], [12, 1]], [[10, [20]], [11, [21]], [12, [22]]],
+  [[20, 1], [21, 1], [22, 1]], [[20, 0], [21, 0], [22, 0]],
+  [[20, 3], [21, 3], [22, 3]], [[0, 1]]));
+
+// 18. Two lakes: the shared Set follows the lakes insertion order (5 first
+//     from tile 10, then 2 from tile 11), not the component ids.
+captureSWC("swc_multi_lake_insertion_order", swcArgs([100], [
+  swcP(1, "HUMAN", 5, [10, 11], [[2, 1], [3, 1]]),
+  swcP(2, "HUMAN", 5, [12], [[1, 1]]),
+  swcP(3, "HUMAN", 5, [13], [[1, 1]]),
+], 7,
+  [[10, 1], [11, 1], [12, 1], [13, 1]],
+  [[10, [20]], [11, [21]], [12, [22]], [13, [23]]],
+  [[20, 1], [21, 1], [22, 1], [23, 1]],
+  [[20, 0], [21, 0], [22, 0], [23, 0]],
+  [[20, 5], [21, 2], [22, 2], [23, 5]], [[0, 1]]));
+
+// 19. Mixed reuse across a rebuild: p1's entry survives (cache hit), p2's
+//     tileVersion bump forces its rescan; playerWater keeps both entries in
+//     insertion order with their own versions.
+captureSWC("swc_reuse_mixed_across_rebuild", swcArgs([100, 130, 160], [
+  swcP(1, "HUMAN", 5, [10], [[2, 1]]),
+  swcP(2, "HUMAN", 5, [11], [[1, 1]]),
+], 7,
+  [[10, 1], [11, 1]], [[10, [20]], [11, [21]]], [[20, 1], [21, 1]],
+  [[20, 0], [21, 0]], [[20, 3], [21, 3]],
+  [[0, 1], [0, 2], [1, 2, 9], [0, 1]]));
+
 
 
 // --- PatternDecoder scenario runner -------------------------------------------
@@ -8546,6 +8953,7 @@ const structures = {
   apischemas: asSchemasScenarios,
   terrainmaploader: tmlScenarios,
   nationutils: nuScenarios,
+  sharedwatercache: swcScenarios,
   statsimpl: siScenarios,
   waterpathmemo: wpmScenarios,
   astar: asScenarios,
@@ -11027,6 +11435,45 @@ for (const s of structures.nationutils) {
 }
 L.push("pub const NU_SCENARIOS: &[NuScenario] = &[");
 for (const s of structures.nationutils) L.push(`    ${s.name.toUpperCase()},`);
+L.push("];");
+L.push("");
+
+L.push("/// execution/nation/SharedWaterCache.ts scenario: one `shared_water_cache::");
+L.push("/// run_op(0, args)` call replaying a whole scripted op sequence over the");
+L.push("/// real TS cache against the Game / Player mocks. args: `[0,nTicks,");
+L.push("/// (tick)*,nPlayers,(pid,typeStr,tileVersion,nBorder,(tile)*,nTrade,");
+L.push("/// (other,0|1)*,inPlayers)*,waterVersion,nShore,(tile,0|1)*,nNbr,");
+L.push("/// (tile,n,(nbr)*)*,nWater,(t,0|1)*,nOcean,(t,0|1)*,nComp,(t,0|1,comp?)*,");
+L.push("/// nOps,(op)*]` (op 0 get [0,pid], 1 set tileChangeVersion [1,pid,v], 2 set");
+L.push("/// waterVersion [2,v]). res: `[traceLen,(trace)*,nGets,(get)*,tick,");
+L.push("/// byPlayer,playerWater]` - trace events 0 ticks [0,ret], 1 waterVersion");
+L.push("/// [1,ret] (map().waterVersion() collapsed), 2 borderTiles [2,pid,n,(tile)*],");
+L.push("/// 3 tileChangeVersion [3,pid,ret], 4 type [4,pid,(str)], 5 canTrade [5,pid,");
+L.push("/// other,0|1], 6 isShore [6,t,0|1], 7 forEachNeighbor [7,t,n,(nbr)*], 8");
+L.push("/// isWater [8,t,0|1], 9 isOcean [9,t,0|1], 10 getWaterComponent [10,t,0|null");
+L.push("/// |1,comp?], 11 players [11,n,(pid)*]; get [0]=null | [1,n,(v)*]; byPlayer");
+L.push("/// [0]=null | [1,n,(pid,0|1,[v]*)*]; playerWater [n,(pid,tileVersion,");
+L.push("/// waterVersion,hasOcean,nLakes,(lake)*)*]. Strings cross as `[len,u0,..]`");
+L.push("/// UTF-16.");
+L.push("pub struct SwcScenario {");
+L.push("    pub name: &'static str,");
+L.push("    pub kind: u8,");
+L.push("    pub args: &'static [f64],");
+L.push("    pub res: &'static [f64],");
+L.push("}");
+L.push("");
+for (const s of structures.sharedwatercache) {
+  const id = s.name.toUpperCase();
+  L.push(`pub const ${id}: SwcScenario = SwcScenario {`);
+  L.push(`    name: "${s.name}",`);
+  L.push(`    kind: ${s.kind}u8,`);
+  L.push(`    args: &[${s.args.map(utilResLit).join(", ")}],`);
+  L.push(`    res: &[${s.res.map(utilResLit).join(", ")}],`);
+  L.push("};");
+  L.push("");
+}
+L.push("pub const SWC_SCENARIOS: &[SwcScenario] = &[");
+for (const s of structures.sharedwatercache) L.push(`    ${s.name.toUpperCase()},`);
 L.push("];");
 L.push("");
 

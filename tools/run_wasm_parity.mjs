@@ -1602,6 +1602,24 @@ for (const s of S.tribenames) {
   }
 }
 
+// --- game/Game.ts (game_ts) --------------------------------------------------
+// Replays the runtime-value subset through the shared run_op runner; args and
+// res are flat f64 token streams, compared element-by-element with Object.is.
+for (const s of S.game) {
+  for (const a of s.args) ex.probe_game_arg(numTok(a));
+  const len = Number(ex.probe_game_op(s.kind));
+  if (len !== s.res.length) {
+    fail(`${s.name} res len`, 0, len, s.res.length);
+    continue;
+  }
+  for (let i = 0; i < len; i++) {
+    checks++;
+    const g = ex.probe_game_out_at(i);
+    const w = numTok(s.res[i]);
+    if (!Object.is(g, w)) fail(`${s.name} res[${i}]`, 0, g, w);
+  }
+}
+
 // --- PatternDecoder (PatternDecoder.ts) ----------------------------------------
 // Replays decode + isPrimary through the shared run_op runner; args and res
 // are flat f64 token streams, compared element-by-element with Object.is.

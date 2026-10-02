@@ -127,6 +127,12 @@
 //!   `startNode`, goal/start checks *before* `queue.clear()`, single-start
 //!   multi delegation, and the `buildPathFromGoal` out-of-range/over-long
 //!   null guards; defaults `heuristicWeight ?? 1` / `maxIterations ?? 100_000`)
+//! * [`game_ts`] — the runtime-value subset of `src/core/game/Game.ts` (the
+//!   twelve enums as name/value tables, the five `unitTypeGroup` tables with
+//!   their spread order, `isEnumValue` guards, `MESSAGE_TYPE_CATEGORIES` /
+//!   `getMessageCategory`, `ColoredTeams`, `Cell`'s template-literal repr,
+//!   `PlayerInfo`'s display name + ctor defaults, and the bigint bulk-cost
+//!   math; the interfaces have no runtime and are not ported)
 //!
 //! Two rules govern every future port into this crate:
 //!
@@ -150,6 +156,7 @@ pub mod doomsday_clock;
 pub mod event_bus;
 pub mod exec_util;
 pub mod game_map;
+pub mod game_ts;
 pub mod game_update_utils;
 pub mod jsnum;
 pub mod line;

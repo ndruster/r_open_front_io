@@ -167,6 +167,7 @@ const EB = await loadTs("src/core/EventBus.ts");
 const AU = await loadTs("src/core/AssetUrls.ts");
 const MG = await loadTs("src/core/game/Maps.gen.ts");
 const TN = await loadTs("src/core/execution/utils/TribeNames.ts");
+const GAME = await loadTs("src/core/game/Game.ts");
 const { AStar } = await loadTs("src/core/pathfinding/algorithms/AStar.ts");
 const { AStarRail } = await loadTs("src/core/pathfinding/algorithms/AStar.Rail.ts");
 const { AStarWater } = await loadTs("src/core/pathfinding/algorithms/AStar.Water.ts");
@@ -2012,6 +2013,214 @@ for (const [name, mt, removed, blanked] of tnCases) {
   const { args, res } = tnRun(mt, removed, blanked);
   captureTN(name, args, res);
 }
+
+// --- game/Game.ts scenario runner ---------------------------------------------
+// Exercises the runtime-value subset of Game.ts (the interface part has no
+// runtime) through the shared run_op runner. Strings cross as `[len, u0, ..]`
+// (UTF-16 code units); numbers through uenc. The Rust twin is `game_ts::*`.
+//
+// kind table (matches the Rust dispatch):
+//   0 string-enum dump  args [enumIdx]                res [n, (name,val)*]
+//   1 numeric-enum dump args [enumIdx]                res [n, (name,val)*]
+//   2 group has()       args [groupIdx]               res [tLen,(typeVal)*,16,(has)*]
+//   3 isEnumValue guard args [guardIdx, valueStr]     res [0/1]
+//   4 msg categories    args [0] dump / [1, mt] lookup res dump [22,(cat)*] / [p,(cat)?]
+//   5 ColoredTeams dump args [0]                       res [n, (name,val)*]
+//   6 Cell              args [x, y]                    res [strRepr, x, y]
+//   7 PlayerInfo        args [name,pt,id,clanP,(clan)?] res [disp,pt,id,lobby,fLen,tiP,nfP,ciP]
+//   8 bulk math         args [cost,ucP,(n,(uc)*)?,amount,gold] res [bulkCost,maxAmount]
+//   9 const dump        args [0]                       res [AP,D,T,Q,HVN,MAXU,(2,5),(5,10)]
+const gameScenarios = [];
+// Scenario names become Rust const identifiers (uppercased), so non-alphanumerics are folded to `_`.
+const gname = (s) => s.replace(/[^A-Za-z0-9]+/g, "_");
+function captureGAME(name, kind, args, res) {
+  gameScenarios.push({
+    name: gname(name),
+    kind,
+    args: args.flat(Infinity).map(uenc),
+    res: res.flat(Infinity).map(uenc),
+  });
+}
+
+// kind 0: the nine string enums, in the order the Rust table indexes them.
+const GAME_STR_ENUMS = [
+  "Difficulty",
+  "GameType",
+  "GameMode",
+  "RankedType",
+  "GameMapSize",
+  "UnitType",
+  "TrainType",
+  "PlayerType",
+  "MessageCategory",
+];
+for (let i = 0; i < GAME_STR_ENUMS.length; i++) {
+  const obj = GAME[GAME_STR_ENUMS[i]];
+  const entries = Object.entries(obj);
+  captureGAME(
+    `g_str_${i}_${GAME_STR_ENUMS[i]}`,
+    0,
+    [i],
+    [entries.length, ...entries.flatMap(([k, v]) => [encS(k), encS(v)])],
+  );
+}
+
+// kind 1: the three numeric enums.
+const GAME_NUM_ENUMS = ["Relation", "TerrainType", "MessageType"];
+for (let i = 0; i < GAME_NUM_ENUMS.length; i++) {
+  const obj = GAME[GAME_NUM_ENUMS[i]];
+  const entries = Object.entries(obj);
+  captureGAME(
+    `g_num_${i}_${GAME_NUM_ENUMS[i]}`,
+    1,
+    [i],
+    [entries.length, ...entries.flatMap(([k, v]) => [encS(k), v])],
+  );
+}
+
+// kind 2: the five unitTypeGroups — dump the `types` array (in order) then the
+// has() matrix over all 16 UnitType values.
+const GAME_GROUPS = ["Nukes", "BuildableAttacks", "Structures", "BuildMenus", "PlayerBuildable"];
+const GAME_UNIT_VALUES = Object.values(GAME.UnitType);
+for (let g = 0; g < GAME_GROUPS.length; g++) {
+  const grp = GAME[GAME_GROUPS[g]];
+  const types = grp.types;
+  const has = GAME_UNIT_VALUES.map((u) => (grp.has(u) ? 1 : 0));
+  captureGAME(`g_group_${g}_${GAME_GROUPS[g]}`, 2, [g], [
+    types.length,
+    ...types.flatMap((t) => encS(t)),
+    GAME_UNIT_VALUES.length,
+    ...has,
+  ]);
+}
+
+// kind 3: the three isEnumValue guards (0 Difficulty, 1 GameType, 2 GameMode).
+const GAME_GUARDS = [
+  ["isDifficulty", GAME.Difficulty],
+  ["isGameType", GAME.GameType],
+  ["isGameMode", GAME.GameMode],
+];
+const guardCases = [
+  [0, "Easy", 1],
+  [0, "easy", 0],
+  [0, "Impossible", 1],
+  [0, "", 0],
+  [1, "Public", 1],
+  [1, "Singleplayer", 1],
+  [1, "public", 0],
+  [2, "Free For All", 1],
+  [2, "Team", 1],
+  [2, "FFA", 0],
+  [2, "Nope", 0],
+];
+for (const [ci, [gi, val, want]] of guardCases.entries()) {
+  const actual = GAME[GAME_GUARDS[gi][0]](val) ? 1 : 0;
+  captureGAME(`g_guard_${ci}`, 3, [gi, encS(val)], [actual]);
+  if (actual !== want) {
+    throw new Error(`guard ${gi} ${val}: got ${actual} want ${want}`);
+  }
+}
+
+// kind 4: MESSAGE_TYPE_CATEGORIES dump + getMessageCategory lookups.
+{
+  const cat = GAME.MESSAGE_TYPE_CATEGORIES;
+  const keys = Object.keys(cat).map(Number).sort((a, b) => a - b);
+  captureGAME("g_msgcat_dump", 4, [0], [
+    keys.length,
+    ...keys.flatMap((k) => encS(cat[k])),
+  ]);
+  const lookups = [0, 4, 8, 13, 18, 20, 21, 22, -1, 999];
+  for (const mt of lookups) {
+    const got = GAME.getMessageCategory(mt);
+    captureGAME(`g_msgcat_get_${mt}`, 4, [1, mt], got === undefined ? [0] : [1, encS(got)]);
+  }
+}
+
+// kind 5: ColoredTeams dump.
+{
+  const entries = Object.entries(GAME.ColoredTeams);
+  captureGAME("g_colored_teams", 5, [0], [
+    entries.length,
+    ...entries.flatMap(([k, v]) => [encS(k), encS(v)]),
+  ]);
+}
+
+// kind 6: Cell — strRepr, pos().x, pos().y.
+const cellCases = [
+  [3, -4],
+  [0, 0],
+  [-0, 1.5],
+  [100, 250],
+  [7, -13],
+  [1.5, 2.25],
+];
+for (const [x, y] of cellCases) {
+  const c = new GAME.Cell(x, y);
+  captureGAME(`g_cell_${x}_${y}`, 6, [x, y], [encS(c.toString()), c.x, c.y]);
+}
+
+// kind 7: PlayerInfo — displayName + the ctor defaults.
+// args [nameStr, ptStr, idStr, clanPresent, (clanStr)?]; clientID always null.
+const piCases = [
+  { name: "Bob", pt: "HUMAN", id: "p1", clan: null },
+  { name: "Bob", pt: "BOT", id: "p2", clan: "xyz" },
+  { name: "Alice", pt: "NATION", id: "p3", clan: "" },
+  { name: "", pt: "HUMAN", id: "", clan: "tag" },
+  { name: "Ünïcode", pt: "HUMAN", id: "ü", clan: "ключ" },
+];
+for (const [i, c] of piCases.entries()) {
+  const clanPresent = c.clan === null ? 0 : 1;
+  const pi = new GAME.PlayerInfo(c.name, c.pt, null, c.id, false, c.clan);
+  const res = [
+    encS(pi.displayName),
+    encS(pi.playerType),
+    encS(pi.id),
+    pi.isLobbyCreator ? 1 : 0,
+    pi.friends.length,
+    pi.teamIndex === null ? 0 : 1,
+    pi.nationFlag === null ? 0 : 1,
+    pi.clientID === null ? 0 : 1,
+  ];
+  captureGAME(`g_pinfo_${i}`, 7, [encS(c.name), encS(c.pt), encS(c.id), clanPresent, ...(clanPresent ? encS(c.clan) : [])], res);
+}
+
+// kind 8: bulkCost / maxBulkAmount. cost/gold are bigint; keep them under 2^53
+// so they cross as f64. upgradeCosts is a bigint[] or absent.
+const bulkCases = [
+  { cost: 100, uc: [10, 30, 60], amount: 2, gold: 35 },
+  { cost: 100, uc: [10, 30, 60], amount: 5, gold: 1000 },
+  { cost: 100, uc: [10, 30, 60], amount: 0, gold: 500 },
+  { cost: 100, uc: [10, 30, 60], amount: 3, gold: 35 },
+  { cost: 1, uc: null, amount: 3, gold: 100 },
+  { cost: 7, uc: null, amount: 1, gold: 0 },
+  { cost: 2, uc: [1, 3, 6, 10], amount: 4, gold: 10 },
+  { cost: 5, uc: [5, 10, 15], amount: 2, gold: 12 },
+];
+for (const [i, b] of bulkCases.entries()) {
+  const bu = {
+    cost: BigInt(b.cost),
+    upgradeCosts: b.uc === null ? undefined : b.uc.map((x) => BigInt(x)),
+  };
+  const bulk = Number(GAME.bulkCost(bu, b.amount));
+  const maxAmt = GAME.maxBulkAmount(bu, BigInt(b.gold));
+  const ucPresent = b.uc === null ? 0 : 1;
+  const args = [b.cost, ucPresent, ...(ucPresent ? [b.uc.length, ...b.uc] : []), b.amount, b.gold];
+  captureGAME(`g_bulk_${i}`, 8, args, [bulk, maxAmt]);
+}
+
+// kind 9: the module consts.
+captureGAME("g_consts", 9, [0], [
+  encS(GAME.AllPlayers),
+  encS(GAME.Duos),
+  encS(GAME.Trios),
+  encS(GAME.Quads),
+  encS(GAME.HumansVsNations),
+  GAME.MAX_UPGRADE_AMOUNT,
+  GAME.NUKE_BULK_STEPS.length,
+  ...GAME.NUKE_BULK_STEPS,
+  GAME.STRUCTURE_BULK_STEPS.length,
+  ...GAME.STRUCTURE_BULK_STEPS,
+]);
 
 // --- PatternDecoder scenario runner -------------------------------------------
 // Exercises the real PatternDecoder.ts decode + isPrimary through the shared
@@ -5305,6 +5514,7 @@ const structures = {
   asseturls: auScenarios,
   maps: mgScenarios,
   tribenames: tnScenarios,
+  game: gameScenarios,
   astar: asScenarios,
   rail: railScenarios,
   water: waterScenarios,
@@ -7412,6 +7622,33 @@ for (const s of structures.tribenames) {
 }
 L.push("pub const TN_SCENARIOS: &[TnScenario] = &[");
 for (const s of structures.tribenames) L.push(`    ${s.name.toUpperCase()},`);
+L.push("];");
+L.push("");
+
+L.push("/// game/Game.ts scenario: one `game_ts::run_op(kind, args)` call.");
+L.push("/// kind 0/1 dump a string/numeric enum, 2 a unitTypeGroup, 3 an");
+L.push("/// isEnumValue guard, 4 the message-category table / a lookup, 5");
+L.push("/// ColoredTeams, 6 a Cell, 7 a PlayerInfo, 8 the bulk-cost math, 9");
+L.push("/// the module consts. Strings cross as `[len, u0, ..]` UTF-16 units.");
+L.push("pub struct GameScenario {");
+L.push("    pub name: &'static str,");
+L.push("    pub kind: u8,");
+L.push("    pub args: &'static [f64],");
+L.push("    pub res: &'static [f64],");
+L.push("}");
+L.push("");
+for (const s of structures.game) {
+  const id = s.name.toUpperCase();
+  L.push(`pub const ${id}: GameScenario = GameScenario {`);
+  L.push(`    name: "${s.name}",`);
+  L.push(`    kind: ${s.kind}u8,`);
+  L.push(`    args: &[${s.args.map(utilResLit).join(", ")}],`);
+  L.push(`    res: &[${s.res.map(utilResLit).join(", ")}],`);
+  L.push("};");
+  L.push("");
+}
+L.push("pub const GAME_SCENARIOS: &[GameScenario] = &[");
+for (const s of structures.game) L.push(`    ${s.name.toUpperCase()},`);
 L.push("];");
 L.push("");
 

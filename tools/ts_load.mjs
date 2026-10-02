@@ -1191,6 +1191,344 @@ function prepare(rel) {
     }
   }
 
+  if (rel.endsWith("game/Game.ts")) {
+    // All 13 imports are type-only (interfaces / branded types / type
+    // aliases - grep-verified: none is used in a value position), so the
+    // block is dropped outright. The one runtime dependency the ported
+    // surface actually needs is `formatPlayerDisplayName`, inlined verbatim
+    // from Util.ts (PlayerInfo's ctor calls it).
+    out = must(
+      out,
+      'import { Config } from "../configuration/Config";\n' +
+        'import { AbstractGraph } from "../pathfinding/algorithms/AbstractGraph";\n' +
+        'import { PathFinder } from "../pathfinding/types";\n' +
+        'import { AllPlayersStats, ClientID } from "../Schemas";\n' +
+        'import { formatPlayerDisplayName } from "../Util";\n' +
+        'import { GameMap, TileRef } from "./GameMap";\n' +
+        "import {\n" +
+        "  GameUpdate,\n" +
+        "  GameUpdateType,\n" +
+        "  PlayerUpdate,\n" +
+        "  UnitUpdate,\n" +
+        '} from "./GameUpdates";\n' +
+        'import { MotionPlanRecord } from "./MotionPlans";\n' +
+        'import { RailNetwork } from "./RailNetwork";\n' +
+        'import { Stats } from "./Stats";\n' +
+        'import { ReadonlyTileSet } from "./TileSet";\n' +
+        'import { UnitPredicate } from "./UnitGrid";\n',
+      "function formatPlayerDisplayName(username, clanTag) {\n" +
+        "  return clanTag ? `[${clanTag}] ${username}` : username;\n" +
+        "}\n",
+      "Game imports",
+    );
+    // The Maps.gen re-export: strip mode erases the `type` members, but the
+    // value exports (GameMapType / mapCategoryOrder / maps) must resolve to
+    // the prepared copy (whose enum is inlined as a plain object).
+    const gameMapsRel = "src/core/game/Maps.gen.ts";
+    if (!prepared.has(gameMapsRel)) prepare(gameMapsRel);
+    out = must(
+      out,
+      '} from "./Maps.gen";',
+      `} from "./${prepared.get(gameMapsRel)}";`,
+      "Game Maps.gen re-export",
+    );
+    // Node's strip-only TS loader rejects `export enum`; the 12 enums are
+    // inlined as plain objects with the same member order and values.
+    out = must(
+      out,
+      'export enum Difficulty {\n' +
+        '  Easy = "Easy",\n' +
+        '  Medium = "Medium",\n' +
+        '  Hard = "Hard",\n' +
+        '  Impossible = "Impossible",\n' +
+        "}",
+      'export const Difficulty = {\n' +
+        '  Easy: "Easy",\n' +
+        '  Medium: "Medium",\n' +
+        '  Hard: "Hard",\n' +
+        '  Impossible: "Impossible",\n' +
+        "};",
+      "Game Difficulty enum",
+    );
+    out = must(
+      out,
+      'export enum GameType {\n' +
+        '  Singleplayer = "Singleplayer",\n' +
+        '  Public = "Public",\n' +
+        '  Private = "Private",\n' +
+        "}",
+      'export const GameType = {\n' +
+        '  Singleplayer: "Singleplayer",\n' +
+        '  Public: "Public",\n' +
+        '  Private: "Private",\n' +
+        "};",
+      "Game GameType enum",
+    );
+    out = must(
+      out,
+      'export enum GameMode {\n  FFA = "Free For All",\n  Team = "Team",\n}',
+      'export const GameMode = {\n  FFA: "Free For All",\n  Team: "Team",\n};',
+      "Game GameMode enum",
+    );
+    out = must(
+      out,
+      'export enum RankedType {\n  OneVOne = "1v1",\n  TwoVTwo = "2v2",\n}',
+      'export const RankedType = {\n  OneVOne: "1v1",\n  TwoVTwo: "2v2",\n};',
+      "Game RankedType enum",
+    );
+    out = must(
+      out,
+      'export enum GameMapSize {\n  Compact = "Compact",\n  Normal = "Normal",\n}',
+      'export const GameMapSize = {\n  Compact: "Compact",\n  Normal: "Normal",\n};',
+      "Game GameMapSize enum",
+    );
+    out = must(
+      out,
+      'export enum UnitType {\n' +
+        '  TransportShip = "Transport",\n' +
+        '  Warship = "Warship",\n' +
+        '  Shell = "Shell",\n' +
+        '  SAMMissile = "SAMMissile",\n' +
+        '  Port = "Port",\n' +
+        '  AtomBomb = "Atom Bomb",\n' +
+        '  HydrogenBomb = "Hydrogen Bomb",\n' +
+        '  TradeShip = "Trade Ship",\n' +
+        '  MissileSilo = "Missile Silo",\n' +
+        '  DefensePost = "Defense Post",\n' +
+        '  SAMLauncher = "SAM Launcher",\n' +
+        '  City = "City",\n' +
+        '  MIRV = "MIRV",\n' +
+        '  MIRVWarhead = "MIRV Warhead",\n' +
+        '  Train = "Train",\n' +
+        '  Factory = "Factory",\n' +
+        "}",
+      'export const UnitType = {\n' +
+        '  TransportShip: "Transport",\n' +
+        '  Warship: "Warship",\n' +
+        '  Shell: "Shell",\n' +
+        '  SAMMissile: "SAMMissile",\n' +
+        '  Port: "Port",\n' +
+        '  AtomBomb: "Atom Bomb",\n' +
+        '  HydrogenBomb: "Hydrogen Bomb",\n' +
+        '  TradeShip: "Trade Ship",\n' +
+        '  MissileSilo: "Missile Silo",\n' +
+        '  DefensePost: "Defense Post",\n' +
+        '  SAMLauncher: "SAM Launcher",\n' +
+        '  City: "City",\n' +
+        '  MIRV: "MIRV",\n' +
+        '  MIRVWarhead: "MIRV Warhead",\n' +
+        '  Train: "Train",\n' +
+        '  Factory: "Factory",\n' +
+        "};",
+      "Game UnitType enum",
+    );
+    out = must(
+      out,
+      'export enum TrainType {\n' +
+        '  Engine = "Engine",\n' +
+        '  TailEngine = "TailEngine",\n' +
+        '  Carriage = "Carriage",\n' +
+        "}",
+      'export const TrainType = {\n' +
+        '  Engine: "Engine",\n' +
+        '  TailEngine: "TailEngine",\n' +
+        '  Carriage: "Carriage",\n' +
+        "};",
+      "Game TrainType enum",
+    );
+    out = must(
+      out,
+      "export enum Relation {\n  Hostile = 0,\n  Distrustful = 1,\n  Neutral = 2,\n  Friendly = 3,\n}",
+      "export const Relation = {\n  Hostile: 0,\n  Distrustful: 1,\n  Neutral: 2,\n  Friendly: 3,\n};",
+      "Game Relation enum",
+    );
+    out = must(
+      out,
+      "export enum TerrainType {\n  Plains,\n  Highland,\n  Mountain,\n  Ocean,\n  Impassable,\n}",
+      "export const TerrainType = {\n  Plains: 0,\n  Highland: 1,\n  Mountain: 2,\n  Ocean: 3,\n  Impassable: 4,\n};",
+      "Game TerrainType enum",
+    );
+    out = must(
+      out,
+      'export enum PlayerType {\n  Bot = "BOT",\n  Human = "HUMAN",\n  Nation = "NATION",\n}',
+      'export const PlayerType = {\n  Bot: "BOT",\n  Human: "HUMAN",\n  Nation: "NATION",\n};',
+      "Game PlayerType enum",
+    );
+    out = must(
+      out,
+      "export enum MessageType {\n" +
+        "  ATTACK_FAILED,\n" +
+        "  ATTACK_CANCELLED,\n" +
+        "  ATTACK_REQUEST,\n" +
+        "  CONQUERED_PLAYER,\n" +
+        "  MIRV_INBOUND,\n" +
+        "  NUKE_INBOUND,\n" +
+        "  NUKE_DETONATED,\n" +
+        "  HYDROGEN_BOMB_INBOUND,\n" +
+        "  NAVAL_INVASION_INBOUND,\n" +
+        "  SAM_MISS,\n" +
+        "  SAM_HIT,\n" +
+        "  CAPTURED_ENEMY_UNIT,\n" +
+        "  UNIT_DESTROYED,\n" +
+        "  ALLIANCE_ACCEPTED,\n" +
+        "  ALLIANCE_REJECTED,\n" +
+        "  ALLIANCE_REQUEST,\n" +
+        "  ALLIANCE_BROKEN,\n" +
+        "  ALLIANCE_EXPIRED,\n" +
+        "  DONATION_SENT,\n" +
+        "  DONATION_RECEIVED,\n" +
+        "  CHAT,\n" +
+        "  RENEW_ALLIANCE,\n" +
+        "}",
+      "export const MessageType = {\n" +
+        "  ATTACK_FAILED: 0,\n" +
+        "  ATTACK_CANCELLED: 1,\n" +
+        "  ATTACK_REQUEST: 2,\n" +
+        "  CONQUERED_PLAYER: 3,\n" +
+        "  MIRV_INBOUND: 4,\n" +
+        "  NUKE_INBOUND: 5,\n" +
+        "  NUKE_DETONATED: 6,\n" +
+        "  HYDROGEN_BOMB_INBOUND: 7,\n" +
+        "  NAVAL_INVASION_INBOUND: 8,\n" +
+        "  SAM_MISS: 9,\n" +
+        "  SAM_HIT: 10,\n" +
+        "  CAPTURED_ENEMY_UNIT: 11,\n" +
+        "  UNIT_DESTROYED: 12,\n" +
+        "  ALLIANCE_ACCEPTED: 13,\n" +
+        "  ALLIANCE_REJECTED: 14,\n" +
+        "  ALLIANCE_REQUEST: 15,\n" +
+        "  ALLIANCE_BROKEN: 16,\n" +
+        "  ALLIANCE_EXPIRED: 17,\n" +
+        "  DONATION_SENT: 18,\n" +
+        "  DONATION_RECEIVED: 19,\n" +
+        "  CHAT: 20,\n" +
+        "  RENEW_ALLIANCE: 21,\n" +
+        "};",
+      "Game MessageType enum",
+    );
+    out = must(
+      out,
+      'export enum MessageCategory {\n' +
+        '  ATTACK = "ATTACK",\n' +
+        '  NUKE = "NUKE",\n' +
+        '  ALLIANCE = "ALLIANCE",\n' +
+        '  TRADE = "TRADE",\n' +
+        '  CHAT = "CHAT",\n' +
+        "}",
+      'export const MessageCategory = {\n' +
+        '  ATTACK: "ATTACK",\n' +
+        '  NUKE: "NUKE",\n' +
+        '  ALLIANCE: "ALLIANCE",\n' +
+        '  TRADE: "TRADE",\n' +
+        '  CHAT: "CHAT",\n' +
+        "};",
+      "Game MessageCategory enum",
+    );
+    // The three classes use ctor parameter properties, which strip mode
+    // rejects; expand them, same as MinHeap / GameMap.
+    out = must(
+      out,
+      "export class Nation {\n" +
+        "  constructor(\n" +
+        "    public readonly spawnCell: Cell | undefined,\n" +
+        "    public readonly playerInfo: PlayerInfo,\n" +
+        "  ) {}\n" +
+        "}",
+      "export class Nation {\n" +
+        "  public readonly spawnCell: Cell | undefined;\n" +
+        "  public readonly playerInfo: PlayerInfo;\n" +
+        "  constructor(\n" +
+        "    spawnCell: Cell | undefined,\n" +
+        "    playerInfo: PlayerInfo,\n" +
+        "  ) {\n" +
+        "    this.spawnCell = spawnCell;\n" +
+        "    this.playerInfo = playerInfo;\n" +
+        "  }\n" +
+        "}",
+      "Game Nation ctor",
+    );
+    out = must(
+      out,
+      "  constructor(\n" +
+        "    public readonly x: number,\n" +
+        "    public readonly y: number,\n" +
+        "  ) {\n" +
+        "    this.strRepr = `Cell[${this.x},${this.y}]`;",
+      "  public readonly x: number;\n" +
+        "  public readonly y: number;\n\n" +
+        "  constructor(\n" +
+        "    x: number,\n" +
+        "    y: number,\n" +
+        "  ) {\n" +
+        "    this.x = x;\n" +
+        "    this.y = y;\n" +
+        "    this.strRepr = `Cell[${this.x},${this.y}]`;",
+      "Game Cell ctor",
+    );
+    out = must(
+      out,
+      "export class PlayerInfo {\n" +
+        "  public readonly displayName: string;\n\n" +
+        "  constructor(\n" +
+        "    public readonly name: string,\n" +
+        "    public readonly playerType: PlayerType,\n" +
+        "    // null if tribe.\n" +
+        "    public readonly clientID: ClientID | null,\n" +
+        "    // TODO: make player id the small id\n" +
+        "    public readonly id: PlayerID,\n" +
+        "    public readonly isLobbyCreator: boolean = false,\n" +
+        "    public readonly clanTag: string | null = null,\n" +
+        "    public readonly friends: ClientID[] = [],\n" +
+        "    // Server-pinned team slot (index into the game's team list) for\n" +
+        "    // matchmade team games; null = assign normally.\n" +
+        "    public readonly teamIndex: number | null = null,\n" +
+        "    // Manifest flag code (e.g. \"in\", \"pk\") for PlayerType.Nation players.\n" +
+        "    // Carried from the map manifest through to the client so it can render\n" +
+        "    // the correct flag even when multiple nations on a map share a display\n" +
+        "    // name (e.g. India's and Pakistan's \"Punjab\").\n" +
+        "    public readonly nationFlag: string | null = null,\n" +
+        "  ) {\n" +
+        "    this.displayName = formatPlayerDisplayName(this.name, this.clanTag);\n" +
+        "  }\n" +
+        "}",
+      "export class PlayerInfo {\n" +
+        "  public readonly displayName: string;\n" +
+        "  public readonly name: string;\n" +
+        "  public readonly playerType: PlayerType;\n" +
+        "  public readonly clientID: ClientID | null;\n" +
+        "  public readonly id: PlayerID;\n" +
+        "  public readonly isLobbyCreator: boolean;\n" +
+        "  public readonly clanTag: string | null;\n" +
+        "  public readonly friends: ClientID[];\n" +
+        "  public readonly teamIndex: number | null;\n" +
+        "  public readonly nationFlag: string | null;\n\n" +
+        "  constructor(\n" +
+        "    name: string,\n" +
+        "    playerType: PlayerType,\n" +
+        "    clientID: ClientID | null,\n" +
+        "    id: PlayerID,\n" +
+        "    isLobbyCreator: boolean = false,\n" +
+        "    clanTag: string | null = null,\n" +
+        "    friends: ClientID[] = [],\n" +
+        "    teamIndex: number | null = null,\n" +
+        "    nationFlag: string | null = null,\n" +
+        "  ) {\n" +
+        "    this.name = name;\n" +
+        "    this.playerType = playerType;\n" +
+        "    this.clientID = clientID;\n" +
+        "    this.id = id;\n" +
+        "    this.isLobbyCreator = isLobbyCreator;\n" +
+        "    this.clanTag = clanTag;\n" +
+        "    this.friends = friends;\n" +
+        "    this.teamIndex = teamIndex;\n" +
+        "    this.nationFlag = nationFlag;\n" +
+        "    this.displayName = formatPlayerDisplayName(this.name, this.clanTag);\n" +
+        "  }\n" +
+        "}",
+      "Game PlayerInfo ctor",
+    );
+  }
+
   if (rel.endsWith("execution/utils/TribeNames.ts")) {
     // The JSON import needs a `with { type: "json" }` attribute (Node's
     // strip-only loader does not apply the package's import attributes for a

@@ -3527,6 +3527,34 @@ pub extern "C" fn probe_tn_out_at(i: usize) -> f64 {
     TN_OUT.with(|o| o.borrow()[i])
 }
 
+// ======================= P38: game/Game.ts (game_ts) =========================
+
+thread_local! {
+    static GAME_ARGS: std::cell::RefCell<Vec<f64>> = const { std::cell::RefCell::new(Vec::new()) };
+    static GAME_OUT: std::cell::RefCell<Vec<f64>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
+/// Push one flat token (enum index, string length, code unit…).
+#[no_mangle]
+pub extern "C" fn probe_game_arg(v: f64) {
+    GAME_ARGS.with(|t| t.borrow_mut().push(v));
+}
+
+/// Run `game_ts::run_op(kind, args)`; returns the result-stream length.
+#[no_mangle]
+pub extern "C" fn probe_game_op(kind: u32) -> usize {
+    let a = GAME_ARGS.with(|t| std::mem::take(&mut *t.borrow_mut()));
+    let out = crate::game_ts::run_op(kind as u8, &a);
+    let len = out.len();
+    GAME_OUT.with(|o| *o.borrow_mut() = out);
+    len
+}
+
+#[no_mangle]
+pub extern "C" fn probe_game_out_at(i: usize) -> f64 {
+    GAME_OUT.with(|o| o.borrow()[i])
+}
+
 // ====================== P26: PatternDecoder (PatternDecoder.ts) ===============
 
 thread_local! {

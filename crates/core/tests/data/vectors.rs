@@ -33623,3 +33623,498 @@ pub const TN_SCENARIOS: &[TnScenario] = &[
     TN_GUANABARA_ID,
 ];
 
+/// game/Game.ts scenario: one `game_ts::run_op(kind, args)` call.
+/// kind 0/1 dump a string/numeric enum, 2 a unitTypeGroup, 3 an
+/// isEnumValue guard, 4 the message-category table / a lookup, 5
+/// ColoredTeams, 6 a Cell, 7 a PlayerInfo, 8 the bulk-cost math, 9
+/// the module consts. Strings cross as `[len, u0, ..]` UTF-16 units.
+pub struct GameScenario {
+    pub name: &'static str,
+    pub kind: u8,
+    pub args: &'static [f64],
+    pub res: &'static [f64],
+}
+
+pub const G_STR_0_DIFFICULTY: GameScenario = GameScenario {
+    name: "g_str_0_Difficulty",
+    kind: 0u8,
+    args: &[0f64],
+    res: &[4f64, 4f64, 69f64, 97f64, 115f64, 121f64, 4f64, 69f64, 97f64, 115f64, 121f64, 6f64, 77f64, 101f64, 100f64, 105f64, 117f64, 109f64, 6f64, 77f64, 101f64, 100f64, 105f64, 117f64, 109f64, 4f64, 72f64, 97f64, 114f64, 100f64, 4f64, 72f64, 97f64, 114f64, 100f64, 10f64, 73f64, 109f64, 112f64, 111f64, 115f64, 115f64, 105f64, 98f64, 108f64, 101f64, 10f64, 73f64, 109f64, 112f64, 111f64, 115f64, 115f64, 105f64, 98f64, 108f64, 101f64],
+};
+
+pub const G_STR_1_GAMETYPE: GameScenario = GameScenario {
+    name: "g_str_1_GameType",
+    kind: 0u8,
+    args: &[1f64],
+    res: &[3f64, 12f64, 83f64, 105f64, 110f64, 103f64, 108f64, 101f64, 112f64, 108f64, 97f64, 121f64, 101f64, 114f64, 12f64, 83f64, 105f64, 110f64, 103f64, 108f64, 101f64, 112f64, 108f64, 97f64, 121f64, 101f64, 114f64, 6f64, 80f64, 117f64, 98f64, 108f64, 105f64, 99f64, 6f64, 80f64, 117f64, 98f64, 108f64, 105f64, 99f64, 7f64, 80f64, 114f64, 105f64, 118f64, 97f64, 116f64, 101f64, 7f64, 80f64, 114f64, 105f64, 118f64, 97f64, 116f64, 101f64],
+};
+
+pub const G_STR_2_GAMEMODE: GameScenario = GameScenario {
+    name: "g_str_2_GameMode",
+    kind: 0u8,
+    args: &[2f64],
+    res: &[2f64, 3f64, 70f64, 70f64, 65f64, 12f64, 70f64, 114f64, 101f64, 101f64, 32f64, 70f64, 111f64, 114f64, 32f64, 65f64, 108f64, 108f64, 4f64, 84f64, 101f64, 97f64, 109f64, 4f64, 84f64, 101f64, 97f64, 109f64],
+};
+
+pub const G_STR_3_RANKEDTYPE: GameScenario = GameScenario {
+    name: "g_str_3_RankedType",
+    kind: 0u8,
+    args: &[3f64],
+    res: &[2f64, 7f64, 79f64, 110f64, 101f64, 86f64, 79f64, 110f64, 101f64, 3f64, 49f64, 118f64, 49f64, 7f64, 84f64, 119f64, 111f64, 86f64, 84f64, 119f64, 111f64, 3f64, 50f64, 118f64, 50f64],
+};
+
+pub const G_STR_4_GAMEMAPSIZE: GameScenario = GameScenario {
+    name: "g_str_4_GameMapSize",
+    kind: 0u8,
+    args: &[4f64],
+    res: &[2f64, 7f64, 67f64, 111f64, 109f64, 112f64, 97f64, 99f64, 116f64, 7f64, 67f64, 111f64, 109f64, 112f64, 97f64, 99f64, 116f64, 6f64, 78f64, 111f64, 114f64, 109f64, 97f64, 108f64, 6f64, 78f64, 111f64, 114f64, 109f64, 97f64, 108f64],
+};
+
+pub const G_STR_5_UNITTYPE: GameScenario = GameScenario {
+    name: "g_str_5_UnitType",
+    kind: 0u8,
+    args: &[5f64],
+    res: &[16f64, 13f64, 84f64, 114f64, 97f64, 110f64, 115f64, 112f64, 111f64, 114f64, 116f64, 83f64, 104f64, 105f64, 112f64, 9f64, 84f64, 114f64, 97f64, 110f64, 115f64, 112f64, 111f64, 114f64, 116f64, 7f64, 87f64, 97f64, 114f64, 115f64, 104f64, 105f64, 112f64, 7f64, 87f64, 97f64, 114f64, 115f64, 104f64, 105f64, 112f64, 5f64, 83f64, 104f64, 101f64, 108f64, 108f64, 5f64, 83f64, 104f64, 101f64, 108f64, 108f64, 10f64, 83f64, 65f64, 77f64, 77f64, 105f64, 115f64, 115f64, 105f64, 108f64, 101f64, 10f64, 83f64, 65f64, 77f64, 77f64, 105f64, 115f64, 115f64, 105f64, 108f64, 101f64, 4f64, 80f64, 111f64, 114f64, 116f64, 4f64, 80f64, 111f64, 114f64, 116f64, 8f64, 65f64, 116f64, 111f64, 109f64, 66f64, 111f64, 109f64, 98f64, 9f64, 65f64, 116f64, 111f64, 109f64, 32f64, 66f64, 111f64, 109f64, 98f64, 12f64, 72f64, 121f64, 100f64, 114f64, 111f64, 103f64, 101f64, 110f64, 66f64, 111f64, 109f64, 98f64, 13f64, 72f64, 121f64, 100f64, 114f64, 111f64, 103f64, 101f64, 110f64, 32f64, 66f64, 111f64, 109f64, 98f64, 9f64, 84f64, 114f64, 97f64, 100f64, 101f64, 83f64, 104f64, 105f64, 112f64, 10f64, 84f64, 114f64, 97f64, 100f64, 101f64, 32f64, 83f64, 104f64, 105f64, 112f64, 11f64, 77f64, 105f64, 115f64, 115f64, 105f64, 108f64, 101f64, 83f64, 105f64, 108f64, 111f64, 12f64, 77f64, 105f64, 115f64, 115f64, 105f64, 108f64, 101f64, 32f64, 83f64, 105f64, 108f64, 111f64, 11f64, 68f64, 101f64, 102f64, 101f64, 110f64, 115f64, 101f64, 80f64, 111f64, 115f64, 116f64, 12f64, 68f64, 101f64, 102f64, 101f64, 110f64, 115f64, 101f64, 32f64, 80f64, 111f64, 115f64, 116f64, 11f64, 83f64, 65f64, 77f64, 76f64, 97f64, 117f64, 110f64, 99f64, 104f64, 101f64, 114f64, 12f64, 83f64, 65f64, 77f64, 32f64, 76f64, 97f64, 117f64, 110f64, 99f64, 104f64, 101f64, 114f64, 4f64, 67f64, 105f64, 116f64, 121f64, 4f64, 67f64, 105f64, 116f64, 121f64, 4f64, 77f64, 73f64, 82f64, 86f64, 4f64, 77f64, 73f64, 82f64, 86f64, 11f64, 77f64, 73f64, 82f64, 86f64, 87f64, 97f64, 114f64, 104f64, 101f64, 97f64, 100f64, 12f64, 77f64, 73f64, 82f64, 86f64, 32f64, 87f64, 97f64, 114f64, 104f64, 101f64, 97f64, 100f64, 5f64, 84f64, 114f64, 97f64, 105f64, 110f64, 5f64, 84f64, 114f64, 97f64, 105f64, 110f64, 7f64, 70f64, 97f64, 99f64, 116f64, 111f64, 114f64, 121f64, 7f64, 70f64, 97f64, 99f64, 116f64, 111f64, 114f64, 121f64],
+};
+
+pub const G_STR_6_TRAINTYPE: GameScenario = GameScenario {
+    name: "g_str_6_TrainType",
+    kind: 0u8,
+    args: &[6f64],
+    res: &[3f64, 6f64, 69f64, 110f64, 103f64, 105f64, 110f64, 101f64, 6f64, 69f64, 110f64, 103f64, 105f64, 110f64, 101f64, 10f64, 84f64, 97f64, 105f64, 108f64, 69f64, 110f64, 103f64, 105f64, 110f64, 101f64, 10f64, 84f64, 97f64, 105f64, 108f64, 69f64, 110f64, 103f64, 105f64, 110f64, 101f64, 8f64, 67f64, 97f64, 114f64, 114f64, 105f64, 97f64, 103f64, 101f64, 8f64, 67f64, 97f64, 114f64, 114f64, 105f64, 97f64, 103f64, 101f64],
+};
+
+pub const G_STR_7_PLAYERTYPE: GameScenario = GameScenario {
+    name: "g_str_7_PlayerType",
+    kind: 0u8,
+    args: &[7f64],
+    res: &[3f64, 3f64, 66f64, 111f64, 116f64, 3f64, 66f64, 79f64, 84f64, 5f64, 72f64, 117f64, 109f64, 97f64, 110f64, 5f64, 72f64, 85f64, 77f64, 65f64, 78f64, 6f64, 78f64, 97f64, 116f64, 105f64, 111f64, 110f64, 6f64, 78f64, 65f64, 84f64, 73f64, 79f64, 78f64],
+};
+
+pub const G_STR_8_MESSAGECATEGORY: GameScenario = GameScenario {
+    name: "g_str_8_MessageCategory",
+    kind: 0u8,
+    args: &[8f64],
+    res: &[5f64, 6f64, 65f64, 84f64, 84f64, 65f64, 67f64, 75f64, 6f64, 65f64, 84f64, 84f64, 65f64, 67f64, 75f64, 4f64, 78f64, 85f64, 75f64, 69f64, 4f64, 78f64, 85f64, 75f64, 69f64, 8f64, 65f64, 76f64, 76f64, 73f64, 65f64, 78f64, 67f64, 69f64, 8f64, 65f64, 76f64, 76f64, 73f64, 65f64, 78f64, 67f64, 69f64, 5f64, 84f64, 82f64, 65f64, 68f64, 69f64, 5f64, 84f64, 82f64, 65f64, 68f64, 69f64, 4f64, 67f64, 72f64, 65f64, 84f64, 4f64, 67f64, 72f64, 65f64, 84f64],
+};
+
+pub const G_NUM_0_RELATION: GameScenario = GameScenario {
+    name: "g_num_0_Relation",
+    kind: 1u8,
+    args: &[0f64],
+    res: &[4f64, 7f64, 72f64, 111f64, 115f64, 116f64, 105f64, 108f64, 101f64, 0f64, 11f64, 68f64, 105f64, 115f64, 116f64, 114f64, 117f64, 115f64, 116f64, 102f64, 117f64, 108f64, 1f64, 7f64, 78f64, 101f64, 117f64, 116f64, 114f64, 97f64, 108f64, 2f64, 8f64, 70f64, 114f64, 105f64, 101f64, 110f64, 100f64, 108f64, 121f64, 3f64],
+};
+
+pub const G_NUM_1_TERRAINTYPE: GameScenario = GameScenario {
+    name: "g_num_1_TerrainType",
+    kind: 1u8,
+    args: &[1f64],
+    res: &[5f64, 6f64, 80f64, 108f64, 97f64, 105f64, 110f64, 115f64, 0f64, 8f64, 72f64, 105f64, 103f64, 104f64, 108f64, 97f64, 110f64, 100f64, 1f64, 8f64, 77f64, 111f64, 117f64, 110f64, 116f64, 97f64, 105f64, 110f64, 2f64, 5f64, 79f64, 99f64, 101f64, 97f64, 110f64, 3f64, 10f64, 73f64, 109f64, 112f64, 97f64, 115f64, 115f64, 97f64, 98f64, 108f64, 101f64, 4f64],
+};
+
+pub const G_NUM_2_MESSAGETYPE: GameScenario = GameScenario {
+    name: "g_num_2_MessageType",
+    kind: 1u8,
+    args: &[2f64],
+    res: &[22f64, 13f64, 65f64, 84f64, 84f64, 65f64, 67f64, 75f64, 95f64, 70f64, 65f64, 73f64, 76f64, 69f64, 68f64, 0f64, 16f64, 65f64, 84f64, 84f64, 65f64, 67f64, 75f64, 95f64, 67f64, 65f64, 78f64, 67f64, 69f64, 76f64, 76f64, 69f64, 68f64, 1f64, 14f64, 65f64, 84f64, 84f64, 65f64, 67f64, 75f64, 95f64, 82f64, 69f64, 81f64, 85f64, 69f64, 83f64, 84f64, 2f64, 16f64, 67f64, 79f64, 78f64, 81f64, 85f64, 69f64, 82f64, 69f64, 68f64, 95f64, 80f64, 76f64, 65f64, 89f64, 69f64, 82f64, 3f64, 12f64, 77f64, 73f64, 82f64, 86f64, 95f64, 73f64, 78f64, 66f64, 79f64, 85f64, 78f64, 68f64, 4f64, 12f64, 78f64, 85f64, 75f64, 69f64, 95f64, 73f64, 78f64, 66f64, 79f64, 85f64, 78f64, 68f64, 5f64, 14f64, 78f64, 85f64, 75f64, 69f64, 95f64, 68f64, 69f64, 84f64, 79f64, 78f64, 65f64, 84f64, 69f64, 68f64, 6f64, 21f64, 72f64, 89f64, 68f64, 82f64, 79f64, 71f64, 69f64, 78f64, 95f64, 66f64, 79f64, 77f64, 66f64, 95f64, 73f64, 78f64, 66f64, 79f64, 85f64, 78f64, 68f64, 7f64, 22f64, 78f64, 65f64, 86f64, 65f64, 76f64, 95f64, 73f64, 78f64, 86f64, 65f64, 83f64, 73f64, 79f64, 78f64, 95f64, 73f64, 78f64, 66f64, 79f64, 85f64, 78f64, 68f64, 8f64, 8f64, 83f64, 65f64, 77f64, 95f64, 77f64, 73f64, 83f64, 83f64, 9f64, 7f64, 83f64, 65f64, 77f64, 95f64, 72f64, 73f64, 84f64, 10f64, 19f64, 67f64, 65f64, 80f64, 84f64, 85f64, 82f64, 69f64, 68f64, 95f64, 69f64, 78f64, 69f64, 77f64, 89f64, 95f64, 85f64, 78f64, 73f64, 84f64, 11f64, 14f64, 85f64, 78f64, 73f64, 84f64, 95f64, 68f64, 69f64, 83f64, 84f64, 82f64, 79f64, 89f64, 69f64, 68f64, 12f64, 17f64, 65f64, 76f64, 76f64, 73f64, 65f64, 78f64, 67f64, 69f64, 95f64, 65f64, 67f64, 67f64, 69f64, 80f64, 84f64, 69f64, 68f64, 13f64, 17f64, 65f64, 76f64, 76f64, 73f64, 65f64, 78f64, 67f64, 69f64, 95f64, 82f64, 69f64, 74f64, 69f64, 67f64, 84f64, 69f64, 68f64, 14f64, 16f64, 65f64, 76f64, 76f64, 73f64, 65f64, 78f64, 67f64, 69f64, 95f64, 82f64, 69f64, 81f64, 85f64, 69f64, 83f64, 84f64, 15f64, 15f64, 65f64, 76f64, 76f64, 73f64, 65f64, 78f64, 67f64, 69f64, 95f64, 66f64, 82f64, 79f64, 75f64, 69f64, 78f64, 16f64, 16f64, 65f64, 76f64, 76f64, 73f64, 65f64, 78f64, 67f64, 69f64, 95f64, 69f64, 88f64, 80f64, 73f64, 82f64, 69f64, 68f64, 17f64, 13f64, 68f64, 79f64, 78f64, 65f64, 84f64, 73f64, 79f64, 78f64, 95f64, 83f64, 69f64, 78f64, 84f64, 18f64, 17f64, 68f64, 79f64, 78f64, 65f64, 84f64, 73f64, 79f64, 78f64, 95f64, 82f64, 69f64, 67f64, 69f64, 73f64, 86f64, 69f64, 68f64, 19f64, 4f64, 67f64, 72f64, 65f64, 84f64, 20f64, 14f64, 82f64, 69f64, 78f64, 69f64, 87f64, 95f64, 65f64, 76f64, 76f64, 73f64, 65f64, 78f64, 67f64, 69f64, 21f64],
+};
+
+pub const G_GROUP_0_NUKES: GameScenario = GameScenario {
+    name: "g_group_0_Nukes",
+    kind: 2u8,
+    args: &[0f64],
+    res: &[4f64, 9f64, 65f64, 116f64, 111f64, 109f64, 32f64, 66f64, 111f64, 109f64, 98f64, 13f64, 72f64, 121f64, 100f64, 114f64, 111f64, 103f64, 101f64, 110f64, 32f64, 66f64, 111f64, 109f64, 98f64, 12f64, 77f64, 73f64, 82f64, 86f64, 32f64, 87f64, 97f64, 114f64, 104f64, 101f64, 97f64, 100f64, 4f64, 77f64, 73f64, 82f64, 86f64, 16f64, 0f64, 0f64, 0f64, 0f64, 0f64, 1f64, 1f64, 0f64, 0f64, 0f64, 0f64, 0f64, 1f64, 1f64, 0f64, 0f64],
+};
+
+pub const G_GROUP_1_BUILDABLEATTACKS: GameScenario = GameScenario {
+    name: "g_group_1_BuildableAttacks",
+    kind: 2u8,
+    args: &[1f64],
+    res: &[4f64, 9f64, 65f64, 116f64, 111f64, 109f64, 32f64, 66f64, 111f64, 109f64, 98f64, 13f64, 72f64, 121f64, 100f64, 114f64, 111f64, 103f64, 101f64, 110f64, 32f64, 66f64, 111f64, 109f64, 98f64, 4f64, 77f64, 73f64, 82f64, 86f64, 7f64, 87f64, 97f64, 114f64, 115f64, 104f64, 105f64, 112f64, 16f64, 0f64, 1f64, 0f64, 0f64, 0f64, 1f64, 1f64, 0f64, 0f64, 0f64, 0f64, 0f64, 1f64, 0f64, 0f64, 0f64],
+};
+
+pub const G_GROUP_2_STRUCTURES: GameScenario = GameScenario {
+    name: "g_group_2_Structures",
+    kind: 2u8,
+    args: &[2f64],
+    res: &[6f64, 4f64, 67f64, 105f64, 116f64, 121f64, 12f64, 68f64, 101f64, 102f64, 101f64, 110f64, 115f64, 101f64, 32f64, 80f64, 111f64, 115f64, 116f64, 12f64, 83f64, 65f64, 77f64, 32f64, 76f64, 97f64, 117f64, 110f64, 99f64, 104f64, 101f64, 114f64, 12f64, 77f64, 105f64, 115f64, 115f64, 105f64, 108f64, 101f64, 32f64, 83f64, 105f64, 108f64, 111f64, 4f64, 80f64, 111f64, 114f64, 116f64, 7f64, 70f64, 97f64, 99f64, 116f64, 111f64, 114f64, 121f64, 16f64, 0f64, 0f64, 0f64, 0f64, 1f64, 0f64, 0f64, 0f64, 1f64, 1f64, 1f64, 1f64, 0f64, 0f64, 0f64, 1f64],
+};
+
+pub const G_GROUP_3_BUILDMENUS: GameScenario = GameScenario {
+    name: "g_group_3_BuildMenus",
+    kind: 2u8,
+    args: &[3f64],
+    res: &[10f64, 4f64, 67f64, 105f64, 116f64, 121f64, 12f64, 68f64, 101f64, 102f64, 101f64, 110f64, 115f64, 101f64, 32f64, 80f64, 111f64, 115f64, 116f64, 12f64, 83f64, 65f64, 77f64, 32f64, 76f64, 97f64, 117f64, 110f64, 99f64, 104f64, 101f64, 114f64, 12f64, 77f64, 105f64, 115f64, 115f64, 105f64, 108f64, 101f64, 32f64, 83f64, 105f64, 108f64, 111f64, 4f64, 80f64, 111f64, 114f64, 116f64, 7f64, 70f64, 97f64, 99f64, 116f64, 111f64, 114f64, 121f64, 9f64, 65f64, 116f64, 111f64, 109f64, 32f64, 66f64, 111f64, 109f64, 98f64, 13f64, 72f64, 121f64, 100f64, 114f64, 111f64, 103f64, 101f64, 110f64, 32f64, 66f64, 111f64, 109f64, 98f64, 4f64, 77f64, 73f64, 82f64, 86f64, 7f64, 87f64, 97f64, 114f64, 115f64, 104f64, 105f64, 112f64, 16f64, 0f64, 1f64, 0f64, 0f64, 1f64, 1f64, 1f64, 0f64, 1f64, 1f64, 1f64, 1f64, 1f64, 0f64, 0f64, 1f64],
+};
+
+pub const G_GROUP_4_PLAYERBUILDABLE: GameScenario = GameScenario {
+    name: "g_group_4_PlayerBuildable",
+    kind: 2u8,
+    args: &[4f64],
+    res: &[11f64, 4f64, 67f64, 105f64, 116f64, 121f64, 12f64, 68f64, 101f64, 102f64, 101f64, 110f64, 115f64, 101f64, 32f64, 80f64, 111f64, 115f64, 116f64, 12f64, 83f64, 65f64, 77f64, 32f64, 76f64, 97f64, 117f64, 110f64, 99f64, 104f64, 101f64, 114f64, 12f64, 77f64, 105f64, 115f64, 115f64, 105f64, 108f64, 101f64, 32f64, 83f64, 105f64, 108f64, 111f64, 4f64, 80f64, 111f64, 114f64, 116f64, 7f64, 70f64, 97f64, 99f64, 116f64, 111f64, 114f64, 121f64, 9f64, 65f64, 116f64, 111f64, 109f64, 32f64, 66f64, 111f64, 109f64, 98f64, 13f64, 72f64, 121f64, 100f64, 114f64, 111f64, 103f64, 101f64, 110f64, 32f64, 66f64, 111f64, 109f64, 98f64, 4f64, 77f64, 73f64, 82f64, 86f64, 7f64, 87f64, 97f64, 114f64, 115f64, 104f64, 105f64, 112f64, 9f64, 84f64, 114f64, 97f64, 110f64, 115f64, 112f64, 111f64, 114f64, 116f64, 16f64, 1f64, 1f64, 0f64, 0f64, 1f64, 1f64, 1f64, 0f64, 1f64, 1f64, 1f64, 1f64, 1f64, 0f64, 0f64, 1f64],
+};
+
+pub const G_GUARD_0: GameScenario = GameScenario {
+    name: "g_guard_0",
+    kind: 3u8,
+    args: &[0f64, 4f64, 69f64, 97f64, 115f64, 121f64],
+    res: &[1f64],
+};
+
+pub const G_GUARD_1: GameScenario = GameScenario {
+    name: "g_guard_1",
+    kind: 3u8,
+    args: &[0f64, 4f64, 101f64, 97f64, 115f64, 121f64],
+    res: &[0f64],
+};
+
+pub const G_GUARD_2: GameScenario = GameScenario {
+    name: "g_guard_2",
+    kind: 3u8,
+    args: &[0f64, 10f64, 73f64, 109f64, 112f64, 111f64, 115f64, 115f64, 105f64, 98f64, 108f64, 101f64],
+    res: &[1f64],
+};
+
+pub const G_GUARD_3: GameScenario = GameScenario {
+    name: "g_guard_3",
+    kind: 3u8,
+    args: &[0f64, 0f64],
+    res: &[0f64],
+};
+
+pub const G_GUARD_4: GameScenario = GameScenario {
+    name: "g_guard_4",
+    kind: 3u8,
+    args: &[1f64, 6f64, 80f64, 117f64, 98f64, 108f64, 105f64, 99f64],
+    res: &[1f64],
+};
+
+pub const G_GUARD_5: GameScenario = GameScenario {
+    name: "g_guard_5",
+    kind: 3u8,
+    args: &[1f64, 12f64, 83f64, 105f64, 110f64, 103f64, 108f64, 101f64, 112f64, 108f64, 97f64, 121f64, 101f64, 114f64],
+    res: &[1f64],
+};
+
+pub const G_GUARD_6: GameScenario = GameScenario {
+    name: "g_guard_6",
+    kind: 3u8,
+    args: &[1f64, 6f64, 112f64, 117f64, 98f64, 108f64, 105f64, 99f64],
+    res: &[0f64],
+};
+
+pub const G_GUARD_7: GameScenario = GameScenario {
+    name: "g_guard_7",
+    kind: 3u8,
+    args: &[2f64, 12f64, 70f64, 114f64, 101f64, 101f64, 32f64, 70f64, 111f64, 114f64, 32f64, 65f64, 108f64, 108f64],
+    res: &[1f64],
+};
+
+pub const G_GUARD_8: GameScenario = GameScenario {
+    name: "g_guard_8",
+    kind: 3u8,
+    args: &[2f64, 4f64, 84f64, 101f64, 97f64, 109f64],
+    res: &[1f64],
+};
+
+pub const G_GUARD_9: GameScenario = GameScenario {
+    name: "g_guard_9",
+    kind: 3u8,
+    args: &[2f64, 3f64, 70f64, 70f64, 65f64],
+    res: &[0f64],
+};
+
+pub const G_GUARD_10: GameScenario = GameScenario {
+    name: "g_guard_10",
+    kind: 3u8,
+    args: &[2f64, 4f64, 78f64, 111f64, 112f64, 101f64],
+    res: &[0f64],
+};
+
+pub const G_MSGCAT_DUMP: GameScenario = GameScenario {
+    name: "g_msgcat_dump",
+    kind: 4u8,
+    args: &[0f64],
+    res: &[22f64, 6f64, 65f64, 84f64, 84f64, 65f64, 67f64, 75f64, 6f64, 65f64, 84f64, 84f64, 65f64, 67f64, 75f64, 6f64, 65f64, 84f64, 84f64, 65f64, 67f64, 75f64, 6f64, 65f64, 84f64, 84f64, 65f64, 67f64, 75f64, 4f64, 78f64, 85f64, 75f64, 69f64, 4f64, 78f64, 85f64, 75f64, 69f64, 4f64, 78f64, 85f64, 75f64, 69f64, 4f64, 78f64, 85f64, 75f64, 69f64, 6f64, 65f64, 84f64, 84f64, 65f64, 67f64, 75f64, 6f64, 65f64, 84f64, 84f64, 65f64, 67f64, 75f64, 6f64, 65f64, 84f64, 84f64, 65f64, 67f64, 75f64, 6f64, 65f64, 84f64, 84f64, 65f64, 67f64, 75f64, 6f64, 65f64, 84f64, 84f64, 65f64, 67f64, 75f64, 8f64, 65f64, 76f64, 76f64, 73f64, 65f64, 78f64, 67f64, 69f64, 8f64, 65f64, 76f64, 76f64, 73f64, 65f64, 78f64, 67f64, 69f64, 8f64, 65f64, 76f64, 76f64, 73f64, 65f64, 78f64, 67f64, 69f64, 8f64, 65f64, 76f64, 76f64, 73f64, 65f64, 78f64, 67f64, 69f64, 8f64, 65f64, 76f64, 76f64, 73f64, 65f64, 78f64, 67f64, 69f64, 5f64, 84f64, 82f64, 65f64, 68f64, 69f64, 5f64, 84f64, 82f64, 65f64, 68f64, 69f64, 4f64, 67f64, 72f64, 65f64, 84f64, 8f64, 65f64, 76f64, 76f64, 73f64, 65f64, 78f64, 67f64, 69f64],
+};
+
+pub const G_MSGCAT_GET_0: GameScenario = GameScenario {
+    name: "g_msgcat_get_0",
+    kind: 4u8,
+    args: &[1f64, 0f64],
+    res: &[1f64, 6f64, 65f64, 84f64, 84f64, 65f64, 67f64, 75f64],
+};
+
+pub const G_MSGCAT_GET_4: GameScenario = GameScenario {
+    name: "g_msgcat_get_4",
+    kind: 4u8,
+    args: &[1f64, 4f64],
+    res: &[1f64, 4f64, 78f64, 85f64, 75f64, 69f64],
+};
+
+pub const G_MSGCAT_GET_8: GameScenario = GameScenario {
+    name: "g_msgcat_get_8",
+    kind: 4u8,
+    args: &[1f64, 8f64],
+    res: &[1f64, 6f64, 65f64, 84f64, 84f64, 65f64, 67f64, 75f64],
+};
+
+pub const G_MSGCAT_GET_13: GameScenario = GameScenario {
+    name: "g_msgcat_get_13",
+    kind: 4u8,
+    args: &[1f64, 13f64],
+    res: &[1f64, 8f64, 65f64, 76f64, 76f64, 73f64, 65f64, 78f64, 67f64, 69f64],
+};
+
+pub const G_MSGCAT_GET_18: GameScenario = GameScenario {
+    name: "g_msgcat_get_18",
+    kind: 4u8,
+    args: &[1f64, 18f64],
+    res: &[1f64, 5f64, 84f64, 82f64, 65f64, 68f64, 69f64],
+};
+
+pub const G_MSGCAT_GET_20: GameScenario = GameScenario {
+    name: "g_msgcat_get_20",
+    kind: 4u8,
+    args: &[1f64, 20f64],
+    res: &[1f64, 4f64, 67f64, 72f64, 65f64, 84f64],
+};
+
+pub const G_MSGCAT_GET_21: GameScenario = GameScenario {
+    name: "g_msgcat_get_21",
+    kind: 4u8,
+    args: &[1f64, 21f64],
+    res: &[1f64, 8f64, 65f64, 76f64, 76f64, 73f64, 65f64, 78f64, 67f64, 69f64],
+};
+
+pub const G_MSGCAT_GET_22: GameScenario = GameScenario {
+    name: "g_msgcat_get_22",
+    kind: 4u8,
+    args: &[1f64, 22f64],
+    res: &[0f64],
+};
+
+pub const G_MSGCAT_GET_1: GameScenario = GameScenario {
+    name: "g_msgcat_get_1",
+    kind: 4u8,
+    args: &[1f64, -1f64],
+    res: &[0f64],
+};
+
+pub const G_MSGCAT_GET_999: GameScenario = GameScenario {
+    name: "g_msgcat_get_999",
+    kind: 4u8,
+    args: &[1f64, 999f64],
+    res: &[0f64],
+};
+
+pub const G_COLORED_TEAMS: GameScenario = GameScenario {
+    name: "g_colored_teams",
+    kind: 5u8,
+    args: &[0f64],
+    res: &[10f64, 3f64, 82f64, 101f64, 100f64, 3f64, 82f64, 101f64, 100f64, 4f64, 66f64, 108f64, 117f64, 101f64, 4f64, 66f64, 108f64, 117f64, 101f64, 4f64, 84f64, 101f64, 97f64, 108f64, 4f64, 84f64, 101f64, 97f64, 108f64, 6f64, 80f64, 117f64, 114f64, 112f64, 108f64, 101f64, 6f64, 80f64, 117f64, 114f64, 112f64, 108f64, 101f64, 6f64, 89f64, 101f64, 108f64, 108f64, 111f64, 119f64, 6f64, 89f64, 101f64, 108f64, 108f64, 111f64, 119f64, 6f64, 79f64, 114f64, 97f64, 110f64, 103f64, 101f64, 6f64, 79f64, 114f64, 97f64, 110f64, 103f64, 101f64, 5f64, 71f64, 114f64, 101f64, 101f64, 110f64, 5f64, 71f64, 114f64, 101f64, 101f64, 110f64, 3f64, 66f64, 111f64, 116f64, 3f64, 66f64, 111f64, 116f64, 6f64, 72f64, 117f64, 109f64, 97f64, 110f64, 115f64, 6f64, 72f64, 117f64, 109f64, 97f64, 110f64, 115f64, 7f64, 78f64, 97f64, 116f64, 105f64, 111f64, 110f64, 115f64, 7f64, 78f64, 97f64, 116f64, 105f64, 111f64, 110f64, 115f64],
+};
+
+pub const G_CELL_3_4: GameScenario = GameScenario {
+    name: "g_cell_3_4",
+    kind: 6u8,
+    args: &[3f64, -4f64],
+    res: &[10f64, 67f64, 101f64, 108f64, 108f64, 91f64, 51f64, 44f64, 45f64, 52f64, 93f64, 3f64, -4f64],
+};
+
+pub const G_CELL_0_0: GameScenario = GameScenario {
+    name: "g_cell_0_0",
+    kind: 6u8,
+    args: &[0f64, 0f64],
+    res: &[9f64, 67f64, 101f64, 108f64, 108f64, 91f64, 48f64, 44f64, 48f64, 93f64, 0f64, 0f64],
+};
+
+pub const G_CELL_0_1_5: GameScenario = GameScenario {
+    name: "g_cell_0_1_5",
+    kind: 6u8,
+    args: &[-0.0f64, 1.5f64],
+    res: &[11f64, 67f64, 101f64, 108f64, 108f64, 91f64, 48f64, 44f64, 49f64, 46f64, 53f64, 93f64, -0.0f64, 1.5f64],
+};
+
+pub const G_CELL_100_250: GameScenario = GameScenario {
+    name: "g_cell_100_250",
+    kind: 6u8,
+    args: &[100f64, 250f64],
+    res: &[13f64, 67f64, 101f64, 108f64, 108f64, 91f64, 49f64, 48f64, 48f64, 44f64, 50f64, 53f64, 48f64, 93f64, 100f64, 250f64],
+};
+
+pub const G_CELL_7_13: GameScenario = GameScenario {
+    name: "g_cell_7_13",
+    kind: 6u8,
+    args: &[7f64, -13f64],
+    res: &[11f64, 67f64, 101f64, 108f64, 108f64, 91f64, 55f64, 44f64, 45f64, 49f64, 51f64, 93f64, 7f64, -13f64],
+};
+
+pub const G_CELL_1_5_2_25: GameScenario = GameScenario {
+    name: "g_cell_1_5_2_25",
+    kind: 6u8,
+    args: &[1.5f64, 2.25f64],
+    res: &[14f64, 67f64, 101f64, 108f64, 108f64, 91f64, 49f64, 46f64, 53f64, 44f64, 50f64, 46f64, 50f64, 53f64, 93f64, 1.5f64, 2.25f64],
+};
+
+pub const G_PINFO_0: GameScenario = GameScenario {
+    name: "g_pinfo_0",
+    kind: 7u8,
+    args: &[3f64, 66f64, 111f64, 98f64, 5f64, 72f64, 85f64, 77f64, 65f64, 78f64, 2f64, 112f64, 49f64, 0f64],
+    res: &[3f64, 66f64, 111f64, 98f64, 5f64, 72f64, 85f64, 77f64, 65f64, 78f64, 2f64, 112f64, 49f64, 0f64, 0f64, 0f64, 0f64, 0f64],
+};
+
+pub const G_PINFO_1: GameScenario = GameScenario {
+    name: "g_pinfo_1",
+    kind: 7u8,
+    args: &[3f64, 66f64, 111f64, 98f64, 3f64, 66f64, 79f64, 84f64, 2f64, 112f64, 50f64, 1f64, 3f64, 120f64, 121f64, 122f64],
+    res: &[9f64, 91f64, 120f64, 121f64, 122f64, 93f64, 32f64, 66f64, 111f64, 98f64, 3f64, 66f64, 79f64, 84f64, 2f64, 112f64, 50f64, 0f64, 0f64, 0f64, 0f64, 0f64],
+};
+
+pub const G_PINFO_2: GameScenario = GameScenario {
+    name: "g_pinfo_2",
+    kind: 7u8,
+    args: &[5f64, 65f64, 108f64, 105f64, 99f64, 101f64, 6f64, 78f64, 65f64, 84f64, 73f64, 79f64, 78f64, 2f64, 112f64, 51f64, 1f64, 0f64],
+    res: &[5f64, 65f64, 108f64, 105f64, 99f64, 101f64, 6f64, 78f64, 65f64, 84f64, 73f64, 79f64, 78f64, 2f64, 112f64, 51f64, 0f64, 0f64, 0f64, 0f64, 0f64],
+};
+
+pub const G_PINFO_3: GameScenario = GameScenario {
+    name: "g_pinfo_3",
+    kind: 7u8,
+    args: &[0f64, 5f64, 72f64, 85f64, 77f64, 65f64, 78f64, 0f64, 1f64, 3f64, 116f64, 97f64, 103f64],
+    res: &[6f64, 91f64, 116f64, 97f64, 103f64, 93f64, 32f64, 5f64, 72f64, 85f64, 77f64, 65f64, 78f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64],
+};
+
+pub const G_PINFO_4: GameScenario = GameScenario {
+    name: "g_pinfo_4",
+    kind: 7u8,
+    args: &[7f64, 220f64, 110f64, 239f64, 99f64, 111f64, 100f64, 101f64, 5f64, 72f64, 85f64, 77f64, 65f64, 78f64, 1f64, 252f64, 1f64, 4f64, 1082f64, 1083f64, 1102f64, 1095f64],
+    res: &[14f64, 91f64, 1082f64, 1083f64, 1102f64, 1095f64, 93f64, 32f64, 220f64, 110f64, 239f64, 99f64, 111f64, 100f64, 101f64, 5f64, 72f64, 85f64, 77f64, 65f64, 78f64, 1f64, 252f64, 0f64, 0f64, 0f64, 0f64, 0f64],
+};
+
+pub const G_BULK_0: GameScenario = GameScenario {
+    name: "g_bulk_0",
+    kind: 8u8,
+    args: &[100f64, 1f64, 3f64, 10f64, 30f64, 60f64, 2f64, 35f64],
+    res: &[30f64, 2f64],
+};
+
+pub const G_BULK_1: GameScenario = GameScenario {
+    name: "g_bulk_1",
+    kind: 8u8,
+    args: &[100f64, 1f64, 3f64, 10f64, 30f64, 60f64, 5f64, 1000f64],
+    res: &[500f64, 3f64],
+};
+
+pub const G_BULK_2: GameScenario = GameScenario {
+    name: "g_bulk_2",
+    kind: 8u8,
+    args: &[100f64, 1f64, 3f64, 10f64, 30f64, 60f64, 0f64, 500f64],
+    res: &[0f64, 3f64],
+};
+
+pub const G_BULK_3: GameScenario = GameScenario {
+    name: "g_bulk_3",
+    kind: 8u8,
+    args: &[100f64, 1f64, 3f64, 10f64, 30f64, 60f64, 3f64, 35f64],
+    res: &[60f64, 2f64],
+};
+
+pub const G_BULK_4: GameScenario = GameScenario {
+    name: "g_bulk_4",
+    kind: 8u8,
+    args: &[1f64, 0f64, 3f64, 100f64],
+    res: &[3f64, 50f64],
+};
+
+pub const G_BULK_5: GameScenario = GameScenario {
+    name: "g_bulk_5",
+    kind: 8u8,
+    args: &[7f64, 0f64, 1f64, 0f64],
+    res: &[7f64, 0f64],
+};
+
+pub const G_BULK_6: GameScenario = GameScenario {
+    name: "g_bulk_6",
+    kind: 8u8,
+    args: &[2f64, 1f64, 4f64, 1f64, 3f64, 6f64, 10f64, 4f64, 10f64],
+    res: &[10f64, 4f64],
+};
+
+pub const G_BULK_7: GameScenario = GameScenario {
+    name: "g_bulk_7",
+    kind: 8u8,
+    args: &[5f64, 1f64, 3f64, 5f64, 10f64, 15f64, 2f64, 12f64],
+    res: &[10f64, 2f64],
+};
+
+pub const G_CONSTS: GameScenario = GameScenario {
+    name: "g_consts",
+    kind: 9u8,
+    args: &[0f64],
+    res: &[10f64, 65f64, 108f64, 108f64, 80f64, 108f64, 97f64, 121f64, 101f64, 114f64, 115f64, 4f64, 68f64, 117f64, 111f64, 115f64, 5f64, 84f64, 114f64, 105f64, 111f64, 115f64, 5f64, 81f64, 117f64, 97f64, 100f64, 115f64, 17f64, 72f64, 117f64, 109f64, 97f64, 110f64, 115f64, 32f64, 86f64, 115f64, 32f64, 78f64, 97f64, 116f64, 105f64, 111f64, 110f64, 115f64, 50f64, 2f64, 2f64, 5f64, 2f64, 5f64, 10f64],
+};
+
+pub const GAME_SCENARIOS: &[GameScenario] = &[
+    G_STR_0_DIFFICULTY,
+    G_STR_1_GAMETYPE,
+    G_STR_2_GAMEMODE,
+    G_STR_3_RANKEDTYPE,
+    G_STR_4_GAMEMAPSIZE,
+    G_STR_5_UNITTYPE,
+    G_STR_6_TRAINTYPE,
+    G_STR_7_PLAYERTYPE,
+    G_STR_8_MESSAGECATEGORY,
+    G_NUM_0_RELATION,
+    G_NUM_1_TERRAINTYPE,
+    G_NUM_2_MESSAGETYPE,
+    G_GROUP_0_NUKES,
+    G_GROUP_1_BUILDABLEATTACKS,
+    G_GROUP_2_STRUCTURES,
+    G_GROUP_3_BUILDMENUS,
+    G_GROUP_4_PLAYERBUILDABLE,
+    G_GUARD_0,
+    G_GUARD_1,
+    G_GUARD_2,
+    G_GUARD_3,
+    G_GUARD_4,
+    G_GUARD_5,
+    G_GUARD_6,
+    G_GUARD_7,
+    G_GUARD_8,
+    G_GUARD_9,
+    G_GUARD_10,
+    G_MSGCAT_DUMP,
+    G_MSGCAT_GET_0,
+    G_MSGCAT_GET_4,
+    G_MSGCAT_GET_8,
+    G_MSGCAT_GET_13,
+    G_MSGCAT_GET_18,
+    G_MSGCAT_GET_20,
+    G_MSGCAT_GET_21,
+    G_MSGCAT_GET_22,
+    G_MSGCAT_GET_1,
+    G_MSGCAT_GET_999,
+    G_COLORED_TEAMS,
+    G_CELL_3_4,
+    G_CELL_0_0,
+    G_CELL_0_1_5,
+    G_CELL_100_250,
+    G_CELL_7_13,
+    G_CELL_1_5_2_25,
+    G_PINFO_0,
+    G_PINFO_1,
+    G_PINFO_2,
+    G_PINFO_3,
+    G_PINFO_4,
+    G_BULK_0,
+    G_BULK_1,
+    G_BULK_2,
+    G_BULK_3,
+    G_BULK_4,
+    G_BULK_5,
+    G_BULK_6,
+    G_BULK_7,
+    G_CONSTS,
+];
+

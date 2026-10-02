@@ -37379,3 +37379,90 @@ pub const NE_SCENARIOS: &[NeScenario] = &[
     NE_ID_BATCH,
 ];
 
+/// pathfinding/PathFinder.ts WaterPathMemo scenario: one
+/// `water_path_memo::run_op(kind, args)` call. kind 0 replays the
+/// whole scenario (scripted inner mock + op sequence) and emits the
+/// per-op token stream; args/res layouts are documented in
+/// water_path_memo.rs. All tokens are plain numbers.
+pub struct WpmScenario {
+    pub name: &'static str,
+    pub kind: u8,
+    pub args: &'static [f64],
+    pub res: &'static [f64],
+}
+
+pub const WPM_MISS: WpmScenario = WpmScenario {
+    name: "wpm_miss",
+    kind: 0u8,
+    args: &[100f64, 100000f64, 1f64, 2f64, 1f64, 3f64, 1f64, 2f64, 3f64, 1f64, 1f64, 7f64, 2f64, 0f64, 1f64, 2f64, 0f64, 4f64, 5f64],
+    res: &[1f64, 3f64, 1f64, 2f64, 3f64, 1f64, 12f64, 1f64, 0f64, 1f64, 2f64, 1f64, 1f64, 7f64, 2f64, 16f64, 1f64, 0f64, 4f64, 5f64],
+};
+
+pub const WPM_HIT: WpmScenario = WpmScenario {
+    name: "wpm_hit",
+    kind: 0u8,
+    args: &[100f64, 100000f64, 1f64, 1f64, 1f64, 3f64, 1f64, 2f64, 3f64, 2f64, 0f64, 1f64, 2f64, 0f64, 1f64, 2f64],
+    res: &[1f64, 3f64, 1f64, 2f64, 3f64, 1f64, 12f64, 1f64, 0f64, 1f64, 2f64, 1f64, 3f64, 1f64, 2f64, 3f64, 1f64, 12f64, 0f64],
+};
+
+pub const WPM_NULL: WpmScenario = WpmScenario {
+    name: "wpm_null",
+    kind: 0u8,
+    args: &[100f64, 100000f64, 1f64, 1f64, 0f64, 0f64, 5f64, 0f64, 1f64, 2f64, 4f64, 0f64, 1f64, 2f64, 3f64, 4f64],
+    res: &[0f64, 0f64, 1f64, 16f64, 1f64, 0f64, 1f64, 2f64, 16f64, 0f64, 0f64, 1f64, 16f64, 0f64, 1f64, 16f64],
+};
+
+pub const WPM_LRU: WpmScenario = WpmScenario {
+    name: "wpm_lru",
+    kind: 0u8,
+    args: &[100f64, 100f64, 1f64, 5f64, 1f64, 10f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 10f64, 2f64, 2f64, 2f64, 2f64, 2f64, 2f64, 2f64, 2f64, 2f64, 2f64, 1f64, 5f64, 3f64, 3f64, 3f64, 3f64, 3f64, 1f64, 10f64, 4f64, 4f64, 4f64, 4f64, 4f64, 4f64, 4f64, 4f64, 4f64, 4f64, 1f64, 10f64, 5f64, 5f64, 5f64, 5f64, 5f64, 5f64, 5f64, 5f64, 5f64, 5f64, 7f64, 0f64, 1f64, 2f64, 0f64, 3f64, 4f64, 0f64, 5f64, 6f64, 0f64, 1f64, 2f64, 0f64, 7f64, 8f64, 0f64, 1f64, 2f64, 0f64, 3f64, 4f64],
+    res: &[1f64, 10f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 40f64, 1f64, 0f64, 1f64, 2f64, 1f64, 10f64, 2f64, 2f64, 2f64, 2f64, 2f64, 2f64, 2f64, 2f64, 2f64, 2f64, 2f64, 80f64, 1f64, 0f64, 3f64, 4f64, 1f64, 5f64, 3f64, 3f64, 3f64, 3f64, 3f64, 3f64, 100f64, 1f64, 0f64, 5f64, 6f64, 1f64, 10f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 3f64, 100f64, 0f64, 1f64, 10f64, 4f64, 4f64, 4f64, 4f64, 4f64, 4f64, 4f64, 4f64, 4f64, 4f64, 3f64, 100f64, 1f64, 0f64, 7f64, 8f64, 1f64, 10f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 3f64, 100f64, 0f64, 1f64, 10f64, 5f64, 5f64, 5f64, 5f64, 5f64, 5f64, 5f64, 5f64, 5f64, 5f64, 2f64, 80f64, 1f64, 0f64, 3f64, 4f64],
+};
+
+pub const WPM_VERSION: WpmScenario = WpmScenario {
+    name: "wpm_version",
+    kind: 0u8,
+    args: &[100f64, 100000f64, 1f64, 3f64, 1f64, 3f64, 1f64, 2f64, 3f64, 1f64, 3f64, 1f64, 2f64, 3f64, 1f64, 1f64, 9f64, 6f64, 0f64, 1f64, 2f64, 2f64, 2f64, 1f64, 2f64, 3f64, 1f64, 2f64, 3f64, 4f64, 0f64, 1f64, 2f64],
+    res: &[1f64, 3f64, 1f64, 2f64, 3f64, 1f64, 12f64, 1f64, 0f64, 1f64, 2f64, 1f64, 3f64, 1f64, 2f64, 3f64, 0f64, 0f64, 1f64, 1f64, 2f64, 3f64, 1f64, 2f64, 0f64, 0f64, 1f64, 1f64, 9f64, 1f64, 4f64, 1f64, 0f64, 1f64, 2f64],
+};
+
+pub const WPM_ARRAY_FROM: WpmScenario = WpmScenario {
+    name: "wpm_array_from",
+    kind: 0u8,
+    args: &[100f64, 100000f64, 1f64, 2f64, 1f64, 2f64, 4f64, 5f64, 0f64, 0f64, 5f64, 1f64, 2f64, 7f64, 10f64, 20f64, 3f64, 4f64, 1f64, 1f64, 7f64, 30f64, 3f64],
+    res: &[1f64, 2f64, 4f64, 5f64, 0f64, 0f64, 1f64, 1f64, 2f64, 7f64, 10f64, 20f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 1f64, 1f64, 1f64, 7f64, 30f64, 0f64],
+};
+
+pub const WPM_OVER_BUDGET: WpmScenario = WpmScenario {
+    name: "wpm_over_budget",
+    kind: 0u8,
+    args: &[100f64, 10f64, 1f64, 2f64, 1f64, 10f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 10f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 4f64, 0f64, 1f64, 2f64, 3f64, 4f64, 0f64, 1f64, 2f64],
+    res: &[1f64, 10f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 0f64, 0f64, 1f64, 0f64, 1f64, 2f64, 0f64, 0f64, 1f64, 10f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 1f64, 0f64, 0f64, 1f64, 0f64, 1f64, 2f64],
+};
+
+pub const WPM_KEY_COLLISION: WpmScenario = WpmScenario {
+    name: "wpm_key_collision",
+    kind: 0u8,
+    args: &[10f64, 100000f64, 1f64, 1f64, 1f64, 3f64, 1f64, 2f64, 3f64, 3f64, 0f64, 1f64, 2f64, 0f64, 0f64, 12f64, 0f64, 1f64, 2f64],
+    res: &[1f64, 3f64, 1f64, 2f64, 3f64, 1f64, 12f64, 1f64, 0f64, 1f64, 2f64, 1f64, 3f64, 1f64, 2f64, 3f64, 1f64, 12f64, 0f64, 1f64, 3f64, 1f64, 2f64, 3f64, 1f64, 12f64, 0f64],
+};
+
+pub const WPM_UINT32: WpmScenario = WpmScenario {
+    name: "wpm_uint32",
+    kind: 0u8,
+    args: &[100f64, 100000f64, 1f64, 1f64, 1f64, 3f64, -1f64, 4294967297f64, 2.9f64, 3f64, 0f64, 1f64, 2f64, 4f64, 0f64, 1f64, 2f64],
+    res: &[1f64, 3f64, -1f64, 4294967297f64, 2.9f64, 1f64, 12f64, 1f64, 0f64, 1f64, 2f64, 12f64, 1f64, 3f64, 4294967295f64, 1f64, 2f64, 1f64, 12f64, 0f64],
+};
+
+pub const WPM_SCENARIOS: &[WpmScenario] = &[
+    WPM_MISS,
+    WPM_HIT,
+    WPM_NULL,
+    WPM_LRU,
+    WPM_VERSION,
+    WPM_ARRAY_FROM,
+    WPM_OVER_BUDGET,
+    WPM_KEY_COLLISION,
+    WPM_UINT32,
+];
+

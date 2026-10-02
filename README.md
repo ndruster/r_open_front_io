@@ -92,6 +92,9 @@ rust/
 │   │   ├── nation_emoji.rs        port of Util.ts emojiTable /
 │   │   │                          flattenedEmojiTable + NationEmojiBehavior.ts
 │   │   │                          EMOJI_* constants
+│   │   ├── water_path_memo.rs     port of pathfinding/PathFinder.ts
+│   │   │                          (WaterPathMemo only: LRU byte-budget memo
+│   │   │                          over a scripted inner pathfinder)
 │   │   ├── wasm_probe.rs          `extern "C"` surface, feature-gated
 │   │   └── pathfinding/
 │   │       ├── mod.rs
@@ -758,6 +761,27 @@ desync, not a rounding nit. Two things enforce that here:
     result tokens: grid dump, flattened dump, the 23 id arrays with names,
     and per-string + batched `emoji_id` over all 60 entries plus the -1
     branches).
+43. **`pathfinding/PathFinder.ts`** (`water_path_memo`) — only `WaterPathMemo`
+    is ported: the rest of the file (`UniversalPathFinding`,
+    `sharedWaterChain` / `buildWaterChain`, `PathFinding`, `WaterPathFinder`,
+    `tileStepperConfig`) rides on the `Game` facade. The inner `PathFinder` is
+    a scripted mock (a queue of canned array/null answers that records its
+    call arguments), so cache hits — where the chain is never touched — and
+    array-`from` passthrough are observable in the token stream. Faithfulness
+    points: a `null` answer is cached and costs a flat 16 bytes (a real path
+    costs `len * 4`, the `Uint32Array.byteLength`); LRU order is JS `Map`
+    insertion order with delete+re-insert on every hit; the waterVersion
+    check runs at *every* `findPath` entry (even array-`from` queries) and a
+    bump clears the whole cache; the numeric key `from * numTiles + to` is
+    plain f64 arithmetic, so colliding pairs share an entry; a single
+    over-budget insert evicts itself; and a cache *hit* returns the
+    `Uint32Array` copy, whose `ToUint32` coercion can differ from the raw
+    path the miss returned (-1 → 4294967295, 2^32+1 → 1). The loader drops
+    the whole import block (type-only or Game-graph values the memo never
+    touches) and expands both parameter-property ctors strip mode parses. 9
+    scenarios (314 result tokens) cover miss, hit, null accounting, LRU
+    re-insertion vs eviction order, waterVersion clears, array passthrough,
+    over-budget self-eviction, key collision, and the Uint32 coercion.
 
 Regenerate whenever a ported source changes:
 
@@ -791,7 +815,7 @@ node rust/tools/run_wasm_parity.mjs
 
 `wasm-probe` exposes the ported functions through `extern "C"` scalar
 entrypoints (`src/wasm_probe.rs`); the runner imports `data/vectors.json` and
-compares every value. Last run: **98,300 comparisons, all bit-identical**.
+compares every value. Last run: **98,614 comparisons, all bit-identical**.
 
 ### Windows: the linker environment
 

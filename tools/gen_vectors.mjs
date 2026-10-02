@@ -171,6 +171,7 @@ const GAME = await loadTs("src/core/game/Game.ts");
 const NC = await loadTs("src/core/game/NationCreation.ts");
 const GUPD = await loadTs("src/core/game/GameUpdates.ts");
 const NE = await loadTs("src/core/execution/nation/NationEmojiBehavior.ts");
+const PF = await loadTs("src/core/pathfinding/PathFinder.ts");
 const { AStar } = await loadTs("src/core/pathfinding/algorithms/AStar.ts");
 const { AStarRail } = await loadTs("src/core/pathfinding/algorithms/AStar.Rail.ts");
 const { AStarWater } = await loadTs("src/core/pathfinding/algorithms/AStar.Water.ts");
@@ -2527,6 +2528,204 @@ captureNE("ne_id_batch", 3, [neIdCases.length, neIdCases.map(encS)], [
   neIdCases.length,
   ...neIdCases.map((e) => Util.flattenedEmojiTable.indexOf(e)),
 ]);
+
+// --- WaterPathMemo scenario runner -------------------------------------------
+// Exercises the real PathFinder.ts WaterPathMemo against a scripted inner
+// PathFinder mock: every inner.findPath call consumes the next script entry
+// (an array or null) and records its arguments into a trace, so cache hits
+// (inner untouched) and array-from passthrough are observable in the res
+// stream. `currentWaterVersion` is a mutable closure variable op kind 2 can
+// bump. The Rust twin is `water_path_memo::run_op`.
+//
+// args layout (all flat f64, no strings):
+//   [numTiles, maxBytes, wv0, scriptLen,
+//     (retKind, len, (elem)*len)*scriptLen,        retKind 0=null (len 0), 1=array
+//     opsLen, (op)*)*opsLen]
+//   op kinds: 0 findPath(number from, to) -> [0, from, to]
+//             1 findPath(array from, to)  -> [1, fromLen, to, (elem)*fromLen]
+//             2 setWaterVersion(v)        -> [2, v]
+//             3 read entryCount           -> [3]
+//             4 read byteCount            -> [4]
+//
+// res per op:
+//   findPath: [retKind, len, (elem)*len, entryCount, byteCount,
+//              nInner, (innerCall)*)       innerCall: number from [0,from,to],
+//                                          array from [1,len,to,(elem)*len]
+//   setWaterVersion: nothing
+//   entryCount / byteCount read: [value]
+const wpmScenarios = [];
+const wpmname = (s) => s.replace(/[^A-Za-z0-9]+/g, "_");
+
+function wpmRun(args) {
+  let p = 0;
+  const numTiles = args[p++];
+  const maxBytes = args[p++];
+  let wv = args[p++];
+  const scriptLen = args[p++];
+  const script = [];
+  for (let i = 0; i < scriptLen; i++) {
+    const retKind = args[p++];
+    const len = args[p++];
+    const elems = args.slice(p, p + len);
+    p += len;
+    script.push(retKind === 0 ? null : elems);
+  }
+  const opsLen = args[p++];
+  let scriptIdx = 0;
+  const inner = {
+    calls: [],
+    findPath(from, to) {
+      if (typeof from === "number") inner.calls.push([0, from, to]);
+      else inner.calls.push([1, from.length, to, ...from]);
+      if (scriptIdx >= script.length) throw new Error("wpm: inner script exhausted");
+      return script[scriptIdx++];
+    },
+  };
+  const memo = new PF.WaterPathMemo(inner, numTiles, () => wv, maxBytes);
+  const res = [];
+  const pushFind = (path) => {
+    if (path === null) res.push(0, 0);
+    else res.push(1, path.length, ...path);
+    res.push(memo.entryCount, memo.byteCount);
+    const calls = inner.calls.splice(0);
+    res.push(calls.length, ...calls.flat());
+  };
+  for (let oi = 0; oi < opsLen; oi++) {
+    const opKind = args[p++];
+    if (opKind === 0) {
+      const from = args[p++];
+      const to = args[p++];
+      pushFind(memo.findPath(from, to));
+    } else if (opKind === 1) {
+      const fromLen = args[p++];
+      const to = args[p++];
+      const from = args.slice(p, p + fromLen);
+      p += fromLen;
+      pushFind(memo.findPath(from, to));
+    } else if (opKind === 2) {
+      wv = args[p++];
+    } else if (opKind === 3) {
+      res.push(memo.entryCount);
+    } else if (opKind === 4) {
+      res.push(memo.byteCount);
+    } else {
+      throw new Error(`wpm: unknown op kind ${opKind}`);
+    }
+  }
+  return res;
+}
+
+const wpmArgs = (numTiles, maxBytes, wv0, script, ops) => [
+  numTiles,
+  maxBytes,
+  wv0,
+  script.length,
+  ...script.flatMap((s) => (s === null ? [0, 0] : [1, s.length, ...s])),
+  ops.length,
+  ...ops.flat(),
+];
+
+function captureWPM(name, args) {
+  wpmScenarios.push({
+    name: wpmname(name),
+    kind: 0,
+    args: args.flat(Infinity).map(uenc),
+    res: wpmRun(args.flat(Infinity)).map(uenc),
+  });
+}
+
+// 1. pure miss: two distinct pairs, inner called once per query.
+captureWPM("wpm_miss", wpmArgs(100, 100000, 1, [[1, 2, 3], [7]], [
+  [0, 1, 2],
+  [0, 4, 5],
+]));
+
+// 2. hit: the second identical query never reaches inner, same values back.
+captureWPM("wpm_hit", wpmArgs(100, 100000, 1, [[1, 2, 3]], [
+  [0, 1, 2],
+  [0, 1, 2],
+]));
+
+// 3. null accounting: a null miss costs 16 bytes; the cached null hit returns
+//    null without touching inner and the byte count stays 16.
+captureWPM("wpm_null", wpmArgs(100, 100000, 1, [null], [
+  [0, 1, 2],
+  [4],
+  [0, 1, 2],
+  [3],
+  [4],
+]));
+
+// 4. LRU re-insertion: A/B/C fill the 100-byte budget exactly, querying A
+//    again moves it to the tail, and D then evicts B (not A) - proven by B
+//    missing afterwards while A still hits.
+captureWPM("wpm_lru", wpmArgs(100, 100, 1, [
+  [1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+  [2, 2, 2, 2, 2, 2, 2, 2, 2, 2],
+  [3, 3, 3, 3, 3],
+  [4, 4, 4, 4, 4, 4, 4, 4, 4, 4],
+  [5, 5, 5, 5, 5, 5, 5, 5, 5, 5],
+], [
+  [0, 1, 2],
+  [0, 3, 4],
+  [0, 5, 6],
+  [0, 1, 2],
+  [0, 7, 8],
+  [0, 1, 2],
+  [0, 3, 4],
+]));
+
+// 5. waterVersion change: the entry check clears everything (even on an
+//    array-from passthrough), and the next numeric query misses again.
+captureWPM("wpm_version", wpmArgs(100, 100000, 1, [[1, 2, 3], [1, 2, 3], [9]], [
+  [0, 1, 2],
+  [2, 2],
+  [1, 2, 3, 1, 2],
+  [3],
+  [4],
+  [0, 1, 2],
+]));
+
+// 6. array-from passthrough: inner receives the array arguments, nothing is
+//    cached (entryCount unchanged), and the raw path comes back.
+captureWPM("wpm_array_from", wpmArgs(100, 100000, 1, [[4, 5], null], [
+  [1, 2, 7, 10, 20],
+  [3],
+  [4],
+  [1, 1, 7, 30],
+  [3],
+]));
+
+// 7. over-budget single entry: one 40-byte path under a 10-byte budget is
+//    evicted immediately (the eviction loop takes the just-inserted entry),
+//    so the same query misses again.
+captureWPM("wpm_over_budget", wpmArgs(100, 10, 1, [
+  [1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+  [1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+], [
+  [0, 1, 2],
+  [3],
+  [4],
+  [0, 1, 2],
+]));
+
+// 8. numeric-key collision: numTiles=10 makes (1,2) and (0,12) share key 12,
+//    so the second query hits the first one's entry without inner seeing it.
+captureWPM("wpm_key_collision", wpmArgs(10, 100000, 1, [[1, 2, 3]], [
+  [0, 1, 2],
+  [0, 0, 12],
+  [0, 1, 2],
+]));
+
+// 9. Uint32Array coercion on hit: the miss returns the raw script values, the
+//    hit returns the stored-to-Uint32 copies (-1 -> 4294967295, 2^32+1 -> 1);
+//    the byte charge is still len*4 either way.
+captureWPM("wpm_uint32", wpmArgs(100, 100000, 1, [[-1, 4294967297, 2.9]], [
+  [0, 1, 2],
+  [4],
+  [0, 1, 2],
+]));
+
 
 
 // --- PatternDecoder scenario runner -------------------------------------------
@@ -5825,6 +6024,7 @@ const structures = {
   nationcreation: ncScenarios,
   gameupdates: gupdScenarios,
   nationemoji: neScenarios,
+  waterpathmemo: wpmScenarios,
   astar: asScenarios,
   rail: railScenarios,
   water: waterScenarios,
@@ -8040,6 +8240,33 @@ for (const s of structures.nationemoji) {
 }
 L.push("pub const NE_SCENARIOS: &[NeScenario] = &[");
 for (const s of structures.nationemoji) L.push(`    ${s.name.toUpperCase()},`);
+L.push("];");
+L.push("");
+
+L.push("/// pathfinding/PathFinder.ts WaterPathMemo scenario: one");
+L.push("/// `water_path_memo::run_op(kind, args)` call. kind 0 replays the");
+L.push("/// whole scenario (scripted inner mock + op sequence) and emits the");
+L.push("/// per-op token stream; args/res layouts are documented in");
+L.push("/// water_path_memo.rs. All tokens are plain numbers.");
+L.push("pub struct WpmScenario {");
+L.push("    pub name: &'static str,");
+L.push("    pub kind: u8,");
+L.push("    pub args: &'static [f64],");
+L.push("    pub res: &'static [f64],");
+L.push("}");
+L.push("");
+for (const s of structures.waterpathmemo) {
+  const id = s.name.toUpperCase();
+  L.push(`pub const ${id}: WpmScenario = WpmScenario {`);
+  L.push(`    name: "${s.name}",`);
+  L.push(`    kind: ${s.kind}u8,`);
+  L.push(`    args: &[${s.args.map(utilResLit).join(", ")}],`);
+  L.push(`    res: &[${s.res.map(utilResLit).join(", ")}],`);
+  L.push("};");
+  L.push("");
+}
+L.push("pub const WPM_SCENARIOS: &[WpmScenario] = &[");
+for (const s of structures.waterpathmemo) L.push(`    ${s.name.toUpperCase()},`);
 L.push("];");
 L.push("");
 

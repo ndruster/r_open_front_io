@@ -151,6 +151,11 @@
 //!   (the 23 `EMOJI_*` id arrays as literals and `emojiId`'s `indexOf`
 //!   semantics; the behavior class and `respondTo*` ride on `Game`/`Player`
 //!   and are a later port)
+//! * [`water_path_memo`] — `src/core/pathfinding/PathFinder.ts`
+//!   (`WaterPathMemo`: LRU byte-budget memo in front of a scripted inner
+//!   pathfinder — waterVersion entry check, insertion-order LRU with
+//!   hit-reinsert, null=16-byte accounting, `Uint32Array` coercion on hits,
+//!   f64 key arithmetic collisions; the rest of the file rides on `Game`)
 //!
 //! Two rules govern every future port into this crate:
 //!
@@ -197,6 +202,7 @@ pub mod tribe_names;
 pub mod util;
 pub mod veterancy;
 pub mod water_manager;
+pub mod water_path_memo;
 
 #[cfg(feature = "wasm-probe")]
 mod wasm_probe;

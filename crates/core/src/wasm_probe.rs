@@ -3639,6 +3639,34 @@ pub extern "C" fn probe_ne_out_at(i: usize) -> f64 {
     NE_OUT.with(|o| o.borrow()[i])
 }
 
+// ====== P41: pathfinding/PathFinder.ts WaterPathMemo (water_path_memo) ======
+
+thread_local! {
+    static WPM_ARGS: std::cell::RefCell<Vec<f64>> = const { std::cell::RefCell::new(Vec::new()) };
+    static WPM_OUT: std::cell::RefCell<Vec<f64>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
+/// Push one flat token (numTiles, maxBytes, script / op framing, tile refs…).
+#[no_mangle]
+pub extern "C" fn probe_wpm_arg(v: f64) {
+    WPM_ARGS.with(|t| t.borrow_mut().push(v));
+}
+
+/// Run `water_path_memo::run_op(kind, args)`; returns the result-stream length.
+#[no_mangle]
+pub extern "C" fn probe_wpm_op(kind: u32) -> usize {
+    let a = WPM_ARGS.with(|t| std::mem::take(&mut *t.borrow_mut()));
+    let out = crate::water_path_memo::run_op(kind as u8, &a);
+    let len = out.len();
+    WPM_OUT.with(|o| *o.borrow_mut() = out);
+    len
+}
+
+#[no_mangle]
+pub extern "C" fn probe_wpm_out_at(i: usize) -> f64 {
+    WPM_OUT.with(|o| o.borrow()[i])
+}
+
 // ====================== P26: PatternDecoder (PatternDecoder.ts) ===============
 
 thread_local! {

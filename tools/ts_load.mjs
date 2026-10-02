@@ -1671,6 +1671,110 @@ function prepare(rel) {
     );
   }
 
+  if (rel.endsWith("pathfinding/PathFinder.ts")) {
+    // Only WaterPathMemo is captured; everything else in the file rides on the
+    // Game facade. Every import here is either type-only (Game, GameMap/TileRef,
+    // TrainStation, the ./types names — PathStatus is an enum the strip loader
+    // rejects, but it is only referenced inside tileStepperConfig, which never
+    // runs) or a *value* import of the pathfinding graph (AStar.Rail,
+    // AStar.Water, PathFinder.Air/Parabola/Station, PathFinderBuilder,
+    // PathFinderStepper, the four transformers) that strip mode would really
+    // execute and pull in whole. WaterPathMemo's class body references none of
+    // them, so the entire import block is dropped. The module-level
+    // `_waterChainCache = new WeakMap(...)` still executes (global WeakMap,
+    // type args erased) and is harmless. The ctor is parameter properties,
+    // which strip mode rejects; expand them, same as MinHeap / BFS — the
+    // maxBytes default keeps referencing WaterPathMemo.DEFAULT_MAX_BYTES.
+    out = must(
+      out,
+      'import { Game } from "../game/Game";\n' +
+        'import { GameMap, TileRef } from "../game/GameMap";\n' +
+        'import { TrainStation } from "../game/TrainStation";\n' +
+        'import { AStarRail } from "./algorithms/AStar.Rail";\n' +
+        'import { AStarWater } from "./algorithms/AStar.Water";\n' +
+        'import { AirPathFinder } from "./PathFinder.Air";\n' +
+        "import {\n" +
+        "  ParabolaOptions,\n" +
+        "  ParabolaUniversalPathFinder,\n" +
+        '} from "./PathFinder.Parabola";\n' +
+        'import { StationPathFinder } from "./PathFinder.Station";\n' +
+        'import { PathFinderBuilder } from "./PathFinderBuilder";\n' +
+        'import { PathFinderStepper, StepperConfig } from "./PathFinderStepper";\n' +
+        'import { ComponentCheckTransformer } from "./transformers/ComponentCheckTransformer";\n' +
+        'import { MiniMapTransformer } from "./transformers/MiniMapTransformer";\n' +
+        'import { ShoreCoercingTransformer } from "./transformers/ShoreCoercingTransformer";\n' +
+        'import { SmoothingWaterTransformer } from "./transformers/SmoothingWaterTransformer";\n' +
+        "import {\n" +
+        "  PathFinder,\n" +
+        "  PathResult,\n" +
+        "  PathStatus,\n" +
+        "  SteppingPathFinder,\n" +
+        '} from "./types";\n',
+      "",
+      "PathFinder imports",
+    );
+    out = must(
+      out,
+      "  constructor(\n" +
+        "    private readonly inner: PathFinder<TileRef>,\n" +
+        "    private readonly numTiles: number,\n" +
+        "    /** The map's waterVersion() — every live water conversion advances it. */\n" +
+        "    private readonly currentWaterVersion: () => number,\n" +
+        "    /** Live cache budget; the default fits the client worker. Tests shrink it to reach eviction. */\n" +
+        "    private readonly maxBytes: number = WaterPathMemo.DEFAULT_MAX_BYTES,\n" +
+        "  ) {\n" +
+        "    this.waterVersion = currentWaterVersion();\n" +
+        "  }",
+      "  private readonly inner: PathFinder<TileRef>;\n" +
+        "  private readonly numTiles: number;\n" +
+        "  private readonly currentWaterVersion: () => number;\n" +
+        "  private readonly maxBytes: number;\n" +
+        "  constructor(\n" +
+        "    inner: PathFinder<TileRef>,\n" +
+        "    numTiles: number,\n" +
+        "    currentWaterVersion: () => number,\n" +
+        "    maxBytes: number = WaterPathMemo.DEFAULT_MAX_BYTES,\n" +
+        "  ) {\n" +
+        "    this.inner = inner;\n" +
+        "    this.numTiles = numTiles;\n" +
+        "    this.currentWaterVersion = currentWaterVersion;\n" +
+        "    this.maxBytes = maxBytes;\n" +
+        "    this.waterVersion = currentWaterVersion();\n" +
+        "  }",
+      "WaterPathMemo ctor",
+    );
+    // WaterPathFinder never runs, but its ctor is parameter properties too and
+    // strip mode parses the whole file — expand it the same way.
+    out = must(
+      out,
+      "  constructor(\n" +
+        "    private game: Game,\n" +
+        "    private _stagger: number = 0,\n" +
+        "    private readonly _memoized: boolean = false,\n" +
+        "  ) {\n" +
+        "    this.stepper = new PathFinderStepper(\n" +
+        "      sharedWaterChain(game, _memoized),\n" +
+        "      tileStepperConfig(game),\n" +
+        "    );",
+      "  private game: Game;\n" +
+        "  private _stagger: number;\n" +
+        "  private readonly _memoized: boolean;\n" +
+        "  constructor(\n" +
+        "    game: Game,\n" +
+        "    _stagger: number = 0,\n" +
+        "    _memoized: boolean = false,\n" +
+        "  ) {\n" +
+        "    this.game = game;\n" +
+        "    this._stagger = _stagger;\n" +
+        "    this._memoized = _memoized;\n" +
+        "    this.stepper = new PathFinderStepper(\n" +
+        "      sharedWaterChain(game, _memoized),\n" +
+        "      tileStepperConfig(game),\n" +
+        "    );",
+      "WaterPathFinder ctor",
+    );
+  }
+
   mkdirSync(cacheDir, { recursive: true });
   const hash = createHash("sha1").update(out).digest("hex").slice(0, 10);
   const base = `${basename(rel, ".ts")}-${hash}.ts`;

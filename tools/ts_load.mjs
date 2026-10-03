@@ -2792,11 +2792,15 @@ function prepare(rel) {
       "const SAM_CONSTRUCTION_TICKS = 30 * 10;\n" +
         "import {\n" +
         "  maps as allMaps,\n" +
+        "  Difficulty,\n" +
         "  Duos,\n" +
+        "  GameMapSize,\n" +
         "  GameMapType,\n" +
         "  GameMode,\n" +
+        "  GameType,\n" +
         "  HumansVsNations,\n" +
         "  Quads,\n" +
+        "  RankedType,\n" +
         "  Trios,\n" +
         `} from "./${prepared.get(mpGameRel)}";\n` +
         `import { PseudoRandom } from "${TS_URL}src/core/PseudoRandom.ts";\n` +
@@ -2804,7 +2808,8 @@ function prepare(rel) {
         "const log = {\n" +
         "  info: (m) => ((globalThis.__MP_LOG ||= []).push(m), m),\n" +
         "  warn: (m) => ((globalThis.__MP_LOG ||= []).push(m), m),\n" +
-        "};\n",
+        "};\n" +
+        "const getMapLandTiles = (map) => globalThis.__MP_LAND_FACADE(map);\n",
       "MapPlaylist imports",
     );
     out = must(
@@ -2812,6 +2817,17 @@ function prepare(rel) {
       "const rand = new PseudoRandom(Date.now());",
       "const rand = new PseudoRandom(globalThis.__MP_SEED);",
       "MapPlaylist Date.now",
+    );
+    // S4: Math.random is scripted through globalThis.__MP_RAND (a capture-
+    // provided queue popper that logs each consumed value, precedent:
+    // NationUtils). Every call site (getSpecialConfig /
+    // getRandomSpecialGameModifiers included) is rewritten; the excluded
+    // methods never execute, so their rewritten sites are inert.
+    out = must(
+      out,
+      "Math.random()",
+      "globalThis.__MP_RAND()",
+      "MapPlaylist Math.random",
     );
     for (const c of [
       "const CROWDED_COMPACT_PLAYER_COUNT = 60;",

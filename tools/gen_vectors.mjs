@@ -11295,17 +11295,56 @@ runNVS("nvs_friends_lookup", [
 // [v]; 11 numberOfTeams -> [v]; 12 adjustForTeams -> [v]; 13
 // adjustTeamCountForPlayerCapacity (cfg-val),[unadj] -> val(cfg); 14
 // getSpawnImmunityDuration (cfg-val),(gold-val) -> [v]; 15-20 table dumps.
+// S4 kinds (res prefixed [n_rand,(rand)*,n_land,(map-str)*,...] with the
+// values / facade calls consumed by THAT op): 21 refill the scripted
+// Math.random queue [n,(v)*] -> [0]; 22 refill the getMapLandTiles table
+// [n,(map-str,num)*] -> [0]; 23 getTeamCount (map-str) -> val(cfg); 24
+// lobbyMaxPlayers (map-str),(mode-str),(compact) -> [3,l,m,s,p]; 25
+// supportsCompactMapForTeams (map-str),(cfg-val) -> [0|1]; 26
+// getCrowdedMaxPlayers (map-str),(compact) -> val(num|undefined); 27
+// rollConfig (type-str),(trusted) -> val(GameConfig); 28 gameConfig
+// (type-str) -> val(GameConfig); 29 get1v1Config -> val; 30 get2v2Config ->
+// val; 31 dump cumulative rand/land logs.
 const mplScenarios = [];
 let mplIdx = 0;
 const encMaps = (arr) => [arr.length, ...arr.flatMap(encS)];
-function runMPL(name, ops) {
+// Scripted Math.random queue + consumption log (globalThis.__MP_RAND, the
+// ts_load rewrite target) and the scripted getMapLandTiles facade
+// (globalThis.__MP_LAND_FACADE; a table miss returns the real TS catch
+// fallback 1_000_000).
+const mplRand = { q: [], log: [] };
+globalThis.__MP_RAND = () => {
+  if (mplRand.q.length === 0) {
+    throw new Error("mpl capture: Math.random queue exhausted");
+  }
+  const v = mplRand.q.shift();
+  mplRand.log.push(v);
+  return v;
+};
+const mplLand = { table: Object.create(null), log: [] };
+globalThis.__MP_LAND_FACADE = (map) => {
+  mplLand.log.push(map);
+  return map in mplLand.table ? mplLand.table[map] : 1_000_000;
+};
+async function runMPL(name, ops) {
   const played = [];
   let mp = null;
   for (const [k, ...a] of ops) {
     let args, res;
+    const r0 = mplRand.log.length;
+    const l0 = mplLand.log.length;
+    const s4Prefix = () => {
+      const rs = mplRand.log.slice(r0);
+      const ls = mplLand.log.slice(l0);
+      return [rs.length, ...rs.map(uenc), ls.length, ...ls.flatMap(encS)];
+    };
     if (k === 0) {
       args = [];
       mp = new MP.MapPlaylist();
+      mplRand.q = [];
+      mplRand.log = [];
+      mplLand.table = Object.create(null);
+      mplLand.log = [];
       res = [0];
     } else if (k === 1) {
       args = [a[0]];
@@ -11375,6 +11414,55 @@ function runMPL(name, ops) {
     } else if (k === 19) {
       args = [];
       res = [MP.DOOMSDAY_ROTATION_SPEEDS.length, ...MP.DOOMSDAY_ROTATION_SPEEDS.flatMap(encS)];
+    } else if (k === 21) {
+      args = [a.length, ...a];
+      mplRand.q.push(...a);
+      res = [0];
+    } else if (k === 22) {
+      const [pairs] = a;
+      args = [pairs.length, ...pairs.flatMap(([m, t]) => [...encS(m), uenc(t)])];
+      for (const [m, t] of pairs) mplLand.table[m] = t;
+      res = [0];
+    } else if (k === 23) {
+      args = encS(a[0]);
+      const v = mp.getTeamCount(a[0]);
+      res = [...s4Prefix(), ...encVal(v)];
+    } else if (k === 24) {
+      const [map, mode, compact] = a;
+      args = [...encS(map), ...encS(mode), compact ? 1 : 0];
+      const lt = map in mplLand.table ? mplLand.table[map] : 1_000_000;
+      const p = await mp.lobbyMaxPlayers(map, mode, compact);
+      res = [...s4Prefix(), 3, ...mp.calculateMapPlayerCounts(lt), uenc(p)];
+    } else if (k === 25) {
+      const [map, cfg] = a;
+      args = [...encS(map), ...encVal(cfg)];
+      const ok = await mp.supportsCompactMapForTeams(map, cfg);
+      res = [...s4Prefix(), ok ? 1 : 0];
+    } else if (k === 26) {
+      const [map, compact] = a;
+      args = [...encS(map), compact ? 1 : 0];
+      const v = await mp.getCrowdedMaxPlayers(map, compact);
+      res = [...s4Prefix(), ...encVal(v)];
+    } else if (k === 27) {
+      const [type, trusted] = a;
+      args = [...encS(type), trusted ? 1 : 0];
+      const v = await mp.rollConfig(type, trusted);
+      res = [...s4Prefix(), ...encVal(v)];
+    } else if (k === 28) {
+      args = encS(a[0]);
+      const v = await mp.gameConfig(a[0]);
+      res = [...s4Prefix(), ...encVal(v)];
+    } else if (k === 29) {
+      args = [];
+      const v = mp.get1v1Config();
+      res = [...s4Prefix(), ...encVal(v)];
+    } else if (k === 30) {
+      args = [];
+      const v = mp.get2v2Config();
+      res = [...s4Prefix(), ...encVal(v)];
+    } else if (k === 31) {
+      args = [];
+      res = [mplRand.log.length, ...mplRand.log.map(uenc), mplLand.log.length, ...mplLand.log.flatMap(encS)];
     } else {
       args = [];
       res = [MP.CROWDED_COMPACT_PLAYER_COUNT, MP.CROWDED_PLAYER_COUNT, MP.TRUSTED_PUBLIC_EVERY, MP.TRUSTED_MAX_PLAYER_COUNT, MP.SPECIAL_TEAM_FORCE_CHANCE];
@@ -11386,7 +11474,7 @@ function runMPL(name, ops) {
 
 const DUOS = "Duos", TRIOS = "Trios", QUADS = "Quads", HVN = "Humans Vs Nations";
 
-runMPL("mpl_tables", [
+await runMPL("mpl_tables", [
   [0],
   [15],
   [16],
@@ -11395,23 +11483,23 @@ runMPL("mpl_tables", [
   [19],
   [20],
 ]);
-runMPL("mpl_build_ffa", [
+await runMPL("mpl_build_ffa", [
   [0],
   [2, "ffa", undefined],
   [2, "ffa", "Free For All"],
 ]);
-runMPL("mpl_build_team", [
+await runMPL("mpl_build_team", [
   [0],
   [2, "team", "Team"],
   [2, "team", undefined],
 ]);
-runMPL("mpl_build_special", [
+await runMPL("mpl_build_special", [
   [0],
   [2, "special", "Team"],
   [2, "special", "Free For All"],
   [2, "special", undefined],
 ]);
-runMPL("mpl_playlist_key", [
+await runMPL("mpl_playlist_key", [
   [0],
   [3, "ffa", undefined],
   [3, "team", "Team"],
@@ -11419,45 +11507,45 @@ runMPL("mpl_playlist_key", [
   [3, "special", "Free For All"],
   [3, "special", undefined],
 ]);
-runMPL("mpl_addnext_success", [
+await runMPL("mpl_addnext_success", [
   [0],
   [4, [], ["a", "b"]],
   [4, ["a"], ["a", "b"]],
   [4, ["a", "b", "c", "d", "e", "f"], ["a", "e", "f", "g"]],
 ]);
-runMPL("mpl_addnext_fail", [
+await runMPL("mpl_addnext_fail", [
   [0],
   [4, ["a", "b"], ["a", "b"]],
   [4, ["x"], ["a", "b"]],
 ]);
-runMPL("mpl_gen_ffa_seed0", [
+await runMPL("mpl_gen_ffa_seed0", [
   [0],
   [1, 1771000000000],
   [5, "ffa", undefined],
 ]);
-runMPL("mpl_gen_team_seed1", [
+await runMPL("mpl_gen_team_seed1", [
   [0],
   [1, 1771000000001],
   [5, "team", "Team"],
 ]);
-runMPL("mpl_gen_special_seed2", [
+await runMPL("mpl_gen_special_seed2", [
   [0],
   [1, 1771000000002],
   [5, "special", "Free For All"],
 ]);
-runMPL("mpl_gen_special_team_seed3", [
+await runMPL("mpl_gen_special_team_seed3", [
   [0],
   [1, 1771000000003],
   [5, "special", "Team"],
 ]);
 // This seed lands on attempt 2 (the retry path: two failed shuffles before
 // the third succeeds) — pinned through the log message's attempt count.
-runMPL("mpl_gen_retry", [
+await runMPL("mpl_gen_retry", [
   [0],
   [1, 1771000000307],
   [5, "ffa", undefined],
 ]);
-runMPL("mpl_getnext_refill_chain", [
+await runMPL("mpl_getnext_refill_chain", [
   [0],
   [1, 1771000000000],
   [6, "ffa", undefined],
@@ -11468,7 +11556,7 @@ runMPL("mpl_getnext_refill_chain", [
   [6, "special", "Free For All"],
   [7],
 ]);
-runMPL("mpl_getnext_reseed", [
+await runMPL("mpl_getnext_reseed", [
   [0],
   [1, 1771000000010],
   [6, "ffa", undefined],
@@ -11476,7 +11564,7 @@ runMPL("mpl_getnext_reseed", [
   [6, "ffa", undefined],
   [7],
 ]);
-runMPL("mpl_counts_edges", [
+await runMPL("mpl_counts_edges", [
   [0],
   [8, 0],
   [8, 150000],
@@ -11487,7 +11575,7 @@ runMPL("mpl_counts_edges", [
   [8, 1e8],
   [8, 99999],
 ]);
-runMPL("mpl_players_per_team", [
+await runMPL("mpl_players_per_team", [
   [0],
   [10, 10, 2],
   [10, 11, 3],
@@ -11500,7 +11588,7 @@ runMPL("mpl_players_per_team", [
   [10, 8, QUADS],
   [10, 13, HVN],
 ]);
-runMPL("mpl_number_of_teams", [
+await runMPL("mpl_number_of_teams", [
   [0],
   [11, 10, 2],
   [11, 10, 7],
@@ -11510,7 +11598,7 @@ runMPL("mpl_number_of_teams", [
   [11, 9, QUADS],
   [11, 3, HVN],
 ]);
-runMPL("mpl_supports_team_count", [
+await runMPL("mpl_supports_team_count", [
   [0],
   [9, 4, 2],
   [9, 3, 2],
@@ -11523,7 +11611,7 @@ runMPL("mpl_supports_team_count", [
   [9, 100, HVN],
   [9, 1, HVN],
 ]);
-runMPL("mpl_adjust_for_teams", [
+await runMPL("mpl_adjust_for_teams", [
   [0],
   [12, 10, undefined],
   [12, 11, 2],
@@ -11536,7 +11624,7 @@ runMPL("mpl_adjust_for_teams", [
   [12, 10, QUADS],
   [12, 11, HVN],
 ]);
-runMPL("mpl_adjust_capacity", [
+await runMPL("mpl_adjust_capacity", [
   [0],
   [13, undefined, 10],
   [13, DUOS, 3],
@@ -11551,7 +11639,7 @@ runMPL("mpl_adjust_capacity", [
   [13, 7, 100],
   [13, 6, 11],
 ]);
-runMPL("mpl_spawn_immunity", [
+await runMPL("mpl_spawn_immunity", [
   [0],
   [14, undefined, undefined],
   [14, 2, undefined],
@@ -11563,6 +11651,186 @@ runMPL("mpl_spawn_immunity", [
   [14, undefined, 4e6],
   [14, undefined, 1e6],
   [14, DUOS, 25e6],
+]);
+
+// ---- S4: MapPlaylist.ts (Math.random orchestration layer) -------------------
+
+// Real land-tile counts (resources/maps/*/manifest.json map.num_land_tiles).
+const MPL_LAND = [
+  ["Australia", 1319763],
+  ["Asia", 1079587],
+  ["Europe Classic", 1008469],
+  ["Iceland", 1069645],
+  ["Baikal", 2181746],
+];
+
+// getTeamCount: force-gate hit/miss on a SPECIAL_TEAM map + the weighted
+// roll landing in every TEAM_WEIGHTS bucket (total weight 100; cum 10/20/30/
+// 40/50/60/65/72.5/80/100) + the plain-map short-circuit (NO force rand).
+await runMPL("mpl_tc_force", [
+  [0],
+  [21, 0.5],
+  [23, "Taiwan Strait"], // forced 2, rand<0.75 -> Num(2), ONE rand
+  [21, 0.8, 0.05],
+  [23, "Taiwan Strait"], // force miss -> weighted roll 5 -> Num(2), TWO rands
+  [21, 0.15],
+  [23, "Asia"], // plain map: force gate skipped, ONE rand -> 15 -> Num(3)
+]);
+await runMPL("mpl_tc_buckets", [
+  [0],
+  [21, 0.15, 0.25, 0.35, 0.45, 0.55, 0.62, 0.7, 0.78, 0.9, 0.999999],
+  [23, "Asia"], // 15 -> 3
+  [23, "Asia"], // 25 -> 4
+  [23, "Asia"], // 35 -> 5
+  [23, "Asia"], // 45 -> 6
+  [23, "Asia"], // 55 -> 7
+  [23, "Asia"], // 62 -> Duos (55..65)
+  [23, "Asia"], // 70 -> Trios (65..72.5)
+  [23, "Asia"], // 78 -> Quads (72.5..80)
+  [23, "Asia"], // 90 -> HvN (80..100, weight 20)
+  [23, "Asia"], // 99.9999 -> HvN
+]);
+
+// lobbyMaxPlayers: r three tiers x FFA/Team x compact + the 1e6 fallback +
+// the compact floor(max 3) clamp on a tiny map. Australia counts [65,50,35].
+await runMPL("mpl_lmp_tiers", [
+  [0],
+  [22, [...MPL_LAND, ["Tiny", 100000]]],
+  [21, 0.2, 0.4, 0.7, 0.2, 0.4, 0.7, 0.2, 0.1, 0.2, 0.2],
+  [24, "Australia", "Free For All", 0], // r<0.3 -> l=65
+  [24, "Australia", "Team", 0], // r<0.6 -> m=50 -> ceil(75) cap 65
+  [24, "Australia", "Team", 0], // r>=0.6 -> s=35 -> ceil(52.5)=53
+  [24, "Australia", "Free For All", 1], // compact: floor(65*0.25)=16
+  [24, "Australia", "Team", 1], // 65 -> floor(16.25)=16
+  [24, "Australia", "Team", 1], // 53 -> floor(13.25)=13
+  [24, "Mars", "Free For All", 1], // fallback 1e6 -> [50,40,25], l=50 compact
+  // floor(12.5)=12
+  [24, "Mars", "Free For All", 0], // r=0.1 -> s=25
+  [24, "Mars", "Team", 1], // r=0.2 -> l=50 ceil(75) cap 50 -> compact 12
+  [24, "Tiny", "Team", 1], // 100000 -> [5,5,5], ceil(7.5) cap 5 -> max(3,1)=3
+]);
+await runMPL("mpl_lmp_tiny_land", [
+  [0],
+  [22, [["Tiny", 100000]]],
+  [21, 0.2],
+  [24, "Tiny", "Free For All", 0],
+]);
+
+// supportsCompactMapForTeams: true (big map, numeric + HvN) / false (tiny
+// map, numeric + Duos) / Baikal with 7 teams.
+await runMPL("mpl_sc_paths", [
+  [0],
+  [22, [...MPL_LAND, ["Tiny", 100000]]],
+  [25, "Australia", 4], // p=13 -> adj 12 -> 3/team, 4 teams -> true
+  [25, "Australia", HVN], // p=13 -> adj floor(6.5)=6 -> true
+  [25, "Tiny", 2], // p=3 -> adj 2 -> 1/team -> false
+  [25, "Tiny", DUOS], // p=3 -> adj 2 -> floor(2/2)=1 team -> false
+  [25, "Baikal", 7], // p=20 -> adj 14 -> 2/team, 7 teams -> true
+  [25, "Mars", TRIOS], // fallback 1e6 -> [50,40,25]: p=min(ceil(37.5)=38,50)
+  // -> max(3,floor(9.5)=9)=9 -> adj 9 -> 3/team -> true
+]);
+
+// getCrowdedMaxPlayers: firstPlayerCount<=60 boundary (1.2e6 -> 60 hit,
+// 1.25e6 -> 65 miss) x compact + the >60 undefined path.
+await runMPL("mpl_cm_edges", [
+  [0],
+  [22, [...MPL_LAND, ["Tiny", 100000], ["Sixty", 1200000], ["SixtyFive", 1250000]]],
+  [26, "Australia", 0], // 65 > 60 -> undefined
+  [26, "Tiny", 0], // 5 <= 60 -> 125
+  [26, "Tiny", 1], // 5 <= 60, compact -> 60
+  [26, "Sixty", 0], // 60 <= 60 boundary -> 125
+  [26, "Sixty", 1], // -> 60
+  [26, "SixtyFive", 0], // 65 > 60 -> undefined
+  [26, "Mars", 1], // fallback 1e6 -> 50 <= 60 -> 60
+]);
+
+// rollConfig ffa: fresh 604 queue -> first shift leaves 603 (603%3==0 ->
+// compact true: bots 100, Compact, isCompact modifier); second leaves 602
+// (not compact); trusted path caps maxPlayers at 25 and keeps the queue
+// gate. Seed 1771000000000 ffa head: Yangtze River, Mare Nostrum, ...
+await runMPL("mpl_rc_ffa_compact", [
+  [0],
+  [1, 1771000000000],
+  [22, [...MPL_LAND, ["Yangtze River", 1319763], ["Mare Nostrum", 2181746]]],
+  [21, 0.2, 0.7, 0.4, 0.9],
+  [27, "ffa", 0], // compact, l=65 tier -> maxPlayers 65, bots 100
+  [27, "ffa", 0], // not compact, s=35 -> 400 bots
+  [27, "ffa", 1], // trusted: Northwest Passage fallback 1e6, min(50,25)=25
+  [27, "ffa", 1], // trusted, queue 601 -> not compact
+  [31],
+]);
+
+// rollConfig team: seed 1771000000000 head Taiwan Strait (SPECIAL_TEAM_MAPS
+// forced 2, force rand 0.5 hit) -> queue 760 not compact; second Giant
+// World Map -> queue 759 compact -> supportsCompact veto path (tiny land);
+// third Baikal Nuke Wars force-MISS -> weighted Num(3) + trusted cap.
+await runMPL("mpl_rc_team_paths", [
+  [0],
+  [1, 1771000000000],
+  [22, [...MPL_LAND, ["Taiwan Strait", 1319763], ["Giant World Map", 100000]]],
+  [21, 0.5, 0.2, 0.9, 0.4, 0.8, 0.1, 0.3, 0.5, 0.5, 0.5],
+  [27, "team", 0], // forced 2 (1 rand) + lobby 1 rand; 760%3!=0 no compact
+  [27, "team", 0], // plain map 1 rand roll 0.9 -> HvN; compact vetoed by tiny
+  // land -> isCompact undefined; lobby rand 0.4 -> m=5 -> ceil 7.5 cap 5
+  // -> adjustForTeams HvN floor(5/2)=2
+  [27, "team", 1], // Baikal Nuke Wars: force miss 0.8 -> weighted 0.1*100=10
+  // -> Num(3); fallback land 1e6; lobby rand 0.3 -> s=25 -> ceil 37.5 cap 50
+  // -> trusted min(38,25)=25 -> adj 24
+  [27, "team", 1], // 4th queue map: consumes its rands from the refill
+  [31],
+]);
+
+// gameConfig scheduled%7 rotation: 7 ffa games on seed 1771000000000, the
+// 7th lands trusted (config gains the trailing `trusted: true` key + cap).
+await runMPL("mpl_gc_ffa_cycle", [
+  [0],
+  [1, 1771000000000],
+  [22, MPL_LAND],
+  [21, 0.2, 0.4, 0.7, 0.1, 0.5, 0.9, 0.3, 0.6],
+  [28, "ffa"],
+  [28, "ffa"],
+  [28, "ffa"],
+  [28, "ffa"],
+  [28, "ffa"],
+  [28, "ffa"],
+  [28, "ffa"], // 7th: trusted
+  [31],
+]);
+
+// gameConfig mixed ffa/team cycle: trusted 7th is a team roll (Baikal Nuke
+// Wars forced-2 miss -> weighted Duos path pinned).
+await runMPL("mpl_gc_mixed_cycle", [
+  [0],
+  [1, 1771000000001],
+  [22, [...MPL_LAND, ["Sierpinski", 1319763], ["World", 2181746], ["Strait of Gibraltar", 100000]]],
+  [21, 0.2, 0.4, 0.5, 0.8, 0.62, 0.9, 0.1, 0.7, 0.3, 0.5, 0.4, 0.99, 0.2, 0.6, 0.5, 0.1, 0.8],
+  [28, "ffa"],
+  [28, "team"],
+  [28, "ffa"],
+  [28, "team"], // Strait of Gibraltar (special, forced 2): 0.5<0.75 hit
+  [28, "ffa"],
+  [28, "team"],
+  [28, "ffa"], // 7th ffa call = scheduled 7 -> trusted
+  [31],
+]);
+
+// get1v1Config: compact gate <0.2 + map roll over the 5-ticket table.
+await runMPL("mpl_1v1_maps", [
+  [0],
+  [21, 0.1, 0.35, 0.3, 0.99, 0.199999999, 0.0, 0.2, 0.4],
+  [29], // compact, idx 1 -> Australia
+  [29], // normal, idx 4 -> Europe Classic
+  [29], // compact (0.19999<0.2), idx 0 -> Australia
+  [29], // NOT compact (0.2 !< 0.2), idx 2 -> Iceland
+]);
+
+// get2v2Config: compact gate <0.5 + map roll.
+await runMPL("mpl_2v2_maps", [
+  [0],
+  [21, 0.4, 0.0, 0.5, 0.99, 0.49, 0.79],
+  [30], // compact, idx 0 -> Australia
+  [30], // NOT compact (0.5 !< 0.5), idx 4 -> Europe Classic
+  [30], // compact, idx 3 -> Asia
 ]);
 
 const structures = {

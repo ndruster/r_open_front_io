@@ -41,17 +41,38 @@
 //!   `src/core/configuration/Config.ts` by the prepare block (the heavy
 //!   Config graph stays unprepared); the value is pinned by the upstream
 //!   sync check.
-//! * `gameConfig` / `rollConfig` / `getSpecialConfig` / `getTeamCount` /
-//!   `getRandomSpecialGameModifiers` / `get1v1Config` / `get2v2Config` /
-//!   `lobbyMaxPlayers` / `supportsCompactMapForTeams` /
-//!   `getCrowdedMaxPlayers` are NOT ported here (Math.random orchestration,
-//!   the `.sort(() => Math.random() - 0.5)` V8-ordering problem, or the
-//!   async `getMapLandTiles` facade) — a later phase.
+//! * `getSpecialConfig` / `getRandomSpecialGameModifiers` are NOT ported
+//!   (the `.sort(() => Math.random() - 0.5)` comparator depends on V8's
+//!   sort-order, which is not bit-exactly reproducible); `rollConfig`'s
+//!   `type === "special"` branch is therefore unreachable in the harness.
+//!
+//! S4 (Math.random orchestration layer):
+//!
+//! * `Math.random` is scripted through `globalThis.__MP_RAND` in the
+//!   prepare block; the harness keeps a FIFO queue (`setRand`, op kind 21)
+//!   and records every consumed value in call order (`rand_log`), so the
+//!   golden `res` pins the exact random-call sequence each method makes
+//!   (`getTeamCount` consumes 1 rand for a non-special map — the force
+//!   check short-circuits on `forcedTeamCount !== undefined` — 1 on a hit
+//!   and 2 on a miss for a special-team map).
+//! * `getMapLandTiles` is scripted through `globalThis.__MP_LAND_FACADE`
+//!   (op kinds 22/31 seed the map -> land-tiles table); every call is
+//!   recorded in `land_log` and a table miss returns the real TS catch
+//!   fallback `1_000_000`.
+//! * `rollConfig`'s `isCompact` gate reads `playlists[type].length` AFTER
+//!   `getNextMap` has shifted one entry off the queue (pinned: the first
+//!   roll on a fresh 604-entry ffa queue sees 603 -> `603 % 3 === 0` ->
+//!   compact, while the first team roll sees 760 -> not compact).
+//! * The returned `GameConfig` objects are dumped as `JsVal::Obj` in TS
+//!   literal key order; keys written with an `undefined` value (e.g.
+//!   `maxTimerValue: undefined`, FFA `playerTeams`) cross as `Undef` (key
+//!   present), matching `Object.keys` / `in` observability.
 
 use crate::js_json::{push_str, push_val, read_str, read_val, JsVal};
 use crate::jsnum::js_round;
 use crate::maps_gen::MAPS;
 use crate::pseudo_random::PseudoRandom;
+use std::collections::VecDeque;
 
 /// `CROWDED_COMPACT_PLAYER_COUNT`.
 pub const CROWDED_COMPACT_PLAYER_COUNT: f64 = 60.0;
@@ -453,11 +474,30 @@ pub fn get_spawn_immunity_duration(cfg: Option<&TeamCfg>, gold: Option<f64>) -> 
     5.0 * 10.0
 }
 
+/// JS `Object` field builder (insertion order preserved by `JsVal::Obj`).
+fn obj(fields: Vec<(&str, JsVal)>) -> JsVal {
+    JsVal::Obj(fields.into_iter().map(|(k, v)| (k.to_string(), v)).collect())
+}
+
+fn s(v: &str) -> JsVal {
+    JsVal::Str(v.to_string())
+}
+
 /// The capture harness: one `MapPlaylist` replaying an op stream.
 #[derive(Debug, Default)]
 pub struct RigHarness {
     playlists: [Vec<&'static str>; 4],
     seed: f64,
+    /// Scripted `Math.random` FIFO queue (op kind 21 refills it).
+    rand_q: VecDeque<f64>,
+    /// Cumulative record of every consumed random value (call order).
+    rand_log: Vec<f64>,
+    /// Scripted `getMapLandTiles` table (op kind 22 refills it).
+    land: Vec<(&'static str, f64)>,
+    /// Cumulative record of every `getMapLandTiles` map argument.
+    land_log: Vec<String>,
+    /// `MapPlaylist.scheduled` counter.
+    scheduled: f64,
 }
 
 impl RigHarness {
@@ -467,6 +507,292 @@ impl RigHarness {
 
     pub fn reset(&mut self) {
         *self = Self::default();
+    }
+
+    /// One scripted `Math.random()` call: pop the queue and record it.
+    fn next_rand(&mut self) -> f64 {
+        let v = self
+            .rand_q
+            .pop_front()
+            .expect("mpl harness: Math.random queue exhausted");
+        self.rand_log.push(v);
+        v
+    }
+
+    /// The scripted `getMapLandTiles` facade: record the call, return the
+    /// table entry or the real TS catch-branch fallback `1_000_000`.
+    fn get_land(&mut self, map: &str) -> f64 {
+        self.land_log.push(map.to_string());
+        self.land
+            .iter()
+            .find(|(m, _)| *m == map)
+            .map(|(_, t)| *t)
+            .unwrap_or(1_000_000.0)
+    }
+
+    /// Prefix an S4 payload with the rand / land slices consumed during the
+    /// op: `[n_rand, (v)*, n_land, (map-str)*, payload...]`.
+    fn s4_out(&self, r0: usize, l0: usize, payload: Vec<f64>) -> Vec<f64> {
+        let rs = &self.rand_log[r0..];
+        let ls = &self.land_log[l0..];
+        let mut out = Vec::with_capacity(2 + rs.len() + payload.len() + ls.len() * 2);
+        out.push(rs.len() as f64);
+        out.extend(rs.iter().copied());
+        out.push(ls.len() as f64);
+        for m in ls {
+            push_str(&mut out, m);
+        }
+        out.extend(payload);
+        out
+    }
+
+    /// `getNextMap(type, mode)` shared by op 6 and `rollConfig`.
+    fn get_next_map(&mut self, type_: &str, mode: Option<&str>) -> &'static str {
+        let key = playlist_key(type_, mode);
+        let q = &mut self.playlists[key_index(&key)];
+        if q.is_empty() {
+            let (fresh, _) = generate_new_playlist(self.seed, type_, mode);
+            q.extend(fresh);
+        }
+        q.remove(0)
+    }
+
+    /// `getTeamCount(map)`: the special-map force gate consumes one rand when
+    /// the map has a `specialTeamCount` (short-circuit: a plain map consumes
+    /// none there), then the weighted roll consumes one.
+    fn get_team_count(&mut self, map: &str) -> TeamCfg {
+        let forced = MAPS
+            .iter()
+            .find(|m| m.type_ == map)
+            .and_then(|m| m.special_team_count);
+        if let Some(f) = forced {
+            if self.next_rand() < SPECIAL_TEAM_FORCE_CHANCE {
+                return TeamCfg::Num(f);
+            }
+        }
+        let weights = team_weights();
+        let total: f64 = weights.iter().fold(0.0, |sum, (_, w)| sum + w);
+        let roll = self.next_rand() * total;
+        let mut cumulative_weight = 0.0;
+        for (cfg, weight) in weights.iter() {
+            cumulative_weight += *weight;
+            if roll < cumulative_weight {
+                return cfg.clone();
+            }
+        }
+        // Only reachable with a scripted random of exactly 1.0 (real
+        // Math.random is < 1); TS returns TEAM_WEIGHTS[0].config.
+        weights[0].0.clone()
+    }
+
+    /// `lobbyMaxPlayers(map, mode, isCompactMap?)` — also returns the
+    /// land-tile counts tier so the harness can dump `[l,m,s]` observably.
+    fn lobby_max_players(
+        &mut self,
+        map: &str,
+        mode: &str,
+        is_compact_map: bool,
+    ) -> ([f64; 3], f64) {
+        let land_tiles = self.get_land(map);
+        let [l, m, s] = calculate_map_player_counts(land_tiles);
+        let r = self.next_rand();
+        let base = if r < 0.3 { l } else if r < 0.6 { m } else { s };
+        let mut p = js_min(
+            if mode == "Team" { (base * 1.5).ceil() } else { base },
+            l,
+        );
+        if is_compact_map {
+            p = js_max(3.0, (p * 0.25).floor());
+        }
+        ([l, m, s], p)
+    }
+
+    /// `supportsCompactMapForTeams(map, playerTeams)`.
+    fn supports_compact_map_for_teams(&mut self, map: &str, cfg: &TeamCfg) -> bool {
+        let land_tiles = self.get_land(map);
+        let [l, _, s] = calculate_map_player_counts(land_tiles);
+        // Worst case: smallest tier with team mode 1.5x multiplier, capped at l.
+        let mut p = js_min((s * 1.5).ceil(), l);
+        // Apply compact 75% player reduction.
+        p = js_max(3.0, (p * 0.25).floor());
+        p = adjust_for_teams(p, Some(cfg));
+        supports_team_player_count(p, cfg)
+    }
+
+    /// `getCrowdedMaxPlayers(map, isCompact)`.
+    fn get_crowded_max_players(&mut self, map: &str, is_compact: bool) -> Option<f64> {
+        let land_tiles = self.get_land(map);
+        let [first_player_count, _, _] = calculate_map_player_counts(land_tiles);
+        if first_player_count <= CROWDED_COMPACT_PLAYER_COUNT {
+            Some(if is_compact {
+                CROWDED_COMPACT_PLAYER_COUNT
+            } else {
+                CROWDED_PLAYER_COUNT
+            })
+        } else {
+            None
+        }
+    }
+
+    /// `rollConfig(type, trusted)` — the ffa / team branches only (the
+    /// `special` branch reaches the excluded `getSpecialConfig`).
+    fn roll_config(&mut self, type_: &str, trusted: bool) -> JsVal {
+        assert_ne!(type_, "special", "mpl harness: special roll excluded (S4)");
+        let mode: &str = if type_ == "ffa" { "Free For All" } else { "Team" };
+        let map = self.get_next_map(type_, None);
+
+        let mut player_teams = if mode == "Team" {
+            Some(self.get_team_count(map))
+        } else {
+            None
+        };
+
+        // `length % 3 === 0 || undefined`: true OR undefined, never false.
+        let mut is_compact: Option<bool> =
+            if self.playlists[key_index(type_)].len() as f64 % 3.0 == 0.0 {
+                Some(true)
+            } else {
+                None
+            };
+        if is_compact == Some(true)
+            && mode == "Team"
+            && !self.supports_compact_map_for_teams(map, player_teams.as_ref().unwrap())
+        {
+            is_compact = None;
+        }
+
+        let (_, mut unadjusted_max_players) =
+            self.lobby_max_players(map, mode, is_compact == Some(true));
+        if trusted {
+            unadjusted_max_players = js_min(unadjusted_max_players, TRUSTED_MAX_PLAYER_COUNT);
+        }
+        player_teams =
+            adjust_team_count_for_player_capacity(player_teams, unadjusted_max_players);
+
+        let compact = is_compact == Some(true);
+        let hvn = matches!(&player_teams, Some(TeamCfg::Str(t)) if t == "Humans Vs Nations");
+        obj(vec![
+            ("donateGold", JsVal::Bool(mode == "Team")),
+            ("donateTroops", JsVal::Bool(mode == "Team")),
+            ("gameMap", s(map)),
+            (
+                "maxPlayers",
+                JsVal::Num(adjust_for_teams(unadjusted_max_players, player_teams.as_ref())),
+            ),
+            ("gameType", s("Public")),
+            ("gameMapSize", s(if compact { "Compact" } else { "Normal" })),
+            (
+                "publicGameModifiers",
+                obj(vec![(
+                    "isCompact",
+                    if compact { JsVal::Bool(true) } else { JsVal::Undef },
+                )]),
+            ),
+            ("difficulty", s(if hvn { "Hard" } else { "Medium" })),
+            ("infiniteGold", JsVal::Bool(false)),
+            ("infiniteTroops", JsVal::Bool(false)),
+            ("maxTimerValue", JsVal::Undef),
+            ("instantBuild", JsVal::Bool(false)),
+            ("randomSpawn", JsVal::Bool(false)),
+            (
+                "nations",
+                s(if mode == "Team" && !hvn { "disabled" } else { "default" }),
+            ),
+            ("gameMode", s(mode)),
+            (
+                "playerTeams",
+                player_teams.as_ref().map(|c| c.to_jsval()).unwrap_or(JsVal::Undef),
+            ),
+            ("bots", JsVal::Num(if compact { 100.0 } else { 400.0 })),
+            (
+                "spawnImmunityDuration",
+                JsVal::Num(get_spawn_immunity_duration(player_teams.as_ref(), None)),
+            ),
+            ("disabledUnits", JsVal::Arr(vec![])),
+            (
+                "disableClanTags",
+                if mode == "Free For All" { JsVal::Bool(true) } else { JsVal::Undef },
+            ),
+            (
+                "overtime",
+                if mode == "Free For All" {
+                    obj(vec![("enabled", JsVal::Bool(true))])
+                } else {
+                    JsVal::Undef
+                },
+            ),
+        ])
+    }
+
+    /// `gameConfig(type)`: the scheduled counter drives the trusted rotation.
+    fn game_config(&mut self, type_: &str) -> JsVal {
+        self.scheduled += 1.0;
+        let trusted = self.scheduled % TRUSTED_PUBLIC_EVERY == 0.0;
+        let mut config = self.roll_config(type_, trusted);
+        if trusted {
+            if let JsVal::Obj(fields) = &mut config {
+                fields.push(("trusted".to_string(), JsVal::Bool(true)));
+            }
+        }
+        config
+    }
+
+    /// The `get1v1Config` / `get2v2Config` shared map table (the
+    /// `GameMapType` string values; `EuropeClassic` is `"Europe Classic"`).
+    const RANKED_MAPS: [&'static str; 5] =
+        ["Australia", "Australia", "Iceland", "Asia", "Europe Classic"];
+
+    /// `get1v1Config()`.
+    fn get1v1_config(&mut self) -> JsVal {
+        let is_compact = self.next_rand() < 0.2;
+        let map = Self::RANKED_MAPS[((self.next_rand() * 5.0).floor()) as usize];
+        obj(vec![
+            ("donateGold", JsVal::Bool(false)),
+            ("donateTroops", JsVal::Bool(false)),
+            ("gameMap", s(map)),
+            ("maxPlayers", JsVal::Num(2.0)),
+            ("gameType", s("Public")),
+            ("gameMapSize", s(if is_compact { "Compact" } else { "Normal" })),
+            ("difficulty", s("Medium")),
+            ("rankedType", s("1v1")),
+            ("infiniteGold", JsVal::Bool(false)),
+            ("infiniteTroops", JsVal::Bool(false)),
+            ("maxTimerValue", JsVal::Num(if is_compact { 10.0 } else { 15.0 })),
+            ("instantBuild", JsVal::Bool(false)),
+            ("randomSpawn", JsVal::Bool(false)),
+            ("nations", s("disabled")),
+            ("gameMode", s("Free For All")),
+            ("bots", JsVal::Num(if is_compact { 100.0 } else { 400.0 })),
+            ("spawnImmunityDuration", JsVal::Num(30.0 * 10.0)),
+            ("disabledUnits", JsVal::Arr(vec![])),
+        ])
+    }
+
+    /// `get2v2Config()`.
+    fn get2v2_config(&mut self) -> JsVal {
+        let is_compact = self.next_rand() < 0.5;
+        let map = Self::RANKED_MAPS[((self.next_rand() * 5.0).floor()) as usize];
+        obj(vec![
+            ("donateGold", JsVal::Bool(true)),
+            ("donateTroops", JsVal::Bool(true)),
+            ("gameMap", s(map)),
+            ("maxPlayers", JsVal::Num(4.0)),
+            ("gameType", s("Public")),
+            ("gameMapSize", s(if is_compact { "Compact" } else { "Normal" })),
+            ("difficulty", s("Medium")),
+            ("rankedType", s("2v2")),
+            ("infiniteGold", JsVal::Bool(false)),
+            ("infiniteTroops", JsVal::Bool(false)),
+            ("maxTimerValue", JsVal::Num(if is_compact { 10.0 } else { 15.0 })),
+            ("instantBuild", JsVal::Bool(false)),
+            ("randomSpawn", JsVal::Bool(false)),
+            ("nations", s("disabled")),
+            ("gameMode", s("Team")),
+            ("playerTeams", JsVal::Num(2.0)),
+            ("bots", JsVal::Num(if is_compact { 100.0 } else { 400.0 })),
+            ("spawnImmunityDuration", JsVal::Num(60.0 * 10.0)),
+            ("disabledUnits", JsVal::Arr(vec![])),
+        ])
     }
 
     /// Run one op. Kind table (see `tools/gen_vectors.mjs`):
@@ -495,6 +821,18 @@ impl RigHarness {
     /// 18 dump SPECIAL_TEAM_MAPS -> `[n,(map-str,num)*]`;
     /// 19 dump DOOMSDAY_ROTATION_SPEEDS -> `[4,(str)*]`;
     /// 20 dump module consts -> `[60,125,7,25,0.75]`.
+    /// S4 kinds (res prefixed `[n_rand,(rand)*,n_land,(map-str)*,...]` with
+    /// the values / facade calls consumed by THAT op):
+    /// 21 refill Math.random queue `[n,(v)*]` -> `[0]`;
+    /// 22 refill getMapLandTiles table `[n,(map-str,num)*]` -> `[0]`;
+    /// 23 getTeamCount `(map-str)` -> val(cfg);
+    /// 24 lobbyMaxPlayers `(map-str),(mode-str),(compact)` -> `[3,l,m,s,p]`;
+    /// 25 supportsCompactMapForTeams `(map-str),(cfg-val)` -> `[0|1]`;
+    /// 26 getCrowdedMaxPlayers `(map-str),(compact)` -> val(num|undefined);
+    /// 27 rollConfig `(type-str),(trusted)` -> val(GameConfig obj);
+    /// 28 gameConfig `(type-str)` -> val(GameConfig obj, scheduled counter);
+    /// 29 get1v1Config -> val(GameConfig obj); 30 get2v2Config -> val(obj);
+    /// 31 dump cumulative rand/land logs -> `[n_rand,(v)*,n_land,(str)*]`.
     /// Strings cross as `[len, u0, ..]` UTF-16 units; `mode` / `cfg` /
     /// `gold` ride the `js_json` codec (`undefined` = `[1]`).
     pub fn run_op(&mut self, kind: u8, args: &[f64]) -> Vec<f64> {
@@ -550,14 +888,9 @@ impl RigHarness {
             6 => {
                 let type_ = read_str(args, &mut i);
                 let mode = mode_of(&read_val(args, &mut i));
-                let key = playlist_key(&type_, mode.as_deref());
-                let q = &mut self.playlists[key_index(&key)];
-                if q.is_empty() {
-                    let (fresh, _) = generate_new_playlist(self.seed, &type_, mode.as_deref());
-                    q.extend(fresh);
-                }
+                let map = self.get_next_map(&type_, mode.as_deref());
                 let mut out = Vec::new();
-                push_val(&mut out, &JsVal::Str(q.remove(0).to_string()));
+                push_val(&mut out, &JsVal::Str(map.to_string()));
                 out
             }
             7 => {
@@ -662,6 +995,132 @@ impl RigHarness {
                 TRUSTED_MAX_PLAYER_COUNT,
                 SPECIAL_TEAM_FORCE_CHANCE,
             ],
+            // ---- S4: Math.random orchestration layer ----
+            21 => {
+                // Refill the scripted Math.random queue: `[n,(v)*]` -> `[0]`.
+                let n = args[i] as usize;
+                i += 1;
+                for _ in 0..n {
+                    self.rand_q.push_back(args[i]);
+                    i += 1;
+                }
+                vec![0.0]
+            }
+            22 => {
+                // Refill the getMapLandTiles table: `[n,(map-str,num)*]` -> `[0]`.
+                let n = args[i] as usize;
+                i += 1;
+                for _ in 0..n {
+                    let m = intern_map(&read_str(args, &mut i));
+                    let t = args[i];
+                    i += 1;
+                    // JS object-assignment semantics: a repeated key overwrites.
+                    match self.land.iter_mut().find(|(x, _)| *x == m) {
+                        Some(slot) => slot.1 = t,
+                        None => self.land.push((m, t)),
+                    }
+                }
+                vec![0.0]
+            }
+            23 => {
+                // getTeamCount `(map-str)` -> `[n_rand,(v)*,0,(cfg-val)]`.
+                let r0 = self.rand_log.len();
+                let l0 = self.land_log.len();
+                let map = read_str(args, &mut i);
+                let cfg = self.get_team_count(&map);
+                let mut payload = Vec::new();
+                push_val(&mut payload, &cfg.to_jsval());
+                self.s4_out(r0, l0, payload)
+            }
+            24 => {
+                // lobbyMaxPlayers `(map-str),(mode-str),(isCompact 0|1)` ->
+                // `[n_rand,(v)*,n_land,(map-str)*,3,l,m,s,p]`.
+                let r0 = self.rand_log.len();
+                let l0 = self.land_log.len();
+                let map = read_str(args, &mut i);
+                let mode = read_str(args, &mut i);
+                let compact = args[i] != 0.0;
+                let ([l, m, s], p) = self.lobby_max_players(&map, &mode, compact);
+                self.s4_out(r0, l0, vec![3.0, l, m, s, p])
+            }
+            25 => {
+                // supportsCompactMapForTeams `(map-str),(cfg-val)` ->
+                // `[0,0,n_land,(map-str)*,0|1]`.
+                let r0 = self.rand_log.len();
+                let l0 = self.land_log.len();
+                let map = read_str(args, &mut i);
+                let cfg = TeamCfg::from_jsval(&read_val(args, &mut i)).expect("cfg");
+                let ok = self.supports_compact_map_for_teams(&map, &cfg);
+                self.s4_out(r0, l0, vec![if ok { 1.0 } else { 0.0 }])
+            }
+            26 => {
+                // getCrowdedMaxPlayers `(map-str),(isCompact 0|1)` ->
+                // `[0,0,n_land,(map-str)*,(val)]` (val = [1] undefined).
+                let r0 = self.rand_log.len();
+                let l0 = self.land_log.len();
+                let map = read_str(args, &mut i);
+                let compact = args[i] != 0.0;
+                let v = match self.get_crowded_max_players(&map, compact) {
+                    Some(x) => JsVal::Num(x),
+                    None => JsVal::Undef,
+                };
+                let mut payload = Vec::new();
+                push_val(&mut payload, &v);
+                self.s4_out(r0, l0, payload)
+            }
+            27 => {
+                // rollConfig `(type-str),(trusted 0|1)` ->
+                // `[n_rand,(v)*,n_land,(map-str)*,(config-val)]`.
+                let r0 = self.rand_log.len();
+                let l0 = self.land_log.len();
+                let type_ = read_str(args, &mut i);
+                let trusted = args[i] != 0.0;
+                let config = self.roll_config(&type_, trusted);
+                let mut payload = Vec::new();
+                push_val(&mut payload, &config);
+                self.s4_out(r0, l0, payload)
+            }
+            28 => {
+                // gameConfig `(type-str)` -> same shape as 27 (the scheduled
+                // counter drives the trusted rotation; `trusted: true` is
+                // appended to the config on the 7th game).
+                let r0 = self.rand_log.len();
+                let l0 = self.land_log.len();
+                let type_ = read_str(args, &mut i);
+                let config = self.game_config(&type_);
+                let mut payload = Vec::new();
+                push_val(&mut payload, &config);
+                self.s4_out(r0, l0, payload)
+            }
+            29 => {
+                // get1v1Config -> `[n_rand,(v)*,0,(config-val)]`.
+                let r0 = self.rand_log.len();
+                let l0 = self.land_log.len();
+                let config = self.get1v1_config();
+                let mut payload = Vec::new();
+                push_val(&mut payload, &config);
+                self.s4_out(r0, l0, payload)
+            }
+            30 => {
+                // get2v2Config -> `[n_rand,(v)*,0,(config-val)]`.
+                let r0 = self.rand_log.len();
+                let l0 = self.land_log.len();
+                let config = self.get2v2_config();
+                let mut payload = Vec::new();
+                push_val(&mut payload, &config);
+                self.s4_out(r0, l0, payload)
+            }
+            31 => {
+                // dump the scripted facades' call logs (cumulative):
+                // `[n_rand,(v)*,n_land,(map-str)*]`.
+                let mut out = vec![self.rand_log.len() as f64];
+                out.extend(self.rand_log.iter().copied());
+                out.push(self.land_log.len() as f64);
+                for m in &self.land_log {
+                    push_str(&mut out, m);
+                }
+                out
+            }
             k => unreachable!("map_playlist harness: unknown op kind {k}"),
         }
     }

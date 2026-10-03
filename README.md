@@ -179,8 +179,9 @@ rust/
 │   │   │                          (anon-name / reveal rules; Client facade
 │   │   │                          scripted-mocked, Client.ts ws class excluded)
 │   │   ├── map_playlist.rs        port of server/MapPlaylist.ts (deterministic
-│   │   │                          layer: tables, playlist queues, pure helpers;
-│   │   │                          Date.now scripted, Math.random paths deferred)
+│   │   │                          layer + Math.random orchestration: gameConfig
+│   │   │                          / rollConfig ffa-team, ranked configs; Date.now
+│   │   │                          / Math.random / getMapLandTiles scripted)
 │   │   ├── wasm_probe.rs          `extern "C"` surface, feature-gated
 │   │   └── pathfinding/
 │   │       ├── mod.rs
@@ -1302,14 +1303,44 @@ WebSockets — stays excluded, mirroring the `src/core` exclusions).
     `HumansVsNations` are **string** constants (`"Duos"`, … ,
     `"Humans Vs Nations"`), so the `typeof playerTeams !== "number"` capacity
     gate passes for all four presets and they are handed through untouched —
-    the numeric branch only ever sees `2..7`. Excluded (deferred to the
-    `Math.random` orchestration stage): `getSpecialConfig` /
-    `getRandomSpecialGameModifiers`, whose `.sort(() => Math.random() - 0.5)`
-    depends on V8's internal comparison sequence and is not bit-reproducible;
-    `rollConfig` / `gameConfig` / `get1v1Config` / `get2v2Config` /
-    `lobbyMaxPlayers` / `supportsCompactMapForTeams` / `getCrowdedMaxPlayers`
-    (the last two behind the `getMapLandTiles` fs facade). 21 scenarios
-    (`mpl_`).
+    the numeric branch only ever sees `2..7`. Excluded at this stage:
+    `getSpecialConfig` / `getRandomSpecialGameModifiers`, whose
+    `.sort(() => Math.random() - 0.5)` depends on V8's internal comparison
+    sequence and is not bit-reproducible (permanently excluded); the
+    `Math.random` orchestration layer (`rollConfig` / `gameConfig` /
+    `get1v1Config` / `get2v2Config` / `lobbyMaxPlayers` /
+    `supportsCompactMapForTeams` / `getCrowdedMaxPlayers`) is covered in
+    entry 61. 21 scenarios (`mpl_`).
+61. **`server/MapPlaylist.ts` (Math.random orchestration)** (`map_playlist`,
+    S4) — the scheduled-lobby config layer on top of the S3 queues. Both
+    remaining impurities are scripted: `Math.random()` is rewritten to
+    `globalThis.__MP_RAND()` (a capture-side FIFO popper; the Rust harness
+    mirrors the queue and pins, per op, the exact **values consumed in call
+    order** as a `[n_rand, (v)*, n_land, (map-str)*, payload...]` prefix —
+    short-circuit paths that consume nothing are pinned too), and
+    `getMapLandTiles` becomes a table facade (`__MP_LAND`, missing map falls
+    back to `1_000_000` — the real TS catch branch). Ported: `getTeamCount`
+    (force gate consumes a rand **only** when the map declares a
+    `specialTeamCount`, else short-circuits; weighted roll over
+    `TEAM_WEIGHTS`), `lobbyMaxPlayers` (tier roll `r<0.3?l:r<0.6?m:s`, Team
+    `ceil(base*1.5)` capped at `l`, compact `max(3, floor(p*0.25))`),
+    `supportsCompactMapForTeams`, `getCrowdedMaxPlayers` (`<=60` → 60/125,
+    else `undefined`), `rollConfig` **ffa/team only** (special branch asserts
+    — it reaches the excluded `getSpecialConfig`), `gameConfig` (`scheduled`
+    counter, `trusted` every 7th), `get1v1Config` / `get2v2Config` (fixed
+    maps list, `Europe Classic` is the enum's string value). Quirks pinned:
+    `isCompact = playlists[type].length % 3 === 0 || undefined` is
+    `true|undefined` (never `false`) and reads the queue length **after**
+    `getNextMap`'s `shift()` (the first ffa roll sees 603 → compact, the
+    first team roll sees 760 → not); the `||` comment's "75% reduction" is
+    really `floor(p*0.25)`; `trusted: true` is **appended** at the end of
+    the config object (not insertion-ordered mid-object); the FFA path's
+    `playerTeams` key is present-`undefined` (`JsVal::Undef`, not absent);
+    the weighted-roll tail is reachable only with a scripted rand of exactly
+    `1.0`. The `GameConfig` object crosses the harness through the `js_json`
+    `JsVal` codec with the TS literal's key order. 12 scenarios
+    (`mpl_tc_*`, `mpl_lmp_*`, `mpl_sc_*`, `mpl_cm_*`, `mpl_rc_*`,
+    `mpl_gc_*`, `mpl_1v1_*`, `mpl_2v2_*`).
 
 Regenerate whenever a ported source changes:
 
@@ -1343,7 +1374,7 @@ node rust/tools/run_wasm_parity.mjs
 
 `wasm-probe` exposes the ported functions through `extern "C"` scalar
 entrypoints (`src/wasm_probe.rs`); the runner imports `data/vectors.json` and
-compares every value. Last run: **267,704 comparisons, all bit-identical**.
+compares every value. Last run: **279,023 comparisons, all bit-identical**.
 
 ### Windows: the linker environment
 

@@ -4830,3 +4830,102 @@ pub extern "C" fn probe_cn_op(kind: u32) -> usize {
 pub extern "C" fn probe_cn_out_at(i: usize) -> f64 {
     CN_OUT.with(|o| o.borrow()[i])
 }
+
+// ============ S6: server/Privilege.ts (privilege) ===========================
+
+thread_local! {
+    static PV_HARNESS: std::cell::RefCell<crate::privilege::RigHarness> =
+        std::cell::RefCell::new(crate::privilege::RigHarness::new());
+    static PV_ARGS: std::cell::RefCell<Vec<f64>> = const { std::cell::RefCell::new(Vec::new()) };
+    static PV_OUT: std::cell::RefCell<Vec<f64>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
+#[no_mangle]
+pub extern "C" fn probe_pv_reset() {
+    PV_HARNESS.with(|h| h.borrow_mut().reset());
+}
+
+#[no_mangle]
+pub extern "C" fn probe_pv_arg(v: f64) {
+    PV_ARGS.with(|t| t.borrow_mut().push(v));
+}
+
+#[no_mangle]
+pub extern "C" fn probe_pv_op(kind: u32) -> usize {
+    let a = PV_ARGS.with(|t| std::mem::take(&mut *t.borrow_mut()));
+    let out = PV_HARNESS.with(|h| h.borrow_mut().run_op(kind as u8, &a));
+    let len = out.len();
+    PV_OUT.with(|o| *o.borrow_mut() = out);
+    len
+}
+
+#[no_mangle]
+pub extern "C" fn probe_pv_out_at(i: usize) -> f64 {
+    PV_OUT.with(|o| o.borrow()[i])
+}
+
+// ============ S6: server/Roster.ts (roster) =================================
+
+thread_local! {
+    static RS_HARNESS: std::cell::RefCell<crate::roster::RigHarness> =
+        std::cell::RefCell::new(crate::roster::RigHarness::new());
+    static RS_ARGS: std::cell::RefCell<Vec<f64>> = const { std::cell::RefCell::new(Vec::new()) };
+    static RS_OUT: std::cell::RefCell<Vec<f64>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
+#[no_mangle]
+pub extern "C" fn probe_rs_reset() {
+    RS_HARNESS.with(|h| h.borrow_mut().reset());
+}
+
+#[no_mangle]
+pub extern "C" fn probe_rs_arg(v: f64) {
+    RS_ARGS.with(|t| t.borrow_mut().push(v));
+}
+
+#[no_mangle]
+pub extern "C" fn probe_rs_op(kind: u32) -> usize {
+    let a = RS_ARGS.with(|t| std::mem::take(&mut *t.borrow_mut()));
+    let out = RS_HARNESS.with(|h| h.borrow_mut().run_op(kind as u8, &a));
+    let len = out.len();
+    RS_OUT.with(|o| *o.borrow_mut() = out);
+    len
+}
+
+#[no_mangle]
+pub extern "C" fn probe_rs_out_at(i: usize) -> f64 {
+    RS_OUT.with(|o| o.borrow()[i])
+}
+
+// ============ S6: server/MatchTelemetryRecorder.ts (match_telemetry) ========
+
+thread_local! {
+    static MT_HARNESS: std::cell::RefCell<crate::match_telemetry::RigHarness> =
+        std::cell::RefCell::new(crate::match_telemetry::RigHarness::new());
+    static MT_ARGS: std::cell::RefCell<Vec<f64>> = const { std::cell::RefCell::new(Vec::new()) };
+    static MT_OUT: std::cell::RefCell<Vec<f64>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
+#[no_mangle]
+pub extern "C" fn probe_mt_reset() {
+    MT_HARNESS.with(|h| h.borrow_mut().reset());
+}
+
+#[no_mangle]
+pub extern "C" fn probe_mt_arg(v: f64) {
+    MT_ARGS.with(|t| t.borrow_mut().push(v));
+}
+
+#[no_mangle]
+pub extern "C" fn probe_mt_op(kind: u32) -> usize {
+    let a = MT_ARGS.with(|t| std::mem::take(&mut *t.borrow_mut()));
+    let out = MT_HARNESS.with(|h| h.borrow_mut().run_op(kind as u8, &a));
+    let len = out.len();
+    MT_OUT.with(|o| *o.borrow_mut() = out);
+    len
+}
+
+#[no_mangle]
+pub extern "C" fn probe_mt_out_at(i: usize) -> f64 {
+    MT_OUT.with(|o| o.borrow()[i])
+}

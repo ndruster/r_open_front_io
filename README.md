@@ -189,6 +189,16 @@ rust/
 │   │   ├── censor.rs              port of server/Censor.ts (shadow/banned
 │   │   │                          tables + censorPlayer orchestration; the
 │   │   │                          obscenity matcher is a scripted facade)
+│   │   ├── privilege.rs           port of server/Privilege.ts (decideClanTag /
+│   │   │                          FailOpen / resolveVerifiedJoin / isAllowed
+│   │   │                          orchestration; the six leaf validators are a
+│   │   │                          scripted facade, trace 40-45)
+│   │   ├── roster.rs              port of server/Roster.ts (full bookkeeping
+│   │   │                          class; narrow Client stub + integer-id ws
+│   │   │                          facades, close trace 50-52)
+│   │   ├── match_telemetry.rs     port of server/MatchTelemetryRecorder.ts
+│   │   │                          (recorder + identityFor; Date.now / emitter
+│   │   │                          scripted, event trace 60)
 │   │   ├── wasm_probe.rs          `extern "C"` surface, feature-gated
 │   │   └── pathfinding/
 │   │       ├── mod.rs
@@ -1385,6 +1395,51 @@ WebSockets — stays excluded, mirroring the `src/core` exclusions).
     when the shadow branch is taken; a surviving tag is `toUpperCase()`d, a
     dropped one is JS `null` (the `clanTag` key is always present). 21
     scenarios (`dd_` 7, `jv_` 3, `cn_` 11).
+63. **`server/Privilege.ts` + `server/Roster.ts` +
+    `server/MatchTelemetryRecorder.ts`** (`privilege`, `roster`,
+    `match_telemetry`) — the S6 server cluster. `Privilege` ports the pure
+    decisions (`decideClanTag` via `resolveClanTag`, `FailOpenPrivilegeChecker`
+    both methods, `resolveVerifiedJoin`, `isTemporaryUsername` reusing
+    `api_schemas`) plus the `isAllowed` ORCHESTRATION layer; the six leaf
+    validators (cosmetics catalog graph) ride as a scripted black-box facade —
+    the capture monkey-patches the prototype methods to consult
+    `globalThis.__PV_LEAF`, every leaf call a trace event (40-45) pinning the
+    gate order and the first-throw short-circuit. Quirks pinned: the KEPT clan
+    tag is the ORIGINAL `censoredTag` (not the uppercased compare key);
+    `FailOpen.isAllowed` gates STRICT `verified === true` (`1` / `"true"` fail
+    it); `resolveVerifiedJoin`'s fall-through runs `delete cosmetics.verified`
+    — the res dumps the POST-MUTATION object (key REMOVED, not set undefined);
+    `\d` without the `u` flag is ASCII-only (`TEMPORARY١٢٣٤` is NOT
+    temporary); `cosmetics.effects ??= {}` is lazy — an EMPTY `refs.effects`
+    passes the truthy gate but the result carries NO `effects` key; the result
+    key order is pattern,color,flag,skin,crown,effects,verified. `Roster`
+    ports the whole bookkeeping class over the narrow `Client` stub and
+    integer-id ws facades (same id == same socket object): `add`'s five
+    container orders, `reconnect`'s REFERENCE-identity gate (same ws → zero
+    close trace; new ws → 51 removeAllListeners + 52 `close()` no-args on the
+    OLD socket, then move-to-tail), `markLeft` keeps the `everyone` record and
+    the reconnect mapping, `forgetReconnect`'s `get(pid) === clientID` guard
+    (a b-steals-pid seat → forget(a) deletes nothing), `kick` adds to `kicked`
+    BEFORE the `some` scan (so the answer is wasConnected, and `wasAdmitted`
+    consults `kicked` first), `pruneStale` strict `>` (silence == max survives),
+    `closeAll` iterates the sockets Set in insertion order and closes ONLY
+    `readyState === OPEN` with `(1000, reason)`, `isDisconnected` is `?? true`
+    for unknown ids, `votingUniqueIPs` sizes a `Set` over `players()` (the
+    spectator-filtered list). `MatchTelemetryRecorder` ports `identityFor` +
+    the recorder; `Date.now()` is scripted (`globalThis.__MT_NOW` FIFO,
+    precedent: `__LISTING_NOW`) and the emitter is a construction-injected
+    black box (outcome queue 0 enqueued / 1 dropped-return / 2 throw; every
+    emission traces `[60, ...codec(event), outcome]` BEFORE the return/throw,
+    pinning the event byte-for-byte). Quirks: the event key order is
+    schemaVersion,type,matchId,sequence,observedAt,serverTick,payload;
+    `sequence` POST-increments even when the emitter throws (the gap is
+    observable); the intent payload's SIX keys are always present (omitted
+    reason args cross as present-`undefined`, not absent); `takeTickCounts`
+    is get-then-`delete` (a second read returns the `{0,0,0}` default);
+    `matchFinished` latches (second call emits nothing) and passes `totalTurns`
+    as BOTH `serverTick` and `payload.totalTurns`; `observedAt` is read AFTER
+    the sequence increment; tick counts key through `NumMap` (+0/-0 collapse,
+    NaN by bits). 36 scenarios (`pv_` 16, `rs_` 12, `mt_` 8).
 
 Regenerate whenever a ported source changes:
 
@@ -1418,7 +1473,7 @@ node rust/tools/run_wasm_parity.mjs
 
 `wasm-probe` exposes the ported functions through `extern "C"` scalar
 entrypoints (`src/wasm_probe.rs`); the runner imports `data/vectors.json` and
-compares every value. Last run: **280,310 comparisons, all bit-identical**.
+compares every value. Last run: **285,710 comparisons, all bit-identical**.
 
 ### Windows: the linker environment
 

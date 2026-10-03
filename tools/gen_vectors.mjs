@@ -214,6 +214,109 @@ globalThis.__CN_MATCHER = {
 const DD = await loadTs("src/server/DesyncDetector.ts");
 const JV = await loadTs("src/server/JoinVerify.ts");
 const CN = await loadTs("src/server/Censor.ts");
+
+// S6: Privilege.ts. The six leaf validators depend on the cosmetics catalog
+// graph and are NOT ported: the capture monkey-patches the prototype methods
+// to consult globalThis.__PV_LEAF (a scripted key -> {value}|{error} table,
+// precedent: the Censor matcher). Every leaf call pushes a trace event
+// [40..45, (key-str), outcome 0|1, payload] and the real isAllowed method
+// body (key gate order, try/catch, ??= lazy init, strict verified gate)
+// executes verbatim. The leaf key mirrors the Rust `privilege::is_allowed`
+// builder: pattern:<name>|<palette ?? "~">, color:<color>, flag:<flagRef>,
+// skin:<name>, crown:<name>, effect:<slot>|<name>.
+let pvLeafRows = [];
+globalThis.__PV_LEAF = {
+  lookup: (key) => {
+    const row = pvLeafRows.find((r) => r.key === key);
+    if (!row) throw new Error("pv capture: unscripted leaf " + key);
+    return row;
+  },
+};
+const PV_PROTO_PATCH = [
+  ["isPatternAllowed", 40, (flares, name, palette) => `pattern:${name}|${palette ?? "~"}`],
+  ["isColorAllowed", 41, (flares, color) => `color:${color}`],
+  ["isFlagAllowed", 42, (flares, flagRef) => `flag:${flagRef}`],
+  ["isSkinAllowed", 43, (flares, name) => `skin:${name}`],
+  ["isCrownAllowed", 44, (flares, name) => `crown:${name}`],
+  ["isEffectAllowed", 45, (flares, slot, name) => `effect:${slot}|${name}`],
+];
+const PV = await loadTs("src/server/Privilege.ts");
+let pvTrace = [];
+for (const [method, code, keyOf] of PV_PROTO_PATCH) {
+  PV.PrivilegeCheckerImpl.prototype[method] = function (...args) {
+    const key = keyOf(...args);
+    const row = globalThis.__PV_LEAF.lookup(key);
+    if (row.error !== undefined) {
+      pvTrace.push(code, ...encS(key), 1, ...encS(row.error));
+      throw new Error(row.error);
+    }
+    pvTrace.push(code, ...encS(key), 0, ...encVal(row.value));
+    return row.value;
+  };
+}
+
+// S6: Roster.ts. The ws package is unresolvable; the capture scripts each
+// socket as {id, readyState, close(code?,reason?), removeAllListeners()} and
+// traces every call: 50=closeAll close(code,reason), 51=reconnect
+// removeAllListeners, 52=reconnect close() (no args). Client stubs ride the
+// narrow facade {clientID, persistentID, ip, spectator, lastPing, publicId,
+// ws}; the dump encodes ws as the integer ws id.
+let rsTrace = [];
+let rsWs = new Map();
+const mkRsWs = (id, ready) => {
+  const existing = rsWs.get(id);
+  if (existing) {
+    // Same integer id == same socket object (JS reference identity).
+    existing.readyState = ready;
+    return existing;
+  }
+  const w = {
+    id,
+    readyState: ready,
+    close(code, reason) {
+      if (code === undefined) rsTrace.push(52, id);
+      else rsTrace.push(50, id, code, ...encS(reason));
+    },
+    removeAllListeners() {
+      rsTrace.push(51, id);
+    },
+  };
+  rsWs.set(id, w);
+  return w;
+};
+const RS = await loadTs("src/server/Roster.ts");
+
+// S6: MatchTelemetryRecorder.ts. Date.now() is scripted through
+// globalThis.__MT_NOW (queue popped in call order, precedent: __LISTING_NOW).
+// The emitter is a construction-injected facade: emit(event) pops the
+// scripted outcome queue (0 enqueued / 1 dropped-return / 2 throw) and
+// traces [60, ...codec(event), outcome] BEFORE the return/throw, pinning
+// the event object byte-for-byte (key order, post-incremented sequence).
+let mtNows = [];
+let mtOutcomes = [];
+let mtTrace = [];
+globalThis.__MT_NOW = () => {
+  if (!mtNows.length) throw new Error("mt capture: unscripted Date.now()");
+  return mtNows.shift();
+};
+const mtEmitter = {
+  emit(event) {
+    if (!mtOutcomes.length) throw new Error("mt capture: unscripted emitter outcome");
+    const o = mtOutcomes.shift();
+    mtTrace.push(60, ...encVal(event));
+    if (o === 0) {
+      mtTrace.push(0);
+      return "enqueued";
+    }
+    if (o === 1) {
+      mtTrace.push(1);
+      return "dropped";
+    }
+    mtTrace.push(2);
+    throw new Error("mt emitter boom");
+  },
+};
+const MT = await loadTs("src/server/MatchTelemetryRecorder.ts");
 const PF = await loadTs("src/core/pathfinding/PathFinder.ts");
 const { AStar } = await loadTs("src/core/pathfinding/algorithms/AStar.ts");
 const { AStarRail } = await loadTs("src/core/pathfinding/algorithms/AStar.Rail.ts");
@@ -12157,11 +12260,671 @@ runCN("cn_shortcircuit_no_second_hasmatch", [
   [2, "Clean", "xyzzy"],
 ]);
 
+// ============================================================ S6: Privilege.ts
+// op stream. kind 0 reset -> [0]; 1 scriptReservedTags [n,(tag-str)*n] ->
+// [0]; 2 resolveClanTag (Impl) [(tag val), n, (owned-str)*n] -> codec
+// {tag,dropped}; 3 failOpenResolveClanTag [(tag val)] -> codec; 4
+// failOpenIsAllowed [refs] -> codec; 5 resolveVerifiedJoin [cosmetics,
+// (joinUsername-str), account] -> (verdict-str, ...codec POST-MUTATION
+// cosmetics); 6 isTemporaryUsername [(str)] -> [0|1]; 7 scriptLeaves [n,
+// (key-str, outcome 0|1, payload)*n] -> [0]; 8 isAllowed [refs] ->
+// [traceLen,(trace)*,codec result] with 40..45 leaf codes (pattern/color/
+// flag/skin/crown/effect). The real TS method bodies run; only the six leaf
+// validators are scripted.
+const pvScenarios = [];
+let pvIdx = 0;
+function runPV(name, ops) {
+  const played = [];
+  let impl = null;
+  let failOpen = null;
+  for (const [k, ...a] of ops) {
+    let args, res;
+    if (k === 0) {
+      args = [];
+      pvLeafRows = [];
+      impl = new PV.PrivilegeCheckerImpl({}, () => new Uint8Array(), new Set());
+      failOpen = new PV.FailOpenPrivilegeChecker();
+      res = [0];
+    } else if (k === 1) {
+      const tags = a[0];
+      args = [tags.length, ...tags.flatMap(encS)];
+      impl = new PV.PrivilegeCheckerImpl({}, () => new Uint8Array(), new Set(tags));
+      res = [0];
+    } else if (k === 2) {
+      const [tag, owned] = a;
+      args = [...encVal(tag), owned.length, ...owned.flatMap(encS)];
+      res = encVal(impl.resolveClanTag(tag, owned));
+    } else if (k === 3) {
+      args = [...encVal(a[0])];
+      res = encVal(failOpen.resolveClanTag(a[0], []));
+    } else if (k === 4) {
+      args = [...encVal(a[0])];
+      res = encVal(failOpen.isAllowed([], a[0]));
+    } else if (k === 5) {
+      const [cosmetics, joinUsername, account] = a;
+      args = [...encVal(cosmetics), ...encS(joinUsername), ...encVal(account)];
+      const v = PV.resolveVerifiedJoin(cosmetics, joinUsername, account);
+      // Dump the POST-MUTATION cosmetics: the fall-through path deletes the
+      // verified key entirely (not set-undefined).
+      res = [...encS(v), ...encVal(cosmetics)];
+    } else if (k === 6) {
+      args = [...encS(a[0])];
+      res = [Api.isTemporaryUsername(a[0]) ? 1 : 0];
+    } else if (k === 7) {
+      const rows = a[0];
+      args = [rows.length];
+      pvLeafRows = [];
+      for (const [key, isErr, payload] of rows) {
+        args.push(...encS(key), isErr ? 1 : 0);
+        if (isErr) {
+          args.push(...encS(payload));
+          pvLeafRows.push({ key, error: payload });
+        } else {
+          args.push(...encVal(payload));
+          pvLeafRows.push({ key, value: payload });
+        }
+      }
+      res = [0];
+    } else if (k === 8) {
+      args = [...encVal(a[0])];
+      pvTrace = [];
+      const r = impl.isAllowed([], a[0]);
+      res = [pvTrace.length, ...pvTrace, ...encVal(r)];
+    } else {
+      throw new Error("pv: bad op kind " + k);
+    }
+    played.push({ kind: k, args: args.flat().map(uenc), res: res.flat().map(uenc) });
+  }
+  pvScenarios.push({ name: `${name}_${pvIdx++}`, ops: played });
+}
+
+runPV("pv_clan_tag_null", [
+  [0],
+  [1, []],
+  [2, null, []],
+]);
+runPV("pv_clan_tag_member_case_insensitive", [
+  [0],
+  [1, ["FOO"]],
+  [2, "abc", ["AbC"]], // isMember -> keep the ORIGINAL "abc" (not uppercased)
+  [2, "foo", ["FOO"]], // member via uppercase compare -> keep "foo"
+]);
+runPV("pv_clan_tag_fictional_passthrough", [
+  [0],
+  [1, ["ABC"]],
+  [2, "xyz", []], // not member, not reserved -> fictional tag kept verbatim
+]);
+runPV("pv_clan_tag_reserved_dropped", [
+  [0],
+  [1, ["EVIL"]],
+  [2, "evil", []], // reserved (uppercase compare) -> dropped
+  [2, "EvIl", ["other"]], // owned tag does not match -> dropped
+]);
+runPV("pv_failopen_methods", [
+  [0],
+  [3, null], // identity passthrough
+  [3, "keep"],
+  [4, {}], // verified absent -> {}
+  [4, { verified: true }], // {verified:true}
+  [4, { verified: false }],
+  [4, { verified: 1 }], // STRICT ===: 1 fails the gate
+  [4, { verified: "true" }],
+  [4, { verified: undefined }], // present-undefined fails too
+]);
+runPV("pv_verified_join_branches", [
+  [0],
+  [5, {}, "Alice", null], // verified !== true -> custom, NO mutation
+  [5, { verified: true }, "Alice", null], // account null -> dev
+  [
+    5,
+    { verified: true },
+    "Alice",
+    { username: "Alice", usernameBase: "Alice", usernameStatus: "premium" },
+  ], // verified
+  [
+    5,
+    { verified: true, color: { color: "red" } },
+    "Alice",
+    { username: "Alice.7", usernameBase: "Alice", usernameStatus: "premium" },
+  ], // not bare -> custom + DELETE verified (color survives)
+  [
+    5,
+    { verified: true },
+    "Bob",
+    { username: "Alice", usernameBase: "Alice", usernameStatus: "indefinite" },
+  ], // join name mismatch -> custom + delete
+]);
+runPV("pv_verified_join_account_fields", [
+  [0],
+  [5, { verified: true }, "Alice", { usernameBase: "Alice", usernameStatus: "premium" }], // username absent -> custom + delete
+  [
+    5,
+    { verified: true },
+    "Alice",
+    { username: undefined, usernameBase: "Alice", usernameStatus: "premium" },
+  ], // present-undefined -> custom + delete
+  [
+    5,
+    { verified: true },
+    "Alice",
+    { username: null, usernameBase: "Alice", usernameStatus: "premium" },
+  ], // null -> typeof fails -> custom + delete
+  [
+    5,
+    { verified: true },
+    "T",
+    { username: "TEMPORARY1234", usernameBase: "TEMPORARY1234", usernameStatus: "premium" },
+  ], // TEMPORARY#### -> not bare -> custom + delete
+  [
+    5,
+    { verified: true },
+    "TEMPORARY12345",
+    { username: "TEMPORARY12345", usernameBase: "TEMPORARY12345", usernameStatus: "premium" },
+  ], // 5 digits: NOT temporary -> verified
+  [
+    5,
+    { verified: true },
+    "Alice",
+    { username: "Alice", usernameBase: "Alice", usernameStatus: "free" },
+  ], // not entitled -> custom + delete
+  [5, { verified: true }, "Alice", { username: "Alice", usernameBase: "Alice" }], // status absent -> custom + delete
+  [
+    5,
+    { verified: true },
+    "",
+    { username: "", usernameBase: "", usernameStatus: "premium" },
+  ], // length 0 -> custom + delete
+]);
+runPV("pv_is_temporary_boundaries", [
+  [0],
+  [6, "TEMPORARY1234"],
+  [6, "TEMPORARY12345"],
+  [6, "TEMPORARY123"],
+  [6, "temporary1234"],
+  [6, "TEMPORARY١٢٣٤"], // Arabic-Indic digits: \d WITHOUT the u flag does not match
+  [6, ""],
+  [6, "XTEMPORARY1234"],
+  [6, "TEMPORARY1234X"],
+]);
+runPV("pv_allowed_empty_refs", [
+  [0],
+  [8, {}], // allowed, cosmetics {}, empty trace
+]);
+runPV("pv_allowed_single_leaf_value", [
+  [0],
+  [7, [["color:red", false, { color: "red" }]]],
+  [8, { color: "red" }],
+]);
+runPV("pv_allowed_forbidden_reason_verbatim", [
+  [0],
+  [7, [["flag:country:US", true, "invalid country code"]]],
+  [8, { flag: "country:US" }], // forbidden "invalid flag: invalid country code"
+]);
+runPV("pv_allowed_key_order_all_leaves", [
+  [0],
+  [
+    7,
+    [
+      ["pattern:stripes|~", false, { name: "stripes", patternData: "d", colorPalette: undefined }],
+      ["color:red", false, { color: "red" }],
+      ["flag:us", false, "/flags/us.svg"],
+      ["skin:gold", false, { name: "gold", url: "u1" }],
+      ["crown:king", false, { name: "king", url: "u2" }],
+    ],
+  ],
+  [
+    8,
+    {
+      patternName: "stripes",
+      color: "red",
+      flag: "us",
+      skinName: "gold",
+      crownName: "king",
+      verified: true,
+    },
+  ], // cosmetics order pattern,color,flag,skin,crown,verified
+]);
+runPV("pv_allowed_effects_lazy_and_order", [
+  [0],
+  [
+    7,
+    [
+      ["effect:trail|comet", false, { name: "comet", effectType: "trail" }],
+      ["effect:nukeBoom|atom", false, { name: "atom", effectType: "nukeBoom" }],
+    ],
+  ],
+  [8, { effects: {} }], // truthy gate passes, loop never runs -> NO effects key
+  [8, { effects: { trail: "comet", nukeBoom: "atom" } }], // ??= lazy, slot order
+]);
+runPV("pv_allowed_effects_throw_second_slot", [
+  [0],
+  [
+    7,
+    [
+      ["effect:trail|comet", false, { name: "comet", effectType: "trail" }],
+      ["effect:nukeBoom|atom", true, "Effect atom not found for slot nukeBoom"],
+    ],
+  ],
+  [8, { effects: { trail: "comet", nukeBoom: "atom" } }], // forbidden after the 2nd trace event
+]);
+runPV("pv_allowed_short_circuit_color_throws", [
+  [0],
+  [7, [["color:red", true, "Color red not allowed"]]],
+  [8, { color: "red", flag: "us", verified: true }], // flag/verified never reached (trace len 1 event)
+]);
+runPV("pv_allowed_verified_strict", [
+  [0],
+  [7, []],
+  [8, { verified: 1 }], // no verified key
+  [8, { verified: "true" }],
+  [8, { verified: undefined }],
+  [8, { verified: false }],
+  [8, { verified: true }], // verified key appended last
+]);
+
+// ============================================================= S6: Roster.ts
+// op stream over the narrow Client stub + scripted ws objects. kind 0 reset;
+// 1 add [(clientID),(persistentID),(ip),spectator 0|1,lastPing,(publicId
+// val),wsId,readyState]; 2 reconnect [(clientID),wsId,readyState] ->
+// [traceLen,(trace)*,0] with 51 removeAllListeners / 52 close(); 3 markLeft;
+// 4 forgetReconnect; 5 kick -> [0|1]; 6 pruneStale [now,max] -> [n,(id)*n];
+// 7 closeAll [(reasonKey)] -> [traceLen,(trace)*,0] with 50 close(code,
+// reason); 8 active; 9 isConnected; 10 players; 11 all (everyone Map dump,
+// insertion order); 12 get -> val | Undef; 13 byPersistentId; 14 isKicked;
+// 15 wasAdmitted; 16 isDisconnected; 17 setDisconnected; 18
+// votingUniqueIPs; 19 setWsReadyState.
+const rsScenarios = [];
+let rsIdx = 0;
+function rsStubDump(c) {
+  return {
+    clientID: c.clientID,
+    persistentID: c.persistentID,
+    ip: c.ip,
+    spectator: c.spectator,
+    lastPing: c.lastPing,
+    publicId: c.publicId,
+    ws: c.ws.id,
+  };
+}
+function runRS(name, ops) {
+  const played = [];
+  let rs = null;
+  for (const [k, ...a] of ops) {
+    let args, res;
+    if (k === 0) {
+      args = [];
+      rsWs = new Map();
+      rsTrace = [];
+      rs = new RS.Roster();
+      res = [0];
+    } else if (k === 1) {
+      const [clientID, persistentID, ip, spectator, lastPing, publicId, wsId, ready] = a;
+      args = [
+        ...encS(clientID),
+        ...encS(persistentID),
+        ...encS(ip),
+        spectator ? 1 : 0,
+        uenc(lastPing),
+        ...encVal(publicId),
+        uenc(wsId),
+        uenc(ready),
+      ];
+      rs.add({ clientID, persistentID, ip, spectator, lastPing, publicId, ws: mkRsWs(wsId, ready) });
+      res = [0];
+    } else if (k === 2) {
+      const [clientID, wsId, ready] = a;
+      args = [...encS(clientID), uenc(wsId), uenc(ready)];
+      rsTrace = [];
+      rs.reconnect(rs.get(clientID), mkRsWs(wsId, ready));
+      res = [rsTrace.length, ...rsTrace, 0];
+    } else if (k === 3) {
+      args = [...encS(a[0])];
+      rs.markLeft(rs.get(a[0]));
+      res = [0];
+    } else if (k === 4) {
+      args = [...encS(a[0])];
+      rs.forgetReconnect(rs.get(a[0]));
+      res = [0];
+    } else if (k === 5) {
+      args = [...encS(a[0])];
+      res = [rs.kick(rs.get(a[0])) ? 1 : 0];
+    } else if (k === 6) {
+      const [now, max] = a;
+      args = [uenc(now), uenc(max)];
+      const stale = rs.pruneStale(now, max);
+      res = [stale.length, ...stale.flatMap((c) => encS(c.clientID))];
+    } else if (k === 7) {
+      args = [...encS(a[0])];
+      rsTrace = [];
+      rs.closeAll(a[0]);
+      res = [rsTrace.length, ...rsTrace, 0];
+    } else if (k === 8) {
+      args = [];
+      const act = rs.active();
+      res = [act.length, ...act.flatMap((c) => encS(c.clientID))];
+    } else if (k === 9) {
+      args = [...encS(a[0])];
+      res = [rs.isConnected(rs.get(a[0])) ? 1 : 0];
+    } else if (k === 10) {
+      args = [];
+      const p = rs.players();
+      res = [p.length, ...p.flatMap((c) => encS(c.clientID))];
+    } else if (k === 11) {
+      args = [];
+      const all = [...rs.all().values()];
+      res = [all.length, ...all.flatMap((c) => encVal(rsStubDump(c)))];
+    } else if (k === 12) {
+      args = [...encS(a[0])];
+      const c = rs.get(a[0]);
+      res = encVal(c === undefined ? undefined : rsStubDump(c));
+    } else if (k === 13) {
+      args = [...encS(a[0])];
+      const c = rs.byPersistentId(a[0]);
+      res = encVal(c === undefined ? undefined : rsStubDump(c));
+    } else if (k === 14) {
+      args = [...encS(a[0])];
+      res = [rs.isKicked(a[0]) ? 1 : 0];
+    } else if (k === 15) {
+      args = [...encS(a[0])];
+      res = [rs.wasAdmitted(a[0]) ? 1 : 0];
+    } else if (k === 16) {
+      args = [...encS(a[0])];
+      res = [rs.isDisconnected(a[0]) ? 1 : 0];
+    } else if (k === 17) {
+      args = [...encS(a[0]), a[1] ? 1 : 0];
+      rs.setDisconnected(a[0], a[1]);
+      res = [0];
+    } else if (k === 18) {
+      args = [];
+      res = [rs.votingUniqueIPs()];
+    } else if (k === 19) {
+      args = [uenc(a[0]), uenc(a[1])];
+      rsWs.get(a[0]).readyState = a[1];
+      res = [0];
+    } else {
+      throw new Error("rs: bad op kind " + k);
+    }
+    played.push({ kind: k, args: args.flat().map(uenc), res: res.flat().map(uenc) });
+  }
+  rsScenarios.push({ name: `${name}_${rsIdx++}`, ops: played });
+}
+
+runRS("rs_add_two_dumps", [
+  [0],
+  [1, "a", "pa", "1.1.1.1", false, 100, "PUB-A", 1, 1],
+  [1, "b", "pb", "2.2.2.2", true, 200, null, 2, 1],
+  [11], // everyone insertion order a,b; stub object key order pinned
+  [8], // connected [a,b]
+  [10], // players [a] (spectator excluded)
+  [18], // 1 unique IP among players
+]);
+runRS("rs_reconnect_same_ws_no_close", [
+  [0],
+  [1, "a", "pa", "1", false, 0, "P", 1, 1],
+  [2, "a", 1, 1], // SAME ws object -> client.ws !== ws false -> empty trace
+  [8],
+]);
+runRS("rs_reconnect_new_ws_trace", [
+  [0],
+  [1, "a", "pa", "1", false, 0, "P", 1, 1],
+  [1, "b", "pb", "2", false, 0, "Q", 2, 1],
+  [2, "a", 3, 1], // old ws 1: 51 removeAllListeners, 52 close() (no args)
+  [8], // b, a (a moved to the end)
+  [12, "a"], // record now carries ws 3
+  [7, "close_reason.game_ended"], // sockets {2,3} (1 deleted) both OPEN
+]);
+runRS("rs_reconnect_moves_to_end", [
+  [0],
+  [1, "a", "pa", "1", false, 0, "P", 1, 1],
+  [1, "b", "pb", "2", false, 0, "Q", 2, 1],
+  [1, "c", "pc", "3", false, 0, "R", 3, 1],
+  [2, "b", 4, 1],
+  [8], // a, c, b
+]);
+runRS("rs_mark_left_keeps_record", [
+  [0],
+  [1, "a", "pa", "1", false, 0, "P", 1, 1],
+  [3, "a"],
+  [9, "a"], // 0
+  [12, "a"], // record survives
+  [13, "pa"], // reconnect mapping survives
+  [4, "a"], // forgetReconnect: mapping points at a -> deleted
+  [13, "pa"], // undefined now
+  [11], // everyone still holds a
+]);
+runRS("rs_forget_reconnect_guard", [
+  [0],
+  [1, "a", "pa", "1", false, 0, "P", 1, 1],
+  [1, "b", "pa", "2", false, 0, "Q", 2, 1], // b takes pa's seat
+  [4, "a"], // guard: mapping points at b -> deletes NOTHING
+  [13, "pa"], // -> b
+  [4, "b"], // guard passes -> deleted
+  [13, "pa"], // undefined
+]);
+runRS("rs_kick_returns_was_connected", [
+  [0],
+  [1, "a", "pa", "1", false, 0, "P", 1, 1],
+  [5, "a"], // 1 wasConnected
+  [5, "a"], // 0 already gone
+  [14, "pa"], // 1
+  [15, "pa"], // 0: kicked excluded from admission
+  [8], // empty
+  [12, "a"], // record survives
+]);
+runRS("rs_prune_stale_strict_gt", [
+  [0],
+  [1, "a", "pa", "1", false, 100, "P", 1, 1],
+  [1, "b", "pb", "2", false, 50, "Q", 2, 1],
+  [6, 200, 100], // a: 100 > 100 FALSE (exactly max stays); b: 150 > 100 stale
+  [9, "a"], // 1
+  [9, "b"], // 0
+  [6, 250, 100], // a now stale
+]);
+runRS("rs_close_all_open_gate", [
+  [0],
+  [1, "a", "pa", "1", false, 0, "P", 1, 1], // OPEN
+  [1, "b", "pb", "2", false, 0, "Q", 2, 3], // CLOSED
+  [1, "c", "pc", "3", false, 0, "R", 3, 0], // CONNECTING
+  [7, "close_reason.game_ended"], // only ws 1: [50,1,1000,reason]
+  [19, 2, 1], // b's socket opens
+  [7, "close_reason.game_ended"], // ws 1, ws 2 (Set insertion order)
+]);
+runRS("rs_players_and_voting_ips", [
+  [0],
+  [1, "a", "pa", "1", false, 0, "P", 1, 1],
+  [1, "b", "pb", "1", false, 0, "Q", 2, 1], // duplicate ip
+  [1, "c", "pc", "2", true, 0, "R", 3, 1], // spectator on a distinct ip
+  [10], // a, b
+  [18], // 1 (spectator excluded, duplicate collapsed)
+  [3, "b"],
+  [18], // 1 (a only)
+]);
+runRS("rs_is_disconnected_flags", [
+  [0],
+  [16, "zz"], // unknown -> ?? true
+  [1, "a", "pa", "1", false, 0, "P", 1, 1],
+  [16, "a"], // no flag set yet -> still true
+  [17, "a", false],
+  [16, "a"], // 0
+  [17, "a", true],
+  [16, "a"], // 1
+]);
+runRS("rs_all_map_inplace_overwrite", [
+  [0],
+  [1, "a", "pa", "1", false, 0, "P", 1, 1],
+  [1, "b", "pb", "2", false, 0, "Q", 2, 1],
+  [3, "a"],
+  [1, "a", "pa", "9", false, 55, "P2", 4, 1], // everyone.set overwrites IN PLACE
+  [11], // order stays a,b with a's NEW record
+  [8], // connected: b, a
+]);
+
+// ================================================= S6: MatchTelemetryRecorder
+// op stream. kind 0 reset; 1 construct [(matchId),(buildHash)]; 2
+// identityFor [(clientID),(publicId val)] -> codec {clientId,publicId}; 3
+// emit [(type), payload, tick] -> [traceLen,(trace)*,result 0|1]; 4
+// intentObserved [(clientID), publicId, intent, intentType, (outcome), tick,
+// reasonCode, reasonDetail] -> [traceLen,(trace)*,0]; 5 takeTickCounts [tick]
+// -> codec; 6 matchFinished [totalTurns] -> [traceLen,(trace)*,0]; 7
+// noteArchiveAttempted; 8 scriptEmitter [n,(outcome 0|1|2)*n]; 9 scriptNow
+// [n,(num)*n]. Trace event 60 = [60, ...codec(event), outcome].
+const mtScenarios = [];
+let mtIdx = 0;
+function runMT(name, ops) {
+  const played = [];
+  let rec = null;
+  for (const [k, ...a] of ops) {
+    let args, res;
+    if (k === 0) {
+      args = [];
+      mtNows = [];
+      mtOutcomes = [];
+      mtTrace = [];
+      rec = null;
+      res = [0];
+    } else if (k === 1) {
+      args = [...encS(a[0]), ...encS(a[1])];
+      rec = new MT.MatchTelemetryRecorder(mtEmitter, a[0], a[1]);
+      res = [0];
+    } else if (k === 2) {
+      args = [...encS(a[0]), ...encVal(a[1])];
+      res = encVal(MT.identityFor({ clientID: a[0], publicId: a[1] }));
+    } else if (k === 3) {
+      const [type, payload, tick] = a;
+      args = [...encS(type), ...encVal(payload), uenc(tick)];
+      mtTrace = [];
+      const r = rec.emit(type, payload, tick);
+      res = [mtTrace.length, ...mtTrace, r === "enqueued" ? 0 : 1];
+    } else if (k === 4) {
+      const [clientID, publicId, intent, intentType, outcome, tick, reasonCode, reasonDetail] = a;
+      args = [
+        ...encS(clientID),
+        ...encVal(publicId),
+        ...encVal(intent),
+        ...encVal(intentType),
+        ...encS(outcome),
+        uenc(tick),
+        ...encVal(reasonCode),
+        ...encVal(reasonDetail),
+      ];
+      mtTrace = [];
+      rec.intentObserved(
+        { clientID, publicId },
+        intent,
+        intentType,
+        outcome,
+        tick,
+        reasonCode,
+        reasonDetail,
+      );
+      res = [mtTrace.length, ...mtTrace, 0];
+    } else if (k === 5) {
+      args = [uenc(a[0])];
+      res = encVal(rec.takeTickCounts(a[0]));
+    } else if (k === 6) {
+      args = [uenc(a[0])];
+      mtTrace = [];
+      rec.matchFinished(a[0]);
+      res = [mtTrace.length, ...mtTrace, 0];
+    } else if (k === 7) {
+      args = [];
+      rec.noteArchiveAttempted();
+      res = [0];
+    } else if (k === 8) {
+      args = [a[0].length, ...a[0]];
+      mtOutcomes.push(...a[0]);
+      res = [0];
+    } else if (k === 9) {
+      args = [a[0].length, ...a[0].map(uenc)];
+      mtNows.push(...a[0]);
+      res = [0];
+    } else {
+      throw new Error("mt: bad op kind " + k);
+    }
+    played.push({ kind: k, args: args.flat().map(uenc), res: res.flat().map(uenc) });
+  }
+  mtScenarios.push({ name: `${name}_${mtIdx++}`, ops: played });
+}
+
+runMT("mt_identity_dump", [
+  [0],
+  [2, "c1", "PUB1"],
+  [2, "c2", undefined], // present-undefined publicId (Client field can be undefined)
+  [2, "c3", null],
+]);
+runMT("mt_emit_normal_event_codec", [
+  [0],
+  [1, "match-1", "buildhash-abc"],
+  [9, [1000]],
+  [8, [0]],
+  [3, "turn_committed", { turn: 7 }, 5], // event key order + sequence 0 + observedAt 1000
+]);
+runMT("mt_emit_throw_sequence_gap", [
+  [0],
+  [1, "m", "b"],
+  [9, [1, 2]],
+  [8, [2, 0]],
+  [3, "intent_observed", {}, 1], // throw -> dropped, sequence 0 CONSUMED
+  [3, "intent_observed", {}, 2], // enqueued at sequence 1 (gap = drop)
+]);
+runMT("mt_intent_undef_reasons", [
+  [0],
+  [1, "m", "b"],
+  [9, [500]],
+  [8, [0]],
+  [4, "c1", "P", { type: "move" }, "attack", "accepted", 7, undefined, undefined], // six keys, two present-undef
+  [5, 7], // {1,1,0}
+  [5, 7], // default {0,0,0}: takeTickCounts DELETED the tick
+]);
+runMT("mt_intent_dropped_accumulate", [
+  [0],
+  [1, "m", "b"],
+  [9, [1, 2]],
+  [8, [1, 2]], // dropped-return, then throw -> both count as dropped
+  [4, "c1", undefined, null, null, "rejected", 3, "blocked", "detail"],
+  [4, "c2", 42, "move", "attack", "accepted", 3],
+  [5, 3], // {2,0,2}
+]);
+runMT("mt_match_finished_latch", [
+  [0],
+  [1, "m", "hash9"],
+  [7], // noteArchiveAttempted BEFORE the finish
+  [9, [777, 888]], // endedAt 777, then observedAt 888
+  [8, [0]],
+  [6, 42], // serverTick argument IS totalTurns (42), sequence 0
+  [6, 42], // latched -> empty trace, no queue consumption
+]);
+runMT("mt_multi_tick_interleave", [
+  [0],
+  [1, "m", "b"],
+  [9, [1, 2, 3, 4]],
+  [8, [0, 0, 0, 0]],
+  [4, "c", "P", 1, "t", "accepted", 1],
+  [4, "c", "P", 2, "t", "accepted", 2],
+  [5, 1], // {1,1,0}
+  [4, "c", "P", 3, "t", "accepted", 1], // fresh default after the delete
+  [5, 1], // {1,1,0}
+  [5, 2], // {1,1,0}
+]);
+runMT("mt_nummap_key_classes", [
+  [0],
+  [1, "m", "b"],
+  [9, [1, 2, 3]],
+  [8, [0, 0, 0]],
+  [4, "c", "P", 1, "t", "accepted", 0], // +0 key
+  [5, -0], // -0 collapses onto +0 (SameValueZero)
+  [4, "c", "P", 2, "t", "accepted", NaN], // NaN keyed by bits
+  [5, NaN], // {1,1,0}
+]);
+
 const structures = {
   votetally: vtScenarios,
   desyncdetector: ddScenarios,
   joinverify: jvScenarios,
   censor: cnScenarios,
+  privilege: pvScenarios,
+  roster: rsScenarios,
+  matchtelemetry: mtScenarios,
   configpatch: cpScenarios,
   intentauth: iaScenarios,
   consensus: cvScenarios,
@@ -15094,6 +15857,41 @@ opStream(
     "/// docs). kind 0 construct, 1 setSeed (Date.now scripted via\n" + "/// `globalThis.__MP_SEED`), 2-7 playlist chain, 8-14 pure helpers, 15-20\n" +
     "/// table dumps. The generateNewPlaylist res carries the REAL TS log\n" +
     "/// message (attempt count observable).",
+);
+opStream(
+  "privilege",
+  "Pv",
+  "/// One `server/Privilege.ts` op (see `privilege::RigHarness::run_op` docs).\n" +
+    "/// kind 0 reset, 1 scriptReservedTags, 2 resolveClanTag, 3\n" +
+    "/// failOpenResolveClanTag, 4 failOpenIsAllowed, 5 resolveVerifiedJoin\n" +
+    "/// (res carries verdict + POST-MUTATION cosmetics), 6 isTemporaryUsername,\n" +
+    "/// 7 scriptLeaves (black-box facade table), 8 isAllowed. The isAllowed res\n" +
+    "/// is prefixed with the leaf trace: [traceLen,(trace)*,codec] with\n" +
+    "/// 40=pattern, 41=color, 42=flag, 43=skin, 44=crown, 45=effect; each event\n" +
+    "/// is [code,(key-str),outcome 0|1,payload].",
+);
+opStream(
+  "roster",
+  "Rs",
+  "/// One `server/Roster.ts` op (see `roster::RigHarness::run_op` docs). kind 0\n" +
+    "/// reset, 1 add, 2 reconnect, 3 markLeft, 4 forgetReconnect, 5 kick, 6\n" +
+    "/// pruneStale, 7 closeAll, 8 active, 9 isConnected, 10 players, 11 all,\n" +
+    "/// 12 get, 13 byPersistentId, 14 isKicked, 15 wasAdmitted, 16\n" +
+    "/// isDisconnected, 17 setDisconnected, 18 votingUniqueIPs, 19\n" +
+    "/// setWsReadyState. ws objects ride as integer ids; the reconnect /\n" +
+    "/// closeAll res is trace-prefixed: 50=close(code,reason), 51=\n" +
+    "/// removeAllListeners, 52=close() (no args).",
+);
+opStream(
+  "matchtelemetry",
+  "Mt",
+  "/// One `server/MatchTelemetryRecorder.ts` op (see\n" +
+    "/// `match_telemetry::RigHarness::run_op` docs). kind 0 reset, 1 construct,\n" +
+    "/// 2 identityFor, 3 emit, 4 intentObserved, 5 takeTickCounts, 6\n" +
+    "/// matchFinished, 7 noteArchiveAttempted, 8 scriptEmitter outcomes, 9\n" +
+    "/// scriptNow (Date.now scripted via `globalThis.__MT_NOW`). The emit /\n" +
+    "/// intentObserved / matchFinished res is trace-prefixed with the emitter\n" +
+    "/// events: [60, ...codec(event), outcome 0|1|2].",
 );
 
 const dataDir = join(root, "crates", "core", "tests", "data");

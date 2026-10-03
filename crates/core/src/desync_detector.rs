@@ -33,7 +33,7 @@ use crate::vote_tally::StrSet;
 
 /// SameValueZero key for a number (JS `Map` keying: `+0`/`-0` collapse,
 /// `NaN` keyed by bits).
-fn svz_key(v: f64) -> u64 {
+pub(crate) fn svz_key(v: f64) -> u64 {
     if v == 0.0 {
         0.0f64.to_bits()
     } else {
@@ -42,28 +42,33 @@ fn svz_key(v: f64) -> u64 {
 }
 
 /// A JS `Map<number, V>` preserving key insertion order (`set` on an
-/// existing key overwrites in place, a new key appends).
+/// existing key overwrites in place, a new key appends). Shared with
+/// `match_telemetry` (the `tickCounts` map).
 #[derive(Debug, Default, Clone)]
-struct NumMap<V> {
+pub(crate) struct NumMap<V> {
     entries: Vec<(f64, V)>,
 }
 
 impl<V> NumMap<V> {
-    fn has(&self, k: f64) -> bool {
+    pub(crate) fn has(&self, k: f64) -> bool {
         let kk = svz_key(k);
         self.entries.iter().any(|(x, _)| svz_key(*x) == kk)
     }
-    fn get(&self, k: f64) -> Option<&V> {
+    pub(crate) fn get(&self, k: f64) -> Option<&V> {
         let kk = svz_key(k);
         self.entries.iter().find(|(x, _)| svz_key(*x) == kk).map(|(_, v)| v)
     }
-    fn set(&mut self, k: f64, v: V) {
+    pub(crate) fn set(&mut self, k: f64, v: V) {
         let kk = svz_key(k);
         if let Some(slot) = self.entries.iter_mut().find(|(x, _)| svz_key(*x) == kk) {
             slot.1 = v;
         } else {
             self.entries.push((k, v));
         }
+    }
+    pub(crate) fn delete(&mut self, k: f64) {
+        let kk = svz_key(k);
+        self.entries.retain(|(x, _)| svz_key(*x) != kk);
     }
 }
 

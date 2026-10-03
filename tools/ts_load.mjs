@@ -2958,6 +2958,139 @@ function prepare(rel) {
     out = must(out, "const bannedWords = [", "export const bannedWords = [", "Censor bannedWords export");
   }
 
+  if (rel.endsWith("server/Privilege.ts")) {
+    // S6: the countries.json bare-specifier import is unresolvable; the
+    // module-level `countryCodes` becomes [] (isFlagAllowed is monkey-
+    // patched by the capture, so the table is never read). The zod-inferred
+    // type bindings from CosmeticSchemas / Schemas are erased (strip mode
+    // erases their annotations; the value imports would pull the catalog
+    // graph). findEffectForSlot / decodePatternData are *value* imports used
+    // only inside the leaf methods the capture patches -> drop the imports
+    // (unresolved identifiers sit in dead bodies; strip mode is syntax-only).
+    // isTemporaryUsername is a real *value* import -> redirect to the
+    // prepared ApiSchemas copy (its zod shim already loads). The ctor's
+    // parameter properties are expanded (strip mode rejects them).
+    const pvApiRel = "src/core/ApiSchemas.ts";
+    if (!prepared.has(pvApiRel)) prepare(pvApiRel);
+    out = must(
+      out,
+      'import countries from "resources/countries.json";\n',
+      "const countries = [];\n",
+      "Privilege countries import",
+    );
+    out = must(
+      out,
+      'import { isTemporaryUsername } from "../core/ApiSchemas";\n' +
+        'import { Cosmetics, findEffectForSlot } from "../core/CosmeticSchemas";\n' +
+        'import { decodePatternData } from "../core/PatternDecoder";\n' +
+        "import {\n" +
+        "  PlayerColor,\n" +
+        "  PlayerCosmeticRefs,\n" +
+        "  PlayerCosmetics,\n" +
+        "  PlayerCrown,\n" +
+        "  PlayerEffect,\n" +
+        "  PlayerPattern,\n" +
+        "  PlayerSkin,\n" +
+        '} from "../core/Schemas";\n',
+      `import { isTemporaryUsername } from "./${prepared.get(pvApiRel)}";\n`,
+      "Privilege imports",
+    );
+    out = must(
+      out,
+      "export class PrivilegeCheckerImpl implements PrivilegeChecker {\n" +
+        "  constructor(\n" +
+        "    private cosmetics: Cosmetics,\n" +
+        "    private b64urlDecode: (base64: string) => Uint8Array,\n" +
+        "    // Every registered clan tag (uppercase). Polled by PrivilegeRefresher so\n" +
+        "    // ownership is resolved in memory — no per-join existence probe.\n" +
+        "    private reservedClanTags: Set<string> = new Set(),\n" +
+        "  ) {}",
+      "export class PrivilegeCheckerImpl {\n" +
+        "  cosmetics;\n" +
+        "  b64urlDecode;\n" +
+        "  reservedClanTags;\n" +
+        "  constructor(\n" +
+        "    cosmetics,\n" +
+        "    b64urlDecode,\n" +
+        "    reservedClanTags = new Set(),\n" +
+        "  ) {\n" +
+        "    this.cosmetics = cosmetics;\n" +
+        "    this.b64urlDecode = b64urlDecode;\n" +
+        "    this.reservedClanTags = reservedClanTags;\n" +
+        "  }",
+      "Privilege ctor",
+    );
+  }
+
+  if (rel.endsWith("server/Roster.ts")) {
+    // S6: the `ws` package is unresolvable; the module-level constants
+    // WebSocket.CONNECTING/OPEN/CLOSING/CLOSED (the real npm values) are
+    // inlined so closeAll's `readyState === WebSocket.OPEN` gate still
+    // evaluates against the capture's scripted ws stubs. CloseCodes is a
+    // pure const-object module (no imports) -> load it for real so
+    // CloseCode.Normal (1000) rides verbatim. Client / ClientID are type-only
+    // (the capture feeds plain stubs; strip mode erases the annotations).
+    const rsCloseRel = "src/core/CloseCodes.ts";
+    if (!prepared.has(rsCloseRel)) prepare(rsCloseRel);
+    out = must(
+      out,
+      'import WebSocket from "ws";\n' +
+        'import { CloseCode, CloseReason } from "../core/CloseCodes";\n' +
+        'import { ClientID } from "../core/Schemas";\n' +
+        'import { Client } from "./Client";\n',
+      "const WebSocket = { CONNECTING: 0, OPEN: 1, CLOSING: 2, CLOSED: 3 };\n" +
+        `import { CloseCode, CloseReason } from "./${prepared.get(rsCloseRel)}";\n`,
+      "Roster imports",
+    );
+  }
+
+  if (rel.endsWith("server/MatchTelemetryRecorder.ts")) {
+    // S6: Client is type-only (the capture feeds plain stubs); the telemetry
+    // types are `import type` (erased by strip mode). Date.now() is scripted
+    // through globalThis.__MT_NOW (precedent: ListingState / MapPlaylist).
+    out = must(
+      out,
+      'import { Client } from "./Client";\n' +
+        "import {\n" +
+        "  type MatchTelemetryEmitter,\n" +
+        "  type MatchTelemetryEvent,\n" +
+        "  type MatchTelemetryPayloads,\n" +
+        "  type MatchTelemetryType,\n" +
+        "  type TelemetryPlayerIdentity,\n" +
+        "} from \"./telemetry/MatchTelemetry\";\n",
+      "",
+      "MatchTelemetryRecorder imports",
+    );
+    out = must(out, "Date.now()", "globalThis.__MT_NOW()", "MatchTelemetryRecorder Date.now");
+    out = must(
+      out,
+      "export class MatchTelemetryRecorder {\n" +
+        "  private sequence = 0;\n" +
+        "  private tickCounts = new Map<number, TickCounts>();\n" +
+        "  private replayArchiveAttempted = false;\n" +
+        "  private finished = false;\n\n" +
+        "  constructor(\n" +
+        "    private readonly emitter: MatchTelemetryEmitter,\n" +
+        "    private readonly matchId: string,\n" +
+        "    private readonly buildHash: string,\n" +
+        "  ) {}",
+      "export class MatchTelemetryRecorder {\n" +
+        "  private sequence = 0;\n" +
+        "  private tickCounts = new Map();\n" +
+        "  private replayArchiveAttempted = false;\n" +
+        "  private finished = false;\n" +
+        "  emitter;\n" +
+        "  matchId;\n" +
+        "  buildHash;\n" +
+        "  constructor(emitter, matchId, buildHash) {\n" +
+        "    this.emitter = emitter;\n" +
+        "    this.matchId = matchId;\n" +
+        "    this.buildHash = buildHash;\n" +
+        "  }",
+      "MatchTelemetryRecorder ctor",
+    );
+  }
+
   mkdirSync(cacheDir, { recursive: true });
   const hash = createHash("sha1").update(out).digest("hex").slice(0, 10);
   const base = `${basename(rel, ".ts")}-${hash}.ts`;

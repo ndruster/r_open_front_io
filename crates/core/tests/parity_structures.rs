@@ -3220,3 +3220,107 @@ fn replay_censor_scenarios() {
         }
     }
 }
+
+// server/Privilege.ts: replay the pure-decision + orchestration op stream —
+// the clan-tag keep/drop branches (the KEPT tag is the original censoredTag),
+// the FailOpen strict `verified === true` gate, resolveVerifiedJoin's in-place
+// `delete cosmetics.verified` (the res dumps the POST-MUTATION object), the
+// TEMPORARY\d{4} boundary (ASCII digits only) and the isAllowed leaf trace
+// [40..45] pinning the gate order, the first-throw short-circuit, the ??=
+// lazy effects init and the result key insertion order.
+#[test]
+fn replay_privilege_scenarios() {
+    use openfront_core::privilege::RigHarness;
+    for s in vectors::PV_SCENARIOS {
+        let mut rig = RigHarness::new();
+        for op in s.ops {
+            let got = rig.run_op(op.kind, op.args);
+            assert_eq!(
+                got.len(),
+                op.res.len(),
+                "{} op[{:?}] res len: got {got:?} want {:?}",
+                s.name,
+                op.kind,
+                op.res
+            );
+            for (j, (g, w)) in got.iter().zip(op.res.iter()).enumerate() {
+                assert!(
+                    obj_is(*g, *w),
+                    "{} op[{:?}] res[{j}]: got {g} want {w}",
+                    s.name,
+                    op.kind
+                );
+            }
+        }
+    }
+}
+
+// server/Roster.ts: replay the bookkeeping op stream over the narrow Client
+// stub + integer-id ws facades — the add insertion orders (everyone Map,
+// connected array), reconnect's reference-identity close trace (51/52) and
+// move-to-tail, markLeft's socket/connected-only removal, the
+// forgetReconnect guard, kick's kicked-before-some wasConnected answer, the
+// strict `>` pruneStale, closeAll's OPEN-gate trace (50), the spectator
+// filter in players(), votingUniqueIPs and the isDisconnected `?? true`
+// default for unknown ids.
+#[test]
+fn replay_roster_scenarios() {
+    use openfront_core::roster::RigHarness;
+    for s in vectors::RS_SCENARIOS {
+        let mut rig = RigHarness::new();
+        for op in s.ops {
+            let got = rig.run_op(op.kind, op.args);
+            assert_eq!(
+                got.len(),
+                op.res.len(),
+                "{} op[{:?}] res len: got {got:?} want {:?}",
+                s.name,
+                op.kind,
+                op.res
+            );
+            for (j, (g, w)) in got.iter().zip(op.res.iter()).enumerate() {
+                assert!(
+                    obj_is(*g, *w),
+                    "{} op[{:?}] res[{j}]: got {g} want {w}",
+                    s.name,
+                    op.kind
+                );
+            }
+        }
+    }
+}
+
+// server/MatchTelemetryRecorder.ts: replay the recorder op stream — the
+// event key insertion order (schemaVersion,type,matchId,sequence,observedAt,
+// serverTick,payload), the POST-incremented sequence with the throw-path
+// gap, the six always-present payload keys (missing args cross as Undef),
+// takeTickCounts' get-then-delete, the matchFinished latch, the dropped
+// emitter-return vs throw counting and the NumMap tick-key classes (+0/-0
+// collapse, NaN by bits). Date.now and the emitter are scripted facades;
+// the res trace events [60,...codec(event),outcome] pin every emission.
+#[test]
+fn replay_matchtelemetry_scenarios() {
+    use openfront_core::match_telemetry::RigHarness;
+    for s in vectors::MT_SCENARIOS {
+        let mut rig = RigHarness::new();
+        for op in s.ops {
+            let got = rig.run_op(op.kind, op.args);
+            assert_eq!(
+                got.len(),
+                op.res.len(),
+                "{} op[{:?}] res len: got {got:?} want {:?}",
+                s.name,
+                op.kind,
+                op.res
+            );
+            for (j, (g, w)) in got.iter().zip(op.res.iter()).enumerate() {
+                assert!(
+                    obj_is(*g, *w),
+                    "{} op[{:?}] res[{j}]: got {g} want {w}",
+                    s.name,
+                    op.kind
+                );
+            }
+        }
+    }
+}

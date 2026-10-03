@@ -178,6 +178,9 @@ rust/
 │   │   ├── name_visibility.rs     port of server/NameVisibility.ts
 │   │   │                          (anon-name / reveal rules; Client facade
 │   │   │                          scripted-mocked, Client.ts ws class excluded)
+│   │   ├── map_playlist.rs        port of server/MapPlaylist.ts (deterministic
+│   │   │                          layer: tables, playlist queues, pure helpers;
+│   │   │                          Date.now scripted, Math.random paths deferred)
 │   │   ├── wasm_probe.rs          `extern "C"` surface, feature-gated
 │   │   └── pathfinding/
 │   │       ├── mod.rs
@@ -1275,6 +1278,38 @@ WebSockets — stays excluded, mirroring the `src/core` exclusions).
     present — and it reads `client.friends` **unguarded**, so a stub without
     the field throws (the capture always supplies it). 26 scenarios
     (`ls_` 12, `nvs_` 14).
+60. **`server/MapPlaylist.ts` (deterministic layer)** (`map_playlist`) — the
+    public-lobby map rotation. `generateNewPlaylist`'s `Date.now()` seed is
+    scripted through `globalThis.__MP_SEED` (precedent: `listing_state`), and
+    the logger is rewritten to a message sink (`globalThis.__MP_LOG`) so the
+    exact `Generated map playlist in N attempts` / fallback strings land in
+    the golden `res` — the attempt count and fallback path are observable and
+    the Rust replay must hit the same one for the same seed. Ported surface:
+    the constant tables (`TEAM_WEIGHTS` 10 entries, `SPECIAL_MODIFIER_POOL`
+    **38** tickets — the `Array(n).fill` spreads expand to 38, not 40 —
+    `MUTUALLY_EXCLUSIVE_MODIFIERS` 6 pairs, `SPECIAL_TEAM_MAPS` 28 entries,
+    `DOOMSDAY_ROTATION_SPEEDS`), `buildMapsList` with the `>= 0` (ffa/team)
+    vs `> 0` (special per-mode fallback) asymmetry, `playlistKey`,
+    `addNextMapNonConsecutive` (the `slice(-5)` window, splice-then-push on
+    the first source entry outside it, `false` leaving both arrays untouched),
+    `generateNewPlaylist` (re-shuffles `source` every attempt, so the retry
+    count is a pure function of the seed — seed `1771000000307` lands on
+    attempt 2), `getNextMap` (refill-when-empty then `shift`, consuming the
+    current seed; the ffa queue is 604 entries), and the pure helpers
+    `calculateMapPlayerCounts` (JS `Math.round` half-up), `playersPerTeam` /
+    `numberOfTeams` / `adjustForTeams` / `adjustTeamCountForPlayerCapacity` /
+    `getSpawnImmunityDuration`. Key quirk: `Duos` / `Trios` / `Quads` /
+    `HumansVsNations` are **string** constants (`"Duos"`, … ,
+    `"Humans Vs Nations"`), so the `typeof playerTeams !== "number"` capacity
+    gate passes for all four presets and they are handed through untouched —
+    the numeric branch only ever sees `2..7`. Excluded (deferred to the
+    `Math.random` orchestration stage): `getSpecialConfig` /
+    `getRandomSpecialGameModifiers`, whose `.sort(() => Math.random() - 0.5)`
+    depends on V8's internal comparison sequence and is not bit-reproducible;
+    `rollConfig` / `gameConfig` / `get1v1Config` / `get2v2Config` /
+    `lobbyMaxPlayers` / `supportsCompactMapForTeams` / `getCrowdedMaxPlayers`
+    (the last two behind the `getMapLandTiles` fs facade). 21 scenarios
+    (`mpl_`).
 
 Regenerate whenever a ported source changes:
 
@@ -1308,7 +1343,7 @@ node rust/tools/run_wasm_parity.mjs
 
 `wasm-probe` exposes the ported functions through `extern "C"` scalar
 entrypoints (`src/wasm_probe.rs`); the runner imports `data/vectors.json` and
-compares every value. Last run: **129,130 comparisons, all bit-identical**.
+compares every value. Last run: **267,704 comparisons, all bit-identical**.
 
 ### Windows: the linker environment
 

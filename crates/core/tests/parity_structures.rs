@@ -3057,6 +3057,41 @@ fn replay_listingstate_scenarios() {
     }
 }
 
+// server/MapPlaylist.ts (deterministic layer): replay the op stream (seed
+// injection / buildMapsList / playlistKey / addNextMapNonConsecutive /
+// generateNewPlaylist / getNextMap / queue dumps / pure helpers / table
+// dumps) — the >=0 vs >0 frequency asymmetry against the real 127-map
+// table, the splice-first-match order, the scripted-Date.now shuffle chain
+// with the REAL TS log message pinning the attempt count, the refill-on-
+// empty queue behaviour, the JS half-up Math.round counts and the
+// string-preset `typeof !== "number"` capacity-gate pass-through.
+#[test]
+fn replay_mapplaylist_scenarios() {
+    use openfront_core::map_playlist::RigHarness;
+    for s in vectors::MPL_SCENARIOS {
+        let mut rig = RigHarness::new();
+        for op in s.ops {
+            let got = rig.run_op(op.kind, op.args);
+            assert_eq!(
+                got.len(),
+                op.res.len(),
+                "{} op[{:?}] res len: got {got:?} want {:?}",
+                s.name,
+                op.kind,
+                op.res
+            );
+            for (j, (g, w)) in got.iter().zip(op.res.iter()).enumerate() {
+                assert!(
+                    obj_is(*g, *w),
+                    "{} op[{:?}] res[{j}]: got {g} want {w}",
+                    s.name,
+                    op.kind
+                );
+            }
+        }
+    }
+}
+
 // server/NameVisibility.ts: replay the op stream (facade setup + method
 // calls) — the res carries the facade trace prefix [traceLen,(trace)*,
 // payload*] pinning config()/clients()/teamIndex() call counts and order,

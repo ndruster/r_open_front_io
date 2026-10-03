@@ -4698,3 +4698,36 @@ pub extern "C" fn probe_nvs_op(kind: u32) -> usize {
 pub extern "C" fn probe_nvs_out_at(i: usize) -> f64 {
     NVS_OUT.with(|o| o.borrow()[i])
 }
+
+// ============ S3: server/MapPlaylist.ts (map_playlist) =======================
+
+thread_local! {
+    static MPL_HARNESS: std::cell::RefCell<crate::map_playlist::RigHarness> =
+        std::cell::RefCell::new(crate::map_playlist::RigHarness::new());
+    static MPL_ARGS: std::cell::RefCell<Vec<f64>> = const { std::cell::RefCell::new(Vec::new()) };
+    static MPL_OUT: std::cell::RefCell<Vec<f64>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
+#[no_mangle]
+pub extern "C" fn probe_mpl_reset() {
+    MPL_HARNESS.with(|h| h.borrow_mut().reset());
+}
+
+#[no_mangle]
+pub extern "C" fn probe_mpl_arg(v: f64) {
+    MPL_ARGS.with(|t| t.borrow_mut().push(v));
+}
+
+#[no_mangle]
+pub extern "C" fn probe_mpl_op(kind: u32) -> usize {
+    let a = MPL_ARGS.with(|t| std::mem::take(&mut *t.borrow_mut()));
+    let out = MPL_HARNESS.with(|h| h.borrow_mut().run_op(kind as u8, &a));
+    let len = out.len();
+    MPL_OUT.with(|o| *o.borrow_mut() = out);
+    len
+}
+
+#[no_mangle]
+pub extern "C" fn probe_mpl_out_at(i: usize) -> f64 {
+    MPL_OUT.with(|o| o.borrow()[i])
+}

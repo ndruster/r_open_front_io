@@ -2740,6 +2740,95 @@ function prepare(rel) {
     );
   }
 
+  if (rel.endsWith("server/MapPlaylist.ts")) {
+    // S3: the deterministic layer. SAM_CONSTRUCTION_TICKS is inlined (the
+    // heavy Config.ts graph stays unprepared; the value `30 * 10` is pinned
+    // by the upstream sync check). The Game.ts import keeps only the *value*
+    // members the executed code paths need (allMaps / GameMapType / GameMode
+    // / the four TeamCountConfig presets) and rides on the prepared copy
+    // (whose enums are inlined plain objects and which re-exports `maps`
+    // from the prepared Maps.gen); Difficulty / GameMapSize / GameType /
+    // RankedType / UnitType are only referenced inside the S4-excluded
+    // methods, whose unresolved identifiers never execute (strip mode is
+    // syntax-only). GameConfig / ScheduledPublicGameType / TeamCountConfig
+    // are zod-inferred types -> dropped. The ./Logger import is dropped and
+    // `log` becomes a sink that records the info/warn MESSAGES into
+    // globalThis.__MP_LOG, so the generateNewPlaylist attempt count (carried
+    // by the log text) is pinned as an observable. The ./MapLandTiles import
+    // is dropped (only the S4 methods call getMapLandTiles). Date.now() is
+    // scripted through globalThis.__MP_SEED (precedent: ListingState). The
+    // module-private tables are exported so the capture can dump them
+    // verbatim.
+    const mpGameRel = "src/core/game/Game.ts";
+    if (!prepared.has(mpGameRel)) prepare(mpGameRel);
+    out = must(
+      out,
+      'import { SAM_CONSTRUCTION_TICKS } from "../core/configuration/Config";\n' +
+        "import {\n" +
+        "  maps as allMaps,\n" +
+        "  Difficulty,\n" +
+        "  Duos,\n" +
+        "  GameMapSize,\n" +
+        "  GameMapType,\n" +
+        "  GameMode,\n" +
+        "  GameType,\n" +
+        "  HumansVsNations,\n" +
+        "  PublicGameModifiers,\n" +
+        "  Quads,\n" +
+        "  RankedType,\n" +
+        "  Trios,\n" +
+        "  UnitType,\n" +
+        '} from "../core/game/Game";\n' +
+        'import { PseudoRandom } from "../core/PseudoRandom";\n' +
+        "import {\n" +
+        "  GameConfig,\n" +
+        "  ScheduledPublicGameType,\n" +
+        "  TeamCountConfig,\n" +
+        '} from "../core/Schemas";\n' +
+        'import { logger } from "./Logger";\n' +
+        'import { getMapLandTiles } from "./MapLandTiles";\n' +
+        "\n" +
+        "const log = logger.child({});\n",
+      "const SAM_CONSTRUCTION_TICKS = 30 * 10;\n" +
+        "import {\n" +
+        "  maps as allMaps,\n" +
+        "  Duos,\n" +
+        "  GameMapType,\n" +
+        "  GameMode,\n" +
+        "  HumansVsNations,\n" +
+        "  Quads,\n" +
+        "  Trios,\n" +
+        `} from "./${prepared.get(mpGameRel)}";\n` +
+        `import { PseudoRandom } from "${TS_URL}src/core/PseudoRandom.ts";\n` +
+        "\n" +
+        "const log = {\n" +
+        "  info: (m) => ((globalThis.__MP_LOG ||= []).push(m), m),\n" +
+        "  warn: (m) => ((globalThis.__MP_LOG ||= []).push(m), m),\n" +
+        "};\n",
+      "MapPlaylist imports",
+    );
+    out = must(
+      out,
+      "const rand = new PseudoRandom(Date.now());",
+      "const rand = new PseudoRandom(globalThis.__MP_SEED);",
+      "MapPlaylist Date.now",
+    );
+    for (const c of [
+      "const CROWDED_COMPACT_PLAYER_COUNT = 60;",
+      "const CROWDED_PLAYER_COUNT = 125;",
+      "const TRUSTED_PUBLIC_EVERY = 7;",
+      "const TRUSTED_MAX_PLAYER_COUNT = 25;",
+      "const TEAM_WEIGHTS:",
+      "const SPECIAL_TEAM_FORCE_CHANCE = 0.75;",
+      "const SPECIAL_TEAM_MAPS:",
+      "const SPECIAL_MODIFIER_POOL:",
+      "const DOOMSDAY_ROTATION_SPEEDS =",
+      "const MUTUALLY_EXCLUSIVE_MODIFIERS:",
+    ]) {
+      out = must(out, c, `export ${c}`, `MapPlaylist export ${c.slice(6, 26)}`);
+    }
+  }
+
   if (rel.endsWith("server/NameVisibility.ts")) {
     // ClientID / GameConfig / GameInfo / GameStartInfo are branded types /
     // zod-inferred types (type-only) -> dropped, as is the Client class

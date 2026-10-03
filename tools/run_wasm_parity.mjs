@@ -125,6 +125,7 @@ for (const name of [
   "probe_cv_reset", "probe_cv_arg", "probe_cv_op", "probe_cv_out_at",
   "probe_ls_reset", "probe_ls_arg", "probe_ls_op", "probe_ls_out_at",
   "probe_nvs_reset", "probe_nvs_arg", "probe_nvs_op", "probe_nvs_out_at",
+  "probe_mpl_reset", "probe_mpl_arg", "probe_mpl_op", "probe_mpl_out_at",
 ]) {
   if (typeof ex[name] !== "function") {
     console.error(`missing wasm export ${name} - rebuild with --features wasm-probe`);
@@ -2298,6 +2299,25 @@ for (const s of S.listingstate) {
     for (let i = 0; i < len; i++) {
       checks++;
       const g = ex.probe_ls_out_at(i);
+      const w = numTok(op.res[i]);
+      if (!Object.is(g, w)) fail(`${s.name} op${op.kind} res[${i}]`, 0, g, w);
+    }
+  }
+}
+
+// --- server/MapPlaylist.ts (map_playlist) ------------------------------------------
+for (const s of S.mapplaylist) {
+  ex.probe_mpl_reset();
+  for (const op of s.ops) {
+    for (const a of op.args) ex.probe_mpl_arg(numTok(a));
+    const len = Number(ex.probe_mpl_op(op.kind));
+    if (len !== op.res.length) {
+      fail(`${s.name} op${op.kind} res len`, 0, len, op.res.length);
+      continue;
+    }
+    for (let i = 0; i < len; i++) {
+      checks++;
+      const g = ex.probe_mpl_out_at(i);
       const w = numTok(op.res[i]);
       if (!Object.is(g, w)) fail(`${s.name} op${op.kind} res[${i}]`, 0, g, w);
     }

@@ -190,6 +190,7 @@ const IA = await loadTs("src/server/IntentAuthorization.ts");
 const CV = await loadTs("src/server/Consensus.ts");
 const LS = await loadTs("src/server/ListingState.ts");
 const NV = await loadTs("src/server/NameVisibility.ts");
+const MP = await loadTs("src/server/MapPlaylist.ts");
 const PF = await loadTs("src/core/pathfinding/PathFinder.ts");
 const { AStar } = await loadTs("src/core/pathfinding/algorithms/AStar.ts");
 const { AStarRail } = await loadTs("src/core/pathfinding/algorithms/AStar.Rail.ts");
@@ -11281,6 +11282,289 @@ runNVS("nvs_friends_lookup", [
   [18, []], // empty active -> [0]
 ]);
 
+// ---- S3: server/MapPlaylist.ts (deterministic layer) ------------------------
+
+// MapPlaylist.ts op stream. kind 0 construct -> [0]; 1 setSeed [seed] ->
+// [0] (Date.now scripted via globalThis.__MP_SEED); 2 buildMapsList
+// (type-str),(mode-val) -> [n,(map-str)*]; 3 playlistKey -> val(key-str);
+// 4 addNextMapNonConsecutive [nPl,(str)*,nSrc,(str)*] ->
+// [0|1,dumpPl,dumpSrc]; 5 generateNewPlaylist (type-str),(mode-val) ->
+// [n,(map-str)*,1,(log-msg-str)]; 6 getNextMap -> val(map-str); 7 dump
+// playlists -> [4,(n,(str)*)*]; 8 calculateMapPlayerCounts [t] -> [3,l,m,s];
+// 9 supportsTeamPlayerCount [p,(cfg-val)] -> [0|1]; 10 playersPerTeam ->
+// [v]; 11 numberOfTeams -> [v]; 12 adjustForTeams -> [v]; 13
+// adjustTeamCountForPlayerCapacity (cfg-val),[unadj] -> val(cfg); 14
+// getSpawnImmunityDuration (cfg-val),(gold-val) -> [v]; 15-20 table dumps.
+const mplScenarios = [];
+let mplIdx = 0;
+const encMaps = (arr) => [arr.length, ...arr.flatMap(encS)];
+function runMPL(name, ops) {
+  const played = [];
+  let mp = null;
+  for (const [k, ...a] of ops) {
+    let args, res;
+    if (k === 0) {
+      args = [];
+      mp = new MP.MapPlaylist();
+      res = [0];
+    } else if (k === 1) {
+      args = [a[0]];
+      globalThis.__MP_SEED = a[0];
+      res = [0];
+    } else if (k === 2) {
+      args = [...encS(a[0]), ...encVal(a[1])];
+      res = encMaps(mp.buildMapsList(a[0], a[1]));
+    } else if (k === 3) {
+      args = [...encS(a[0]), ...encVal(a[1])];
+      res = encVal(mp.playlistKey(a[0], a[1]));
+    } else if (k === 4) {
+      const [pl, src] = a;
+      args = [...encMaps(pl), ...encMaps(src)];
+      const ok = mp.addNextMapNonConsecutive(pl, src);
+      res = [ok ? 1 : 0, ...encMaps(pl), ...encMaps(src)];
+    } else if (k === 5) {
+      args = [...encS(a[0]), ...encVal(a[1])];
+      globalThis.__MP_LOG = [];
+      const out = mp.generateNewPlaylist(a[0], a[1]);
+      res = [...encMaps(out), 1, ...encS(globalThis.__MP_LOG[0])];
+    } else if (k === 6) {
+      args = [...encS(a[0]), ...encVal(a[1])];
+      res = encVal(mp.getNextMap(a[0], a[1]));
+    } else if (k === 7) {
+      args = [];
+      res = [
+        4,
+        ...encMaps(mp.playlists.ffa),
+        ...encMaps(mp.playlists.team),
+        ...encMaps(mp.playlists.specialFfa),
+        ...encMaps(mp.playlists.specialTeam),
+      ];
+    } else if (k === 8) {
+      args = [a[0]];
+      res = [3, ...mp.calculateMapPlayerCounts(a[0])];
+    } else if (k === 9) {
+      args = [a[0], ...encVal(a[1])];
+      res = [mp.supportsTeamPlayerCount(a[0], a[1]) ? 1 : 0];
+    } else if (k === 10) {
+      args = [a[0], ...encVal(a[1])];
+      res = [mp.playersPerTeam(a[0], a[1])];
+    } else if (k === 11) {
+      args = [a[0], ...encVal(a[1])];
+      res = [mp.numberOfTeams(a[0], a[1])];
+    } else if (k === 12) {
+      args = [a[0], ...encVal(a[1])];
+      res = [mp.adjustForTeams(a[0], a[1])];
+    } else if (k === 13) {
+      args = [...encVal(a[0]), a[1]];
+      res = encVal(mp.adjustTeamCountForPlayerCapacity(a[0], a[1]));
+    } else if (k === 14) {
+      args = [...encVal(a[0]), ...encVal(a[1])];
+      res = [mp.getSpawnImmunityDuration(a[0], a[1])];
+    } else if (k === 15) {
+      args = [];
+      res = [MP.TEAM_WEIGHTS.length, ...MP.TEAM_WEIGHTS.flatMap((w) => [...encVal(w.config), w.weight])];
+    } else if (k === 16) {
+      args = [];
+      res = [MP.SPECIAL_MODIFIER_POOL.length, ...MP.SPECIAL_MODIFIER_POOL.flatMap(encS)];
+    } else if (k === 17) {
+      args = [];
+      res = [MP.MUTUALLY_EXCLUSIVE_MODIFIERS.length, ...MP.MUTUALLY_EXCLUSIVE_MODIFIERS.flatMap(([x, y]) => [...encS(x), ...encS(y)])];
+    } else if (k === 18) {
+      args = [];
+      res = [MP.SPECIAL_TEAM_MAPS.size, ...Array.from(MP.SPECIAL_TEAM_MAPS).flatMap(([m, c]) => [...encS(m), c])];
+    } else if (k === 19) {
+      args = [];
+      res = [MP.DOOMSDAY_ROTATION_SPEEDS.length, ...MP.DOOMSDAY_ROTATION_SPEEDS.flatMap(encS)];
+    } else {
+      args = [];
+      res = [MP.CROWDED_COMPACT_PLAYER_COUNT, MP.CROWDED_PLAYER_COUNT, MP.TRUSTED_PUBLIC_EVERY, MP.TRUSTED_MAX_PLAYER_COUNT, MP.SPECIAL_TEAM_FORCE_CHANCE];
+    }
+    played.push({ kind: k, args: args.flat().map(uenc), res: res.flat().map(uenc) });
+  }
+  mplScenarios.push({ name: `${name}_${mplIdx++}`, ops: played });
+}
+
+const DUOS = "Duos", TRIOS = "Trios", QUADS = "Quads", HVN = "Humans Vs Nations";
+
+runMPL("mpl_tables", [
+  [0],
+  [15],
+  [16],
+  [17],
+  [18],
+  [19],
+  [20],
+]);
+runMPL("mpl_build_ffa", [
+  [0],
+  [2, "ffa", undefined],
+  [2, "ffa", "Free For All"],
+]);
+runMPL("mpl_build_team", [
+  [0],
+  [2, "team", "Team"],
+  [2, "team", undefined],
+]);
+runMPL("mpl_build_special", [
+  [0],
+  [2, "special", "Team"],
+  [2, "special", "Free For All"],
+  [2, "special", undefined],
+]);
+runMPL("mpl_playlist_key", [
+  [0],
+  [3, "ffa", undefined],
+  [3, "team", "Team"],
+  [3, "special", "Team"],
+  [3, "special", "Free For All"],
+  [3, "special", undefined],
+]);
+runMPL("mpl_addnext_success", [
+  [0],
+  [4, [], ["a", "b"]],
+  [4, ["a"], ["a", "b"]],
+  [4, ["a", "b", "c", "d", "e", "f"], ["a", "e", "f", "g"]],
+]);
+runMPL("mpl_addnext_fail", [
+  [0],
+  [4, ["a", "b"], ["a", "b"]],
+  [4, ["x"], ["a", "b"]],
+]);
+runMPL("mpl_gen_ffa_seed0", [
+  [0],
+  [1, 1771000000000],
+  [5, "ffa", undefined],
+]);
+runMPL("mpl_gen_team_seed1", [
+  [0],
+  [1, 1771000000001],
+  [5, "team", "Team"],
+]);
+runMPL("mpl_gen_special_seed2", [
+  [0],
+  [1, 1771000000002],
+  [5, "special", "Free For All"],
+]);
+runMPL("mpl_gen_special_team_seed3", [
+  [0],
+  [1, 1771000000003],
+  [5, "special", "Team"],
+]);
+// This seed lands on attempt 2 (the retry path: two failed shuffles before
+// the third succeeds) — pinned through the log message's attempt count.
+runMPL("mpl_gen_retry", [
+  [0],
+  [1, 1771000000307],
+  [5, "ffa", undefined],
+]);
+runMPL("mpl_getnext_refill_chain", [
+  [0],
+  [1, 1771000000000],
+  [6, "ffa", undefined],
+  [7],
+  [6, "ffa", undefined],
+  [6, "team", "Team"],
+  [6, "special", "Team"],
+  [6, "special", "Free For All"],
+  [7],
+]);
+runMPL("mpl_getnext_reseed", [
+  [0],
+  [1, 1771000000010],
+  [6, "ffa", undefined],
+  [1, 1771000000011],
+  [6, "ffa", undefined],
+  [7],
+]);
+runMPL("mpl_counts_edges", [
+  [0],
+  [8, 0],
+  [8, 150000],
+  [8, 250000],
+  [8, 1e6],
+  [8, 1.5e6],
+  [8, 2e6],
+  [8, 1e8],
+  [8, 99999],
+]);
+runMPL("mpl_players_per_team", [
+  [0],
+  [10, 10, 2],
+  [10, 11, 3],
+  [10, 7, 4],
+  [10, 1, DUOS],
+  [10, 5, DUOS],
+  [10, 2, TRIOS],
+  [10, 9, TRIOS],
+  [10, 3, QUADS],
+  [10, 8, QUADS],
+  [10, 13, HVN],
+]);
+runMPL("mpl_number_of_teams", [
+  [0],
+  [11, 10, 2],
+  [11, 10, 7],
+  [11, 5, DUOS],
+  [11, 1, DUOS],
+  [11, 7, TRIOS],
+  [11, 9, QUADS],
+  [11, 3, HVN],
+]);
+runMPL("mpl_supports_team_count", [
+  [0],
+  [9, 4, 2],
+  [9, 3, 2],
+  [9, 2, 2],
+  [9, 5, DUOS],
+  [9, 4, DUOS],
+  [9, 3, DUOS],
+  [9, 6, TRIOS],
+  [9, 8, QUADS],
+  [9, 100, HVN],
+  [9, 1, HVN],
+]);
+runMPL("mpl_adjust_for_teams", [
+  [0],
+  [12, 10, undefined],
+  [12, 11, 2],
+  [12, 11, 3],
+  [12, 11, 4],
+  [12, 11, 5],
+  [12, 11, 7],
+  [12, 11, DUOS],
+  [12, 11, TRIOS],
+  [12, 10, QUADS],
+  [12, 11, HVN],
+]);
+runMPL("mpl_adjust_capacity", [
+  [0],
+  [13, undefined, 10],
+  [13, DUOS, 3],
+  [13, TRIOS, 3],
+  [13, QUADS, 3],
+  [13, HVN, 3],
+  [13, 2, 10],
+  [13, 3, 10],
+  [13, 4, 10],
+  [13, 5, 10],
+  [13, 7, 10],
+  [13, 7, 100],
+  [13, 6, 11],
+]);
+runMPL("mpl_spawn_immunity", [
+  [0],
+  [14, undefined, undefined],
+  [14, 2, undefined],
+  [14, HVN, undefined],
+  [14, HVN, 25e6],
+  [14, undefined, 25e6],
+  [14, undefined, 24e6],
+  [14, undefined, 5e6],
+  [14, undefined, 4e6],
+  [14, undefined, 1e6],
+  [14, DUOS, 25e6],
+]);
+
 const structures = {
   votetally: vtScenarios,
   configpatch: cpScenarios,
@@ -11288,6 +11572,7 @@ const structures = {
   consensus: cvScenarios,
   listingstate: lsScenarios,
   namevisibility: nvsScenarios,
+  mapplaylist: mplScenarios,
   minheap: mhScenarios,
   bucket: bqScenarios,
   flatheap: fbhScenarios,
@@ -14179,6 +14464,14 @@ opStream(
     "/// docs). kind 0 construct, 1-3 facade setup, 10-18 method calls. res is\n" +
     "/// prefixed with the facade trace: [traceLen,(trace)*,payload*] with\n" +
     "/// 20=config(), 21=clients(), 22=teamIndex [(clientID-str),val].",
+);
+opStream(
+  "mapplaylist",
+  "Mpl",
+  "/// One `server/MapPlaylist.ts` op (see `map_playlist::RigHarness::run_op`\n" +
+    "/// docs). kind 0 construct, 1 setSeed (Date.now scripted via\n" + "/// `globalThis.__MP_SEED`), 2-7 playlist chain, 8-14 pure helpers, 15-20\n" +
+    "/// table dumps. The generateNewPlaylist res carries the REAL TS log\n" +
+    "/// message (attempt count observable).",
 );
 
 const dataDir = join(root, "crates", "core", "tests", "data");

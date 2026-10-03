@@ -284,6 +284,14 @@
 //!   explicit `now` arg), `autoStartAt`'s featured/hosted constant flip and
 //!   `setFeatured`'s boundary label sanitisation with the verbatim
 //!   `opts.accent` pass-through)
+//! * [`map_playlist`] — the deterministic layer of
+//!   `src/server/MapPlaylist.ts` (the module tables, the
+//!   `buildMapsList` / `playlistKey` / `addNextMapNonConsecutive` /
+//!   `generateNewPlaylist` / `getNextMap` playlist chain with the scripted
+//!   `Date.now()` seed (capture `globalThis.__MP_SEED`) and the real-TS log
+//!   message pinning the attempt count, plus the pure team-count helpers;
+//!   the `Math.random` orchestration methods and the async
+//!   `getMapLandTiles` facades are a later port)
 //! * [`name_visibility`] — `src/server/NameVisibility.ts` (`friendsLookup`
 //!   and the per-viewer identity rules over a scripted `NameVisibilityView`
 //!   facade whose `config()` / `clients()` / `teamIndex()` calls are traced
@@ -329,6 +337,7 @@ pub mod js_json;
 pub mod jsnum;
 pub mod line;
 pub mod listing_state;
+pub mod map_playlist;
 pub mod maps_gen;
 pub mod motion_plans;
 pub mod name_visibility;

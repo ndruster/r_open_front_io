@@ -3124,3 +3124,99 @@ fn replay_namevisibility_scenarios() {
         }
     }
 }
+
+// server/DesyncDetector.ts: replay the op stream (client stub registration /
+// findOutOfSyncClients / check / record / count / isDesynced) — the strict
+// `>` most-common tie (first-inserted wins), the strict-majority swap to
+// [...active] INCLUDING the never-reporting clients, the check gates
+// (<=1 client, %10, <10) and the one-time notification latch.
+#[test]
+fn replay_desyncdetector_scenarios() {
+    use openfront_core::desync_detector::RigHarness;
+    for s in vectors::DD_SCENARIOS {
+        let mut rig = RigHarness::new();
+        for op in s.ops {
+            let got = rig.run_op(op.kind, op.args);
+            assert_eq!(
+                got.len(),
+                op.res.len(),
+                "{} op[{:?}] res len: got {got:?} want {:?}",
+                s.name,
+                op.kind,
+                op.res
+            );
+            for (j, (g, w)) in got.iter().zip(op.res.iter()).enumerate() {
+                assert!(
+                    obj_is(*g, *w),
+                    "{} op[{:?}] res[{j}]: got {g} want {w}",
+                    s.name,
+                    op.kind
+                );
+            }
+        }
+    }
+}
+
+// server/JoinVerify.ts: replay the pure-decision op stream — the steam
+// claims gate, the falsy empty-string turnstile token rejecting a first
+// join, the readmit skip gates and the plan objects' Absent-vs-Undef token
+// key (reject/skip carry NO token key at all).
+#[test]
+fn replay_joinverify_scenarios() {
+    use openfront_core::join_verify::RigHarness;
+    for s in vectors::JV_SCENARIOS {
+        let mut rig = RigHarness::new();
+        for op in s.ops {
+            let got = rig.run_op(op.kind, op.args);
+            assert_eq!(
+                got.len(),
+                op.res.len(),
+                "{} op[{:?}] res len: got {got:?} want {:?}",
+                s.name,
+                op.kind,
+                op.res
+            );
+            for (j, (g, w)) in got.iter().zip(op.res.iter()).enumerate() {
+                assert!(
+                    obj_is(*g, *w),
+                    "{} op[{:?}] res[{j}]: got {g} want {w}",
+                    s.name,
+                    op.kind
+                );
+            }
+        }
+    }
+}
+
+// server/Censor.ts: replay the op stream (matcher facade scripting /
+// censorPlayer / table dumps) — the res carries the facade trace prefix
+// [traceLen,(trace)*,val] pinning the hasMatch / getAllMatches call counts,
+// the input strings (clanTag+username concat order) and the || / some
+// short-circuit orders; the truthy gates (null AND "" clanTag), the "ss"
+// literal, the boundary-slur window and the simpleHash shadow slot.
+#[test]
+fn replay_censor_scenarios() {
+    use openfront_core::censor::RigHarness;
+    for s in vectors::CN_SCENARIOS {
+        let mut rig = RigHarness::new();
+        for op in s.ops {
+            let got = rig.run_op(op.kind, op.args);
+            assert_eq!(
+                got.len(),
+                op.res.len(),
+                "{} op[{:?}] res len: got {got:?} want {:?}",
+                s.name,
+                op.kind,
+                op.res
+            );
+            for (j, (g, w)) in got.iter().zip(op.res.iter()).enumerate() {
+                assert!(
+                    obj_is(*g, *w),
+                    "{} op[{:?}] res[{j}]: got {g} want {w}",
+                    s.name,
+                    op.kind
+                );
+            }
+        }
+    }
+}

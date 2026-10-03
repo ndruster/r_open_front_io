@@ -2884,6 +2884,80 @@ function prepare(rel) {
     );
   }
 
+  if (rel.endsWith("server/DesyncDetector.ts")) {
+    // ClientID is a branded type and Client is only referenced in type
+    // annotations (`readonly Client[]`, the Set<ClientID> generics) — both
+    // type-only -> dropped (the capture feeds plain client stubs; strip mode
+    // erases the annotations, so the bodies never name the imports).
+    out = must(
+      out,
+      'import { ClientID } from "../core/Schemas";\n' +
+        'import { Client } from "./Client";\n',
+      "",
+      "DesyncDetector imports",
+    );
+  }
+
+  if (rel.endsWith("server/JoinVerify.ts")) {
+    // The zod verdict schema is wire-validation for the EXCLUDED fetch-I/O
+    // verifyJoin; the inert self-returning Proxy (precedent: ServerList)
+    // keeps the top-level discriminatedUnion declaration evaluating. The
+    // TokenPayload import is `import type` (erased by strip mode) and the
+    // ServerEnv import is only used inside verifyJoin's body, which never
+    // executes -> drop the import (unresolved identifiers inside an
+    // uncalled body are harmless; strip mode is syntax-only).
+    out = must(
+      out,
+      'import { z } from "zod";\n',
+      "const z = new Proxy(function () {}, { get: () => z, apply: () => z });\n",
+      "JoinVerify zod import",
+    );
+    out = must(
+      out,
+      'import { ServerEnv } from "./ServerEnv";\n',
+      "",
+      "JoinVerify ServerEnv import",
+    );
+  }
+
+  if (rel.endsWith("server/Censor.ts")) {
+    // The obscenity library is unresolvable in the port repo, so the whole
+    // import block is dropped and the module-level `profanityMatcher`
+    // becomes the scripted facade globalThis.__CN_MATCHER (set by the
+    // capture BEFORE loading: the const initializer runs at module load).
+    // createMatcher / buildDataset stay in the file but are never called
+    // (their unresolved obscenity identifiers sit in dead bodies; strip
+    // mode is syntax-only). simpleHash is a *value* import redirected to
+    // the prepared Util copy. bannedWords is module-private -> exported so
+    // the capture can dump the table verbatim.
+    const cnUtilRel = "src/core/Util.ts";
+    if (!prepared.has(cnUtilRel)) prepare(cnUtilRel);
+    out = must(
+      out,
+      'import {\n' +
+        "  DataSet,\n" +
+        "  RegExpMatcher,\n" +
+        "  collapseDuplicatesTransformer,\n" +
+        "  englishDataset,\n" +
+        "  pattern,\n" +
+        "  resolveConfusablesTransformer,\n" +
+        "  resolveLeetSpeakTransformer,\n" +
+        "  skipNonAlphabeticTransformer,\n" +
+        "  toAsciiLowerCaseTransformer,\n" +
+        '} from "obscenity";\n' +
+        'import { simpleHash } from "../core/Util";\n',
+      `import { simpleHash } from "./${prepared.get(cnUtilRel)}";\n`,
+      "Censor imports",
+    );
+    out = must(
+      out,
+      "export const profanityMatcher = createMatcher();",
+      "export const profanityMatcher = globalThis.__CN_MATCHER;",
+      "Censor profanityMatcher facade",
+    );
+    out = must(out, "const bannedWords = [", "export const bannedWords = [", "Censor bannedWords export");
+  }
+
   mkdirSync(cacheDir, { recursive: true });
   const hash = createHash("sha1").update(out).digest("hex").slice(0, 10);
   const base = `${basename(rel, ".ts")}-${hash}.ts`;

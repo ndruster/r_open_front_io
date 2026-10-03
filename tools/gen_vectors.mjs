@@ -191,6 +191,29 @@ const CV = await loadTs("src/server/Consensus.ts");
 const LS = await loadTs("src/server/ListingState.ts");
 const NV = await loadTs("src/server/NameVisibility.ts");
 const MP = await loadTs("src/server/MapPlaylist.ts");
+// S5: the Censor module initializer binds `profanityMatcher` to this
+// scripted obscenity facade at load time (the library is unresolvable in
+// the port repo), so it must exist BEFORE the import. The row table and
+// trace are scenario state; the closure reads them at call time.
+let cnRows = [];
+let cnTrace = [];
+globalThis.__CN_MATCHER = {
+  hasMatch: (input) => {
+    const row = cnRows.find((r) => r.input === input);
+    if (!row) throw new Error("cn capture: unscripted input " + input);
+    cnTrace.push(30, ...encS(input), row.has ? 1 : 0);
+    return row.has;
+  },
+  getAllMatches: (input) => {
+    const row = cnRows.find((r) => r.input === input);
+    if (!row) throw new Error("cn capture: unscripted input " + input);
+    cnTrace.push(31, ...encS(input), row.ms.length, ...row.ms.flat());
+    return row.ms.map(([startIndex, endIndex]) => ({ startIndex, endIndex }));
+  },
+};
+const DD = await loadTs("src/server/DesyncDetector.ts");
+const JV = await loadTs("src/server/JoinVerify.ts");
+const CN = await loadTs("src/server/Censor.ts");
 const PF = await loadTs("src/core/pathfinding/PathFinder.ts");
 const { AStar } = await loadTs("src/core/pathfinding/algorithms/AStar.ts");
 const { AStarRail } = await loadTs("src/core/pathfinding/algorithms/AStar.Rail.ts");
@@ -11833,8 +11856,312 @@ await runMPL("mpl_2v2_maps", [
   [30], // compact, idx 3 -> Asia
 ]);
 
+// ---- S5: server cluster (DesyncDetector / JoinVerify / Censor) --------------
+
+// DesyncDetector.ts op stream. kind 0 construct -> [0]; 1 addClient
+// [(id-str), n, (turn,hash)*n] -> [0]; 2 findOutOfSync [turn, n, (id-str)*n]
+// -> [val(mostCommonHash), k, (id-str)*k]; 3 check [turnsCommitted, n,
+// (id-str)*n] -> [0] | [1, turn, val, k, (id-str)*k]; 4 record [n,(id)*n] ->
+// [k,(id)*k] (toNotify); 5 count -> [n]; 6 isDesynced [(id-str)] -> [0|1].
+// Clients ride as plain stubs {clientID, hashes: Map}; outOfSyncClients
+// crosses as the clientID list (the Rust side identifies a Client by id).
+const ddScenarios = [];
+let ddIdx = 0;
+// findOutOfSyncClients is the module fn; the class methods run on a fresh
+// `new DD.DesyncDetector()` per scenario (op 0 constructs it).
+function runDD(name, ops) {
+  const played = [];
+  let stubs = new Map();
+  let det = null;
+  for (const [k, ...a] of ops) {
+    let args, res;
+    if (k === 0) {
+      args = [];
+      stubs = new Map();
+      det = new DD.DesyncDetector();
+      res = [0];
+    } else if (k === 1) {
+      const [id, pairs] = a;
+      args = [...encS(id), pairs.length];
+      for (const [t, h] of pairs) args.push(uenc(t), uenc(h));
+      const hashes = new Map();
+      for (const [t, h] of pairs) hashes.set(t, h);
+      stubs.set(id, { clientID: id, hashes });
+      res = [0];
+    } else if (k === 2) {
+      const [turn, ids] = a;
+      const active = ids.map((id) => stubs.get(id));
+      args = [uenc(turn), ids.length, ...ids.flatMap(encS)];
+      const t = DD.findOutOfSyncClients(active, turn);
+      res = [
+        ...encVal(t.mostCommonHash),
+        t.outOfSyncClients.length,
+        ...t.outOfSyncClients.flatMap((c) => encS(c.clientID)),
+      ];
+    } else if (k === 3) {
+      const [turnsCommitted, ids] = a;
+      const active = ids.map((id) => stubs.get(id));
+      args = [uenc(turnsCommitted), ids.length, ...ids.flatMap(encS)];
+      const c = det.check(turnsCommitted, active);
+      res =
+        c === null
+          ? [0]
+          : [
+              1,
+              uenc(c.turn),
+              ...encVal(c.mostCommonHash),
+              c.outOfSyncClients.length,
+              ...c.outOfSyncClients.flatMap((x) => encS(x.clientID)),
+            ];
+    } else if (k === 4) {
+      const ids = a[0];
+      args = [ids.length, ...ids.flatMap(encS)];
+      const out = det.record(ids.map((id) => stubs.get(id)));
+      res = [out.length, ...out.flatMap((c) => encS(c.clientID))];
+    } else if (k === 5) {
+      args = [];
+      res = [det.count()];
+    } else if (k === 6) {
+      args = encS(a[0]);
+      res = [det.isDesynced(a[0]) ? 1 : 0];
+    } else {
+      throw new Error("dd: bad op kind " + k);
+    }
+    played.push({ kind: k, args: args.flat().map(uenc), res: res.flat().map(uenc) });
+  }
+  ddScenarios.push({ name: `${name}_${ddIdx++}`, ops: played });
+}
+
+runDD("dd_majority_notify_once", [
+  [0],
+  [1, "a", [[5, 100]]],
+  [1, "b", [[5, 200]]],
+  [1, "c", [[5, 200]]],
+  [1, "d", []], // d never reports turn 5
+  [2, 5, ["a", "b", "c", "d"]], // mch 200, out [a]
+  [4, ["a"]], // notify a
+  [4, ["a"]], // already notified -> empty
+  [5], // 1
+  [6, "a"], // 1
+  [6, "d"], // 0
+]);
+runDD("dd_tie_first_inserted_wins", [
+  [0],
+  [1, "x", [[0, 200]]],
+  [1, "y", [[0, 100]]],
+  [1, "z", [[0, 200], [1, 9]]], // extra turn-1 hash must not leak into turn 0
+  [2, 0, ["x", "y", "z"]], // counts 200:2, 100:1 -> mch 200, out [y]
+  [2, 1, ["x", "y", "z"]], // only z reports turn 1 -> mch 9, out []
+]);
+runDD("dd_tie_no_swap", [
+  [0],
+  [1, "x", [[7, 200]]],
+  [1, "y", [[7, 100]]],
+  [2, 7, ["x", "y"]], // tie 1-1: FIRST-INSERTED (200) wins (strict >);
+  // out [y], 1 > floor(2/2)=1 false -> no swap.
+]);
+runDD("dd_strict_majority_swap", [
+  [0],
+  [1, "a", [[3, 1]]],
+  [1, "b", [[3, 2]]],
+  [1, "c", [[3, 3]]],
+  [2, 3, ["a", "b", "c"]], // mch 1 (first), out [b,c] -> 2 > floor(3/2)=1
+  // -> swap to ALL [a,b,c].
+  [4, ["a", "b", "c"]],
+  [5],
+]);
+runDD("dd_half_out_no_swap", [
+  [0],
+  [1, "a", [[0, 1]]],
+  [1, "b", [[0, 1]]],
+  [1, "c", [[0, 2]]],
+  [1, "d", [[0, 3]]],
+  [1, "e", []],
+  [2, 0, ["a", "b", "c", "d", "e"]], // mch 1, out [c,d] -> 2 > floor(5/2)=2
+  // false -> NO swap (e unreported stays out of the list).
+]);
+runDD("dd_check_gates", [
+  [0],
+  [1, "a", [[10, 7], [0, 7]]],
+  [1, "b", [[10, 8], [0, 8]]],
+  [3, 20, ["a"]], // <=1 client -> null
+  [3, 15, ["a", "b"]], // not a multiple of 10 -> null
+  [3, 0, ["a", "b"]], // 0 % 10 === 0 but < 10 -> null
+  [3, 10, ["a", "b"]], // turn 0: mch 7, out [b]
+  [3, 20, ["a", "b"]], // turn 10: mch 7, out [b]
+  [4, ["b"]],
+  [3, 30, ["a", "b"]], // turn 20: nobody reported -> mch null, out []
+]);
+runDD("dd_no_reporters_null_mch", [
+  [0],
+  [1, "a", []],
+  [1, "b", []],
+  [2, 9, ["a", "b"]], // [val null, 0]
+]);
+
+// JoinVerify.ts op stream (pure decision functions only; verifyJoin is
+// fetch I/O and excluded). kind 0 construct -> [0]; 1 isSteamAuthenticated
+// [claims] -> [0|1]; 2 planJoinVerify [args] -> codec plan object.
+const jvScenarios = [];
+let jvIdx = 0;
+function runJV(name, ops) {
+  const played = [];
+  for (const [k, ...a] of ops) {
+    let args, res;
+    if (k === 0) {
+      args = [];
+      res = [0];
+    } else if (k === 1) {
+      args = encVal(a[0]);
+      res = [JV.isSteamAuthenticated(a[0]) ? 1 : 0];
+    } else if (k === 2) {
+      args = encVal(a[0]);
+      res = encVal(JV.planJoinVerify(a[0]));
+    } else {
+      throw new Error("jv: bad op kind " + k);
+    }
+    played.push({ kind: k, args: args.flat().map(uenc), res: res.flat().map(uenc) });
+  }
+  jvScenarios.push({ name: `${name}_${jvIdx++}`, ops: played });
+}
+
+runJV("jv_steam_claims", [
+  [0],
+  [1, null], // claims?.provider -> undefined !== "steam"
+  [1, { provider: "steam" }],
+  [1, { provider: "google" }],
+  [1, {}], // absent provider
+  [1, { provider: undefined }], // present-undefined
+]);
+runJV("jv_first_join_matrix", [
+  [0],
+  // first join, steam-authed, no token -> verify with null token.
+  [2, { isReadmit: false, gameStarted: false, turnstileToken: null, identityUnchanged: false, steamAuthed: true }],
+  // first join, no token -> reject (NO token key).
+  [2, { isReadmit: false, gameStarted: false, turnstileToken: null, identityUnchanged: false, steamAuthed: false }],
+  // EMPTY STRING token is falsy -> reject (the falsy boundary).
+  [2, { isReadmit: false, gameStarted: false, turnstileToken: "", identityUnchanged: false, steamAuthed: false }],
+  // first join with token -> verify with it.
+  [2, { isReadmit: false, gameStarted: false, turnstileToken: "tok", identityUnchanged: false, steamAuthed: false }],
+  // steam takes precedence over the token branch.
+  [2, { isReadmit: false, gameStarted: false, turnstileToken: "tok", identityUnchanged: false, steamAuthed: true }],
+]);
+runJV("jv_readmit_matrix", [
+  [0],
+  [2, { isReadmit: true, gameStarted: true, turnstileToken: "t", identityUnchanged: false, steamAuthed: false }], // skip
+  [2, { isReadmit: true, gameStarted: false, turnstileToken: "t", identityUnchanged: true, steamAuthed: false }], // skip
+  [2, { isReadmit: true, gameStarted: true, turnstileToken: "t", identityUnchanged: true, steamAuthed: false }], // skip
+  // readmit verify ALWAYS nulls the token (even when one is present).
+  [2, { isReadmit: true, gameStarted: false, turnstileToken: "spent", identityUnchanged: false, steamAuthed: false }],
+  [2, { isReadmit: true, gameStarted: false, turnstileToken: null, identityUnchanged: false, steamAuthed: true }],
+]);
+
+// Censor.ts op stream. Scripted obscenity facade: every hasMatch /
+// getAllMatches call is a trace event (30 hasMatch [(input-str),0|1],
+// 31 getAllMatches [(input-str), n, (start,end)*n]) and the censorPlayer
+// res = [traceLen,(trace)*,val(result)]. kind 0 construct -> [0]; 1
+// scriptMatcher [n, (input-str, has 0|1, m, (start,end)*m)*n] -> [0]; 2
+// censorPlayer [(username-str), clanTag] -> traced val; 3 dump shadowNames
+// -> [21,(str)*]; 4 dump bannedWords -> [13,(str)*].
+const cnScenarios = [];
+let cnIdx = 0;
+function runCN(name, ops) {
+  const played = [];
+  for (const [k, ...a] of ops) {
+    let args, res;
+    if (k === 0) {
+      args = [];
+      cnRows = [];
+      cnTrace = [];
+      res = [0];
+    } else if (k === 1) {
+      const rows = a[0];
+      args = [rows.length];
+      for (const [input, has, ms] of rows) {
+        args.push(...encS(input), has ? 1 : 0, ms.length, ...ms.flat());
+        cnRows.push({ input, has, ms });
+      }
+      res = [0];
+    } else if (k === 2) {
+      const [username, clanTag] = a;
+      args = [...encS(username), ...encVal(clanTag)];
+      cnTrace = [];
+      const r = CN.censorPlayer(username, clanTag);
+      res = [cnTrace.length, ...cnTrace, ...encVal(r)];
+    } else if (k === 3) {
+      args = [];
+      res = [CN.shadowNames.length, ...CN.shadowNames.flatMap(encS)];
+    } else if (k === 4) {
+      args = [];
+      res = [CN.bannedWords.length, ...CN.bannedWords.flatMap(encS)];
+    } else {
+      throw new Error("cn: bad op kind " + k);
+    }
+    played.push({ kind: k, args: args.flat().map(uenc), res: res.flat().map(uenc) });
+  }
+  cnScenarios.push({ name: `${name}_${cnIdx++}`, ops: played });
+}
+
+runCN("cn_tables", [[0], [3], [4]]);
+runCN("cn_clean_passthrough", [
+  [0],
+  [1, [["Clean", false, []], ["ok", false, []], ["okClean", false, []]]],
+  [2, "Clean", "ok"], // {username:"Clean", clanTag:"OK"}
+]);
+runCN("cn_profane_name_shadow", [
+  [0],
+  [1, [["BadName", true, []]]],
+  [2, "BadName", null], // shadow slot by simpleHash("BadName"), tag null
+]);
+runCN("cn_profane_tag_drops", [
+  [0],
+  [1, [["Clean", false, []], ["xyzzy", true, []], ["xyzzyClean", false, []]]],
+  [2, "Clean", "xyzzy"], // tag profane -> null; name survives
+]);
+runCN("cn_ss_tag", [
+  [0],
+  [1, [["Clean", false, []], ["ss", false, []], ["ssClean", false, []]]],
+  [2, "Clean", "ss"], // literal "ss" -> tag null
+]);
+runCN("cn_boundary_slur", [
+  [0],
+  [1, [["LER", false, []], ["Hit", false, []], ["HitLER", true, [[0, 6]]]]],
+  [2, "LER", "Hit"], // 0 < 3 && 6 >= 3 -> combined: shadow name + null tag
+]);
+runCN("cn_boundary_match_inside_tag_only", [
+  [0],
+  [1, [["LER", false, []], ["Hit", false, []], ["HitLER", true, [[0, 2]]]]],
+  [2, "LER", "Hit"], // 0 < 3 but 2 >= 3 FALSE -> no boundary slur: HIT kept
+]);
+runCN("cn_boundary_match_in_name_only", [
+  [0],
+  [1, [["LER", false, []], ["Hit", false, []], ["HitLER", true, [[3, 6]]]]],
+  [2, "LER", "Hit"], // startIndex 3 < 3 FALSE -> not a boundary slur
+]);
+runCN("cn_empty_tag_truthy_gate", [
+  [0],
+  [1, [["Clean", false, []]]],
+  [2, "Clean", ""], // falsy "" -> ONLY hasMatch(Clean); tag null
+]);
+runCN("cn_two_shadow_slots", [
+  [0],
+  [1, [["Alice", true, []], ["Bob", true, []]]],
+  [2, "Alice", null],
+  [2, "Bob", null], // different hashes -> (likely) different shadow slots
+]);
+runCN("cn_shortcircuit_no_second_hasmatch", [
+  [0],
+  // tag profane: hasMatch(tag) true -> the || skips the toLowerCase==="ss"
+  // compare (invisible), but the boundary getAllMatches STILL runs.
+  [1, [["Clean", false, []], ["xyzzy", true, []], ["xyzzyClean", false, []]]],
+  [2, "Clean", "xyzzy"],
+]);
+
 const structures = {
   votetally: vtScenarios,
+  desyncdetector: ddScenarios,
+  joinverify: jvScenarios,
+  censor: cnScenarios,
   configpatch: cpScenarios,
   intentauth: iaScenarios,
   consensus: cvScenarios,
@@ -14732,6 +15059,33 @@ opStream(
     "/// docs). kind 0 construct, 1-3 facade setup, 10-18 method calls. res is\n" +
     "/// prefixed with the facade trace: [traceLen,(trace)*,payload*] with\n" +
     "/// 20=config(), 21=clients(), 22=teamIndex [(clientID-str),val].",
+);
+opStream(
+  "desyncdetector",
+  "Dd",
+  "/// One `server/DesyncDetector.ts` op (see `desync_detector::RigHarness::\n" +
+    "/// run_op` docs). kind 0 construct, 1 addClient, 2 findOutOfSync, 3 check,\n" +
+    "/// 4 record, 5 count, 6 isDesynced. Clients ride as {clientID, hashes}\n" +
+    "/// stubs; outOfSyncClients crosses as the clientID list.",
+);
+opStream(
+  "joinverify",
+  "Jv",
+  "/// One `server/JoinVerify.ts` op (see `join_verify::RigHarness::run_op`\n" +
+    "/// docs). kind 0 construct, 1 isSteamAuthenticated [claims], 2\n" +
+    "/// planJoinVerify [args] -> codec plan object (reject/skip have NO token\n" +
+    "/// key; verify always carries it, possibly null). verifyJoin (fetch I/O)\n" +
+    "/// is excluded.",
+);
+opStream(
+  "censor",
+  "Cn",
+  "/// One `server/Censor.ts` op (see `censor::RigHarness::run_op` docs).\n" +
+    "/// kind 0 construct, 1 scriptMatcher (obscenity facade table), 2\n" +
+    "/// censorPlayer, 3 dump shadowNames, 4 dump bannedWords. The censorPlayer\n" +
+    "/// res is prefixed with the facade trace: [traceLen,(trace)*,val] with\n" +
+    "/// 30=hasMatch [(input-str),0|1], 31=getAllMatches [(input-str),n,\n" +
+    "/// (start,end)*n].",
 );
 opStream(
   "mapplaylist",

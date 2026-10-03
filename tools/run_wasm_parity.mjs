@@ -126,6 +126,9 @@ for (const name of [
   "probe_ls_reset", "probe_ls_arg", "probe_ls_op", "probe_ls_out_at",
   "probe_nvs_reset", "probe_nvs_arg", "probe_nvs_op", "probe_nvs_out_at",
   "probe_mpl_reset", "probe_mpl_arg", "probe_mpl_op", "probe_mpl_out_at",
+  "probe_dd_reset", "probe_dd_arg", "probe_dd_op", "probe_dd_out_at",
+  "probe_jv_reset", "probe_jv_arg", "probe_jv_op", "probe_jv_out_at",
+  "probe_cn_reset", "probe_cn_arg", "probe_cn_op", "probe_cn_out_at",
 ]) {
   if (typeof ex[name] !== "function") {
     console.error(`missing wasm export ${name} - rebuild with --features wasm-probe`);
@@ -2339,6 +2342,31 @@ for (const s of S.namevisibility) {
       const g = ex.probe_nvs_out_at(i);
       const w = numTok(op.res[i]);
       if (!Object.is(g, w)) fail(`${s.name} op${op.kind} res[${i}]`, 0, g, w);
+    }
+  }
+}
+
+// --- S5: server/DesyncDetector.ts / JoinVerify.ts / Censor.ts ---------------------
+for (const [key, reset, arg, op, outAt] of [
+  ["desyncdetector", "probe_dd_reset", "probe_dd_arg", "probe_dd_op", "probe_dd_out_at"],
+  ["joinverify", "probe_jv_reset", "probe_jv_arg", "probe_jv_op", "probe_jv_out_at"],
+  ["censor", "probe_cn_reset", "probe_cn_arg", "probe_cn_op", "probe_cn_out_at"],
+]) {
+  for (const s of S[key]) {
+    ex[reset]();
+    for (const o of s.ops) {
+      for (const a of o.args) ex[arg](numTok(a));
+      const len = Number(ex[op](o.kind));
+      if (len !== o.res.length) {
+        fail(`${s.name} op${o.kind} res len`, 0, len, o.res.length);
+        continue;
+      }
+      for (let i = 0; i < len; i++) {
+        checks++;
+        const g = ex[outAt](i);
+        const w = numTok(o.res[i]);
+        if (!Object.is(g, w)) fail(`${s.name} op${o.kind} res[${i}]`, 0, g, w);
+      }
     }
   }
 }

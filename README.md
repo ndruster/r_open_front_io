@@ -182,6 +182,13 @@ rust/
 │   │   │                          layer + Math.random orchestration: gameConfig
 │   │   │                          / rollConfig ffa-team, ranked configs; Date.now
 │   │   │                          / Math.random / getMapLandTiles scripted)
+│   │   ├── desync_detector.rs     port of server/DesyncDetector.ts
+│   │   │                          (hash tally + notify-once; Client facade)
+│   │   ├── join_verify.rs         port of server/JoinVerify.ts (pure decision
+│   │   │                          fns; verifyJoin fetch I/O excluded)
+│   │   ├── censor.rs              port of server/Censor.ts (shadow/banned
+│   │   │                          tables + censorPlayer orchestration; the
+│   │   │                          obscenity matcher is a scripted facade)
 │   │   ├── wasm_probe.rs          `extern "C"` surface, feature-gated
 │   │   └── pathfinding/
 │   │       ├── mod.rs
@@ -1341,6 +1348,43 @@ WebSockets — stays excluded, mirroring the `src/core` exclusions).
     `JsVal` codec with the TS literal's key order. 12 scenarios
     (`mpl_tc_*`, `mpl_lmp_*`, `mpl_sc_*`, `mpl_cm_*`, `mpl_rc_*`,
     `mpl_gc_*`, `mpl_1v1_*`, `mpl_2v2_*`).
+62. **`server/DesyncDetector.ts` + `server/JoinVerify.ts` + `server/Censor.ts`**
+    (`desync_detector`, `join_verify`, `censor`) — the sync / admission /
+    moderation cluster. `DesyncDetector` runs over the narrow `Client` facade
+    (plain stubs `{clientID, hashes}`; `outOfSyncClients` crosses as the
+    clientID list); quirks pinned: `counts` is a JS `Map<number, number>`
+    (SameValueZero keys, first-seen insertion order — `NumMap`),
+    `mostCommonHash` uses strict `>` so a tie keeps the **first-inserted**
+    hash, the strict-majority swap `outOfSync.length > floor(active.length /
+    2)` replaces the list with **all** of `active` — including clients that
+    never reported a hash — and `>` not `>=` means exactly half does NOT
+    trigger it; `check` gates `active.length <= 1` and
+    `turnsCommitted % 10 !== 0 || turnsCommitted < 10` (the `%` short-circuits
+    first, so `check(0)` hits the `< 10` gate); `record` adds every id to
+    `desynced` but `notified` latches — each client is returned at most once.
+    `JoinVerify` ports the two **pure decision functions** only
+    (`isSteamAuthenticated`, `planJoinVerify`); `verifyJoin` is fetch I/O and
+    stays excluded. Quirks pinned: `!args.turnstileToken` is a FALSY test —
+    the empty string `""` rejects exactly like `null` (never forward a first
+    join without a token); the returned plans are TS object literals, so
+    `{action:"reject"}` / `{action:"skip"}` have **no** `token` key at all
+    (Absent, not present-`undefined`) while `{action:"verify", token}` always
+    carries it (the value may be JS `null`). `Censor` ports the tables
+    (`shadowNames` 21 entries, `bannedWords` 13) and `censorPlayer`'s
+    orchestration; the obscenity `profanityMatcher` is unresolvable in the
+    port repo (no `node_modules/obscenity`), so it rides as a scripted
+    black-box facade (`globalThis.__CN_MATCHER` set before the import;
+    `hasMatch(input) -> bool`, `getAllMatches(input) -> [{startIndex,
+    endIndex}]`, every call a trace event pinning counts, inputs and the
+    `||` / `.some()` short-circuit orders) — the library internals
+    (transformer chains, the `kkk` includes check) are NOT replicated.
+    Quirks pinned: `clanTag ?` is a truthy gate — `null` AND the empty string
+    take the false branch with **zero** facade calls; the boundary slur
+    concatenates `clanTag + username` (tag first) and the predicate compares
+    against the tag's **UTF-16 unit length**; `simpleHash` is computed only
+    when the shadow branch is taken; a surviving tag is `toUpperCase()`d, a
+    dropped one is JS `null` (the `clanTag` key is always present). 21
+    scenarios (`dd_` 7, `jv_` 3, `cn_` 11).
 
 Regenerate whenever a ported source changes:
 
@@ -1374,7 +1418,7 @@ node rust/tools/run_wasm_parity.mjs
 
 `wasm-probe` exposes the ported functions through `extern "C"` scalar
 entrypoints (`src/wasm_probe.rs`); the runner imports `data/vectors.json` and
-compares every value. Last run: **279,023 comparisons, all bit-identical**.
+compares every value. Last run: **280,310 comparisons, all bit-identical**.
 
 ### Windows: the linker environment
 

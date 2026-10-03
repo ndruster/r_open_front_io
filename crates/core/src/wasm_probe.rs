@@ -4731,3 +4731,102 @@ pub extern "C" fn probe_mpl_op(kind: u32) -> usize {
 pub extern "C" fn probe_mpl_out_at(i: usize) -> f64 {
     MPL_OUT.with(|o| o.borrow()[i])
 }
+
+// ============ S5: server/DesyncDetector.ts (desync_detector) =================
+
+thread_local! {
+    static DD_HARNESS: std::cell::RefCell<crate::desync_detector::RigHarness> =
+        std::cell::RefCell::new(crate::desync_detector::RigHarness::new());
+    static DD_ARGS: std::cell::RefCell<Vec<f64>> = const { std::cell::RefCell::new(Vec::new()) };
+    static DD_OUT: std::cell::RefCell<Vec<f64>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
+#[no_mangle]
+pub extern "C" fn probe_dd_reset() {
+    DD_HARNESS.with(|h| h.borrow_mut().reset());
+}
+
+#[no_mangle]
+pub extern "C" fn probe_dd_arg(v: f64) {
+    DD_ARGS.with(|t| t.borrow_mut().push(v));
+}
+
+#[no_mangle]
+pub extern "C" fn probe_dd_op(kind: u32) -> usize {
+    let a = DD_ARGS.with(|t| std::mem::take(&mut *t.borrow_mut()));
+    let out = DD_HARNESS.with(|h| h.borrow_mut().run_op(kind as u8, &a));
+    let len = out.len();
+    DD_OUT.with(|o| *o.borrow_mut() = out);
+    len
+}
+
+#[no_mangle]
+pub extern "C" fn probe_dd_out_at(i: usize) -> f64 {
+    DD_OUT.with(|o| o.borrow()[i])
+}
+
+// ============ S5: server/JoinVerify.ts (join_verify) =========================
+
+thread_local! {
+    static JV_HARNESS: std::cell::RefCell<crate::join_verify::RigHarness> =
+        std::cell::RefCell::new(crate::join_verify::RigHarness::new());
+    static JV_ARGS: std::cell::RefCell<Vec<f64>> = const { std::cell::RefCell::new(Vec::new()) };
+    static JV_OUT: std::cell::RefCell<Vec<f64>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
+#[no_mangle]
+pub extern "C" fn probe_jv_reset() {
+    JV_HARNESS.with(|h| h.borrow_mut().reset());
+}
+
+#[no_mangle]
+pub extern "C" fn probe_jv_arg(v: f64) {
+    JV_ARGS.with(|t| t.borrow_mut().push(v));
+}
+
+#[no_mangle]
+pub extern "C" fn probe_jv_op(kind: u32) -> usize {
+    let a = JV_ARGS.with(|t| std::mem::take(&mut *t.borrow_mut()));
+    let out = JV_HARNESS.with(|h| h.borrow_mut().run_op(kind as u8, &a));
+    let len = out.len();
+    JV_OUT.with(|o| *o.borrow_mut() = out);
+    len
+}
+
+#[no_mangle]
+pub extern "C" fn probe_jv_out_at(i: usize) -> f64 {
+    JV_OUT.with(|o| o.borrow()[i])
+}
+
+// ============ S5: server/Censor.ts (censor) ==================================
+
+thread_local! {
+    static CN_HARNESS: std::cell::RefCell<crate::censor::RigHarness> =
+        std::cell::RefCell::new(crate::censor::RigHarness::new());
+    static CN_ARGS: std::cell::RefCell<Vec<f64>> = const { std::cell::RefCell::new(Vec::new()) };
+    static CN_OUT: std::cell::RefCell<Vec<f64>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
+#[no_mangle]
+pub extern "C" fn probe_cn_reset() {
+    CN_HARNESS.with(|h| h.borrow_mut().reset());
+}
+
+#[no_mangle]
+pub extern "C" fn probe_cn_arg(v: f64) {
+    CN_ARGS.with(|t| t.borrow_mut().push(v));
+}
+
+#[no_mangle]
+pub extern "C" fn probe_cn_op(kind: u32) -> usize {
+    let a = CN_ARGS.with(|t| std::mem::take(&mut *t.borrow_mut()));
+    let out = CN_HARNESS.with(|h| h.borrow_mut().run_op(kind as u8, &a));
+    let len = out.len();
+    CN_OUT.with(|o| *o.borrow_mut() = out);
+    len
+}
+
+#[no_mangle]
+pub extern "C" fn probe_cn_out_at(i: usize) -> f64 {
+    CN_OUT.with(|o| o.borrow()[i])
+}

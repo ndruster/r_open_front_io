@@ -4500,3 +4500,135 @@ pub extern "C" fn probe_rn_op(kind: u32) -> usize {
 pub extern "C" fn probe_rn_out_at(i: usize) -> f64 {
     RN_OUT.with(|o| o.borrow()[i])
 }
+
+// ============ S1: server/VoteTally.ts (vote_tally) ==========================
+
+thread_local! {
+    static VT_HARNESS: std::cell::RefCell<crate::vote_tally::RigHarness> =
+        std::cell::RefCell::new(crate::vote_tally::RigHarness::new());
+    static VT_ARGS: std::cell::RefCell<Vec<f64>> = const { std::cell::RefCell::new(Vec::new()) };
+    static VT_OUT: std::cell::RefCell<Vec<f64>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
+#[no_mangle]
+pub extern "C" fn probe_vt_reset() {
+    VT_HARNESS.with(|h| h.borrow_mut().reset());
+}
+
+#[no_mangle]
+pub extern "C" fn probe_vt_arg(v: f64) {
+    VT_ARGS.with(|t| t.borrow_mut().push(v));
+}
+
+#[no_mangle]
+pub extern "C" fn probe_vt_op(kind: u32) -> usize {
+    let a = VT_ARGS.with(|t| std::mem::take(&mut *t.borrow_mut()));
+    let out = VT_HARNESS.with(|h| h.borrow_mut().run_op(kind as u8, &a));
+    let len = out.len();
+    VT_OUT.with(|o| *o.borrow_mut() = out);
+    len
+}
+
+#[no_mangle]
+pub extern "C" fn probe_vt_out_at(i: usize) -> f64 {
+    VT_OUT.with(|o| o.borrow()[i])
+}
+
+// ============ S1: server/ConfigPatch.ts (config_patch) =======================
+
+thread_local! {
+    static CP_HARNESS: std::cell::RefCell<crate::config_patch::RigHarness> =
+        std::cell::RefCell::new(crate::config_patch::RigHarness::new());
+    static CP_ARGS: std::cell::RefCell<Vec<f64>> = const { std::cell::RefCell::new(Vec::new()) };
+    static CP_OUT: std::cell::RefCell<Vec<f64>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
+#[no_mangle]
+pub extern "C" fn probe_cp_reset() {
+    CP_HARNESS.with(|h| h.borrow_mut().reset());
+}
+
+#[no_mangle]
+pub extern "C" fn probe_cp_arg(v: f64) {
+    CP_ARGS.with(|t| t.borrow_mut().push(v));
+}
+
+#[no_mangle]
+pub extern "C" fn probe_cp_op(kind: u32) -> usize {
+    let a = CP_ARGS.with(|t| std::mem::take(&mut *t.borrow_mut()));
+    let out = CP_HARNESS.with(|h| h.borrow_mut().run_op(kind as u8, &a));
+    let len = out.len();
+    CP_OUT.with(|o| *o.borrow_mut() = out);
+    len
+}
+
+#[no_mangle]
+pub extern "C" fn probe_cp_out_at(i: usize) -> f64 {
+    CP_OUT.with(|o| o.borrow()[i])
+}
+
+// ============ S1: server/IntentAuthorization.ts (intent_authorization) =======
+
+thread_local! {
+    static IA_HARNESS: std::cell::RefCell<crate::intent_authorization::RigHarness> =
+        std::cell::RefCell::new(crate::intent_authorization::RigHarness::new());
+    static IA_ARGS: std::cell::RefCell<Vec<f64>> = const { std::cell::RefCell::new(Vec::new()) };
+    static IA_OUT: std::cell::RefCell<Vec<f64>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
+#[no_mangle]
+pub extern "C" fn probe_ia_reset() {
+    IA_HARNESS.with(|h| h.borrow_mut().reset());
+}
+
+#[no_mangle]
+pub extern "C" fn probe_ia_arg(v: f64) {
+    IA_ARGS.with(|t| t.borrow_mut().push(v));
+}
+
+#[no_mangle]
+pub extern "C" fn probe_ia_op(kind: u32) -> usize {
+    let a = IA_ARGS.with(|t| std::mem::take(&mut *t.borrow_mut()));
+    let out = IA_HARNESS.with(|h| h.borrow_mut().run_op(kind as u8, &a));
+    let len = out.len();
+    IA_OUT.with(|o| *o.borrow_mut() = out);
+    len
+}
+
+#[no_mangle]
+pub extern "C" fn probe_ia_out_at(i: usize) -> f64 {
+    IA_OUT.with(|o| o.borrow()[i])
+}
+
+// ============ S1: server/Consensus.ts (consensus) ============================
+
+thread_local! {
+    static CV_HARNESS: std::cell::RefCell<crate::consensus::RigHarness> =
+        std::cell::RefCell::new(crate::consensus::RigHarness::new());
+    static CV_ARGS: std::cell::RefCell<Vec<f64>> = const { std::cell::RefCell::new(Vec::new()) };
+    static CV_OUT: std::cell::RefCell<Vec<f64>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
+#[no_mangle]
+pub extern "C" fn probe_cv_reset() {
+    CV_HARNESS.with(|h| h.borrow_mut().reset());
+}
+
+#[no_mangle]
+pub extern "C" fn probe_cv_arg(v: f64) {
+    CV_ARGS.with(|t| t.borrow_mut().push(v));
+}
+
+#[no_mangle]
+pub extern "C" fn probe_cv_op(kind: u32) -> usize {
+    let a = CV_ARGS.with(|t| std::mem::take(&mut *t.borrow_mut()));
+    let out = CV_HARNESS.with(|h| h.borrow_mut().run_op(kind as u8, &a));
+    let len = out.len();
+    CV_OUT.with(|o| *o.borrow_mut() = out);
+    len
+}
+
+#[no_mangle]
+pub extern "C" fn probe_cv_out_at(i: usize) -> f64 {
+    CV_OUT.with(|o| o.borrow()[i])
+}

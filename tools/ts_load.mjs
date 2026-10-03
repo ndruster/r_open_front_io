@@ -2663,6 +2663,50 @@ function prepare(rel) {
     );
   }
 
+  if (rel.endsWith("server/VoteTally.ts")) {
+    // No imports at all; the class body is plain JS after strip mode
+    // erases the generics and annotations. Nothing to rewrite.
+  }
+  if (rel.endsWith("server/ConfigPatch.ts")) {
+    // GameConfig is a zod-schema-derived type (type-only) -> dropped; the
+    // `as const satisfies readonly (keyof GameConfig)[]` clauses are erased
+    // by strip mode, leaving the plain string arrays.
+    out = must(out, 'import { GameConfig } from "../core/Schemas";\n', "", "ConfigPatch Schemas import");
+  }
+  if (rel.endsWith("server/IntentAuthorization.ts")) {
+    // ClientID / Intent are branded types / interfaces (type-only) ->
+    // dropped. GameType is a *value* (the string enum) and hostCheatsEnabled
+    // a *value* import, both redirected to prepared copies.
+    const iaGameRel = "src/core/game/Game.ts";
+    if (!prepared.has(iaGameRel)) prepare(iaGameRel);
+    const iaCpRel = "src/server/ConfigPatch.ts";
+    if (!prepared.has(iaCpRel)) prepare(iaCpRel);
+    out = must(
+      out,
+      'import { GameType } from "../core/game/Game";\n' +
+        'import { ClientID, Intent } from "../core/Schemas";\n' +
+        'import { hostCheatsEnabled } from "./ConfigPatch";\n',
+      `import { GameType } from "./${prepared.get(iaGameRel)}";\n` +
+        `import { hostCheatsEnabled } from "./${prepared.get(iaCpRel)}";\n`,
+      "IntentAuthorization imports",
+    );
+  }
+  if (rel.endsWith("server/Consensus.ts")) {
+    // ClientID / ClientSendWinnerMessage / LiveStats are branded types /
+    // interfaces (type-only) -> dropped. VoteRound is a *value* import,
+    // redirected to the prepared VoteTally copy.
+    const cvSchemasRel = 'import { ClientID, ClientSendWinnerMessage, LiveStats } from "../core/Schemas";\n';
+    out = must(out, cvSchemasRel, "", "Consensus Schemas import");
+    const cvVtRel = "src/server/VoteTally.ts";
+    if (!prepared.has(cvVtRel)) prepare(cvVtRel);
+    out = must(
+      out,
+      'import { VoteRound } from "./VoteTally";',
+      `import { VoteRound } from "./${prepared.get(cvVtRel)}";`,
+      "Consensus VoteTally import",
+    );
+  }
+
   mkdirSync(cacheDir, { recursive: true });
   const hash = createHash("sha1").update(out).digest("hex").slice(0, 10);
   const base = `${basename(rel, ".ts")}-${hash}.ts`;

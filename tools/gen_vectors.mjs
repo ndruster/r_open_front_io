@@ -1,4 +1,4 @@
-﻿// Generates golden vectors from the authoritative TypeScript implementation so
+// Generates golden vectors from the authoritative TypeScript implementation so
 // the Rust port can be verified bit-for-bit against it.
 //
 //   node rust/tools/gen_vectors.mjs
@@ -184,6 +184,10 @@ const TNI = await loadTs("src/core/game/TerraNulliusImpl.ts");
 const SI = await loadTs("src/core/game/StatsImpl.ts");
 const RN = await loadTs("src/core/game/RailNetworkImpl.ts");
 const TSN = await loadTs("src/core/game/TrainStation.ts");
+const VT = await loadTs("src/server/VoteTally.ts");
+const CP = await loadTs("src/server/ConfigPatch.ts");
+const IA = await loadTs("src/server/IntentAuthorization.ts");
+const CV = await loadTs("src/server/Consensus.ts");
 const PF = await loadTs("src/core/pathfinding/PathFinder.ts");
 const { AStar } = await loadTs("src/core/pathfinding/algorithms/AStar.ts");
 const { AStarRail } = await loadTs("src/core/pathfinding/algorithms/AStar.Rail.ts");
@@ -10422,7 +10426,470 @@ runRN("rn_grid_query_order", rnSpec({
     [2, 1], [2, 2], [2, 4], [2, 5], [2, 3], [9], [5, "City", 39]],
 }));
 
+// ---- S1: server cluster (VoteTally / ConfigPatch / IntentAuthorization /
+// Consensus). Values cross in the `js_json` codec form: `[0]` absent (never
+// emitted by the capture), `[1]` undefined, `[2]` null, `[3,v]` number,
+// `[4,b]` bool, `[5,len,u..]` string, `[6,n,(key,value)*n]` object,
+// `[7,n,(value)*n]` array. Strings ride as `[len, charCodeAt...]` UTF-16
+// units (same as encS).
+const encVal = (v) => {
+  if (v === undefined) return [1];
+  if (v === null) return [2];
+  if (typeof v === "number") return [3, uenc(v)];
+  if (typeof v === "boolean") return [4, v ? 1 : 0];
+  if (typeof v === "string") return [5, ...encS(v)];
+  if (Array.isArray(v)) return [7, v.length, ...v.flatMap(encVal)];
+  return [
+    6,
+    Object.keys(v).length,
+    ...Object.entries(v).flatMap(([k, x]) => [...encS(k), ...encVal(x)]),
+  ];
+};
+const encMap = (o) => [
+  Object.keys(o).length,
+  ...Object.entries(o).flatMap(([k, v]) => [...encS(k), ...encVal(v)]),
+];
+const encCands = (cands, valOf = (v) => v) => {
+  const out = [cands.size];
+  for (const [key, c] of cands) {
+    out.push(...encS(key), uenc(valOf(c.value)), c.ips.size);
+    for (const ip of c.ips) out.push(...encS(ip));
+  }
+  return out;
+};
+
+// VoteTally.ts VoteRound op stream. kind 0 construct -> [0]; 1 add
+// [klen,u*,value,ilen,u*] -> [size]; 2 result [total] -> [0]|[1,value,votes];
+// 3 resultAmong [n,(ip)*] -> [0]|[1,value,votes]; 4 dump -> candidate dump.
+const vtScenarios = [];
+let vtIdx = 0;
+function runVT(name, ops) {
+  const played = [];
+  let round = null;
+  for (const [k, ...a] of ops) {
+    let args, res;
+    if (k === 0) {
+      args = [];
+      round = new VT.VoteRound();
+      res = [0];
+    } else if (k === 1) {
+      const [key, value, ip] = a;
+      args = [...encS(key), uenc(value), ...encS(ip)];
+      res = [round.add(key, value, ip)];
+    } else if (k === 2) {
+      args = [uenc(a[0])];
+      const r = round.result(a[0]);
+      res = r === null ? [0] : [1, uenc(r.value), r.votes];
+    } else if (k === 3) {
+      const ips = a[0];
+      args = [ips.length, ...ips.flatMap(encS)];
+      const r = round.resultAmong(new Set(ips));
+      res = r === null ? [0] : [1, uenc(r.value), r.votes];
+    } else {
+      args = [];
+      res = encCands(round.candidates);
+    }
+    played.push({ kind: k, args: args.flat().map(uenc), res: res.flat().map(uenc) });
+  }
+  vtScenarios.push({ name: `${name}_${vtIdx++}`, ops: played });
+}
+
+runVT("vt_strict_majority", [
+  [0],
+  [1, "a", 10, "ip1"],
+  [1, "a", 10, "ip2"],
+  [2, 3],   // 2*2 > 3 -> wins
+  [2, 4],   // 4 > 4 false -> null
+  [2, 0],   // any candidate beats 0 -> wins
+]);
+runVT("vt_tie_1_of_2", [
+  [0],
+  [1, "a", 1, "ip1"],
+  [2, 2],   // 1 of 2 is a tie -> null (#4136)
+  [1, "b", 2, "ip2"],
+  [2, 2],   // still no strict majority
+  [2, 1],   // a: 2 > 1 -> wins (first candidate)
+]);
+runVT("vt_idempotent_same_ip", [
+  [0],
+  [1, "a", 5, "ip1"],
+  [1, "a", 5, "ip1"], // same IP again: size stays 1
+  [2, 1],
+  [4],
+]);
+runVT("vt_cross_vote", [
+  [0],
+  [1, "a", 1, "ip1"],
+  [1, "b", 2, "ip1"], // same IP votes both candidates: counted in both
+  [2, 1],             // a first with 1 vote: 2 > 1
+  [4],
+]);
+runVT("vt_among_exited", [
+  [0],
+  [1, "a", 7, "ip1"],
+  [1, "a", 7, "ip2"],
+  [1, "b", 8, "ip3"],
+  [2, 3],                 // a 2 votes: 4 > 3
+  [3, ["ip2", "ip3"]],    // a 1 active of 2: tie -> null; b 1 of 2 -> null
+  [3, ["ip2"]],           // a 1 of 1 -> wins
+  [3, []],                // activeIPs.size 0: votes*2 > 0 false -> null
+]);
+runVT("vt_first_candidate_wins", [
+  [0],
+  [1, "a", 1, "ip1"],
+  [1, "b", 2, "ip2"],
+  [1, "a", 1, "ip3"],
+  [1, "b", 2, "ip1"], // a {ip1,ip3}, b {ip2,ip1}: both 2 of 3
+  [2, 3],             // first in insertion order (a) wins
+  [4],
+]);
+runVT("vt_empty_round", [
+  [0],
+  [2, 0],
+  [3, ["ip1"]],
+  [4],
+]);
+runVT("vt_value_first_write", [
+  [0],
+  [1, "a", 10, "ip1"],
+  [1, "a", 99, "ip2"], // existing candidate: value stays 10
+  [4],
+]);
+
+// ConfigPatch.ts op stream. kind 0 construct [map] -> [0]; 1 apply [map] ->
+// [0]; 2 dump -> [map]; 3 hostCheatsEnabled [value] -> [0|1].
+const cpScenarios = [];
+let cpIdx = 0;
+function runCP(name, ops) {
+  const played = [];
+  let target = null;
+  for (const [k, ...a] of ops) {
+    let args, res;
+    if (k === 0) {
+      args = encMap(a[0]);
+      target = { ...a[0] };
+      res = [0];
+    } else if (k === 1) {
+      args = encMap(a[0]);
+      CP.applyGameConfigPatch(target, a[0]);
+      res = [0];
+    } else if (k === 2) {
+      args = [];
+      res = encMap(target);
+    } else {
+      args = encVal(a[0]);
+      res = [CP.hostCheatsEnabled(a[0]) ? 1 : 0];
+    }
+    played.push({ kind: k, args: args.flat().map(uenc), res: res.flat().map(uenc) });
+  }
+  cpScenarios.push({ name: `${name}_${cpIdx++}`, ops: played });
+}
+
+runCP("cp_copy_present", [
+  [0, { gameMap: "g" }],
+  [1, { difficulty: "Hard", gameMap: "other" }],
+  [2],
+]);
+runCP("cp_undefined_skips", [
+  [0, { difficulty: "Easy" }],
+  [1, { difficulty: undefined, nations: undefined }],
+  [2], // difficulty unchanged, nations never created
+]);
+runCP("cp_null_copies", [
+  [0, {}],
+  [1, { bots: null }], // null !== undefined -> copies through as null
+  [2],
+]);
+runCP("cp_nullable_clear", [
+  [0, { goldMultiplier: 3 }],
+  [1, { goldMultiplier: null }], // value ?? undefined -> clears in place
+  [2],
+]);
+runCP("cp_nullable_value", [
+  [0, {}],
+  [1, { startDelay: 5, waterNukes: true, maxTimerValue: null }],
+  [2],
+]);
+runCP("cp_hostcheats_unconditional", [
+  [0, { a: 1 }],
+  [1, {}],            // absent hostCheats -> target gains hostCheats: undefined
+  [2],
+  [1, { hostCheats: { infiniteGold: true } }],
+  [2],
+]);
+runCP("cp_hce_truth_table", [
+  [0, {}],
+  [3, undefined], // [0]
+  [3, {}],        // [0]
+  [3, { infiniteGold: true }],   // [1]
+  [3, { infiniteGold: false, infiniteTroops: true }], // [1]
+  [3, { goldMultiplier: NaN }],  // typeof NaN === "number" -> [1]
+  [3, { goldMultiplier: "3" }],  // string -> [0]
+  [3, { startingGold: 0 }],      // 0 is still a number -> [1]
+  [3, { infiniteGold: 1 }],      // 1 !== true -> [0]
+]);
+runCP("cp_key_order", [
+  [0, {}],
+  [1, { waterNukes: true, nameReveals: 2, gameMap: "m", startDelay: 1, difficulty: "Easy" }],
+  [2], // dump order: COPIED_KEYS then NULLABLE_KEYS then hostCheats
+]);
+
+// IntentAuthorization.ts op stream. kind 0 -> [0]; 1 authorizeIntent
+// [n,(key,value)*n] with fields type/config/isLobbyCreator/isAdmin/
+// isAdminBot/isPublic/isListed/hasStarted -> [0] | [1,status,1,(error-str)].
+const iaScenarios = [];
+let iaIdx = 0;
+function runIA(name, ops) {
+  const played = [];
+  for (const [k, ...a] of ops) {
+    let args, res;
+    if (k === 0) {
+      args = [];
+      res = [0];
+    } else {
+      const spec = a[0];
+      args = encMap(spec);
+      const intent = { type: spec.type };
+      if ("config" in spec) intent.config = spec.config;
+      const actor = {
+        isLobbyCreator: !!spec.isLobbyCreator,
+        isAdmin: !!spec.isAdmin,
+        isAdminBot: !!spec.isAdminBot,
+      };
+      const game = {
+        isPublic: !!spec.isPublic,
+        isListed: !!spec.isListed,
+        hasStarted: !!spec.hasStarted,
+      };
+      const o = IA.authorizeIntent(intent, actor, game);
+      res = o === null ? [0] : [1, o.status, 1, ...encS(o.error)];
+    }
+    played.push({ kind: k, args: args.flat().map(uenc), res: res.flat().map(uenc) });
+  }
+  iaScenarios.push({ name: `${name}_${iaIdx++}`, ops: played });
+}
+
+runIA("ia_adminbot_public", [
+  [0],
+  [1, { type: "attack", isAdminBot: true, isPublic: true }], // guard BEFORE switch
+  [1, { type: "mark_disconnected", isAdminBot: true, isPublic: true }], // beats 400
+]);
+runIA("ia_mark_disconnected", [
+  [0],
+  [1, { type: "mark_disconnected" }],
+]);
+runIA("ia_kick_no_perm", [
+  [0],
+  [1, { type: "kick_player" }], // neither creator nor admin
+]);
+runIA("ia_kick_listed", [
+  [0],
+  [1, { type: "kick_player", isLobbyCreator: true, isListed: true }], // listed griefing guard
+  [1, { type: "kick_player", isAdmin: true, isListed: true }],       // admin keeps the power
+  [1, { type: "kick_player", isLobbyCreator: true }],                // unlisted host ok
+]);
+runIA("ia_ugc_no_perm", [
+  [0],
+  [1, { type: "update_game_config", isAdmin: true, config: {} }], // admin but not creator/adminBot
+]);
+runIA("ia_ugc_public_started", [
+  [0],
+  [1, { type: "update_game_config", isLobbyCreator: true, isPublic: true, config: {} }],
+  [1, { type: "update_game_config", isLobbyCreator: true, hasStarted: true, config: {} }],
+]);
+runIA("ia_ugc_to_public", [
+  [0],
+  [1, { type: "update_game_config", isLobbyCreator: true, config: { gameType: "Public" } }],
+  [1, { type: "update_game_config", isLobbyCreator: true, config: { gameType: "Private" } }], // passes
+]);
+runIA("ia_ugc_listed_cheats", [
+  [0],
+  [1, { type: "update_game_config", isLobbyCreator: true, isListed: true, config: { hostCheats: { infiniteTroops: true } } }],
+  [1, { type: "update_game_config", isLobbyCreator: true, isListed: true, config: { hostCheats: { infiniteTroops: false } } }], // cheats off -> passes
+]);
+runIA("ia_ugc_listed_whitelist", [
+  [0],
+  [1, { type: "update_game_config", isLobbyCreator: true, isListed: true, config: { allowedPublicIds: ["x"] } }],
+  [1, { type: "update_game_config", isLobbyCreator: true, isListed: true, config: { allowedPublicIds: [] } }],
+  [1, { type: "update_game_config", isLobbyCreator: true, isListed: true, config: {} }], // ?.length ?? 0
+]);
+runIA("ia_timer_guards", [
+  [0],
+  [1, { type: "toggle_game_start_timer" }],
+  [1, { type: "toggle_game_start_timer", isLobbyCreator: true, isPublic: true }],
+  [1, { type: "toggle_game_start_timer", isLobbyCreator: true, hasStarted: true }],
+  [1, { type: "toggle_game_start_timer", isAdminBot: true }], // adminBot passes creator gate
+]);
+runIA("ia_pause_guards", [
+  [0],
+  [1, { type: "toggle_pause" }],
+  [1, { type: "toggle_pause", isLobbyCreator: true, isListed: true, hasStarted: true }], // listed guard BEFORE started
+  [1, { type: "toggle_pause", isLobbyCreator: true }],                                  // not started -> 409
+  [1, { type: "toggle_pause", isAdminBot: true, isListed: true, hasStarted: true }],    // adminBot exempt -> null
+]);
+runIA("ia_default_gameplay", [
+  [0],
+  [1, { type: "attack", isAdminBot: true }], // 400 not permitted
+  [1, { type: "attack" }],                   // websocket player -> null
+]);
+runIA("ia_ugc_adminbot_ok", [
+  [0],
+  [1, { type: "update_game_config", isAdminBot: true, config: {} }], // adminBot creator-equivalent -> null
+]);
+
+// Consensus.ts op stream: one WinnerVote + one LiveStatsVote. kind 0 -> [0];
+// 1 Wv.cast [value,msg,ip] -> [1,(key-str),votes] (key = real TS
+// JSON.stringify); 2 Wv.tally [e] -> [0]|[1,value,votes]; 3 Wv.tallyAmong
+// [n,(ip)*]; 4 Wv.winner -> [0]|[1,value]; 5 Lsv.cast [turn,value,id,ip,e,
+// stats] -> [0|1]; 6 Lsv.latest -> [0]|[1,turn,value]; 7 Wv round dump;
+// 8 Lsv rounds dump [n,(turn,votersN,(id)*,roundDump)*]. Payload objects ride
+// as capture-assigned tokens.
+const cvScenarios = [];
+let cvIdx = 0;
+function runCV(name, ops) {
+  const played = [];
+  let wv = null;
+  let lsv = null;
+  let nextTok = 1;
+  const tokOf = new Map();
+  const tok = (o) => {
+    if (!tokOf.has(o)) tokOf.set(o, nextTok++);
+    return tokOf.get(o);
+  };
+  for (const [k, ...a] of ops) {
+    let args, res;
+    if (k === 0) {
+      args = [];
+      wv = new CV.WinnerVote();
+      lsv = new CV.LiveStatsVote();
+      nextTok = 1;
+      tokOf.clear();
+      res = [0];
+    } else if (k === 1) {
+      const [msg, ip] = a;
+      args = [uenc(tok(msg)), ...encVal(msg), ...encS(ip)];
+      const r = wv.cast(msg, ip);
+      res = [1, ...encS(r.key), r.votes];
+    } else if (k === 2) {
+      args = [uenc(a[0])];
+      const r = wv.tally(a[0]);
+      res = r === null ? [0] : [1, uenc(tok(r.value)), r.votes];
+    } else if (k === 3) {
+      const ips = a[0];
+      args = [ips.length, ...ips.flatMap(encS)];
+      const r = wv.tallyAmong(new Set(ips));
+      res = r === null ? [0] : [1, uenc(tok(r.value)), r.votes];
+    } else if (k === 4) {
+      args = [];
+      const w = wv.winner();
+      res = w === null ? [0] : [1, uenc(tok(w))];
+    } else if (k === 5) {
+      const [cid, ip, stats, electorate] = a;
+      args = [uenc(stats.turn), uenc(tok(stats)), ...encS(cid), ...encS(ip), uenc(electorate), ...encVal(stats)];
+      res = [lsv.cast(cid, ip, stats, electorate) ? 1 : 0];
+    } else if (k === 6) {
+      args = [];
+      const s = lsv.latest();
+      res = s === null ? [0] : [1, uenc(s.turn), uenc(tok(s))];
+    } else if (k === 7) {
+      args = [];
+      res = encCands(wv.round.candidates, tok);
+    } else {
+      args = [];
+      res = [lsv.rounds.size];
+      for (const [turn, e] of lsv.rounds) {
+        res.push(uenc(turn), e.voters.size);
+        for (const id of e.voters) res.push(...encS(id));
+        res.push(...encCands(e.round.candidates, tok));
+      }
+    }
+    played.push({ kind: k, args: args.flat().map(uenc), res: res.flat().map(uenc) });
+  }
+  cvScenarios.push({ name: `${name}_${cvIdx++}`, ops: played });
+}
+
+runCV("cv_winner_stringify", [
+  [0],
+  [1, { winner: "p1" }, "ip1"],          // key = "\"p1\""
+  [1, { winner: { b: 2, a: true } }, "ip2"], // insertion-order key
+  [1, { winner: ["x", null, undefined] }, "ip3"], // array: undefined -> null
+  [7],
+]);
+runCV("cv_winner_cancelled", [
+  [0],
+  [1, { type: "client_send_winner" }, "ip1"], // winner absent -> "null"
+  [1, { winner: undefined }, "ip2"],          // ?? null -> "null" (same candidate)
+  [1, { winner: null }, "ip3"],               // null -> "null" (same candidate)
+  [2, 3],
+  [7],
+]);
+runCV("cv_majority", [
+  [0],
+  [1, { winner: "a" }, "ip1"],
+  [1, { winner: "a" }, "ip2"],
+  [4],                 // winner() null before tally
+  [2, 3],              // 2 of 3 -> decided
+  [4],
+  [2, 5],              // re-tally: no majority now, decided STAYS
+  [4],
+]);
+runCV("cv_redecide", [
+  [0],
+  [1, { winner: "a" }, "i1"],
+  [1, { winner: "a" }, "i2"],
+  [1, { winner: "b" }, "i3"],
+  [2, 3],              // a 2 of 3 -> decided a
+  [3, ["i3"]],         // among {i3}: b 1 of 1 -> decided MOVES to b
+  [4],
+]);
+runCV("cv_payload_first_write", [
+  [0],
+  [1, { winner: "a" }, "ip1"],
+  [1, { winner: "a" }, "ip2"], // distinct object, same key: first token survives
+  [2, 2],                      // result.value = FIRST message
+  [7],
+]);
+runCV("cv_lsv_settle", [
+  [0],
+  [5, "c1", "ip1", { turn: 5, x: 1 }, 5], // 1 of 5 -> false
+  [5, "c2", "ip2", { turn: 5, x: 1 }, 5], // 2 of 5 -> false
+  [6],                                    // latest null
+  [8],                                    // round 5 pending
+  [5, "c3", "ip3", { turn: 5, x: 1 }, 5], // 3 of 5: 6 > 5 -> settles
+  [6],
+  [8], // all t <= 5 deleted
+]);
+runCV("cv_lsv_stale_ignored", [
+  [0],
+  [5, "c1", "ip1", { turn: 5 }, 1], // 1 of 1 -> settles immediately
+  [5, "c2", "ip2", { turn: 4 }, 3], // turn <= settled -> ignored
+  [5, "c3", "ip3", { turn: 5 }, 3], // turn <= settled -> ignored
+  [5, "c4", "ip4", { turn: 6 }, 3], // new turn, 1 vote -> false
+  [8],
+]);
+runCV("cv_lsv_dedup", [
+  [0],
+  [5, "c1", "ip1", { turn: 7, s: 1 }, 3],
+  [5, "c1", "ip2", { turn: 7, s: 2 }, 3], // same clientID: second vote dropped
+  [8],
+]);
+runCV("cv_lsv_prune", [
+  [0],
+  ...Array.from({ length: 21 }, (_, t) => [5, "c1", "ip1", { turn: t + 1 }, 3]),
+  [8], // size capped at 20, oldest (turn 1) pruned
+]);
+runCV("cv_lsv_keys", [
+  [0],
+  [5, "c1", "ip1", { turn: 1, x: 1 }, 3],
+  [5, "c2", "ip2", { turn: 1, x: 2 }, 3], // different stats -> different key
+  [8],
+]);
+
 const structures = {
+  votetally: vtScenarios,
+  configpatch: cpScenarios,
+  intentauth: iaScenarios,
+  consensus: cvScenarios,
   minheap: mhScenarios,
   bucket: bqScenarios,
   flatheap: fbhScenarios,
@@ -13239,6 +13706,67 @@ L.push("pub const TNI_SCENARIOS: &[TniScenario] = &[");
 for (const s of structures.terranulliusimpl) L.push(`    ${s.name.toUpperCase()},`);
 L.push("];");
 L.push("");
+
+// ---- S1 server cluster emitters ---------------------------------------------
+const opStream = (key, tag, doc) => {
+  L.push(doc);
+  L.push(`pub struct ${tag}Op {`);
+  L.push("    pub kind: u8,");
+  L.push("    pub args: &'static [f64],");
+  L.push("    pub res: &'static [f64],");
+  L.push("}");
+  L.push(`pub struct ${tag}Scenario {`);
+  L.push("    pub name: &'static str,");
+  L.push(`    pub ops: &'static [${tag}Op],`);
+  L.push("}");
+  L.push("");
+  for (const s of structures[key]) {
+    const id = s.name.toUpperCase();
+    L.push(`const ${id}_OPS: &[${tag}Op] = &[`);
+    for (const o of s.ops)
+      L.push(
+        `    ${tag}Op { kind: ${o.kind}, args: &[${o.args.map(utilResLit).join(", ")}], res: &[${o.res.map(utilResLit).join(", ")}] },`,
+      );
+    L.push("];");
+    L.push(`pub const ${id}: ${tag}Scenario = ${tag}Scenario {`);
+    L.push(`    name: "${s.name}",`);
+    L.push(`    ops: ${id}_OPS,`);
+    L.push("};");
+    L.push("");
+  }
+  L.push(`pub const ${tag.toUpperCase()}_SCENARIOS: &[${tag}Scenario] = &[`);
+  for (const s of structures[key]) L.push(`    ${s.name.toUpperCase()},`);
+  L.push("];");
+  L.push("");
+};
+
+opStream(
+  "votetally",
+  "Vt",
+  "/// One `server/VoteTally.ts` VoteRound op (see `vote_tally::RigHarness::run_op`\n" +
+    "/// docs). kind 0 construct, 1 add, 2 result, 3 resultAmong, 4 dump.",
+);
+opStream(
+  "configpatch",
+  "Cp",
+  "/// One `server/ConfigPatch.ts` op (see `config_patch::RigHarness::run_op`\n" +
+    "/// docs). kind 0 construct, 1 applyGameConfigPatch, 2 dump, 3\n" +
+    "/// hostCheatsEnabled. Values ride the js_json codec.",
+);
+opStream(
+  "intentauth",
+  "Ia",
+  "/// One `server/IntentAuthorization.ts` op (see\n" +
+    "/// `intent_authorization::RigHarness::run_op` docs). kind 0 reset, 1\n" +
+    "/// authorizeIntent with the flat spec map.",
+);
+opStream(
+  "consensus",
+  "Cv",
+  "/// One `server/Consensus.ts` op (see `consensus::RigHarness::run_op` docs).\n" +
+    "/// kind 0 construct both votes, 1-4/7 WinnerVote, 5-6/8 LiveStatsVote.\n" +
+    "/// The cast key res is the REAL TS `JSON.stringify` output.",
+);
 
 const dataDir = join(root, "crates", "core", "tests", "data");
 mkdirSync(dataDir, { recursive: true });

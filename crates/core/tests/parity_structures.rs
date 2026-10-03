@@ -2896,3 +2896,131 @@ fn replay_railnetwork_scenarios() {
         }
     }
 }
+
+// server/VoteTally.ts VoteRound: replay the op stream (add / result /
+// resultAmong / dump) through `RigHarness::run_op` — the strict-majority
+// boundary, the same-IP idempotence, the cross-candidate IP reuse, the
+// shrunken-electorate re-tally and the first-candidate insertion order.
+#[test]
+fn replay_votetally_scenarios() {
+    use openfront_core::vote_tally::RigHarness;
+    for s in vectors::VT_SCENARIOS {
+        let mut rig = RigHarness::new();
+        for op in s.ops {
+            let got = rig.run_op(op.kind, op.args);
+            assert_eq!(
+                got.len(),
+                op.res.len(),
+                "{} op[{:?}] res len: got {got:?} want {:?}",
+                s.name,
+                op.kind,
+                op.res
+            );
+            for (j, (g, w)) in got.iter().zip(op.res.iter()).enumerate() {
+                assert!(
+                    obj_is(*g, *w),
+                    "{} op[{:?}] res[{j}]: got {g} want {w}",
+                    s.name,
+                    op.kind
+                );
+            }
+        }
+    }
+}
+
+// server/ConfigPatch.ts: replay the op stream (construct / apply / dump /
+// hostCheatsEnabled) — the copy-if-!==undefined gate (absent and undefined
+// alike), the null-copies / null-clears split, the unconditional hostCheats
+// assignment creating the key, the COPIED-then-NULLABLE key insertion order
+// and the four-field cheats truth table.
+#[test]
+fn replay_configpatch_scenarios() {
+    use openfront_core::config_patch::RigHarness;
+    for s in vectors::CP_SCENARIOS {
+        let mut rig = RigHarness::new();
+        for op in s.ops {
+            let got = rig.run_op(op.kind, op.args);
+            assert_eq!(
+                got.len(),
+                op.res.len(),
+                "{} op[{:?}] res len: got {got:?} want {:?}",
+                s.name,
+                op.kind,
+                op.res
+            );
+            for (j, (g, w)) in got.iter().zip(op.res.iter()).enumerate() {
+                assert!(
+                    obj_is(*g, *w),
+                    "{} op[{:?}] res[{j}]: got {g} want {w}",
+                    s.name,
+                    op.kind
+                );
+            }
+        }
+    }
+}
+
+// server/IntentAuthorization.ts: replay the guard table — the admin-bot /
+// public guard running before the switch, the per-intent guard order
+// (creator/admin gates, public, started, the GameType.Public string compare,
+// the listed+cheats and listed+whitelist 409s) and the default gameplay
+// branch.
+#[test]
+fn replay_intentauth_scenarios() {
+    use openfront_core::intent_authorization::RigHarness;
+    for s in vectors::IA_SCENARIOS {
+        let mut rig = RigHarness::new();
+        for op in s.ops {
+            let got = rig.run_op(op.kind, op.args);
+            assert_eq!(
+                got.len(),
+                op.res.len(),
+                "{} op[{:?}] res len: got {got:?} want {:?}",
+                s.name,
+                op.kind,
+                op.res
+            );
+            for (j, (g, w)) in got.iter().zip(op.res.iter()).enumerate() {
+                assert!(
+                    obj_is(*g, *w),
+                    "{} op[{:?}] res[{j}]: got {g} want {w}",
+                    s.name,
+                    op.kind
+                );
+            }
+        }
+    }
+}
+
+// server/Consensus.ts: replay WinnerVote + LiveStatsVote — the cast key is
+// the REAL TS `JSON.stringify` output compared token-for-token against the
+// Rust js_json reproduction, the cancelled-match "null" keying, the
+// decided-overwrite on re-tally, the payload-first-write rule, the stale-turn
+// ignore, the voter dedup, the settle delete-all-`<= turn` and the
+// MAX_PENDING_ROUNDS prune of the oldest key.
+#[test]
+fn replay_consensus_scenarios() {
+    use openfront_core::consensus::RigHarness;
+    for s in vectors::CV_SCENARIOS {
+        let mut rig = RigHarness::new();
+        for op in s.ops {
+            let got = rig.run_op(op.kind, op.args);
+            assert_eq!(
+                got.len(),
+                op.res.len(),
+                "{} op[{:?}] res len: got {got:?} want {:?}",
+                s.name,
+                op.kind,
+                op.res
+            );
+            for (j, (g, w)) in got.iter().zip(op.res.iter()).enumerate() {
+                assert!(
+                    obj_is(*g, *w),
+                    "{} op[{:?}] res[{j}]: got {g} want {w}",
+                    s.name,
+                    op.kind
+                );
+            }
+        }
+    }
+}

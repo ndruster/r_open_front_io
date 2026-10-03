@@ -119,6 +119,10 @@ for (const name of [
   "probe_rn_reset", "probe_rn_arg", "probe_rn_op", "probe_rn_out_at",
   "probe_tts_reset", "probe_tts_arg", "probe_tts_op", "probe_tts_out_at",
   "probe_eb_reset", "probe_eb_arg", "probe_eb_op", "probe_eb_out_at",
+  "probe_vt_reset", "probe_vt_arg", "probe_vt_op", "probe_vt_out_at",
+  "probe_cp_reset", "probe_cp_arg", "probe_cp_op", "probe_cp_out_at",
+  "probe_ia_reset", "probe_ia_arg", "probe_ia_op", "probe_ia_out_at",
+  "probe_cv_reset", "probe_cv_arg", "probe_cv_op", "probe_cv_out_at",
 ]) {
   if (typeof ex[name] !== "function") {
     console.error(`missing wasm export ${name} - rebuild with --features wasm-probe`);
@@ -2197,6 +2201,82 @@ for (const s of S.railnetwork) {
     for (let i = 0; i < len; i++) {
       checks++;
       const g = ex.probe_rn_out_at(i);
+      const w = numTok(op.res[i]);
+      if (!Object.is(g, w)) fail(`${s.name} op${op.kind} res[${i}]`, 0, g, w);
+    }
+  }
+}
+
+// --- server/VoteTally.ts (vote_tally) -----------------------------------------
+for (const s of S.votetally) {
+  ex.probe_vt_reset();
+  for (const op of s.ops) {
+    for (const a of op.args) ex.probe_vt_arg(numTok(a));
+    const len = Number(ex.probe_vt_op(op.kind));
+    if (len !== op.res.length) {
+      fail(`${s.name} op${op.kind} res len`, 0, len, op.res.length);
+      continue;
+    }
+    for (let i = 0; i < len; i++) {
+      checks++;
+      const g = ex.probe_vt_out_at(i);
+      const w = numTok(op.res[i]);
+      if (!Object.is(g, w)) fail(`${s.name} op${op.kind} res[${i}]`, 0, g, w);
+    }
+  }
+}
+
+// --- server/ConfigPatch.ts (config_patch) --------------------------------------
+for (const s of S.configpatch) {
+  ex.probe_cp_reset();
+  for (const op of s.ops) {
+    for (const a of op.args) ex.probe_cp_arg(numTok(a));
+    const len = Number(ex.probe_cp_op(op.kind));
+    if (len !== op.res.length) {
+      fail(`${s.name} op${op.kind} res len`, 0, len, op.res.length);
+      continue;
+    }
+    for (let i = 0; i < len; i++) {
+      checks++;
+      const g = ex.probe_cp_out_at(i);
+      const w = numTok(op.res[i]);
+      if (!Object.is(g, w)) fail(`${s.name} op${op.kind} res[${i}]`, 0, g, w);
+    }
+  }
+}
+
+// --- server/IntentAuthorization.ts (intent_authorization) ----------------------
+for (const s of S.intentauth) {
+  ex.probe_ia_reset();
+  for (const op of s.ops) {
+    for (const a of op.args) ex.probe_ia_arg(numTok(a));
+    const len = Number(ex.probe_ia_op(op.kind));
+    if (len !== op.res.length) {
+      fail(`${s.name} op${op.kind} res len`, 0, len, op.res.length);
+      continue;
+    }
+    for (let i = 0; i < len; i++) {
+      checks++;
+      const g = ex.probe_ia_out_at(i);
+      const w = numTok(op.res[i]);
+      if (!Object.is(g, w)) fail(`${s.name} op${op.kind} res[${i}]`, 0, g, w);
+    }
+  }
+}
+
+// --- server/Consensus.ts (consensus) --------------------------------------------
+for (const s of S.consensus) {
+  ex.probe_cv_reset();
+  for (const op of s.ops) {
+    for (const a of op.args) ex.probe_cv_arg(numTok(a));
+    const len = Number(ex.probe_cv_op(op.kind));
+    if (len !== op.res.length) {
+      fail(`${s.name} op${op.kind} res len`, 0, len, op.res.length);
+      continue;
+    }
+    for (let i = 0; i < len; i++) {
+      checks++;
+      const g = ex.probe_cv_out_at(i);
       const w = numTok(op.res[i]);
       if (!Object.is(g, w)) fail(`${s.name} op${op.kind} res[${i}]`, 0, g, w);
     }

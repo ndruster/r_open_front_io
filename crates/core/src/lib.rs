@@ -251,6 +251,33 @@
 //! * [`terra_nullius`] — `src/core/game/TerraNulliusImpl.ts` (the stateless
 //!   neutral-player facade: four constant returns — `smallID` 0, `clientID`
 //!   the literal string, `id` JS `null`, `isPlayer` the literal `false`)
+//! * [`js_json`] — the shared JS `JSON.stringify` fidelity helper (the
+//!   `JsonValue` serialisation domain: insertion-order objects, `undefined`
+//!   key omission, array `null` fill, `NaN`/`±Infinity`→`null`, `-0`→`0`,
+//!   control-character and lone-surrogate escaping) plus the `cp_` / `ia_` /
+//!   `cv_` harness value codec carrying the absent / `undefined` / `null` /
+//!   value tri-state
+//! * [`vote_tally`] — `src/server/VoteTally.ts` (the IP-weighted
+//!   `VoteRound<T>`: insertion-ordered string-keyed candidates over
+//!   per-candidate `Set<string>` IP sets, idempotent same-IP adds, the
+//!   strict-majority `result` / `resultAmong` first-winner scans)
+//! * [`config_patch`] — `src/server/ConfigPatch.ts` (`applyGameConfigPatch`'s
+//!   `COPIED_KEYS` copy-if-`!== undefined` loop, the `NULLABLE_KEYS`
+//!   `value ?? undefined` clear-to-undefined loop and the unconditional
+//!   `target.hostCheats = patch.hostCheats` write, plus the
+//!   `hostCheatsEnabled` four-field truth table; `GameConfig` rides as a
+//!   plain insertion-ordered field map)
+//! * [`intent_authorization`] — `src/server/IntentAuthorization.ts` (the
+//!   pure `authorizeIntent` guard table: the admin-bot/public pre-switch
+//!   guard, the per-intent guard orderings and exact `status` / `error`
+//!   strings, the `GameType.Public` string-enum comparison, the
+//!   `hostCheatsEnabled` and `allowedPublicIds?.length ?? 0` reads)
+//! * [`consensus`] — `src/server/Consensus.ts` (`WinnerVote`'s
+//!   `JSON.stringify(msg.winner ?? null)` candidate keys and the
+//!   `decided`-storing `tally` / `tallyAmong`, plus `LiveStatsVote`'s
+//!   turn-keyed pending rounds (`MAX_PENDING_ROUNDS` 20 oldest-prune, the
+//!   `turn <= settled.turn` ignore, per-(turn, clientID) voter dedup and the
+//!   on-settle delete-all-`t <= turn`) over the ported [`vote_tally`]
 //!
 //! Two rules govern every future port into this crate:
 //!
@@ -270,6 +297,8 @@ pub mod anon_names;
 pub mod api_schemas;
 pub mod asset_urls;
 pub mod close_codes;
+pub mod config_patch;
+pub mod consensus;
 pub mod cosmetic_schemas;
 pub mod detmath;
 pub mod doomsday_clock;
@@ -280,6 +309,8 @@ pub mod game_map;
 pub mod game_ts;
 pub mod game_update_utils;
 pub mod game_updates;
+pub mod intent_authorization;
+pub mod js_json;
 pub mod jsnum;
 pub mod line;
 pub mod maps_gen;
@@ -310,6 +341,7 @@ pub mod tribe_names;
 pub mod unit_grid;
 pub mod util;
 pub mod veterancy;
+pub mod vote_tally;
 pub mod water_manager;
 pub mod water_path_memo;
 

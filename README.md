@@ -1,4 +1,4 @@
-# Rust port of `src/core`
+# Rust port of `src/core` + `src/server`
 
 Incremental rewrite of the OpenFront simulation core in Rust. This directory is
 self-contained: it does not touch the TypeScript build, `package.json`, or CI.
@@ -162,6 +162,17 @@ rust/
 │   │   │                          createRailNetwork factory; Game/config/
 │   │   │                          pathService/unit facades scripted-mocked,
 │   │   │                          RailPathFinderServiceImpl excluded)
+│   │   ├── js_json.rs             JS JSON.stringify fidelity helper
+│   │   │                          (+ JsVal tri-state codec, shared by
+│   │   │                          the server ports)
+│   │   ├── vote_tally.rs          port of server/VoteTally.ts
+│   │   │                          (VoteRound: IP-weighted majority)
+│   │   ├── config_patch.rs        port of server/ConfigPatch.ts
+│   │   │                          (applyGameConfigPatch + hostCheatsEnabled)
+│   │   ├── intent_authorization.rs port of server/IntentAuthorization.ts
+│   │   │                          (authorizeIntent guard table)
+│   │   ├── consensus.rs           port of server/Consensus.ts
+│   │   │                          (WinnerVote + LiveStatsVote on VoteRound)
 │   │   ├── wasm_probe.rs          `extern "C"` surface, feature-gated
 │   │   └── pathfinding/
 │   │       ├── mod.rs
@@ -1173,6 +1184,48 @@ desync, not a rounding nit. Two things enforce that here:
     → `distance + 1`, else `-1`; `mg.y = (t/w)|0` (ToInt32), `mg.x = t % w`.
     28 `rn_` scenarios (7,848 tokens).
 
+## Server ports (`src/server`)
+
+The `src/core` port is complete; the deterministic subset of `src/server`
+is now ported the same way (host I/O — express routes, JWT, Redis, otel,
+WebSockets — stays excluded, mirroring the `src/core` exclusions).
+
+58. **`server/VoteTally.ts` + `server/ConfigPatch.ts` +
+    `server/IntentAuthorization.ts` + `server/Consensus.ts`**
+    (`vote_tally`, `config_patch`, `intent_authorization`, `consensus`,
+    plus the shared `js_json` helper) — the server vote/authorization
+    cluster. `js_json.rs` reproduces `JSON.stringify` byte-for-byte (ES2019
+    lone-surrogate escapes, NaN/±Infinity → `null`, `-0` → `0`, object
+    `undefined` values omit the key, array `undefined` → `null`, top-level
+    `undefined` → no string, insertion-order keys) and carries a `JsVal`
+    tri-state codec distinguishing absent-key / `undefined` / `null` —
+    the ConfigPatch copy gates and the Consensus candidate keys depend on
+    it. Quirks pinned: `VoteRound.result` returns the **first** candidate
+    (Map insertion order) holding a *strict* majority (`votes * 2 > total`,
+    a 1-of-2 tie is not a decision); `add` is idempotent per (candidate,
+    IP) and returns the post-vote unique-IP count; `resultAmong` counts
+    only `activeIPs` members and compares against `activeIPs.size`.
+    `applyGameConfigPatch` — COPIED_KEYS write only when the patch value
+    is `!== undefined` (absent and present-but-`undefined` both leave the
+    target untouched), NULLABLE_KEYS additionally collapse `null` →
+    `undefined`, and `hostCheats` is assigned **unconditionally** (an
+    omitted patch key *clears* the target field); `hostCheatsEnabled`
+    truth table (`{}` → false, `infiniteGold`/`infiniteTroops === true`,
+    `typeof goldMultiplier/startingGold === "number"`). `authorizeIntent`
+    — full guard-order table (adminBot+public pre-switch 403, `mark_
+    _disconnected` 400, kick creator/admin + listed-host 403, update_
+    game_config's five ordered guards incl. `allowedPublicIds?.length ??
+    0`, start-timer, pause listed-host 403 / not-started 409, gameplay
+    default adminBot 400). `WinnerVote.cast` keys by `JSON.stringify(
+    msg.winner ?? null)` (a cancelled match keys `"null"`); `tally`/
+    `tallyAmong` **overwrite** `decided` on every non-null result (no
+    latch — the guard is the caller's job, `cv_redecide`); `LiveStatsVote
+    .cast` ignores `turn <= settled.turn`, creates + prunes the round
+    **before** the voter dedup, keys by `JSON.stringify(stats)`, and on
+    settle deletes every round key `t <= turn`; `prune` drops the oldest
+    key while `size > 20`. 39 scenarios (`vt_` 8, `cp_` 8, `ia_` 13,
+    `cv_` 10).
+
 Regenerate whenever a ported source changes:
 
 ```
@@ -1180,7 +1233,7 @@ node rust/tools/gen_vectors.mjs
 ```
 
 Requires a working Node (v20+) in the repo; the script imports `src/core/*.ts`
-directly via Node's type stripping.
+and `src/server/*.ts` directly via Node's type stripping.
 
 ## Building and testing
 
@@ -1205,7 +1258,7 @@ node rust/tools/run_wasm_parity.mjs
 
 `wasm-probe` exposes the ported functions through `extern "C"` scalar
 entrypoints (`src/wasm_probe.rs`); the runner imports `data/vectors.json` and
-compares every value. Last run: **125,568 comparisons, all bit-identical**.
+compares every value. Last run: **127,654 comparisons, all bit-identical**.
 
 ### Windows: the linker environment
 

@@ -1205,7 +1205,7 @@ node rust/tools/run_wasm_parity.mjs
 
 `wasm-probe` exposes the ported functions through `extern "C"` scalar
 entrypoints (`src/wasm_probe.rs`); the runner imports `data/vectors.json` and
-compares every value. Last run: **124,025 comparisons, all bit-identical**.
+compares every value. Last run: **125,568 comparisons, all bit-identical**.
 
 ### Windows: the linker environment
 

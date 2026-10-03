@@ -123,6 +123,8 @@ for (const name of [
   "probe_cp_reset", "probe_cp_arg", "probe_cp_op", "probe_cp_out_at",
   "probe_ia_reset", "probe_ia_arg", "probe_ia_op", "probe_ia_out_at",
   "probe_cv_reset", "probe_cv_arg", "probe_cv_op", "probe_cv_out_at",
+  "probe_ls_reset", "probe_ls_arg", "probe_ls_op", "probe_ls_out_at",
+  "probe_nvs_reset", "probe_nvs_arg", "probe_nvs_op", "probe_nvs_out_at",
 ]) {
   if (typeof ex[name] !== "function") {
     console.error(`missing wasm export ${name} - rebuild with --features wasm-probe`);
@@ -2277,6 +2279,44 @@ for (const s of S.consensus) {
     for (let i = 0; i < len; i++) {
       checks++;
       const g = ex.probe_cv_out_at(i);
+      const w = numTok(op.res[i]);
+      if (!Object.is(g, w)) fail(`${s.name} op${op.kind} res[${i}]`, 0, g, w);
+    }
+  }
+}
+
+// --- server/ListingState.ts (listing_state) --------------------------------------
+for (const s of S.listingstate) {
+  ex.probe_ls_reset();
+  for (const op of s.ops) {
+    for (const a of op.args) ex.probe_ls_arg(numTok(a));
+    const len = Number(ex.probe_ls_op(op.kind));
+    if (len !== op.res.length) {
+      fail(`${s.name} op${op.kind} res len`, 0, len, op.res.length);
+      continue;
+    }
+    for (let i = 0; i < len; i++) {
+      checks++;
+      const g = ex.probe_ls_out_at(i);
+      const w = numTok(op.res[i]);
+      if (!Object.is(g, w)) fail(`${s.name} op${op.kind} res[${i}]`, 0, g, w);
+    }
+  }
+}
+
+// --- server/NameVisibility.ts (name_visibility) ----------------------------------
+for (const s of S.namevisibility) {
+  ex.probe_nvs_reset();
+  for (const op of s.ops) {
+    for (const a of op.args) ex.probe_nvs_arg(numTok(a));
+    const len = Number(ex.probe_nvs_op(op.kind));
+    if (len !== op.res.length) {
+      fail(`${s.name} op${op.kind} res len`, 0, len, op.res.length);
+      continue;
+    }
+    for (let i = 0; i < len; i++) {
+      checks++;
+      const g = ex.probe_nvs_out_at(i);
       const w = numTok(op.res[i]);
       if (!Object.is(g, w)) fail(`${s.name} op${op.kind} res[${i}]`, 0, g, w);
     }

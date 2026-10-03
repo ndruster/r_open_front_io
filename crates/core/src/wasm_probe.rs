@@ -4632,3 +4632,69 @@ pub extern "C" fn probe_cv_op(kind: u32) -> usize {
 pub extern "C" fn probe_cv_out_at(i: usize) -> f64 {
     CV_OUT.with(|o| o.borrow()[i])
 }
+
+// ============ S2: server/ListingState.ts (listing_state) =====================
+
+thread_local! {
+    static LS_HARNESS: std::cell::RefCell<crate::listing_state::RigHarness> =
+        std::cell::RefCell::new(crate::listing_state::RigHarness::new());
+    static LS_ARGS: std::cell::RefCell<Vec<f64>> = const { std::cell::RefCell::new(Vec::new()) };
+    static LS_OUT: std::cell::RefCell<Vec<f64>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
+#[no_mangle]
+pub extern "C" fn probe_ls_reset() {
+    LS_HARNESS.with(|h| h.borrow_mut().reset());
+}
+
+#[no_mangle]
+pub extern "C" fn probe_ls_arg(v: f64) {
+    LS_ARGS.with(|t| t.borrow_mut().push(v));
+}
+
+#[no_mangle]
+pub extern "C" fn probe_ls_op(kind: u32) -> usize {
+    let a = LS_ARGS.with(|t| std::mem::take(&mut *t.borrow_mut()));
+    let out = LS_HARNESS.with(|h| h.borrow_mut().run_op(kind as u8, &a));
+    let len = out.len();
+    LS_OUT.with(|o| *o.borrow_mut() = out);
+    len
+}
+
+#[no_mangle]
+pub extern "C" fn probe_ls_out_at(i: usize) -> f64 {
+    LS_OUT.with(|o| o.borrow()[i])
+}
+
+// ============ S2: server/NameVisibility.ts (name_visibility) =================
+
+thread_local! {
+    static NVS_HARNESS: std::cell::RefCell<crate::name_visibility::RigHarness> =
+        std::cell::RefCell::new(crate::name_visibility::RigHarness::new());
+    static NVS_ARGS: std::cell::RefCell<Vec<f64>> = const { std::cell::RefCell::new(Vec::new()) };
+    static NVS_OUT: std::cell::RefCell<Vec<f64>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
+#[no_mangle]
+pub extern "C" fn probe_nvs_reset() {
+    NVS_HARNESS.with(|h| h.borrow_mut().reset());
+}
+
+#[no_mangle]
+pub extern "C" fn probe_nvs_arg(v: f64) {
+    NVS_ARGS.with(|t| t.borrow_mut().push(v));
+}
+
+#[no_mangle]
+pub extern "C" fn probe_nvs_op(kind: u32) -> usize {
+    let a = NVS_ARGS.with(|t| std::mem::take(&mut *t.borrow_mut()));
+    let out = NVS_HARNESS.with(|h| h.borrow_mut().run_op(kind as u8, &a));
+    let len = out.len();
+    NVS_OUT.with(|o| *o.borrow_mut() = out);
+    len
+}
+
+#[no_mangle]
+pub extern "C" fn probe_nvs_out_at(i: usize) -> f64 {
+    NVS_OUT.with(|o| o.borrow()[i])
+}

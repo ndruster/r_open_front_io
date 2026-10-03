@@ -278,6 +278,21 @@
 //!   turn-keyed pending rounds (`MAX_PENDING_ROUNDS` 20 oldest-prune, the
 //!   `turn <= settled.turn` ignore, per-(turn, clientID) voter dedup and the
 //!   on-settle delete-all-`t <= turn`) over the ported [`vote_tally`]
+//! * [`listing_state`] — `src/server/ListingState.ts` (the public-listing
+//!   presence: `setListed`'s duplicate-toggle no-op keeping the deadline,
+//!   the scripted `Date.now()` (capture `globalThis.__LISTING_NOW` / port
+//!   explicit `now` arg), `autoStartAt`'s featured/hosted constant flip and
+//!   `setFeatured`'s boundary label sanitisation with the verbatim
+//!   `opts.accent` pass-through)
+//! * [`name_visibility`] — `src/server/NameVisibility.ts` (`friendsLookup`
+//!   and the per-viewer identity rules over a scripted `NameVisibilityView`
+//!   facade whose `config()` / `clients()` / `teamIndex()` calls are traced
+//!   in the res stream: the join-order anon slot, the team-seeded offset
+//!   with JS number interpolation, the reveal / publicId grants, the
+//!   `viewerTeam !== undefined` short-circuit before the second
+//!   `teamIndex`, `startInfoFor`'s same-object non-anon return and
+//!   index-aligned `real.players[i].clanTag` read, and `lobbyClients`'
+//!   anon-vs-real key sets with the `|| undefined` spectator quirk)
 //!
 //! Two rules govern every future port into this crate:
 //!
@@ -313,8 +328,10 @@ pub mod intent_authorization;
 pub mod js_json;
 pub mod jsnum;
 pub mod line;
+pub mod listing_state;
 pub mod maps_gen;
 pub mod motion_plans;
+pub mod name_visibility;
 pub mod nation_creation;
 pub mod nation_emoji;
 pub mod nation_utils;

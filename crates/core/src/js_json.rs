@@ -305,16 +305,18 @@ pub(crate) fn map_set(m: &mut Vec<(String, JsVal)>, key: &str, v: JsVal) {
     }
 }
 
-/// Read a `[len, u0, ..]` UTF-16 string.
+/// Read a `[len, u0, ..]` UTF-16 string. Valid surrogate pairs reassemble
+/// into one astral character; lone surrogates become U+FFFD (the same
+/// lossy model every other UTF-16 reader in the port uses).
 pub(crate) fn read_str(a: &[f64], i: &mut usize) -> String {
     let n = a[*i] as usize;
     *i += 1;
-    let mut s = String::with_capacity(n);
-    for _ in 0..n {
-        s.push(char::from_u32(a[*i] as u32).unwrap_or('\u{fffd}'));
+    let units: Vec<u16> = (0..n).map(|_| {
+        let u = a[*i] as u16;
         *i += 1;
-    }
-    s
+        u
+    }).collect();
+    String::from_utf16_lossy(&units)
 }
 
 /// Append a `[len, u0, ..]` UTF-16 string.

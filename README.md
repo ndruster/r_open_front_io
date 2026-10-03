@@ -173,6 +173,11 @@ rust/
 │   │   │                          (authorizeIntent guard table)
 │   │   ├── consensus.rs           port of server/Consensus.ts
 │   │   │                          (WinnerVote + LiveStatsVote on VoteRound)
+│   │   ├── listing_state.rs       port of server/ListingState.ts
+│   │   │                          (list/feature state; Date.now scripted)
+│   │   ├── name_visibility.rs     port of server/NameVisibility.ts
+│   │   │                          (anon-name / reveal rules; Client facade
+│   │   │                          scripted-mocked, Client.ts ws class excluded)
 │   │   ├── wasm_probe.rs          `extern "C"` surface, feature-gated
 │   │   └── pathfinding/
 │   │       ├── mod.rs
@@ -1225,6 +1230,51 @@ WebSockets — stays excluded, mirroring the `src/core` exclusions).
     settle deletes every round key `t <= turn`; `prune` drops the oldest
     key while `size > 20`. 39 scenarios (`vt_` 8, `cp_` 8, `ia_` 13,
     `cv_` 10).
+59. **`server/ListingState.ts` + `server/NameVisibility.ts`**
+    (`listing_state`, `name_visibility`) — the lobby listing/anonymity
+    cluster. `Date.now()` is the only impure call in `ListingState`;
+    `ts_load.mjs` rewrites it to `globalThis.__LISTING_NOW` and the capture
+    injects the clock per op (Rust `set_listed(listed, now)` takes it
+    explicitly). Quirks pinned: `setListed` is a **no-op when unchanged**
+    (a duplicate `setListed(false)` never clears a stale `listedAt`, and a
+    duplicate `setListed(true)` never resets the deadline); relisting after
+    a delist stamps a fresh `listedAt`; `autoStartAt` returns `undefined`
+    unless `listed && listedAt !== undefined`, and flips the constant on
+    `featured` (`HOSTED` 300 000 vs `FEATURED` 600 000 ms, from `schemas`);
+    `setFeatured` sets `featured = true` unconditionally, sanitises the
+    label at the boundary (`sanitizeLobbyLabel`, already ported in `util`)
+    with an empty-after-sanitise label collapsing to `undefined`, and
+    assigns `accent` **even when `undefined`** (the key is created).
+    `NameVisibility` runs over a scripted `view` facade (`config()` /
+    `clients()` / `teamIndex()` thunks, every call traced to pin counts and
+    short-circuit order); the `Client.ts` WebSocket class stays excluded —
+    the capture passes plain client stubs. Quirks pinned: `anonName`'s slot
+    is the target's **join-order index** in the insertion-ordered `clients`
+    Map (a target absent from the map yields `slot === map.size`; late
+    joiners append so existing slots never shift); `anonOffsetSeed` is
+    `0` for an absent viewer, else `simpleHash(viewer)` when unteamed or
+    ``simpleHash(`${gameID}:team:${team}`)`` when pinned to a matchmade team
+    (the template interpolates the numeric team); `sameMatchmadeTeam` calls
+    `teamIndex` on the target **only** when the viewer's team is defined
+    (the `&&` short-circuit is traced); `seesRealBeyondTeam` short-circuits
+    on `!anonymizeNames` (no `clients()` lookup) and on `target === viewer`
+    (self-reveal without any grant); `viewerSeesAllNames` falls through to
+    the `publicId` reveal only when the `nameReveals` array misses;
+    `startInfoFor` reads `config()` once, returns the **same** `real`/`wire`
+    object reference when names are not anonymised (gated on the admin-FFA
+    clan-tag reveal), and otherwise rebuilds each player with `clanTag` read
+    from `real.players[i]` at the **same index** as the `wire` player (an
+    index-alignment quirk pinned with `real`/`wire` players in different
+    order); `lobbyClients` computes `friendsLookup` once up front, and the
+    anon branch emits a **narrower key set** (no `friends`/`verified`) than
+    the real branch, with `spectator || undefined` (a `false` collapses to
+    `undefined`, `||` not `??`) and the teammate-only reveal blanking
+    `clanTag`/`friends` while keeping the real username; `friendsLookup`
+    skips clients with a falsy `publicId` (empty string) or who are
+    spectators, and returns `undefined` (not `[]`) when no friends are
+    present — and it reads `client.friends` **unguarded**, so a stub without
+    the field throws (the capture always supplies it). 26 scenarios
+    (`ls_` 12, `nvs_` 14).
 
 Regenerate whenever a ported source changes:
 
@@ -1258,7 +1308,7 @@ node rust/tools/run_wasm_parity.mjs
 
 `wasm-probe` exposes the ported functions through `extern "C"` scalar
 entrypoints (`src/wasm_probe.rs`); the runner imports `data/vectors.json` and
-compares every value. Last run: **127,654 comparisons, all bit-identical**.
+compares every value. Last run: **129,130 comparisons, all bit-identical**.
 
 ### Windows: the linker environment
 

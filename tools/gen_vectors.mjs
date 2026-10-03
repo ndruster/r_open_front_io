@@ -188,6 +188,8 @@ const VT = await loadTs("src/server/VoteTally.ts");
 const CP = await loadTs("src/server/ConfigPatch.ts");
 const IA = await loadTs("src/server/IntentAuthorization.ts");
 const CV = await loadTs("src/server/Consensus.ts");
+const LS = await loadTs("src/server/ListingState.ts");
+const NV = await loadTs("src/server/NameVisibility.ts");
 const PF = await loadTs("src/core/pathfinding/PathFinder.ts");
 const { AStar } = await loadTs("src/core/pathfinding/algorithms/AStar.ts");
 const { AStarRail } = await loadTs("src/core/pathfinding/algorithms/AStar.Rail.ts");
@@ -10885,11 +10887,407 @@ runCV("cv_lsv_keys", [
   [8],
 ]);
 
+// ---- S2: server cluster (ListingState / NameVisibility) --------------------
+
+// ListingState.ts op stream. kind 0 construct -> [0]; 1 setListed
+// [listed,now] -> [0] (Date.now scripted via globalThis.__LISTING_NOW);
+// 2 isListed; 3 autoStartAt -> [0]|[1,v]; 4 isFeatured; 5 lobbyLabel ->
+// val; 6 lobbyAccent -> val; 7 setFeatured [codec map] -> [0]; 8 dump ->
+// [listed,val(listedAt),val(label),val(accent),featured]. No facade tracing
+// here: res are bare value streams.
+const lsScenarios = [];
+let lsIdx = 0;
+function runLS(name, ops) {
+  const played = [];
+  let ls = null;
+  for (const [k, ...a] of ops) {
+    let args, res;
+    if (k === 0) {
+      args = [];
+      ls = new LS.ListingState();
+      res = [0];
+    } else if (k === 1) {
+      const [listed, now] = a;
+      args = [listed ? 1 : 0, uenc(now)];
+      globalThis.__LISTING_NOW = now;
+      ls.setListed(listed, now);
+      res = [0];
+    } else if (k === 2) {
+      args = [];
+      res = [ls.isListed() ? 1 : 0];
+    } else if (k === 3) {
+      args = [];
+      const v = ls.autoStartAt();
+      res = v === undefined ? [0] : [1, uenc(v)];
+    } else if (k === 4) {
+      args = [];
+      res = [ls.isFeatured() ? 1 : 0];
+    } else if (k === 5) {
+      args = [];
+      res = encVal(ls.lobbyLabel());
+    } else if (k === 6) {
+      args = [];
+      res = encVal(ls.lobbyAccent());
+    } else if (k === 7) {
+      args = encMap(a[0]);
+      ls.setFeatured(a[0]);
+      res = [0];
+    } else {
+      args = [];
+      res = [
+        ls.isListed() ? 1 : 0,
+        ...encVal(ls.listedAt),
+        ...encVal(ls.lobbyLabel()),
+        ...encVal(ls.lobbyAccent()),
+        ls.isFeatured() ? 1 : 0,
+      ];
+    }
+    played.push({ kind: k, args: args.flat().map(uenc), res: res.flat().map(uenc) });
+  }
+  lsScenarios.push({ name: `${name}_${lsIdx++}`, ops: played });
+}
+
+runLS("ls_fresh_defaults", [
+  [0],
+  [2],
+  [3],
+  [4],
+  [5],
+  [6],
+  [8],
+]);
+runLS("ls_list_sets_deadline", [
+  [0],
+  [1, true, 1000],
+  [2],
+  [3], // 1000 + 300000
+  [8],
+]);
+runLS("ls_dup_toggle_noop", [
+  [0],
+  [1, true, 1000],
+  [1, true, 2000], // duplicate: listedAt STAYS 1000
+  [3],
+  [8],
+]);
+runLS("ls_delist_noop_when_false", [
+  [0],
+  [1, false, 9000], // already false: no-op, listedAt untouched (undefined)
+  [8],
+  [1, true, 1000],
+  [1, false, 2000], // real delist: clears
+  [1, false, 3000], // no-op
+  [3], // unlisted -> undefined
+  [8],
+]);
+runLS("ls_delist_relist_fresh_deadline", [
+  [0],
+  [1, true, 1000],
+  [1, false, 2000],
+  [1, true, 5000], // relist: fresh listedAt
+  [3], // 5000 + 300000
+]);
+runLS("ls_featured_flips_deadline", [
+  [0],
+  [7, { label: "Big" }],
+  [1, true, 1000],
+  [3], // 1000 + 600000
+  [4],
+  [5],
+]);
+runLS("ls_featured_survives_delist", [
+  [0],
+  [7, { accent: "gold" }],
+  [1, true, 1000],
+  [1, false, 2000],
+  [1, true, 3000],
+  [3], // still featured: 3000 + 600000
+  [4],
+]);
+runLS("ls_label_sanitized_empty", [
+  [0],
+  [7, { label: "\u{1}\u{2}" }], // C0 controls dropped -> empty -> undefined
+  [5],
+  [4], // featured stays TRUE
+  [8],
+]);
+runLS("ls_set_featured_twice", [
+  [0],
+  [7, { label: "First", accent: "gold" }],
+  [7, { label: "Second" }], // label from 2nd wins; accent -> undefined
+  [5],
+  [6],
+  [7, { label: "   " }], // whitespace-only -> sanitises to "" -> undefined
+  [5],
+  [4],
+]);
+runLS("ls_accent_undefined_passthrough", [
+  [0],
+  [7, { label: "L", accent: "blue" }],
+  [6], // "blue"
+  [7, { label: "L", accent: undefined }], // present-undefined -> clears
+  [6],
+  [8],
+]);
+runLS("ls_label_emoji_zwj", [
+  [0],
+  [7, { label: "Scrims \u{1F3AE}\u{200D}\u{26A0}\uFE0F \u200E" }], // emoji+ZWJ kept, bidi mark dropped
+  [5],
+  [8],
+]);
+runLS("ls_full_cycle", [
+  [0],
+  [1, true, 100],
+  [7, { label: "Grand Prix", accent: "red" }],
+  [3], // 100 + 600000 (featured flips even after listing)
+  [1, false, 900],
+  [3],
+  [1, true, 1000],
+  [8],
+]);
+
+// NameVisibility.ts op stream. Scripted NameVisibilityView: every facade
+// call is a trace event (20 config(), 21 clients(), 22 teamIndex
+// [22,(clientID-str),val]) and res = [traceLen,(trace)*,payload*]. kind 0
+// construct [(gameID-str)] -> [0]; 1 setConfig [map]; 2 addClient
+// [(id-str),stub]; 3 setTeam [(id-str),val]; 10 viewerSeesAllNames
+// [viewer] -> [0|1]; 11 anonName [viewer,target] -> val; 12 anonOffsetSeed
+// [viewer] -> [v]; 13 sameMatchmadeTeam / 14 seesRealBeyondTeam / 15
+// seesReal [viewer,target] -> [0|1]; 16 startInfoFor [viewer,isAdmin,real,
+// wire] -> val; 17 lobbyClients [viewer,active] -> val; 18 friendsLookup
+// [active] -> [n,(val)*n].
+const nvsScenarios = [];
+let nvsIdx = 0;
+function runNVS(name, ops) {
+  const played = [];
+  let nv = null;
+  let cfg = {};
+  let clientMap = new Map();
+  let teams = new Map();
+  let trace = [];
+  const view = {
+    gameID: "",
+    config: () => {
+      trace.push(20);
+      return cfg;
+    },
+    clients: () => {
+      trace.push(21);
+      return clientMap;
+    },
+    teamIndex: (client) => {
+      const t = teams.get(client.clientID);
+      trace.push(22, ...encS(client.clientID), ...encVal(t));
+      return t;
+    },
+  };
+  for (const [k, ...a] of ops) {
+    let args, res;
+    if (k === 0) {
+      args = encS(a[0]);
+      view.gameID = a[0];
+      cfg = {};
+      clientMap = new Map();
+      teams = new Map();
+      trace = [];
+      nv = new NV.NameVisibility(view);
+      res = [0];
+    } else if (k === 1) {
+      args = encMap(a[0]);
+      cfg = a[0];
+      res = [0];
+    } else if (k === 2) {
+      const [id, stub] = a;
+      args = [...encS(id), ...encVal(stub)];
+      clientMap.set(id, stub);
+      res = [0];
+    } else if (k === 3) {
+      const [id, t] = a;
+      args = [...encS(id), ...encVal(t)];
+      teams.set(id, t);
+      res = [0];
+    } else if (k === 10) {
+      args = encVal(a[0]);
+      trace = [];
+      res = [nv.viewerSeesAllNames(a[0]) ? 1 : 0];
+    } else if (k === 11) {
+      args = [...encVal(a[0]), ...encVal(a[1])];
+      trace = [];
+      res = encVal(nv.anonName(a[0], a[1]));
+    } else if (k === 12) {
+      args = encVal(a[0]);
+      trace = [];
+      res = [uenc(nv.anonOffsetSeed(a[0]))];
+    } else if (k === 13) {
+      args = [...encVal(a[0]), ...encVal(a[1])];
+      trace = [];
+      res = [nv.sameMatchmadeTeam(a[0], a[1]) ? 1 : 0];
+    } else if (k === 14) {
+      args = [...encVal(a[0]), ...encVal(a[1])];
+      trace = [];
+      res = [nv.seesRealBeyondTeam(a[0], a[1]) ? 1 : 0];
+    } else if (k === 15) {
+      args = [...encVal(a[0]), ...encVal(a[1])];
+      trace = [];
+      res = [nv.seesReal(a[0], a[1]) ? 1 : 0];
+    } else if (k === 16) {
+      const [viewer, isAdmin, real, wire] = a;
+      args = [...encVal(viewer), isAdmin ? 1 : 0, ...encVal(real), ...encVal(wire)];
+      trace = [];
+      res = encVal(nv.startInfoFor(viewer, isAdmin, real, wire));
+    } else if (k === 17) {
+      const [viewer, active] = a;
+      args = [...encVal(viewer), ...encVal(active)];
+      trace = [];
+      res = encVal(nv.lobbyClients(viewer, active));
+    } else if (k === 18) {
+      const [active] = a;
+      args = encVal(active);
+      trace = [];
+      const f = NV.friendsLookup(active);
+      res = [active.length, ...active.flatMap((c) => encVal(f(c)))];
+    } else {
+      throw new Error("nvs: bad op kind " + k);
+    }
+    if (k >= 10) res = [trace.length, ...trace, ...res];
+    else res = [0, ...res];
+    played.push({ kind: k, args: args.flat().map(uenc), res: res.flat().map(uenc) });
+  }
+  nvsScenarios.push({ name: `${name}_${nvsIdx++}`, ops: played });
+}
+
+const C = (clientID, extra = {}) => ({ clientID, username: clientID + "U", ...extra });
+
+runNVS("nvs_fresh_no_viewer", [
+  [0, "g"],
+  [1, { anonymizeNames: true }],
+  [10, undefined], // false, NO facade call
+  [11, undefined, "x"], // slot 0 on the empty map, seed 0
+  [12, undefined], // 0, no facade call
+  [14, undefined, "x"], // config [20], anon, target!==undefined, seesAll false
+  [15, undefined, "x"], // + sameMatchmadeTeam false (no clients() call)
+]);
+runNVS("nvs_slot_join_order", [
+  [0, "g"],
+  [1, { anonymizeNames: true }],
+  [2, "a", C("a")],
+  [2, "b", C("b")],
+  [2, "c", C("c")],
+  [11, "a", "b"], // slot 1, seed simpleHash("a") (no team)
+  [11, "a", "zz"], // target absent: slot = map.size 3
+  [11, undefined, "c"], // slot 2, seed 0
+]);
+runNVS("nvs_late_joiner_append", [
+  [0, "g"],
+  [2, "a", C("a")],
+  [2, "b", C("b")],
+  [11, "v", "b"], // slot 1
+  [2, "c", C("c")],
+  [11, "v", "b"], // still slot 1
+  [11, "v", "c"], // appended slot 2
+]);
+runNVS("nvs_team_seed_interpolation", [
+  [0, "g"],
+  [2, "v", C("v")],
+  [3, "v", 0], // team 0 -> "g:team:0"
+  [12, "v"],
+  [3, "v", 2],
+  [12, "v"], // "g:team:2"
+  [3, "v", undefined], // present-undefined team -> simpleHash("v")
+  [12, "v"],
+]);
+runNVS("nvs_seed_client_missing", [
+  [0, "g"],
+  [12, "z"], // clients() [21], no teamIndex, simpleHash("z")
+  [11, "z", "z"], // slot 0 (absent), seed simpleHash("z")
+]);
+runNVS("nvs_same_team_short_circuit", [
+  [0, "g"],
+  [2, "v", C("v")],
+  [2, "t", C("t")],
+  [13, "v", "t"], // both teamless: ONE teamIndex call
+  [3, "v", 1],
+  [13, "v", "t"], // viewer team 1, target undefined team: TWO calls
+  [3, "t", 1],
+  [13, "v", "t"], // same team -> true, two calls
+  [13, undefined, "t"], // no facade call
+]);
+runNVS("nvs_sees_real_self_short_circuit", [
+  [0, "g"],
+  [1, { anonymizeNames: true }],
+  [14, "v", "v"], // config [20] once, target===viewer -> no seesAll
+  [15, "v", "v"], // short-circuits before sameMatchmadeTeam
+]);
+runNVS("nvs_reveals_and_publicids", [
+  [0, "g"],
+  [1, { nameReveals: ["v"] }],
+  [10, "v"], // hit: config [20] only
+  [1, { nameReveals: ["w"], nameRevealPublicIds: ["p1"] }],
+  [2, "v", C("v", { publicId: "p1" })],
+  [10, "v"], // miss reveals -> clients [21], teamIndex? no -> publicId hit
+  [10, "u"], // absent client -> publicId undefined -> false
+  [2, "u", C("u")], // no publicId
+  [10, "u"], // false, [20,21]
+]);
+runNVS("nvs_startinfo_no_anon", [
+  [0, "g"],
+  [1, { anonymizeNames: false, gameMode: "Free For All" }],
+  [16, "v", 0, { players: [{ clientID: "v", username: "Real", clanTag: "R" }] }, { players: [{ clientID: "v", username: "Real", clanTag: null }] }], // returns WIRE (clanTag null observable)
+  [16, "v", 1, { players: [{ clientID: "v", username: "Real", clanTag: "R" }] }, { players: [{ clientID: "v", username: "Real", clanTag: null }] }], // admin+FFA -> REAL
+  [1, { anonymizeNames: false, gameMode: "Duos" }],
+  [16, "v", 1, { players: [{ clientID: "v", username: "Real", clanTag: "R" }] }, { players: [{ clientID: "v", username: "Real", clanTag: null }] }], // admin non-FFA -> wire
+]);
+runNVS("nvs_startinfo_anon", [
+  [0, "g"],
+  [1, { anonymizeNames: true, gameMode: "Free For All" }],
+  [2, "v", C("v")],
+  [2, "w", C("w")],
+  // real/wire players in DIFFERENT order: clanTag reads real.players[i] at
+  // the WIRE index (index-alignment quirk).
+  [16, "v", 1,
+    { players: [{ clientID: "w", username: "W", clanTag: "WW" }, { clientID: "v", username: "V", clanTag: "VV" }] },
+    { tick: 5, players: [{ clientID: "v", username: "VU", clanTag: null, friends: ["x"], cosmetics: { verified: true } }, { clientID: "w", username: "WU", clanTag: null }] }],
+]);
+runNVS("nvs_lobby_anon_keys", [
+  [0, "g"],
+  [1, { anonymizeNames: true }],
+  [2, "a", C("a")],
+  [17, undefined, [C("a", { spectator: true, clanTag: "AA" }), C("b", { spectator: false }), C("c", {})]],
+]);
+runNVS("nvs_lobby_teammate_only", [
+  [0, "g"],
+  [1, { anonymizeNames: true }],
+  [2, "v", C("v", { publicId: "pv", friends: ["pt"] })],
+  [2, "t", C("t", { publicId: "pt", clanTag: "T", friends: [] })],
+  [3, "v", 1],
+  [3, "t", 1],
+  [17, "v", [C("v", { publicId: "pv", friends: ["pt"] }), C("t", { publicId: "pt", clanTag: "T", friends: [], cosmetics: { verified: true } })]],
+]);
+runNVS("nvs_lobby_hide_clantags", [
+  [0, "g"],
+  [1, { anonymizeNames: false, disableClanTags: true }],
+  [17, "v", [C("v", { clanTag: "VV", friends: ["nope"] }), C("w", { friends: [] })]], // hideClanTags nulls; w clanTag absent -> ?? null
+  [1, { anonymizeNames: false, disableClanTags: null }], // null ?? false -> false
+  [17, "v", [C("v", { clanTag: "VV", friends: ["nope"] })]],
+]);
+runNVS("nvs_friends_lookup", [
+  [0, "g"],
+  [18, [
+    C("a", { publicId: "pa", friends: ["pb", "px"] }),
+    C("b", { publicId: "pb", friends: ["pa"] }),
+    C("s", { publicId: "ps", spectator: true, friends: [] }),
+    C("e", { publicId: "", friends: ["pa"] }), // empty publicId FALSY: not registered
+  ]],
+  [18, []], // empty active -> [0]
+]);
+
 const structures = {
   votetally: vtScenarios,
   configpatch: cpScenarios,
   intentauth: iaScenarios,
   consensus: cvScenarios,
+  listingstate: lsScenarios,
+  namevisibility: nvsScenarios,
   minheap: mhScenarios,
   bucket: bqScenarios,
   flatheap: fbhScenarios,
@@ -13766,6 +14164,21 @@ opStream(
   "/// One `server/Consensus.ts` op (see `consensus::RigHarness::run_op` docs).\n" +
     "/// kind 0 construct both votes, 1-4/7 WinnerVote, 5-6/8 LiveStatsVote.\n" +
     "/// The cast key res is the REAL TS `JSON.stringify` output.",
+);
+opStream(
+  "listingstate",
+  "Ls",
+  "/// One `server/ListingState.ts` op (see `listing_state::RigHarness::run_op`\n" +
+    "/// docs). kind 0 reset, 1 setListed, 2-6 getters, 7 setFeatured, 8 dump.\n" +
+    "/// Date.now is scripted; the capture injects `globalThis.__LISTING_NOW`.",
+);
+opStream(
+  "namevisibility",
+  "Nvs",
+  "/// One `server/NameVisibility.ts` op (see `name_visibility::RigHarness::run_op`\n" +
+    "/// docs). kind 0 construct, 1-3 facade setup, 10-18 method calls. res is\n" +
+    "/// prefixed with the facade trace: [traceLen,(trace)*,payload*] with\n" +
+    "/// 20=config(), 21=clients(), 22=teamIndex [(clientID-str),val].",
 );
 
 const dataDir = join(root, "crates", "core", "tests", "data");

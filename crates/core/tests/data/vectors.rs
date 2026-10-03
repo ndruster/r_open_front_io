@@ -42096,3 +42096,403 @@ pub const CV_SCENARIOS: &[CvScenario] = &[
     CV_LSV_KEYS_9,
 ];
 
+/// One `server/ListingState.ts` op (see `listing_state::RigHarness::run_op`
+/// docs). kind 0 reset, 1 setListed, 2-6 getters, 7 setFeatured, 8 dump.
+/// Date.now is scripted; the capture injects `globalThis.__LISTING_NOW`.
+pub struct LsOp {
+    pub kind: u8,
+    pub args: &'static [f64],
+    pub res: &'static [f64],
+}
+pub struct LsScenario {
+    pub name: &'static str,
+    pub ops: &'static [LsOp],
+}
+
+const LS_FRESH_DEFAULTS_0_OPS: &[LsOp] = &[
+    LsOp { kind: 0, args: &[], res: &[0f64] },
+    LsOp { kind: 2, args: &[], res: &[0f64] },
+    LsOp { kind: 3, args: &[], res: &[0f64] },
+    LsOp { kind: 4, args: &[], res: &[0f64] },
+    LsOp { kind: 5, args: &[], res: &[1f64] },
+    LsOp { kind: 6, args: &[], res: &[1f64] },
+    LsOp { kind: 8, args: &[], res: &[0f64, 1f64, 1f64, 1f64, 0f64] },
+];
+pub const LS_FRESH_DEFAULTS_0: LsScenario = LsScenario {
+    name: "ls_fresh_defaults_0",
+    ops: LS_FRESH_DEFAULTS_0_OPS,
+};
+
+const LS_LIST_SETS_DEADLINE_1_OPS: &[LsOp] = &[
+    LsOp { kind: 0, args: &[], res: &[0f64] },
+    LsOp { kind: 1, args: &[1f64, 1000f64], res: &[0f64] },
+    LsOp { kind: 2, args: &[], res: &[1f64] },
+    LsOp { kind: 3, args: &[], res: &[1f64, 301000f64] },
+    LsOp { kind: 8, args: &[], res: &[1f64, 3f64, 1000f64, 1f64, 1f64, 0f64] },
+];
+pub const LS_LIST_SETS_DEADLINE_1: LsScenario = LsScenario {
+    name: "ls_list_sets_deadline_1",
+    ops: LS_LIST_SETS_DEADLINE_1_OPS,
+};
+
+const LS_DUP_TOGGLE_NOOP_2_OPS: &[LsOp] = &[
+    LsOp { kind: 0, args: &[], res: &[0f64] },
+    LsOp { kind: 1, args: &[1f64, 1000f64], res: &[0f64] },
+    LsOp { kind: 1, args: &[1f64, 2000f64], res: &[0f64] },
+    LsOp { kind: 3, args: &[], res: &[1f64, 301000f64] },
+    LsOp { kind: 8, args: &[], res: &[1f64, 3f64, 1000f64, 1f64, 1f64, 0f64] },
+];
+pub const LS_DUP_TOGGLE_NOOP_2: LsScenario = LsScenario {
+    name: "ls_dup_toggle_noop_2",
+    ops: LS_DUP_TOGGLE_NOOP_2_OPS,
+};
+
+const LS_DELIST_NOOP_WHEN_FALSE_3_OPS: &[LsOp] = &[
+    LsOp { kind: 0, args: &[], res: &[0f64] },
+    LsOp { kind: 1, args: &[0f64, 9000f64], res: &[0f64] },
+    LsOp { kind: 8, args: &[], res: &[0f64, 1f64, 1f64, 1f64, 0f64] },
+    LsOp { kind: 1, args: &[1f64, 1000f64], res: &[0f64] },
+    LsOp { kind: 1, args: &[0f64, 2000f64], res: &[0f64] },
+    LsOp { kind: 1, args: &[0f64, 3000f64], res: &[0f64] },
+    LsOp { kind: 3, args: &[], res: &[0f64] },
+    LsOp { kind: 8, args: &[], res: &[0f64, 1f64, 1f64, 1f64, 0f64] },
+];
+pub const LS_DELIST_NOOP_WHEN_FALSE_3: LsScenario = LsScenario {
+    name: "ls_delist_noop_when_false_3",
+    ops: LS_DELIST_NOOP_WHEN_FALSE_3_OPS,
+};
+
+const LS_DELIST_RELIST_FRESH_DEADLINE_4_OPS: &[LsOp] = &[
+    LsOp { kind: 0, args: &[], res: &[0f64] },
+    LsOp { kind: 1, args: &[1f64, 1000f64], res: &[0f64] },
+    LsOp { kind: 1, args: &[0f64, 2000f64], res: &[0f64] },
+    LsOp { kind: 1, args: &[1f64, 5000f64], res: &[0f64] },
+    LsOp { kind: 3, args: &[], res: &[1f64, 305000f64] },
+];
+pub const LS_DELIST_RELIST_FRESH_DEADLINE_4: LsScenario = LsScenario {
+    name: "ls_delist_relist_fresh_deadline_4",
+    ops: LS_DELIST_RELIST_FRESH_DEADLINE_4_OPS,
+};
+
+const LS_FEATURED_FLIPS_DEADLINE_5_OPS: &[LsOp] = &[
+    LsOp { kind: 0, args: &[], res: &[0f64] },
+    LsOp { kind: 7, args: &[1f64, 5f64, 108f64, 97f64, 98f64, 101f64, 108f64, 5f64, 3f64, 66f64, 105f64, 103f64], res: &[0f64] },
+    LsOp { kind: 1, args: &[1f64, 1000f64], res: &[0f64] },
+    LsOp { kind: 3, args: &[], res: &[1f64, 601000f64] },
+    LsOp { kind: 4, args: &[], res: &[1f64] },
+    LsOp { kind: 5, args: &[], res: &[5f64, 3f64, 66f64, 105f64, 103f64] },
+];
+pub const LS_FEATURED_FLIPS_DEADLINE_5: LsScenario = LsScenario {
+    name: "ls_featured_flips_deadline_5",
+    ops: LS_FEATURED_FLIPS_DEADLINE_5_OPS,
+};
+
+const LS_FEATURED_SURVIVES_DELIST_6_OPS: &[LsOp] = &[
+    LsOp { kind: 0, args: &[], res: &[0f64] },
+    LsOp { kind: 7, args: &[1f64, 6f64, 97f64, 99f64, 99f64, 101f64, 110f64, 116f64, 5f64, 4f64, 103f64, 111f64, 108f64, 100f64], res: &[0f64] },
+    LsOp { kind: 1, args: &[1f64, 1000f64], res: &[0f64] },
+    LsOp { kind: 1, args: &[0f64, 2000f64], res: &[0f64] },
+    LsOp { kind: 1, args: &[1f64, 3000f64], res: &[0f64] },
+    LsOp { kind: 3, args: &[], res: &[1f64, 603000f64] },
+    LsOp { kind: 4, args: &[], res: &[1f64] },
+];
+pub const LS_FEATURED_SURVIVES_DELIST_6: LsScenario = LsScenario {
+    name: "ls_featured_survives_delist_6",
+    ops: LS_FEATURED_SURVIVES_DELIST_6_OPS,
+};
+
+const LS_LABEL_SANITIZED_EMPTY_7_OPS: &[LsOp] = &[
+    LsOp { kind: 0, args: &[], res: &[0f64] },
+    LsOp { kind: 7, args: &[1f64, 5f64, 108f64, 97f64, 98f64, 101f64, 108f64, 5f64, 2f64, 1f64, 2f64], res: &[0f64] },
+    LsOp { kind: 5, args: &[], res: &[1f64] },
+    LsOp { kind: 4, args: &[], res: &[1f64] },
+    LsOp { kind: 8, args: &[], res: &[0f64, 1f64, 1f64, 1f64, 1f64] },
+];
+pub const LS_LABEL_SANITIZED_EMPTY_7: LsScenario = LsScenario {
+    name: "ls_label_sanitized_empty_7",
+    ops: LS_LABEL_SANITIZED_EMPTY_7_OPS,
+};
+
+const LS_SET_FEATURED_TWICE_8_OPS: &[LsOp] = &[
+    LsOp { kind: 0, args: &[], res: &[0f64] },
+    LsOp { kind: 7, args: &[2f64, 5f64, 108f64, 97f64, 98f64, 101f64, 108f64, 5f64, 5f64, 70f64, 105f64, 114f64, 115f64, 116f64, 6f64, 97f64, 99f64, 99f64, 101f64, 110f64, 116f64, 5f64, 4f64, 103f64, 111f64, 108f64, 100f64], res: &[0f64] },
+    LsOp { kind: 7, args: &[1f64, 5f64, 108f64, 97f64, 98f64, 101f64, 108f64, 5f64, 6f64, 83f64, 101f64, 99f64, 111f64, 110f64, 100f64], res: &[0f64] },
+    LsOp { kind: 5, args: &[], res: &[5f64, 6f64, 83f64, 101f64, 99f64, 111f64, 110f64, 100f64] },
+    LsOp { kind: 6, args: &[], res: &[1f64] },
+    LsOp { kind: 7, args: &[1f64, 5f64, 108f64, 97f64, 98f64, 101f64, 108f64, 5f64, 3f64, 32f64, 32f64, 32f64], res: &[0f64] },
+    LsOp { kind: 5, args: &[], res: &[1f64] },
+    LsOp { kind: 4, args: &[], res: &[1f64] },
+];
+pub const LS_SET_FEATURED_TWICE_8: LsScenario = LsScenario {
+    name: "ls_set_featured_twice_8",
+    ops: LS_SET_FEATURED_TWICE_8_OPS,
+};
+
+const LS_ACCENT_UNDEFINED_PASSTHROUGH_9_OPS: &[LsOp] = &[
+    LsOp { kind: 0, args: &[], res: &[0f64] },
+    LsOp { kind: 7, args: &[2f64, 5f64, 108f64, 97f64, 98f64, 101f64, 108f64, 5f64, 1f64, 76f64, 6f64, 97f64, 99f64, 99f64, 101f64, 110f64, 116f64, 5f64, 4f64, 98f64, 108f64, 117f64, 101f64], res: &[0f64] },
+    LsOp { kind: 6, args: &[], res: &[5f64, 4f64, 98f64, 108f64, 117f64, 101f64] },
+    LsOp { kind: 7, args: &[2f64, 5f64, 108f64, 97f64, 98f64, 101f64, 108f64, 5f64, 1f64, 76f64, 6f64, 97f64, 99f64, 99f64, 101f64, 110f64, 116f64, 1f64], res: &[0f64] },
+    LsOp { kind: 6, args: &[], res: &[1f64] },
+    LsOp { kind: 8, args: &[], res: &[0f64, 1f64, 5f64, 1f64, 76f64, 1f64, 1f64] },
+];
+pub const LS_ACCENT_UNDEFINED_PASSTHROUGH_9: LsScenario = LsScenario {
+    name: "ls_accent_undefined_passthrough_9",
+    ops: LS_ACCENT_UNDEFINED_PASSTHROUGH_9_OPS,
+};
+
+const LS_LABEL_EMOJI_ZWJ_10_OPS: &[LsOp] = &[
+    LsOp { kind: 0, args: &[], res: &[0f64] },
+    LsOp { kind: 7, args: &[1f64, 5f64, 108f64, 97f64, 98f64, 101f64, 108f64, 5f64, 14f64, 83f64, 99f64, 114f64, 105f64, 109f64, 115f64, 32f64, 55356f64, 57262f64, 8205f64, 9888f64, 65039f64, 32f64, 8206f64], res: &[0f64] },
+    LsOp { kind: 5, args: &[], res: &[5f64, 12f64, 83f64, 99f64, 114f64, 105f64, 109f64, 115f64, 32f64, 55356f64, 57262f64, 8205f64, 9888f64, 65039f64] },
+    LsOp { kind: 8, args: &[], res: &[0f64, 1f64, 5f64, 12f64, 83f64, 99f64, 114f64, 105f64, 109f64, 115f64, 32f64, 55356f64, 57262f64, 8205f64, 9888f64, 65039f64, 1f64, 1f64] },
+];
+pub const LS_LABEL_EMOJI_ZWJ_10: LsScenario = LsScenario {
+    name: "ls_label_emoji_zwj_10",
+    ops: LS_LABEL_EMOJI_ZWJ_10_OPS,
+};
+
+const LS_FULL_CYCLE_11_OPS: &[LsOp] = &[
+    LsOp { kind: 0, args: &[], res: &[0f64] },
+    LsOp { kind: 1, args: &[1f64, 100f64], res: &[0f64] },
+    LsOp { kind: 7, args: &[2f64, 5f64, 108f64, 97f64, 98f64, 101f64, 108f64, 5f64, 10f64, 71f64, 114f64, 97f64, 110f64, 100f64, 32f64, 80f64, 114f64, 105f64, 120f64, 6f64, 97f64, 99f64, 99f64, 101f64, 110f64, 116f64, 5f64, 3f64, 114f64, 101f64, 100f64], res: &[0f64] },
+    LsOp { kind: 3, args: &[], res: &[1f64, 600100f64] },
+    LsOp { kind: 1, args: &[0f64, 900f64], res: &[0f64] },
+    LsOp { kind: 3, args: &[], res: &[0f64] },
+    LsOp { kind: 1, args: &[1f64, 1000f64], res: &[0f64] },
+    LsOp { kind: 8, args: &[], res: &[1f64, 3f64, 1000f64, 5f64, 10f64, 71f64, 114f64, 97f64, 110f64, 100f64, 32f64, 80f64, 114f64, 105f64, 120f64, 5f64, 3f64, 114f64, 101f64, 100f64, 1f64] },
+];
+pub const LS_FULL_CYCLE_11: LsScenario = LsScenario {
+    name: "ls_full_cycle_11",
+    ops: LS_FULL_CYCLE_11_OPS,
+};
+
+pub const LS_SCENARIOS: &[LsScenario] = &[
+    LS_FRESH_DEFAULTS_0,
+    LS_LIST_SETS_DEADLINE_1,
+    LS_DUP_TOGGLE_NOOP_2,
+    LS_DELIST_NOOP_WHEN_FALSE_3,
+    LS_DELIST_RELIST_FRESH_DEADLINE_4,
+    LS_FEATURED_FLIPS_DEADLINE_5,
+    LS_FEATURED_SURVIVES_DELIST_6,
+    LS_LABEL_SANITIZED_EMPTY_7,
+    LS_SET_FEATURED_TWICE_8,
+    LS_ACCENT_UNDEFINED_PASSTHROUGH_9,
+    LS_LABEL_EMOJI_ZWJ_10,
+    LS_FULL_CYCLE_11,
+];
+
+/// One `server/NameVisibility.ts` op (see `name_visibility::RigHarness::run_op`
+/// docs). kind 0 construct, 1-3 facade setup, 10-18 method calls. res is
+/// prefixed with the facade trace: [traceLen,(trace)*,payload*] with
+/// 20=config(), 21=clients(), 22=teamIndex [(clientID-str),val].
+pub struct NvsOp {
+    pub kind: u8,
+    pub args: &'static [f64],
+    pub res: &'static [f64],
+}
+pub struct NvsScenario {
+    pub name: &'static str,
+    pub ops: &'static [NvsOp],
+}
+
+const NVS_FRESH_NO_VIEWER_0_OPS: &[NvsOp] = &[
+    NvsOp { kind: 0, args: &[1f64, 103f64], res: &[0f64, 0f64] },
+    NvsOp { kind: 1, args: &[1f64, 14f64, 97f64, 110f64, 111f64, 110f64, 121f64, 109f64, 105f64, 122f64, 101f64, 78f64, 97f64, 109f64, 101f64, 115f64, 4f64, 1f64], res: &[0f64, 0f64] },
+    NvsOp { kind: 10, args: &[1f64], res: &[0f64, 0f64] },
+    NvsOp { kind: 11, args: &[1f64, 5f64, 1f64, 120f64], res: &[1f64, 21f64, 5f64, 8f64, 65f64, 109f64, 101f64, 116f64, 104f64, 121f64, 115f64, 116f64] },
+    NvsOp { kind: 12, args: &[1f64], res: &[0f64, 0f64] },
+    NvsOp { kind: 14, args: &[1f64, 5f64, 1f64, 120f64], res: &[1f64, 20f64, 0f64] },
+    NvsOp { kind: 15, args: &[1f64, 5f64, 1f64, 120f64], res: &[1f64, 20f64, 0f64] },
+];
+pub const NVS_FRESH_NO_VIEWER_0: NvsScenario = NvsScenario {
+    name: "nvs_fresh_no_viewer_0",
+    ops: NVS_FRESH_NO_VIEWER_0_OPS,
+};
+
+const NVS_SLOT_JOIN_ORDER_1_OPS: &[NvsOp] = &[
+    NvsOp { kind: 0, args: &[1f64, 103f64], res: &[0f64, 0f64] },
+    NvsOp { kind: 1, args: &[1f64, 14f64, 97f64, 110f64, 111f64, 110f64, 121f64, 109f64, 105f64, 122f64, 101f64, 78f64, 97f64, 109f64, 101f64, 115f64, 4f64, 1f64], res: &[0f64, 0f64] },
+    NvsOp { kind: 2, args: &[1f64, 97f64, 6f64, 2f64, 8f64, 99f64, 108f64, 105f64, 101f64, 110f64, 116f64, 73f64, 68f64, 5f64, 1f64, 97f64, 8f64, 117f64, 115f64, 101f64, 114f64, 110f64, 97f64, 109f64, 101f64, 5f64, 2f64, 97f64, 85f64], res: &[0f64, 0f64] },
+    NvsOp { kind: 2, args: &[1f64, 98f64, 6f64, 2f64, 8f64, 99f64, 108f64, 105f64, 101f64, 110f64, 116f64, 73f64, 68f64, 5f64, 1f64, 98f64, 8f64, 117f64, 115f64, 101f64, 114f64, 110f64, 97f64, 109f64, 101f64, 5f64, 2f64, 98f64, 85f64], res: &[0f64, 0f64] },
+    NvsOp { kind: 2, args: &[1f64, 99f64, 6f64, 2f64, 8f64, 99f64, 108f64, 105f64, 101f64, 110f64, 116f64, 73f64, 68f64, 5f64, 1f64, 99f64, 8f64, 117f64, 115f64, 101f64, 114f64, 110f64, 97f64, 109f64, 101f64, 5f64, 2f64, 99f64, 85f64], res: &[0f64, 0f64] },
+    NvsOp { kind: 11, args: &[5f64, 1f64, 97f64, 5f64, 1f64, 98f64], res: &[6f64, 21f64, 21f64, 22f64, 1f64, 97f64, 1f64, 5f64, 6f64, 84f64, 105f64, 109f64, 98f64, 101f64, 114f64] },
+    NvsOp { kind: 11, args: &[5f64, 1f64, 97f64, 5f64, 2f64, 122f64, 122f64], res: &[6f64, 21f64, 21f64, 22f64, 1f64, 97f64, 1f64, 5f64, 5f64, 84f64, 111f64, 112f64, 97f64, 122f64] },
+    NvsOp { kind: 11, args: &[1f64, 5f64, 1f64, 99f64], res: &[1f64, 21f64, 5f64, 5f64, 65f64, 110f64, 118f64, 105f64, 108f64] },
+];
+pub const NVS_SLOT_JOIN_ORDER_1: NvsScenario = NvsScenario {
+    name: "nvs_slot_join_order_1",
+    ops: NVS_SLOT_JOIN_ORDER_1_OPS,
+};
+
+const NVS_LATE_JOINER_APPEND_2_OPS: &[NvsOp] = &[
+    NvsOp { kind: 0, args: &[1f64, 103f64], res: &[0f64, 0f64] },
+    NvsOp { kind: 2, args: &[1f64, 97f64, 6f64, 2f64, 8f64, 99f64, 108f64, 105f64, 101f64, 110f64, 116f64, 73f64, 68f64, 5f64, 1f64, 97f64, 8f64, 117f64, 115f64, 101f64, 114f64, 110f64, 97f64, 109f64, 101f64, 5f64, 2f64, 97f64, 85f64], res: &[0f64, 0f64] },
+    NvsOp { kind: 2, args: &[1f64, 98f64, 6f64, 2f64, 8f64, 99f64, 108f64, 105f64, 101f64, 110f64, 116f64, 73f64, 68f64, 5f64, 1f64, 98f64, 8f64, 117f64, 115f64, 101f64, 114f64, 110f64, 97f64, 109f64, 101f64, 5f64, 2f64, 98f64, 85f64], res: &[0f64, 0f64] },
+    NvsOp { kind: 11, args: &[5f64, 1f64, 118f64, 5f64, 1f64, 98f64], res: &[2f64, 21f64, 21f64, 5f64, 8f64, 87f64, 105f64, 110f64, 100f64, 109f64, 105f64, 108f64, 108f64] },
+    NvsOp { kind: 2, args: &[1f64, 99f64, 6f64, 2f64, 8f64, 99f64, 108f64, 105f64, 101f64, 110f64, 116f64, 73f64, 68f64, 5f64, 1f64, 99f64, 8f64, 117f64, 115f64, 101f64, 114f64, 110f64, 97f64, 109f64, 101f64, 5f64, 2f64, 99f64, 85f64], res: &[0f64, 0f64] },
+    NvsOp { kind: 11, args: &[5f64, 1f64, 118f64, 5f64, 1f64, 98f64], res: &[2f64, 21f64, 21f64, 5f64, 8f64, 87f64, 105f64, 110f64, 100f64, 109f64, 105f64, 108f64, 108f64] },
+    NvsOp { kind: 11, args: &[5f64, 1f64, 118f64, 5f64, 1f64, 99f64], res: &[2f64, 21f64, 21f64, 5f64, 6f64, 87f64, 114f64, 101f64, 110f64, 99f64, 104f64] },
+];
+pub const NVS_LATE_JOINER_APPEND_2: NvsScenario = NvsScenario {
+    name: "nvs_late_joiner_append_2",
+    ops: NVS_LATE_JOINER_APPEND_2_OPS,
+};
+
+const NVS_TEAM_SEED_INTERPOLATION_3_OPS: &[NvsOp] = &[
+    NvsOp { kind: 0, args: &[1f64, 103f64], res: &[0f64, 0f64] },
+    NvsOp { kind: 2, args: &[1f64, 118f64, 6f64, 2f64, 8f64, 99f64, 108f64, 105f64, 101f64, 110f64, 116f64, 73f64, 68f64, 5f64, 1f64, 118f64, 8f64, 117f64, 115f64, 101f64, 114f64, 110f64, 97f64, 109f64, 101f64, 5f64, 2f64, 118f64, 85f64], res: &[0f64, 0f64] },
+    NvsOp { kind: 3, args: &[1f64, 118f64, 3f64, 0f64], res: &[0f64, 0f64] },
+    NvsOp { kind: 12, args: &[5f64, 1f64, 118f64], res: &[6f64, 21f64, 22f64, 1f64, 118f64, 3f64, 0f64, 1821269818f64] },
+    NvsOp { kind: 3, args: &[1f64, 118f64, 3f64, 2f64], res: &[0f64, 0f64] },
+    NvsOp { kind: 12, args: &[5f64, 1f64, 118f64], res: &[6f64, 21f64, 22f64, 1f64, 118f64, 3f64, 2f64, 1821269816f64] },
+    NvsOp { kind: 3, args: &[1f64, 118f64, 1f64], res: &[0f64, 0f64] },
+    NvsOp { kind: 12, args: &[5f64, 1f64, 118f64], res: &[5f64, 21f64, 22f64, 1f64, 118f64, 1f64, 118f64] },
+];
+pub const NVS_TEAM_SEED_INTERPOLATION_3: NvsScenario = NvsScenario {
+    name: "nvs_team_seed_interpolation_3",
+    ops: NVS_TEAM_SEED_INTERPOLATION_3_OPS,
+};
+
+const NVS_SEED_CLIENT_MISSING_4_OPS: &[NvsOp] = &[
+    NvsOp { kind: 0, args: &[1f64, 103f64], res: &[0f64, 0f64] },
+    NvsOp { kind: 12, args: &[5f64, 1f64, 122f64], res: &[1f64, 21f64, 122f64] },
+    NvsOp { kind: 11, args: &[5f64, 1f64, 122f64, 5f64, 1f64, 122f64], res: &[2f64, 21f64, 21f64, 5f64, 5f64, 90f64, 101f64, 98f64, 114f64, 97f64] },
+];
+pub const NVS_SEED_CLIENT_MISSING_4: NvsScenario = NvsScenario {
+    name: "nvs_seed_client_missing_4",
+    ops: NVS_SEED_CLIENT_MISSING_4_OPS,
+};
+
+const NVS_SAME_TEAM_SHORT_CIRCUIT_5_OPS: &[NvsOp] = &[
+    NvsOp { kind: 0, args: &[1f64, 103f64], res: &[0f64, 0f64] },
+    NvsOp { kind: 2, args: &[1f64, 118f64, 6f64, 2f64, 8f64, 99f64, 108f64, 105f64, 101f64, 110f64, 116f64, 73f64, 68f64, 5f64, 1f64, 118f64, 8f64, 117f64, 115f64, 101f64, 114f64, 110f64, 97f64, 109f64, 101f64, 5f64, 2f64, 118f64, 85f64], res: &[0f64, 0f64] },
+    NvsOp { kind: 2, args: &[1f64, 116f64, 6f64, 2f64, 8f64, 99f64, 108f64, 105f64, 101f64, 110f64, 116f64, 73f64, 68f64, 5f64, 1f64, 116f64, 8f64, 117f64, 115f64, 101f64, 114f64, 110f64, 97f64, 109f64, 101f64, 5f64, 2f64, 116f64, 85f64], res: &[0f64, 0f64] },
+    NvsOp { kind: 13, args: &[5f64, 1f64, 118f64, 5f64, 1f64, 116f64], res: &[5f64, 21f64, 22f64, 1f64, 118f64, 1f64, 0f64] },
+    NvsOp { kind: 3, args: &[1f64, 118f64, 3f64, 1f64], res: &[0f64, 0f64] },
+    NvsOp { kind: 13, args: &[5f64, 1f64, 118f64, 5f64, 1f64, 116f64], res: &[10f64, 21f64, 22f64, 1f64, 118f64, 3f64, 1f64, 22f64, 1f64, 116f64, 1f64, 0f64] },
+    NvsOp { kind: 3, args: &[1f64, 116f64, 3f64, 1f64], res: &[0f64, 0f64] },
+    NvsOp { kind: 13, args: &[5f64, 1f64, 118f64, 5f64, 1f64, 116f64], res: &[11f64, 21f64, 22f64, 1f64, 118f64, 3f64, 1f64, 22f64, 1f64, 116f64, 3f64, 1f64, 1f64] },
+    NvsOp { kind: 13, args: &[1f64, 5f64, 1f64, 116f64], res: &[0f64, 0f64] },
+];
+pub const NVS_SAME_TEAM_SHORT_CIRCUIT_5: NvsScenario = NvsScenario {
+    name: "nvs_same_team_short_circuit_5",
+    ops: NVS_SAME_TEAM_SHORT_CIRCUIT_5_OPS,
+};
+
+const NVS_SEES_REAL_SELF_SHORT_CIRCUIT_6_OPS: &[NvsOp] = &[
+    NvsOp { kind: 0, args: &[1f64, 103f64], res: &[0f64, 0f64] },
+    NvsOp { kind: 1, args: &[1f64, 14f64, 97f64, 110f64, 111f64, 110f64, 121f64, 109f64, 105f64, 122f64, 101f64, 78f64, 97f64, 109f64, 101f64, 115f64, 4f64, 1f64], res: &[0f64, 0f64] },
+    NvsOp { kind: 14, args: &[5f64, 1f64, 118f64, 5f64, 1f64, 118f64], res: &[1f64, 20f64, 1f64] },
+    NvsOp { kind: 15, args: &[5f64, 1f64, 118f64, 5f64, 1f64, 118f64], res: &[1f64, 20f64, 1f64] },
+];
+pub const NVS_SEES_REAL_SELF_SHORT_CIRCUIT_6: NvsScenario = NvsScenario {
+    name: "nvs_sees_real_self_short_circuit_6",
+    ops: NVS_SEES_REAL_SELF_SHORT_CIRCUIT_6_OPS,
+};
+
+const NVS_REVEALS_AND_PUBLICIDS_7_OPS: &[NvsOp] = &[
+    NvsOp { kind: 0, args: &[1f64, 103f64], res: &[0f64, 0f64] },
+    NvsOp { kind: 1, args: &[1f64, 11f64, 110f64, 97f64, 109f64, 101f64, 82f64, 101f64, 118f64, 101f64, 97f64, 108f64, 115f64, 7f64, 1f64, 5f64, 1f64, 118f64], res: &[0f64, 0f64] },
+    NvsOp { kind: 10, args: &[5f64, 1f64, 118f64], res: &[1f64, 20f64, 1f64] },
+    NvsOp { kind: 1, args: &[2f64, 11f64, 110f64, 97f64, 109f64, 101f64, 82f64, 101f64, 118f64, 101f64, 97f64, 108f64, 115f64, 7f64, 1f64, 5f64, 1f64, 119f64, 19f64, 110f64, 97f64, 109f64, 101f64, 82f64, 101f64, 118f64, 101f64, 97f64, 108f64, 80f64, 117f64, 98f64, 108f64, 105f64, 99f64, 73f64, 100f64, 115f64, 7f64, 1f64, 5f64, 2f64, 112f64, 49f64], res: &[0f64, 0f64] },
+    NvsOp { kind: 2, args: &[1f64, 118f64, 6f64, 3f64, 8f64, 99f64, 108f64, 105f64, 101f64, 110f64, 116f64, 73f64, 68f64, 5f64, 1f64, 118f64, 8f64, 117f64, 115f64, 101f64, 114f64, 110f64, 97f64, 109f64, 101f64, 5f64, 2f64, 118f64, 85f64, 8f64, 112f64, 117f64, 98f64, 108f64, 105f64, 99f64, 73f64, 100f64, 5f64, 2f64, 112f64, 49f64], res: &[0f64, 0f64] },
+    NvsOp { kind: 10, args: &[5f64, 1f64, 118f64], res: &[2f64, 20f64, 21f64, 1f64] },
+    NvsOp { kind: 10, args: &[5f64, 1f64, 117f64], res: &[2f64, 20f64, 21f64, 0f64] },
+    NvsOp { kind: 2, args: &[1f64, 117f64, 6f64, 2f64, 8f64, 99f64, 108f64, 105f64, 101f64, 110f64, 116f64, 73f64, 68f64, 5f64, 1f64, 117f64, 8f64, 117f64, 115f64, 101f64, 114f64, 110f64, 97f64, 109f64, 101f64, 5f64, 2f64, 117f64, 85f64], res: &[0f64, 0f64] },
+    NvsOp { kind: 10, args: &[5f64, 1f64, 117f64], res: &[2f64, 20f64, 21f64, 0f64] },
+];
+pub const NVS_REVEALS_AND_PUBLICIDS_7: NvsScenario = NvsScenario {
+    name: "nvs_reveals_and_publicids_7",
+    ops: NVS_REVEALS_AND_PUBLICIDS_7_OPS,
+};
+
+const NVS_STARTINFO_NO_ANON_8_OPS: &[NvsOp] = &[
+    NvsOp { kind: 0, args: &[1f64, 103f64], res: &[0f64, 0f64] },
+    NvsOp { kind: 1, args: &[2f64, 14f64, 97f64, 110f64, 111f64, 110f64, 121f64, 109f64, 105f64, 122f64, 101f64, 78f64, 97f64, 109f64, 101f64, 115f64, 4f64, 0f64, 8f64, 103f64, 97f64, 109f64, 101f64, 77f64, 111f64, 100f64, 101f64, 5f64, 12f64, 70f64, 114f64, 101f64, 101f64, 32f64, 70f64, 111f64, 114f64, 32f64, 65f64, 108f64, 108f64], res: &[0f64, 0f64] },
+    NvsOp { kind: 16, args: &[5f64, 1f64, 118f64, 0f64, 6f64, 1f64, 7f64, 112f64, 108f64, 97f64, 121f64, 101f64, 114f64, 115f64, 7f64, 1f64, 6f64, 3f64, 8f64, 99f64, 108f64, 105f64, 101f64, 110f64, 116f64, 73f64, 68f64, 5f64, 1f64, 118f64, 8f64, 117f64, 115f64, 101f64, 114f64, 110f64, 97f64, 109f64, 101f64, 5f64, 4f64, 82f64, 101f64, 97f64, 108f64, 7f64, 99f64, 108f64, 97f64, 110f64, 84f64, 97f64, 103f64, 5f64, 1f64, 82f64, 6f64, 1f64, 7f64, 112f64, 108f64, 97f64, 121f64, 101f64, 114f64, 115f64, 7f64, 1f64, 6f64, 3f64, 8f64, 99f64, 108f64, 105f64, 101f64, 110f64, 116f64, 73f64, 68f64, 5f64, 1f64, 118f64, 8f64, 117f64, 115f64, 101f64, 114f64, 110f64, 97f64, 109f64, 101f64, 5f64, 4f64, 82f64, 101f64, 97f64, 108f64, 7f64, 99f64, 108f64, 97f64, 110f64, 84f64, 97f64, 103f64, 2f64], res: &[1f64, 20f64, 6f64, 1f64, 7f64, 112f64, 108f64, 97f64, 121f64, 101f64, 114f64, 115f64, 7f64, 1f64, 6f64, 3f64, 8f64, 99f64, 108f64, 105f64, 101f64, 110f64, 116f64, 73f64, 68f64, 5f64, 1f64, 118f64, 8f64, 117f64, 115f64, 101f64, 114f64, 110f64, 97f64, 109f64, 101f64, 5f64, 4f64, 82f64, 101f64, 97f64, 108f64, 7f64, 99f64, 108f64, 97f64, 110f64, 84f64, 97f64, 103f64, 2f64] },
+    NvsOp { kind: 16, args: &[5f64, 1f64, 118f64, 1f64, 6f64, 1f64, 7f64, 112f64, 108f64, 97f64, 121f64, 101f64, 114f64, 115f64, 7f64, 1f64, 6f64, 3f64, 8f64, 99f64, 108f64, 105f64, 101f64, 110f64, 116f64, 73f64, 68f64, 5f64, 1f64, 118f64, 8f64, 117f64, 115f64, 101f64, 114f64, 110f64, 97f64, 109f64, 101f64, 5f64, 4f64, 82f64, 101f64, 97f64, 108f64, 7f64, 99f64, 108f64, 97f64, 110f64, 84f64, 97f64, 103f64, 5f64, 1f64, 82f64, 6f64, 1f64, 7f64, 112f64, 108f64, 97f64, 121f64, 101f64, 114f64, 115f64, 7f64, 1f64, 6f64, 3f64, 8f64, 99f64, 108f64, 105f64, 101f64, 110f64, 116f64, 73f64, 68f64, 5f64, 1f64, 118f64, 8f64, 117f64, 115f64, 101f64, 114f64, 110f64, 97f64, 109f64, 101f64, 5f64, 4f64, 82f64, 101f64, 97f64, 108f64, 7f64, 99f64, 108f64, 97f64, 110f64, 84f64, 97f64, 103f64, 2f64], res: &[1f64, 20f64, 6f64, 1f64, 7f64, 112f64, 108f64, 97f64, 121f64, 101f64, 114f64, 115f64, 7f64, 1f64, 6f64, 3f64, 8f64, 99f64, 108f64, 105f64, 101f64, 110f64, 116f64, 73f64, 68f64, 5f64, 1f64, 118f64, 8f64, 117f64, 115f64, 101f64, 114f64, 110f64, 97f64, 109f64, 101f64, 5f64, 4f64, 82f64, 101f64, 97f64, 108f64, 7f64, 99f64, 108f64, 97f64, 110f64, 84f64, 97f64, 103f64, 5f64, 1f64, 82f64] },
+    NvsOp { kind: 1, args: &[2f64, 14f64, 97f64, 110f64, 111f64, 110f64, 121f64, 109f64, 105f64, 122f64, 101f64, 78f64, 97f64, 109f64, 101f64, 115f64, 4f64, 0f64, 8f64, 103f64, 97f64, 109f64, 101f64, 77f64, 111f64, 100f64, 101f64, 5f64, 4f64, 68f64, 117f64, 111f64, 115f64], res: &[0f64, 0f64] },
+    NvsOp { kind: 16, args: &[5f64, 1f64, 118f64, 1f64, 6f64, 1f64, 7f64, 112f64, 108f64, 97f64, 121f64, 101f64, 114f64, 115f64, 7f64, 1f64, 6f64, 3f64, 8f64, 99f64, 108f64, 105f64, 101f64, 110f64, 116f64, 73f64, 68f64, 5f64, 1f64, 118f64, 8f64, 117f64, 115f64, 101f64, 114f64, 110f64, 97f64, 109f64, 101f64, 5f64, 4f64, 82f64, 101f64, 97f64, 108f64, 7f64, 99f64, 108f64, 97f64, 110f64, 84f64, 97f64, 103f64, 5f64, 1f64, 82f64, 6f64, 1f64, 7f64, 112f64, 108f64, 97f64, 121f64, 101f64, 114f64, 115f64, 7f64, 1f64, 6f64, 3f64, 8f64, 99f64, 108f64, 105f64, 101f64, 110f64, 116f64, 73f64, 68f64, 5f64, 1f64, 118f64, 8f64, 117f64, 115f64, 101f64, 114f64, 110f64, 97f64, 109f64, 101f64, 5f64, 4f64, 82f64, 101f64, 97f64, 108f64, 7f64, 99f64, 108f64, 97f64, 110f64, 84f64, 97f64, 103f64, 2f64], res: &[1f64, 20f64, 6f64, 1f64, 7f64, 112f64, 108f64, 97f64, 121f64, 101f64, 114f64, 115f64, 7f64, 1f64, 6f64, 3f64, 8f64, 99f64, 108f64, 105f64, 101f64, 110f64, 116f64, 73f64, 68f64, 5f64, 1f64, 118f64, 8f64, 117f64, 115f64, 101f64, 114f64, 110f64, 97f64, 109f64, 101f64, 5f64, 4f64, 82f64, 101f64, 97f64, 108f64, 7f64, 99f64, 108f64, 97f64, 110f64, 84f64, 97f64, 103f64, 2f64] },
+];
+pub const NVS_STARTINFO_NO_ANON_8: NvsScenario = NvsScenario {
+    name: "nvs_startinfo_no_anon_8",
+    ops: NVS_STARTINFO_NO_ANON_8_OPS,
+};
+
+const NVS_STARTINFO_ANON_9_OPS: &[NvsOp] = &[
+    NvsOp { kind: 0, args: &[1f64, 103f64], res: &[0f64, 0f64] },
+    NvsOp { kind: 1, args: &[2f64, 14f64, 97f64, 110f64, 111f64, 110f64, 121f64, 109f64, 105f64, 122f64, 101f64, 78f64, 97f64, 109f64, 101f64, 115f64, 4f64, 1f64, 8f64, 103f64, 97f64, 109f64, 101f64, 77f64, 111f64, 100f64, 101f64, 5f64, 12f64, 70f64, 114f64, 101f64, 101f64, 32f64, 70f64, 111f64, 114f64, 32f64, 65f64, 108f64, 108f64], res: &[0f64, 0f64] },
+    NvsOp { kind: 2, args: &[1f64, 118f64, 6f64, 2f64, 8f64, 99f64, 108f64, 105f64, 101f64, 110f64, 116f64, 73f64, 68f64, 5f64, 1f64, 118f64, 8f64, 117f64, 115f64, 101f64, 114f64, 110f64, 97f64, 109f64, 101f64, 5f64, 2f64, 118f64, 85f64], res: &[0f64, 0f64] },
+    NvsOp { kind: 2, args: &[1f64, 119f64, 6f64, 2f64, 8f64, 99f64, 108f64, 105f64, 101f64, 110f64, 116f64, 73f64, 68f64, 5f64, 1f64, 119f64, 8f64, 117f64, 115f64, 101f64, 114f64, 110f64, 97f64, 109f64, 101f64, 5f64, 2f64, 119f64, 85f64], res: &[0f64, 0f64] },
+    NvsOp { kind: 16, args: &[5f64, 1f64, 118f64, 1f64, 6f64, 1f64, 7f64, 112f64, 108f64, 97f64, 121f64, 101f64, 114f64, 115f64, 7f64, 2f64, 6f64, 3f64, 8f64, 99f64, 108f64, 105f64, 101f64, 110f64, 116f64, 73f64, 68f64, 5f64, 1f64, 119f64, 8f64, 117f64, 115f64, 101f64, 114f64, 110f64, 97f64, 109f64, 101f64, 5f64, 1f64, 87f64, 7f64, 99f64, 108f64, 97f64, 110f64, 84f64, 97f64, 103f64, 5f64, 2f64, 87f64, 87f64, 6f64, 3f64, 8f64, 99f64, 108f64, 105f64, 101f64, 110f64, 116f64, 73f64, 68f64, 5f64, 1f64, 118f64, 8f64, 117f64, 115f64, 101f64, 114f64, 110f64, 97f64, 109f64, 101f64, 5f64, 1f64, 86f64, 7f64, 99f64, 108f64, 97f64, 110f64, 84f64, 97f64, 103f64, 5f64, 2f64, 86f64, 86f64, 6f64, 2f64, 4f64, 116f64, 105f64, 99f64, 107f64, 3f64, 5f64, 7f64, 112f64, 108f64, 97f64, 121f64, 101f64, 114f64, 115f64, 7f64, 2f64, 6f64, 5f64, 8f64, 99f64, 108f64, 105f64, 101f64, 110f64, 116f64, 73f64, 68f64, 5f64, 1f64, 118f64, 8f64, 117f64, 115f64, 101f64, 114f64, 110f64, 97f64, 109f64, 101f64, 5f64, 2f64, 86f64, 85f64, 7f64, 99f64, 108f64, 97f64, 110f64, 84f64, 97f64, 103f64, 2f64, 7f64, 102f64, 114f64, 105f64, 101f64, 110f64, 100f64, 115f64, 7f64, 1f64, 5f64, 1f64, 120f64, 9f64, 99f64, 111f64, 115f64, 109f64, 101f64, 116f64, 105f64, 99f64, 115f64, 6f64, 1f64, 8f64, 118f64, 101f64, 114f64, 105f64, 102f64, 105f64, 101f64, 100f64, 4f64, 1f64, 6f64, 3f64, 8f64, 99f64, 108f64, 105f64, 101f64, 110f64, 116f64, 73f64, 68f64, 5f64, 1f64, 119f64, 8f64, 117f64, 115f64, 101f64, 114f64, 110f64, 97f64, 109f64, 101f64, 5f64, 2f64, 87f64, 85f64, 7f64, 99f64, 108f64, 97f64, 110f64, 84f64, 97f64, 103f64, 2f64], res: &[16f64, 20f64, 20f64, 20f64, 20f64, 21f64, 21f64, 22f64, 1f64, 118f64, 1f64, 21f64, 21f64, 22f64, 1f64, 118f64, 1f64, 6f64, 2f64, 4f64, 116f64, 105f64, 99f64, 107f64, 3f64, 5f64, 7f64, 112f64, 108f64, 97f64, 121f64, 101f64, 114f64, 115f64, 7f64, 2f64, 6f64, 5f64, 8f64, 99f64, 108f64, 105f64, 101f64, 110f64, 116f64, 73f64, 68f64, 5f64, 1f64, 118f64, 8f64, 117f64, 115f64, 101f64, 114f64, 110f64, 97f64, 109f64, 101f64, 5f64, 2f64, 86f64, 85f64, 7f64, 99f64, 108f64, 97f64, 110f64, 84f64, 97f64, 103f64, 5f64, 2f64, 87f64, 87f64, 7f64, 102f64, 114f64, 105f64, 101f64, 110f64, 100f64, 115f64, 1f64, 9f64, 99f64, 111f64, 115f64, 109f64, 101f64, 116f64, 105f64, 99f64, 115f64, 6f64, 1f64, 8f64, 118f64, 101f64, 114f64, 105f64, 102f64, 105f64, 101f64, 100f64, 4f64, 1f64, 6f64, 5f64, 8f64, 99f64, 108f64, 105f64, 101f64, 110f64, 116f64, 73f64, 68f64, 5f64, 1f64, 119f64, 8f64, 117f64, 115f64, 101f64, 114f64, 110f64, 97f64, 109f64, 101f64, 5f64, 8f64, 87f64, 105f64, 110f64, 100f64, 109f64, 105f64, 108f64, 108f64, 7f64, 99f64, 108f64, 97f64, 110f64, 84f64, 97f64, 103f64, 5f64, 2f64, 86f64, 86f64, 7f64, 102f64, 114f64, 105f64, 101f64, 110f64, 100f64, 115f64, 1f64, 9f64, 99f64, 111f64, 115f64, 109f64, 101f64, 116f64, 105f64, 99f64, 115f64, 1f64] },
+];
+pub const NVS_STARTINFO_ANON_9: NvsScenario = NvsScenario {
+    name: "nvs_startinfo_anon_9",
+    ops: NVS_STARTINFO_ANON_9_OPS,
+};
+
+const NVS_LOBBY_ANON_KEYS_10_OPS: &[NvsOp] = &[
+    NvsOp { kind: 0, args: &[1f64, 103f64], res: &[0f64, 0f64] },
+    NvsOp { kind: 1, args: &[1f64, 14f64, 97f64, 110f64, 111f64, 110f64, 121f64, 109f64, 105f64, 122f64, 101f64, 78f64, 97f64, 109f64, 101f64, 115f64, 4f64, 1f64], res: &[0f64, 0f64] },
+    NvsOp { kind: 2, args: &[1f64, 97f64, 6f64, 2f64, 8f64, 99f64, 108f64, 105f64, 101f64, 110f64, 116f64, 73f64, 68f64, 5f64, 1f64, 97f64, 8f64, 117f64, 115f64, 101f64, 114f64, 110f64, 97f64, 109f64, 101f64, 5f64, 2f64, 97f64, 85f64], res: &[0f64, 0f64] },
+    NvsOp { kind: 17, args: &[1f64, 7f64, 3f64, 6f64, 4f64, 8f64, 99f64, 108f64, 105f64, 101f64, 110f64, 116f64, 73f64, 68f64, 5f64, 1f64, 97f64, 8f64, 117f64, 115f64, 101f64, 114f64, 110f64, 97f64, 109f64, 101f64, 5f64, 2f64, 97f64, 85f64, 9f64, 115f64, 112f64, 101f64, 99f64, 116f64, 97f64, 116f64, 111f64, 114f64, 4f64, 1f64, 7f64, 99f64, 108f64, 97f64, 110f64, 84f64, 97f64, 103f64, 5f64, 2f64, 65f64, 65f64, 6f64, 3f64, 8f64, 99f64, 108f64, 105f64, 101f64, 110f64, 116f64, 73f64, 68f64, 5f64, 1f64, 98f64, 8f64, 117f64, 115f64, 101f64, 114f64, 110f64, 97f64, 109f64, 101f64, 5f64, 2f64, 98f64, 85f64, 9f64, 115f64, 112f64, 101f64, 99f64, 116f64, 97f64, 116f64, 111f64, 114f64, 4f64, 0f64, 6f64, 2f64, 8f64, 99f64, 108f64, 105f64, 101f64, 110f64, 116f64, 73f64, 68f64, 5f64, 1f64, 99f64, 8f64, 117f64, 115f64, 101f64, 114f64, 110f64, 97f64, 109f64, 101f64, 5f64, 2f64, 99f64, 85f64], res: &[19f64, 20f64, 20f64, 21f64, 22f64, 1f64, 97f64, 1f64, 20f64, 21f64, 22f64, 1f64, 98f64, 1f64, 20f64, 21f64, 22f64, 1f64, 99f64, 1f64, 7f64, 3f64, 6f64, 5f64, 8f64, 117f64, 115f64, 101f64, 114f64, 110f64, 97f64, 109f64, 101f64, 5f64, 8f64, 65f64, 109f64, 101f64, 116f64, 104f64, 121f64, 115f64, 116f64, 7f64, 99f64, 108f64, 97f64, 110f64, 84f64, 97f64, 103f64, 2f64, 8f64, 99f64, 108f64, 105f64, 101f64, 110f64, 116f64, 73f64, 68f64, 5f64, 1f64, 97f64, 9f64, 115f64, 112f64, 101f64, 99f64, 116f64, 97f64, 116f64, 111f64, 114f64, 4f64, 1f64, 9f64, 116f64, 101f64, 97f64, 109f64, 73f64, 110f64, 100f64, 101f64, 120f64, 1f64, 6f64, 5f64, 8f64, 117f64, 115f64, 101f64, 114f64, 110f64, 97f64, 109f64, 101f64, 5f64, 6f64, 65f64, 110f64, 99f64, 104f64, 111f64, 114f64, 7f64, 99f64, 108f64, 97f64, 110f64, 84f64, 97f64, 103f64, 2f64, 8f64, 99f64, 108f64, 105f64, 101f64, 110f64, 116f64, 73f64, 68f64, 5f64, 1f64, 98f64, 9f64, 115f64, 112f64, 101f64, 99f64, 116f64, 97f64, 116f64, 111f64, 114f64, 1f64, 9f64, 116f64, 101f64, 97f64, 109f64, 73f64, 110f64, 100f64, 101f64, 120f64, 1f64, 6f64, 5f64, 8f64, 117f64, 115f64, 101f64, 114f64, 110f64, 97f64, 109f64, 101f64, 5f64, 6f64, 65f64, 110f64, 99f64, 104f64, 111f64, 114f64, 7f64, 99f64, 108f64, 97f64, 110f64, 84f64, 97f64, 103f64, 2f64, 8f64, 99f64, 108f64, 105f64, 101f64, 110f64, 116f64, 73f64, 68f64, 5f64, 1f64, 99f64, 9f64, 115f64, 112f64, 101f64, 99f64, 116f64, 97f64, 116f64, 111f64, 114f64, 1f64, 9f64, 116f64, 101f64, 97f64, 109f64, 73f64, 110f64, 100f64, 101f64, 120f64, 1f64] },
+];
+pub const NVS_LOBBY_ANON_KEYS_10: NvsScenario = NvsScenario {
+    name: "nvs_lobby_anon_keys_10",
+    ops: NVS_LOBBY_ANON_KEYS_10_OPS,
+};
+
+const NVS_LOBBY_TEAMMATE_ONLY_11_OPS: &[NvsOp] = &[
+    NvsOp { kind: 0, args: &[1f64, 103f64], res: &[0f64, 0f64] },
+    NvsOp { kind: 1, args: &[1f64, 14f64, 97f64, 110f64, 111f64, 110f64, 121f64, 109f64, 105f64, 122f64, 101f64, 78f64, 97f64, 109f64, 101f64, 115f64, 4f64, 1f64], res: &[0f64, 0f64] },
+    NvsOp { kind: 2, args: &[1f64, 118f64, 6f64, 4f64, 8f64, 99f64, 108f64, 105f64, 101f64, 110f64, 116f64, 73f64, 68f64, 5f64, 1f64, 118f64, 8f64, 117f64, 115f64, 101f64, 114f64, 110f64, 97f64, 109f64, 101f64, 5f64, 2f64, 118f64, 85f64, 8f64, 112f64, 117f64, 98f64, 108f64, 105f64, 99f64, 73f64, 100f64, 5f64, 2f64, 112f64, 118f64, 7f64, 102f64, 114f64, 105f64, 101f64, 110f64, 100f64, 115f64, 7f64, 1f64, 5f64, 2f64, 112f64, 116f64], res: &[0f64, 0f64] },
+    NvsOp { kind: 2, args: &[1f64, 116f64, 6f64, 5f64, 8f64, 99f64, 108f64, 105f64, 101f64, 110f64, 116f64, 73f64, 68f64, 5f64, 1f64, 116f64, 8f64, 117f64, 115f64, 101f64, 114f64, 110f64, 97f64, 109f64, 101f64, 5f64, 2f64, 116f64, 85f64, 8f64, 112f64, 117f64, 98f64, 108f64, 105f64, 99f64, 73f64, 100f64, 5f64, 2f64, 112f64, 116f64, 7f64, 99f64, 108f64, 97f64, 110f64, 84f64, 97f64, 103f64, 5f64, 1f64, 84f64, 7f64, 102f64, 114f64, 105f64, 101f64, 110f64, 100f64, 115f64, 7f64, 0f64], res: &[0f64, 0f64] },
+    NvsOp { kind: 3, args: &[1f64, 118f64, 3f64, 1f64], res: &[0f64, 0f64] },
+    NvsOp { kind: 3, args: &[1f64, 116f64, 3f64, 1f64], res: &[0f64, 0f64] },
+    NvsOp { kind: 17, args: &[5f64, 1f64, 118f64, 7f64, 2f64, 6f64, 4f64, 8f64, 99f64, 108f64, 105f64, 101f64, 110f64, 116f64, 73f64, 68f64, 5f64, 1f64, 118f64, 8f64, 117f64, 115f64, 101f64, 114f64, 110f64, 97f64, 109f64, 101f64, 5f64, 2f64, 118f64, 85f64, 8f64, 112f64, 117f64, 98f64, 108f64, 105f64, 99f64, 73f64, 100f64, 5f64, 2f64, 112f64, 118f64, 7f64, 102f64, 114f64, 105f64, 101f64, 110f64, 100f64, 115f64, 7f64, 1f64, 5f64, 2f64, 112f64, 116f64, 6f64, 6f64, 8f64, 99f64, 108f64, 105f64, 101f64, 110f64, 116f64, 73f64, 68f64, 5f64, 1f64, 116f64, 8f64, 117f64, 115f64, 101f64, 114f64, 110f64, 97f64, 109f64, 101f64, 5f64, 2f64, 116f64, 85f64, 8f64, 112f64, 117f64, 98f64, 108f64, 105f64, 99f64, 73f64, 100f64, 5f64, 2f64, 112f64, 116f64, 7f64, 99f64, 108f64, 97f64, 110f64, 84f64, 97f64, 103f64, 5f64, 1f64, 84f64, 7f64, 102f64, 114f64, 105f64, 101f64, 110f64, 100f64, 115f64, 7f64, 0f64, 9f64, 99f64, 111f64, 115f64, 109f64, 101f64, 116f64, 105f64, 99f64, 115f64, 6f64, 1f64, 8f64, 118f64, 101f64, 114f64, 105f64, 102f64, 105f64, 101f64, 100f64, 4f64, 1f64], res: &[30f64, 20f64, 20f64, 20f64, 22f64, 1f64, 118f64, 3f64, 1f64, 20f64, 20f64, 21f64, 21f64, 22f64, 1f64, 118f64, 3f64, 1f64, 22f64, 1f64, 116f64, 3f64, 1f64, 20f64, 20f64, 21f64, 22f64, 1f64, 116f64, 3f64, 1f64, 7f64, 2f64, 6f64, 7f64, 8f64, 117f64, 115f64, 101f64, 114f64, 110f64, 97f64, 109f64, 101f64, 5f64, 2f64, 118f64, 85f64, 7f64, 99f64, 108f64, 97f64, 110f64, 84f64, 97f64, 103f64, 2f64, 8f64, 99f64, 108f64, 105f64, 101f64, 110f64, 116f64, 73f64, 68f64, 5f64, 1f64, 118f64, 7f64, 102f64, 114f64, 105f64, 101f64, 110f64, 100f64, 115f64, 7f64, 1f64, 5f64, 1f64, 116f64, 8f64, 118f64, 101f64, 114f64, 105f64, 102f64, 105f64, 101f64, 100f64, 1f64, 9f64, 115f64, 112f64, 101f64, 99f64, 116f64, 97f64, 116f64, 111f64, 114f64, 1f64, 9f64, 116f64, 101f64, 97f64, 109f64, 73f64, 110f64, 100f64, 101f64, 120f64, 3f64, 1f64, 6f64, 7f64, 8f64, 117f64, 115f64, 101f64, 114f64, 110f64, 97f64, 109f64, 101f64, 5f64, 2f64, 116f64, 85f64, 7f64, 99f64, 108f64, 97f64, 110f64, 84f64, 97f64, 103f64, 2f64, 8f64, 99f64, 108f64, 105f64, 101f64, 110f64, 116f64, 73f64, 68f64, 5f64, 1f64, 116f64, 7f64, 102f64, 114f64, 105f64, 101f64, 110f64, 100f64, 115f64, 1f64, 8f64, 118f64, 101f64, 114f64, 105f64, 102f64, 105f64, 101f64, 100f64, 4f64, 1f64, 9f64, 115f64, 112f64, 101f64, 99f64, 116f64, 97f64, 116f64, 111f64, 114f64, 1f64, 9f64, 116f64, 101f64, 97f64, 109f64, 73f64, 110f64, 100f64, 101f64, 120f64, 3f64, 1f64] },
+];
+pub const NVS_LOBBY_TEAMMATE_ONLY_11: NvsScenario = NvsScenario {
+    name: "nvs_lobby_teammate_only_11",
+    ops: NVS_LOBBY_TEAMMATE_ONLY_11_OPS,
+};
+
+const NVS_LOBBY_HIDE_CLANTAGS_12_OPS: &[NvsOp] = &[
+    NvsOp { kind: 0, args: &[1f64, 103f64], res: &[0f64, 0f64] },
+    NvsOp { kind: 1, args: &[2f64, 14f64, 97f64, 110f64, 111f64, 110f64, 121f64, 109f64, 105f64, 122f64, 101f64, 78f64, 97f64, 109f64, 101f64, 115f64, 4f64, 0f64, 15f64, 100f64, 105f64, 115f64, 97f64, 98f64, 108f64, 101f64, 67f64, 108f64, 97f64, 110f64, 84f64, 97f64, 103f64, 115f64, 4f64, 1f64], res: &[0f64, 0f64] },
+    NvsOp { kind: 17, args: &[5f64, 1f64, 118f64, 7f64, 2f64, 6f64, 4f64, 8f64, 99f64, 108f64, 105f64, 101f64, 110f64, 116f64, 73f64, 68f64, 5f64, 1f64, 118f64, 8f64, 117f64, 115f64, 101f64, 114f64, 110f64, 97f64, 109f64, 101f64, 5f64, 2f64, 118f64, 85f64, 7f64, 99f64, 108f64, 97f64, 110f64, 84f64, 97f64, 103f64, 5f64, 2f64, 86f64, 86f64, 7f64, 102f64, 114f64, 105f64, 101f64, 110f64, 100f64, 115f64, 7f64, 1f64, 5f64, 4f64, 110f64, 111f64, 112f64, 101f64, 6f64, 3f64, 8f64, 99f64, 108f64, 105f64, 101f64, 110f64, 116f64, 73f64, 68f64, 5f64, 1f64, 119f64, 8f64, 117f64, 115f64, 101f64, 114f64, 110f64, 97f64, 109f64, 101f64, 5f64, 2f64, 119f64, 85f64, 7f64, 102f64, 114f64, 105f64, 101f64, 110f64, 100f64, 115f64, 7f64, 0f64], res: &[11f64, 20f64, 20f64, 22f64, 1f64, 118f64, 1f64, 20f64, 22f64, 1f64, 119f64, 1f64, 7f64, 2f64, 6f64, 7f64, 8f64, 117f64, 115f64, 101f64, 114f64, 110f64, 97f64, 109f64, 101f64, 5f64, 2f64, 118f64, 85f64, 7f64, 99f64, 108f64, 97f64, 110f64, 84f64, 97f64, 103f64, 2f64, 8f64, 99f64, 108f64, 105f64, 101f64, 110f64, 116f64, 73f64, 68f64, 5f64, 1f64, 118f64, 7f64, 102f64, 114f64, 105f64, 101f64, 110f64, 100f64, 115f64, 1f64, 8f64, 118f64, 101f64, 114f64, 105f64, 102f64, 105f64, 101f64, 100f64, 1f64, 9f64, 115f64, 112f64, 101f64, 99f64, 116f64, 97f64, 116f64, 111f64, 114f64, 1f64, 9f64, 116f64, 101f64, 97f64, 109f64, 73f64, 110f64, 100f64, 101f64, 120f64, 1f64, 6f64, 7f64, 8f64, 117f64, 115f64, 101f64, 114f64, 110f64, 97f64, 109f64, 101f64, 5f64, 2f64, 119f64, 85f64, 7f64, 99f64, 108f64, 97f64, 110f64, 84f64, 97f64, 103f64, 2f64, 8f64, 99f64, 108f64, 105f64, 101f64, 110f64, 116f64, 73f64, 68f64, 5f64, 1f64, 119f64, 7f64, 102f64, 114f64, 105f64, 101f64, 110f64, 100f64, 115f64, 1f64, 8f64, 118f64, 101f64, 114f64, 105f64, 102f64, 105f64, 101f64, 100f64, 1f64, 9f64, 115f64, 112f64, 101f64, 99f64, 116f64, 97f64, 116f64, 111f64, 114f64, 1f64, 9f64, 116f64, 101f64, 97f64, 109f64, 73f64, 110f64, 100f64, 101f64, 120f64, 1f64] },
+    NvsOp { kind: 1, args: &[2f64, 14f64, 97f64, 110f64, 111f64, 110f64, 121f64, 109f64, 105f64, 122f64, 101f64, 78f64, 97f64, 109f64, 101f64, 115f64, 4f64, 0f64, 15f64, 100f64, 105f64, 115f64, 97f64, 98f64, 108f64, 101f64, 67f64, 108f64, 97f64, 110f64, 84f64, 97f64, 103f64, 115f64, 2f64], res: &[0f64, 0f64] },
+    NvsOp { kind: 17, args: &[5f64, 1f64, 118f64, 7f64, 1f64, 6f64, 4f64, 8f64, 99f64, 108f64, 105f64, 101f64, 110f64, 116f64, 73f64, 68f64, 5f64, 1f64, 118f64, 8f64, 117f64, 115f64, 101f64, 114f64, 110f64, 97f64, 109f64, 101f64, 5f64, 2f64, 118f64, 85f64, 7f64, 99f64, 108f64, 97f64, 110f64, 84f64, 97f64, 103f64, 5f64, 2f64, 86f64, 86f64, 7f64, 102f64, 114f64, 105f64, 101f64, 110f64, 100f64, 115f64, 7f64, 1f64, 5f64, 4f64, 110f64, 111f64, 112f64, 101f64], res: &[6f64, 20f64, 20f64, 22f64, 1f64, 118f64, 1f64, 7f64, 1f64, 6f64, 7f64, 8f64, 117f64, 115f64, 101f64, 114f64, 110f64, 97f64, 109f64, 101f64, 5f64, 2f64, 118f64, 85f64, 7f64, 99f64, 108f64, 97f64, 110f64, 84f64, 97f64, 103f64, 5f64, 2f64, 86f64, 86f64, 8f64, 99f64, 108f64, 105f64, 101f64, 110f64, 116f64, 73f64, 68f64, 5f64, 1f64, 118f64, 7f64, 102f64, 114f64, 105f64, 101f64, 110f64, 100f64, 115f64, 1f64, 8f64, 118f64, 101f64, 114f64, 105f64, 102f64, 105f64, 101f64, 100f64, 1f64, 9f64, 115f64, 112f64, 101f64, 99f64, 116f64, 97f64, 116f64, 111f64, 114f64, 1f64, 9f64, 116f64, 101f64, 97f64, 109f64, 73f64, 110f64, 100f64, 101f64, 120f64, 1f64] },
+];
+pub const NVS_LOBBY_HIDE_CLANTAGS_12: NvsScenario = NvsScenario {
+    name: "nvs_lobby_hide_clantags_12",
+    ops: NVS_LOBBY_HIDE_CLANTAGS_12_OPS,
+};
+
+const NVS_FRIENDS_LOOKUP_13_OPS: &[NvsOp] = &[
+    NvsOp { kind: 0, args: &[1f64, 103f64], res: &[0f64, 0f64] },
+    NvsOp { kind: 18, args: &[7f64, 4f64, 6f64, 4f64, 8f64, 99f64, 108f64, 105f64, 101f64, 110f64, 116f64, 73f64, 68f64, 5f64, 1f64, 97f64, 8f64, 117f64, 115f64, 101f64, 114f64, 110f64, 97f64, 109f64, 101f64, 5f64, 2f64, 97f64, 85f64, 8f64, 112f64, 117f64, 98f64, 108f64, 105f64, 99f64, 73f64, 100f64, 5f64, 2f64, 112f64, 97f64, 7f64, 102f64, 114f64, 105f64, 101f64, 110f64, 100f64, 115f64, 7f64, 2f64, 5f64, 2f64, 112f64, 98f64, 5f64, 2f64, 112f64, 120f64, 6f64, 4f64, 8f64, 99f64, 108f64, 105f64, 101f64, 110f64, 116f64, 73f64, 68f64, 5f64, 1f64, 98f64, 8f64, 117f64, 115f64, 101f64, 114f64, 110f64, 97f64, 109f64, 101f64, 5f64, 2f64, 98f64, 85f64, 8f64, 112f64, 117f64, 98f64, 108f64, 105f64, 99f64, 73f64, 100f64, 5f64, 2f64, 112f64, 98f64, 7f64, 102f64, 114f64, 105f64, 101f64, 110f64, 100f64, 115f64, 7f64, 1f64, 5f64, 2f64, 112f64, 97f64, 6f64, 5f64, 8f64, 99f64, 108f64, 105f64, 101f64, 110f64, 116f64, 73f64, 68f64, 5f64, 1f64, 115f64, 8f64, 117f64, 115f64, 101f64, 114f64, 110f64, 97f64, 109f64, 101f64, 5f64, 2f64, 115f64, 85f64, 8f64, 112f64, 117f64, 98f64, 108f64, 105f64, 99f64, 73f64, 100f64, 5f64, 2f64, 112f64, 115f64, 9f64, 115f64, 112f64, 101f64, 99f64, 116f64, 97f64, 116f64, 111f64, 114f64, 4f64, 1f64, 7f64, 102f64, 114f64, 105f64, 101f64, 110f64, 100f64, 115f64, 7f64, 0f64, 6f64, 4f64, 8f64, 99f64, 108f64, 105f64, 101f64, 110f64, 116f64, 73f64, 68f64, 5f64, 1f64, 101f64, 8f64, 117f64, 115f64, 101f64, 114f64, 110f64, 97f64, 109f64, 101f64, 5f64, 2f64, 101f64, 85f64, 8f64, 112f64, 117f64, 98f64, 108f64, 105f64, 99f64, 73f64, 100f64, 5f64, 0f64, 7f64, 102f64, 114f64, 105f64, 101f64, 110f64, 100f64, 115f64, 7f64, 1f64, 5f64, 2f64, 112f64, 97f64], res: &[0f64, 4f64, 7f64, 1f64, 5f64, 1f64, 98f64, 7f64, 1f64, 5f64, 1f64, 97f64, 1f64, 7f64, 1f64, 5f64, 1f64, 97f64] },
+    NvsOp { kind: 18, args: &[7f64, 0f64], res: &[0f64, 0f64] },
+];
+pub const NVS_FRIENDS_LOOKUP_13: NvsScenario = NvsScenario {
+    name: "nvs_friends_lookup_13",
+    ops: NVS_FRIENDS_LOOKUP_13_OPS,
+};
+
+pub const NVS_SCENARIOS: &[NvsScenario] = &[
+    NVS_FRESH_NO_VIEWER_0,
+    NVS_SLOT_JOIN_ORDER_1,
+    NVS_LATE_JOINER_APPEND_2,
+    NVS_TEAM_SEED_INTERPOLATION_3,
+    NVS_SEED_CLIENT_MISSING_4,
+    NVS_SAME_TEAM_SHORT_CIRCUIT_5,
+    NVS_SEES_REAL_SELF_SHORT_CIRCUIT_6,
+    NVS_REVEALS_AND_PUBLICIDS_7,
+    NVS_STARTINFO_NO_ANON_8,
+    NVS_STARTINFO_ANON_9,
+    NVS_LOBBY_ANON_KEYS_10,
+    NVS_LOBBY_TEAMMATE_ONLY_11,
+    NVS_LOBBY_HIDE_CLANTAGS_12,
+    NVS_FRIENDS_LOOKUP_13,
+];
+

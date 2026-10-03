@@ -2707,6 +2707,78 @@ function prepare(rel) {
     );
   }
 
+  if (rel.endsWith("server/ListingState.ts")) {
+    // LobbyAccent is a zod-inferred type (type-only) -> dropped; the two
+    // numeric constants are *value* imports redirected to the prepared
+    // Schemas copy, sanitizeLobbyLabel to the prepared Util copy. Date.now()
+    // is the module's only impure call: the capture scripts it through
+    // globalThis.__LISTING_NOW (set per setListed op).
+    const lsSchemasRel = "src/core/Schemas.ts";
+    if (!prepared.has(lsSchemasRel)) prepare(lsSchemasRel);
+    const lsUtilRel = "src/core/Util.ts";
+    if (!prepared.has(lsUtilRel)) prepare(lsUtilRel);
+    out = must(
+      out,
+      'import {\n' +
+        "  FEATURED_LOBBY_AUTO_START_MS,\n" +
+        "  HOSTED_LOBBY_AUTO_START_MS,\n" +
+        "  LobbyAccent,\n" +
+        '} from "../core/Schemas";\n' +
+        'import { sanitizeLobbyLabel } from "../core/Util";\n',
+      "import {\n" +
+        "  FEATURED_LOBBY_AUTO_START_MS,\n" +
+        "  HOSTED_LOBBY_AUTO_START_MS,\n" +
+        `} from "./${prepared.get(lsSchemasRel)}";\n` +
+        `import { sanitizeLobbyLabel } from "./${prepared.get(lsUtilRel)}";\n`,
+      "ListingState imports",
+    );
+    out = must(
+      out,
+      "this.listedAt = listed ? Date.now() : undefined;",
+      "this.listedAt = listed ? globalThis.__LISTING_NOW : undefined;",
+      "ListingState Date.now",
+    );
+  }
+
+  if (rel.endsWith("server/NameVisibility.ts")) {
+    // ClientID / GameConfig / GameInfo / GameStartInfo are branded types /
+    // zod-inferred types (type-only) -> dropped, as is the Client class
+    // import (the capture feeds plain JS stub objects; NameVisibility only
+    // reads fields). anonWordName / GameMode / simpleHash are *value*
+    // imports redirected to prepared copies (AnonNames has no imports and
+    // loads unchanged). The parameter-property ctor is expanded (strip mode
+    // rejects it, precedent: ExecutionManager / RailNetworkImpl).
+    const nvAnonRel = "src/core/AnonNames.ts";
+    if (!prepared.has(nvAnonRel)) prepare(nvAnonRel);
+    const nvGameRel = "src/core/game/Game.ts";
+    if (!prepared.has(nvGameRel)) prepare(nvGameRel);
+    const nvUtilRel = "src/core/Util.ts";
+    if (!prepared.has(nvUtilRel)) prepare(nvUtilRel);
+    out = must(
+      out,
+      'import { anonWordName } from "../core/AnonNames";\n' +
+        'import { GameMode } from "../core/game/Game";\n' +
+        'import { ClientID, GameConfig, GameInfo, GameStartInfo } from "../core/Schemas";\n' +
+        'import { simpleHash } from "../core/Util";\n' +
+        'import { Client } from "./Client";\n',
+      `import { anonWordName } from "./${prepared.get(nvAnonRel)}";\n` +
+        `import { GameMode } from "./${prepared.get(nvGameRel)}";\n` +
+        `import { simpleHash } from "./${prepared.get(nvUtilRel)}";\n`,
+      "NameVisibility imports",
+    );
+    out = must(
+      out,
+      "export class NameVisibility {\n" +
+        "  constructor(private readonly view: NameVisibilityView) {}",
+      "export class NameVisibility {\n" +
+        "  view;\n\n" +
+        "  constructor(view) {\n" +
+        "    this.view = view;\n" +
+        "  }",
+      "NameVisibility ctor",
+    );
+  }
+
   mkdirSync(cacheDir, { recursive: true });
   const hash = createHash("sha1").update(out).digest("hex").slice(0, 10);
   const base = `${basename(rel, ".ts")}-${hash}.ts`;

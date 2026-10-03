@@ -3024,3 +3024,68 @@ fn replay_consensus_scenarios() {
         }
     }
 }
+
+// server/ListingState.ts: replay the op stream (setListed / getters /
+// setFeatured / dump) — the duplicate-toggle no-op keeping the stale
+// listedAt, the auto-start constant flip between featured and hosted, the
+// label sanitisation gate (falsy label skips it, empty result stores
+// undefined) and the verbatim accent passthrough.
+#[test]
+fn replay_listingstate_scenarios() {
+    use openfront_core::listing_state::RigHarness;
+    for s in vectors::LS_SCENARIOS {
+        let mut rig = RigHarness::new();
+        for op in s.ops {
+            let got = rig.run_op(op.kind, op.args);
+            assert_eq!(
+                got.len(),
+                op.res.len(),
+                "{} op[{:?}] res len: got {got:?} want {:?}",
+                s.name,
+                op.kind,
+                op.res
+            );
+            for (j, (g, w)) in got.iter().zip(op.res.iter()).enumerate() {
+                assert!(
+                    obj_is(*g, *w),
+                    "{} op[{:?}] res[{j}]: got {g} want {w}",
+                    s.name,
+                    op.kind
+                );
+            }
+        }
+    }
+}
+
+// server/NameVisibility.ts: replay the op stream (facade setup + method
+// calls) — the res carries the facade trace prefix [traceLen,(trace)*,
+// payload*] pinning config()/clients()/teamIndex() call counts and order,
+// the join-order anon slot, the team-seed string interpolation, the
+// short-circuit chains in seesReal / sameMatchmadeTeam, the startInfoFor
+// spread + index-alignment quirk and the lobbyClients key sets.
+#[test]
+fn replay_namevisibility_scenarios() {
+    use openfront_core::name_visibility::RigHarness;
+    for s in vectors::NVS_SCENARIOS {
+        let mut rig = RigHarness::new();
+        for op in s.ops {
+            let got = rig.run_op(op.kind, op.args);
+            assert_eq!(
+                got.len(),
+                op.res.len(),
+                "{} op[{:?}] res len: got {got:?} want {:?}",
+                s.name,
+                op.kind,
+                op.res
+            );
+            for (j, (g, w)) in got.iter().zip(op.res.iter()).enumerate() {
+                assert!(
+                    obj_is(*g, *w),
+                    "{} op[{:?}] res[{j}]: got {g} want {w}",
+                    s.name,
+                    op.kind
+                );
+            }
+        }
+    }
+}

@@ -43905,3 +43905,414 @@ pub const MT_SCENARIOS: &[MtScenario] = &[
     MT_NUMMAP_KEY_CLASSES_7,
 ];
 
+/// One `server/RankedCheckin.ts` gate op (see
+/// `ranked_checkin_gate::RigHarness::run_op` docs). kind 0 reset, 1
+/// scriptActive, 2 shouldCheckIn, 3 scriptEnv (gitCommit + the
+/// registeredSite pair), 4 buildVersionField, 5 buildSiteField, 6
+/// dumpLogs. shouldCheckIn res is trace-prefixed with the log events
+/// [70, ...codec(msg)]; buildVersionField / buildSiteField ride the env
+/// facade [72, method, ...codec(value)].
+pub struct RgOp {
+    pub kind: u8,
+    pub args: &'static [f64],
+    pub res: &'static [f64],
+}
+pub struct RgScenario {
+    pub name: &'static str,
+    pub ops: &'static [RgOp],
+}
+
+const RG_SEEDED_TRUE_NO_LOG_0_OPS: &[RgOp] = &[
+    RgOp { kind: 0, args: &[], res: &[0f64] },
+    RgOp { kind: 1, args: &[1f64, 1f64], res: &[0f64] },
+    RgOp { kind: 2, args: &[], res: &[0f64, 1f64] },
+];
+pub const RG_SEEDED_TRUE_NO_LOG_0: RgScenario = RgScenario {
+    name: "rg_seeded_true_no_log_0",
+    ops: RG_SEEDED_TRUE_NO_LOG_0_OPS,
+};
+
+const RG_FLIP_SEQUENCE_1_OPS: &[RgOp] = &[
+    RgOp { kind: 0, args: &[], res: &[0f64] },
+    RgOp { kind: 1, args: &[3f64, 0f64, 0f64, 1f64], res: &[0f64] },
+    RgOp { kind: 2, args: &[], res: &[48f64, 70f64, 46f64, 114f64, 97f64, 110f64, 107f64, 101f64, 100f64, 32f64, 109f64, 97f64, 116f64, 99f64, 104f64, 109f64, 97f64, 107f64, 105f64, 110f64, 103f64, 32f64, 112f64, 97f64, 117f64, 115f64, 101f64, 100f64, 58f64, 32f64, 100f64, 101f64, 112f64, 108f64, 111f64, 121f64, 109f64, 101f64, 110f64, 116f64, 32f64, 100f64, 114f64, 97f64, 105f64, 110f64, 105f64, 110f64, 103f64, 0f64] },
+    RgOp { kind: 2, args: &[], res: &[0f64, 0f64] },
+    RgOp { kind: 2, args: &[], res: &[47f64, 70f64, 45f64, 114f64, 97f64, 110f64, 107f64, 101f64, 100f64, 32f64, 109f64, 97f64, 116f64, 99f64, 104f64, 109f64, 97f64, 107f64, 105f64, 110f64, 103f64, 32f64, 114f64, 101f64, 115f64, 117f64, 109f64, 101f64, 100f64, 58f64, 32f64, 100f64, 101f64, 112f64, 108f64, 111f64, 121f64, 109f64, 101f64, 110f64, 116f64, 32f64, 97f64, 99f64, 116f64, 105f64, 118f64, 101f64, 1f64] },
+];
+pub const RG_FLIP_SEQUENCE_1: RgScenario = RgScenario {
+    name: "rg_flip_sequence_1",
+    ops: RG_FLIP_SEQUENCE_1_OPS,
+};
+
+const RG_BUILD_VERSION_COMMIT_2_OPS: &[RgOp] = &[
+    RgOp { kind: 0, args: &[], res: &[0f64] },
+    RgOp { kind: 3, args: &[24f64, 68f64, 69f64, 65f64, 68f64, 66f64, 69f64, 69f64, 70f64, 48f64, 49f64, 50f64, 51f64, 52f64, 53f64, 54f64, 55f64, 56f64, 57f64, 65f64, 66f64, 67f64, 68f64, 69f64, 70f64, 1f64, 1f64, 0f64], res: &[0f64] },
+    RgOp { kind: 4, args: &[], res: &[28f64, 72f64, 3f64, 5f64, 24f64, 68f64, 69f64, 65f64, 68f64, 66f64, 69f64, 69f64, 70f64, 48f64, 49f64, 50f64, 51f64, 52f64, 53f64, 54f64, 55f64, 56f64, 57f64, 65f64, 66f64, 67f64, 68f64, 69f64, 70f64, 6f64, 1f64, 7f64, 118f64, 101f64, 114f64, 115f64, 105f64, 111f64, 110f64, 5f64, 24f64, 100f64, 101f64, 97f64, 100f64, 98f64, 101f64, 101f64, 102f64, 48f64, 49f64, 50f64, 51f64, 52f64, 53f64, 54f64, 55f64, 56f64, 57f64, 97f64, 98f64, 99f64, 100f64, 101f64, 102f64] },
+];
+pub const RG_BUILD_VERSION_COMMIT_2: RgScenario = RgScenario {
+    name: "rg_build_version_commit_2",
+    ops: RG_BUILD_VERSION_COMMIT_2_OPS,
+};
+
+const RG_BUILD_VERSION_DEV_LABEL_3_OPS: &[RgOp] = &[
+    RgOp { kind: 0, args: &[], res: &[0f64] },
+    RgOp { kind: 3, args: &[3f64, 68f64, 69f64, 86f64, 1f64, 1f64, 0f64], res: &[0f64] },
+    RgOp { kind: 4, args: &[], res: &[7f64, 72f64, 3f64, 5f64, 3f64, 68f64, 69f64, 86f64, 6f64, 0f64] },
+];
+pub const RG_BUILD_VERSION_DEV_LABEL_3: RgScenario = RgScenario {
+    name: "rg_build_version_dev_label_3",
+    ops: RG_BUILD_VERSION_DEV_LABEL_3_OPS,
+};
+
+const RG_BUILD_SITE_PRESENT_4_OPS: &[RgOp] = &[
+    RgOp { kind: 0, args: &[], res: &[0f64] },
+    RgOp { kind: 3, args: &[7f64, 117f64, 110f64, 107f64, 110f64, 111f64, 119f64, 110f64, 5f64, 12f64, 111f64, 112f64, 101f64, 110f64, 102f64, 114f64, 111f64, 110f64, 116f64, 46f64, 105f64, 111f64, 1f64, 0f64], res: &[0f64] },
+    RgOp { kind: 5, args: &[], res: &[16f64, 72f64, 0f64, 5f64, 12f64, 111f64, 112f64, 101f64, 110f64, 102f64, 114f64, 111f64, 110f64, 116f64, 46f64, 105f64, 111f64, 6f64, 1f64, 4f64, 115f64, 105f64, 116f64, 101f64, 5f64, 12f64, 111f64, 112f64, 101f64, 110f64, 102f64, 114f64, 111f64, 110f64, 116f64, 46f64, 105f64, 111f64] },
+];
+pub const RG_BUILD_SITE_PRESENT_4: RgScenario = RgScenario {
+    name: "rg_build_site_present_4",
+    ops: RG_BUILD_SITE_PRESENT_4_OPS,
+};
+
+const RG_BUILD_SITE_MALFORMED_5_OPS: &[RgOp] = &[
+    RgOp { kind: 0, args: &[], res: &[0f64] },
+    RgOp { kind: 3, args: &[7f64, 117f64, 110f64, 107f64, 110f64, 111f64, 119f64, 110f64, 5f64, 14f64, 108f64, 111f64, 99f64, 97f64, 108f64, 104f64, 111f64, 115f64, 116f64, 58f64, 57f64, 48f64, 48f64, 48f64, 1f64, 0f64], res: &[0f64] },
+    RgOp { kind: 5, args: &[], res: &[18f64, 72f64, 0f64, 5f64, 14f64, 108f64, 111f64, 99f64, 97f64, 108f64, 104f64, 111f64, 115f64, 116f64, 58f64, 57f64, 48f64, 48f64, 48f64, 6f64, 0f64] },
+];
+pub const RG_BUILD_SITE_MALFORMED_5: RgScenario = RgScenario {
+    name: "rg_build_site_malformed_5",
+    ops: RG_BUILD_SITE_MALFORMED_5_OPS,
+};
+
+const RG_BUILD_SITE_NONE_6_OPS: &[RgOp] = &[
+    RgOp { kind: 0, args: &[], res: &[0f64] },
+    RgOp { kind: 3, args: &[7f64, 117f64, 110f64, 107f64, 110f64, 111f64, 119f64, 110f64, 1f64, 1f64, 0f64], res: &[0f64] },
+    RgOp { kind: 5, args: &[], res: &[6f64, 72f64, 0f64, 1f64, 72f64, 1f64, 1f64, 6f64, 0f64] },
+];
+pub const RG_BUILD_SITE_NONE_6: RgScenario = RgScenario {
+    name: "rg_build_site_none_6",
+    ops: RG_BUILD_SITE_NONE_6_OPS,
+};
+
+const RG_DUMP_LOGS_7_OPS: &[RgOp] = &[
+    RgOp { kind: 0, args: &[], res: &[0f64] },
+    RgOp { kind: 6, args: &[], res: &[2f64, 46f64, 114f64, 97f64, 110f64, 107f64, 101f64, 100f64, 32f64, 109f64, 97f64, 116f64, 99f64, 104f64, 109f64, 97f64, 107f64, 105f64, 110f64, 103f64, 32f64, 112f64, 97f64, 117f64, 115f64, 101f64, 100f64, 58f64, 32f64, 100f64, 101f64, 112f64, 108f64, 111f64, 121f64, 109f64, 101f64, 110f64, 116f64, 32f64, 100f64, 114f64, 97f64, 105f64, 110f64, 105f64, 110f64, 103f64, 45f64, 114f64, 97f64, 110f64, 107f64, 101f64, 100f64, 32f64, 109f64, 97f64, 116f64, 99f64, 104f64, 109f64, 97f64, 107f64, 105f64, 110f64, 103f64, 32f64, 114f64, 101f64, 115f64, 117f64, 109f64, 101f64, 100f64, 58f64, 32f64, 100f64, 101f64, 112f64, 108f64, 111f64, 121f64, 109f64, 101f64, 110f64, 116f64, 32f64, 97f64, 99f64, 116f64, 105f64, 118f64, 101f64] },
+];
+pub const RG_DUMP_LOGS_7: RgScenario = RgScenario {
+    name: "rg_dump_logs_7",
+    ops: RG_DUMP_LOGS_7_OPS,
+};
+
+pub const RG_SCENARIOS: &[RgScenario] = &[
+    RG_SEEDED_TRUE_NO_LOG_0,
+    RG_FLIP_SEQUENCE_1,
+    RG_BUILD_VERSION_COMMIT_2,
+    RG_BUILD_VERSION_DEV_LABEL_3,
+    RG_BUILD_SITE_PRESENT_4,
+    RG_BUILD_SITE_MALFORMED_5,
+    RG_BUILD_SITE_NONE_6,
+    RG_DUMP_LOGS_7,
+];
+
+/// One `server/ClusterCheckin.ts` op (see `cluster_checkin::RigHarness::
+/// run_op` docs). kind 0 reset, 1 scriptEnv, 2 dumpInterval, 3
+/// dumpServerStates, 4 isRefusal, 5 registeredSite, 6 checkinBody,
+/// 7 applyCheckinState. Traced ops prefix [traceLen,(trace)*] with env
+/// reads [72, method, ...codec] and setActive [73, bool].
+pub struct CkOp {
+    pub kind: u8,
+    pub args: &'static [f64],
+    pub res: &'static [f64],
+}
+pub struct CkScenario {
+    pub name: &'static str,
+    pub ops: &'static [CkOp],
+}
+
+const CK_DUMP_INTERVAL_0_OPS: &[CkOp] = &[
+    CkOp { kind: 0, args: &[], res: &[0f64] },
+    CkOp { kind: 2, args: &[], res: &[10000f64] },
+];
+pub const CK_DUMP_INTERVAL_0: CkScenario = CkScenario {
+    name: "ck_dump_interval_0",
+    ops: CK_DUMP_INTERVAL_0_OPS,
+};
+
+const CK_DUMP_SERVER_STATES_1_OPS: &[CkOp] = &[
+    CkOp { kind: 0, args: &[], res: &[0f64] },
+    CkOp { kind: 3, args: &[], res: &[3f64, 4f64, 111f64, 112f64, 101f64, 110f64, 8f64, 100f64, 114f64, 97f64, 105f64, 110f64, 105f64, 110f64, 103f64, 6f64, 102f64, 101f64, 110f64, 99f64, 101f64, 100f64] },
+];
+pub const CK_DUMP_SERVER_STATES_1: CkScenario = CkScenario {
+    name: "ck_dump_server_states_1",
+    ops: CK_DUMP_SERVER_STATES_1_OPS,
+};
+
+const CK_ISREFUSAL_STATES_2_OPS: &[CkOp] = &[
+    CkOp { kind: 0, args: &[], res: &[0f64] },
+    CkOp { kind: 4, args: &[5f64, 4f64, 111f64, 112f64, 101f64, 110f64], res: &[0f64] },
+    CkOp { kind: 4, args: &[5f64, 8f64, 100f64, 114f64, 97f64, 105f64, 110f64, 105f64, 110f64, 103f64], res: &[0f64] },
+    CkOp { kind: 4, args: &[5f64, 6f64, 102f64, 101f64, 110f64, 99f64, 101f64, 100f64], res: &[0f64] },
+    CkOp { kind: 4, args: &[2f64], res: &[0f64] },
+    CkOp { kind: 4, args: &[6f64, 1f64, 7f64, 114f64, 101f64, 102f64, 117f64, 115f64, 101f64, 100f64, 5f64, 15f64, 110f64, 111f64, 32f64, 114f64, 101f64, 97f64, 115f64, 111f64, 110f64, 32f64, 103f64, 105f64, 118f64, 101f64, 110f64], res: &[1f64] },
+    CkOp { kind: 4, args: &[6f64, 1f64, 7f64, 114f64, 101f64, 102f64, 117f64, 115f64, 101f64, 100f64, 5f64, 23f64, 104f64, 111f64, 115f64, 116f64, 32f64, 116f64, 97f64, 107f64, 101f64, 110f64, 32f64, 40f64, 104f64, 111f64, 115f64, 116f64, 58f64, 32f64, 98f64, 46f64, 105f64, 111f64, 41f64], res: &[1f64] },
+];
+pub const CK_ISREFUSAL_STATES_2: CkScenario = CkScenario {
+    name: "ck_isrefusal_states_2",
+    ops: CK_ISREFUSAL_STATES_2_OPS,
+};
+
+const CK_REGISTERED_SITE_HIT_3_OPS: &[CkOp] = &[
+    CkOp { kind: 0, args: &[], res: &[0f64] },
+    CkOp { kind: 1, args: &[5f64, 12f64, 111f64, 112f64, 101f64, 110f64, 102f64, 114f64, 111f64, 110f64, 116f64, 46f64, 105f64, 111f64, 5f64, 17f64, 98f64, 108f64, 117f64, 101f64, 46f64, 111f64, 112f64, 101f64, 110f64, 102f64, 114f64, 111f64, 110f64, 116f64, 46f64, 105f64, 111f64, 1f64, 98f64, 7f64, 99f64, 97f64, 102f64, 101f64, 49f64, 50f64, 51f64, 3f64, 5f64, 5f64, 102f64, 97f64, 108f64, 107f64, 50f64, 0f64], res: &[0f64] },
+    CkOp { kind: 5, args: &[], res: &[16f64, 72f64, 0f64, 5f64, 12f64, 111f64, 112f64, 101f64, 110f64, 102f64, 114f64, 111f64, 110f64, 116f64, 46f64, 105f64, 111f64, 5f64, 12f64, 111f64, 112f64, 101f64, 110f64, 102f64, 114f64, 111f64, 110f64, 116f64, 46f64, 105f64, 111f64] },
+];
+pub const CK_REGISTERED_SITE_HIT_3: CkScenario = CkScenario {
+    name: "ck_registered_site_hit_3",
+    ops: CK_REGISTERED_SITE_HIT_3_OPS,
+};
+
+const CK_REGISTERED_SITE_FALLBACK_4_OPS: &[CkOp] = &[
+    CkOp { kind: 0, args: &[], res: &[0f64] },
+    CkOp { kind: 1, args: &[1f64, 5f64, 25f64, 109f64, 97f64, 105f64, 110f64, 46f64, 115f64, 101f64, 114f64, 118f64, 101f64, 114f64, 46f64, 111f64, 112f64, 101f64, 110f64, 102f64, 114f64, 111f64, 110f64, 116f64, 46f64, 100f64, 101f64, 118f64, 1f64, 97f64, 8f64, 100f64, 101f64, 97f64, 100f64, 98f64, 101f64, 101f64, 102f64, 2f64, 1f64, 0f64], res: &[0f64] },
+    CkOp { kind: 5, args: &[], res: &[32f64, 72f64, 0f64, 1f64, 72f64, 1f64, 5f64, 25f64, 109f64, 97f64, 105f64, 110f64, 46f64, 115f64, 101f64, 114f64, 118f64, 101f64, 114f64, 46f64, 111f64, 112f64, 101f64, 110f64, 102f64, 114f64, 111f64, 110f64, 116f64, 46f64, 100f64, 101f64, 118f64, 5f64, 25f64, 109f64, 97f64, 105f64, 110f64, 46f64, 115f64, 101f64, 114f64, 118f64, 101f64, 114f64, 46f64, 111f64, 112f64, 101f64, 110f64, 102f64, 114f64, 111f64, 110f64, 116f64, 46f64, 100f64, 101f64, 118f64] },
+];
+pub const CK_REGISTERED_SITE_FALLBACK_4: CkScenario = CkScenario {
+    name: "ck_registered_site_fallback_4",
+    ops: CK_REGISTERED_SITE_FALLBACK_4_OPS,
+};
+
+const CK_REGISTERED_SITE_NONE_5_OPS: &[CkOp] = &[
+    CkOp { kind: 0, args: &[], res: &[0f64] },
+    CkOp { kind: 1, args: &[1f64, 1f64, 1f64, 97f64, 7f64, 117f64, 110f64, 107f64, 110f64, 111f64, 119f64, 110f64, 2f64, 1f64, 0f64], res: &[0f64] },
+    CkOp { kind: 5, args: &[], res: &[6f64, 72f64, 0f64, 1f64, 72f64, 1f64, 1f64, 1f64] },
+];
+pub const CK_REGISTERED_SITE_NONE_5: CkScenario = CkScenario {
+    name: "ck_registered_site_none_5",
+    ops: CK_REGISTERED_SITE_NONE_5_OPS,
+};
+
+const CK_REGISTERED_SITE_EMPTY_STRING_6_OPS: &[CkOp] = &[
+    CkOp { kind: 0, args: &[], res: &[0f64] },
+    CkOp { kind: 1, args: &[5f64, 0f64, 5f64, 17f64, 98f64, 108f64, 117f64, 101f64, 46f64, 111f64, 112f64, 101f64, 110f64, 102f64, 114f64, 111f64, 110f64, 116f64, 46f64, 105f64, 111f64, 1f64, 97f64, 7f64, 99f64, 97f64, 102f64, 101f64, 49f64, 50f64, 51f64, 2f64, 1f64, 0f64], res: &[0f64] },
+    CkOp { kind: 5, args: &[], res: &[4f64, 72f64, 0f64, 5f64, 0f64, 5f64, 0f64] },
+];
+pub const CK_REGISTERED_SITE_EMPTY_STRING_6: CkScenario = CkScenario {
+    name: "ck_registered_site_empty_string_6",
+    ops: CK_REGISTERED_SITE_EMPTY_STRING_6_OPS,
+};
+
+const CK_CHECKIN_BODY_NULL_HOST_7_OPS: &[CkOp] = &[
+    CkOp { kind: 0, args: &[], res: &[0f64] },
+    CkOp { kind: 1, args: &[1f64, 1f64, 1f64, 97f64, 7f64, 117f64, 110f64, 107f64, 110f64, 111f64, 119f64, 110f64, 2f64, 5f64, 5f64, 102f64, 97f64, 108f64, 107f64, 50f64, 0f64], res: &[0f64] },
+    CkOp { kind: 6, args: &[5f64], res: &[3f64, 72f64, 1f64, 1f64, 2f64] },
+];
+pub const CK_CHECKIN_BODY_NULL_HOST_7: CkScenario = CkScenario {
+    name: "ck_checkin_body_null_host_7",
+    ops: CK_CHECKIN_BODY_NULL_HOST_7_OPS,
+};
+
+const CK_CHECKIN_BODY_SITE_HOST_FULL_8_OPS: &[CkOp] = &[
+    CkOp { kind: 0, args: &[], res: &[0f64] },
+    CkOp { kind: 1, args: &[5f64, 12f64, 111f64, 112f64, 101f64, 110f64, 102f64, 114f64, 111f64, 110f64, 116f64, 46f64, 105f64, 111f64, 5f64, 17f64, 98f64, 108f64, 117f64, 101f64, 46f64, 111f64, 112f64, 101f64, 110f64, 102f64, 114f64, 111f64, 110f64, 116f64, 46f64, 105f64, 111f64, 1f64, 98f64, 7f64, 99f64, 97f64, 102f64, 101f64, 49f64, 50f64, 51f64, 3f64, 5f64, 5f64, 102f64, 97f64, 108f64, 107f64, 50f64, 0f64], res: &[0f64] },
+    CkOp { kind: 6, args: &[42f64], res: &[66f64, 72f64, 1f64, 5f64, 17f64, 98f64, 108f64, 117f64, 101f64, 46f64, 111f64, 112f64, 101f64, 110f64, 102f64, 114f64, 111f64, 110f64, 116f64, 46f64, 105f64, 111f64, 72f64, 5f64, 5f64, 5f64, 102f64, 97f64, 108f64, 107f64, 50f64, 72f64, 0f64, 5f64, 12f64, 111f64, 112f64, 101f64, 110f64, 102f64, 114f64, 111f64, 110f64, 116f64, 46f64, 105f64, 111f64, 72f64, 2f64, 5f64, 1f64, 98f64, 72f64, 3f64, 5f64, 7f64, 99f64, 97f64, 102f64, 101f64, 49f64, 50f64, 51f64, 72f64, 4f64, 3f64, 3f64, 6f64, 7f64, 4f64, 115f64, 105f64, 116f64, 101f64, 5f64, 12f64, 111f64, 112f64, 101f64, 110f64, 102f64, 114f64, 111f64, 110f64, 116f64, 46f64, 105f64, 111f64, 6f64, 108f64, 101f64, 116f64, 116f64, 101f64, 114f64, 5f64, 1f64, 98f64, 4f64, 104f64, 111f64, 115f64, 116f64, 5f64, 17f64, 98f64, 108f64, 117f64, 101f64, 46f64, 111f64, 112f64, 101f64, 110f64, 102f64, 114f64, 111f64, 110f64, 116f64, 46f64, 105f64, 111f64, 7f64, 118f64, 101f64, 114f64, 115f64, 105f64, 111f64, 110f64, 5f64, 7f64, 99f64, 97f64, 102f64, 101f64, 49f64, 50f64, 51f64, 10f64, 110f64, 117f64, 109f64, 87f64, 111f64, 114f64, 107f64, 101f64, 114f64, 115f64, 3f64, 3f64, 9f64, 108f64, 105f64, 118f64, 101f64, 71f64, 97f64, 109f64, 101f64, 115f64, 3f64, 42f64, 7f64, 109f64, 97f64, 99f64, 104f64, 105f64, 110f64, 101f64, 5f64, 5f64, 102f64, 97f64, 108f64, 107f64, 50f64] },
+];
+pub const CK_CHECKIN_BODY_SITE_HOST_FULL_8: CkScenario = CkScenario {
+    name: "ck_checkin_body_site_host_full_8",
+    ops: CK_CHECKIN_BODY_SITE_HOST_FULL_8_OPS,
+};
+
+const CK_CHECKIN_BODY_NO_MACHINE_9_OPS: &[CkOp] = &[
+    CkOp { kind: 0, args: &[], res: &[0f64] },
+    CkOp { kind: 1, args: &[1f64, 5f64, 18f64, 109f64, 97f64, 105f64, 110f64, 46f64, 111f64, 112f64, 101f64, 110f64, 102f64, 114f64, 111f64, 110f64, 116f64, 46f64, 100f64, 101f64, 118f64, 1f64, 97f64, 12f64, 100f64, 101f64, 97f64, 100f64, 98f64, 101f64, 101f64, 102f64, 99f64, 97f64, 102f64, 101f64, 2f64, 1f64, 0f64], res: &[0f64] },
+    CkOp { kind: 6, args: &[0f64], res: &[75f64, 72f64, 1f64, 5f64, 18f64, 109f64, 97f64, 105f64, 110f64, 46f64, 111f64, 112f64, 101f64, 110f64, 102f64, 114f64, 111f64, 110f64, 116f64, 46f64, 100f64, 101f64, 118f64, 72f64, 5f64, 1f64, 72f64, 0f64, 1f64, 72f64, 1f64, 5f64, 18f64, 109f64, 97f64, 105f64, 110f64, 46f64, 111f64, 112f64, 101f64, 110f64, 102f64, 114f64, 111f64, 110f64, 116f64, 46f64, 100f64, 101f64, 118f64, 72f64, 2f64, 5f64, 1f64, 97f64, 72f64, 3f64, 5f64, 12f64, 100f64, 101f64, 97f64, 100f64, 98f64, 101f64, 101f64, 102f64, 99f64, 97f64, 102f64, 101f64, 72f64, 4f64, 3f64, 2f64, 6f64, 6f64, 4f64, 115f64, 105f64, 116f64, 101f64, 5f64, 18f64, 109f64, 97f64, 105f64, 110f64, 46f64, 111f64, 112f64, 101f64, 110f64, 102f64, 114f64, 111f64, 110f64, 116f64, 46f64, 100f64, 101f64, 118f64, 6f64, 108f64, 101f64, 116f64, 116f64, 101f64, 114f64, 5f64, 1f64, 97f64, 4f64, 104f64, 111f64, 115f64, 116f64, 5f64, 18f64, 109f64, 97f64, 105f64, 110f64, 46f64, 111f64, 112f64, 101f64, 110f64, 102f64, 114f64, 111f64, 110f64, 116f64, 46f64, 100f64, 101f64, 118f64, 7f64, 118f64, 101f64, 114f64, 115f64, 105f64, 111f64, 110f64, 5f64, 12f64, 100f64, 101f64, 97f64, 100f64, 98f64, 101f64, 101f64, 102f64, 99f64, 97f64, 102f64, 101f64, 10f64, 110f64, 117f64, 109f64, 87f64, 111f64, 114f64, 107f64, 101f64, 114f64, 115f64, 3f64, 2f64, 9f64, 108f64, 105f64, 118f64, 101f64, 71f64, 97f64, 109f64, 101f64, 115f64, 3f64, 0f64] },
+];
+pub const CK_CHECKIN_BODY_NO_MACHINE_9: CkScenario = CkScenario {
+    name: "ck_checkin_body_no_machine_9",
+    ops: CK_CHECKIN_BODY_NO_MACHINE_9_OPS,
+};
+
+const CK_APPLY_NULL_NO_SETACTIVE_10_OPS: &[CkOp] = &[
+    CkOp { kind: 0, args: &[], res: &[0f64] },
+    CkOp { kind: 7, args: &[2f64], res: &[0f64, 0f64] },
+];
+pub const CK_APPLY_NULL_NO_SETACTIVE_10: CkScenario = CkScenario {
+    name: "ck_apply_null_no_setactive_10",
+    ops: CK_APPLY_NULL_NO_SETACTIVE_10_OPS,
+};
+
+const CK_APPLY_STATES_11_OPS: &[CkOp] = &[
+    CkOp { kind: 0, args: &[], res: &[0f64] },
+    CkOp { kind: 7, args: &[5f64, 4f64, 111f64, 112f64, 101f64, 110f64], res: &[2f64, 73f64, 1f64, 0f64] },
+    CkOp { kind: 7, args: &[5f64, 8f64, 100f64, 114f64, 97f64, 105f64, 110f64, 105f64, 110f64, 103f64], res: &[2f64, 73f64, 0f64, 0f64] },
+    CkOp { kind: 7, args: &[5f64, 6f64, 102f64, 101f64, 110f64, 99f64, 101f64, 100f64], res: &[2f64, 73f64, 0f64, 0f64] },
+    CkOp { kind: 7, args: &[6f64, 1f64, 7f64, 114f64, 101f64, 102f64, 117f64, 115f64, 101f64, 100f64, 5f64, 1f64, 120f64], res: &[2f64, 73f64, 0f64, 0f64] },
+];
+pub const CK_APPLY_STATES_11: CkScenario = CkScenario {
+    name: "ck_apply_states_11",
+    ops: CK_APPLY_STATES_11_OPS,
+};
+
+pub const CK_SCENARIOS: &[CkScenario] = &[
+    CK_DUMP_INTERVAL_0,
+    CK_DUMP_SERVER_STATES_1,
+    CK_ISREFUSAL_STATES_2,
+    CK_REGISTERED_SITE_HIT_3,
+    CK_REGISTERED_SITE_FALLBACK_4,
+    CK_REGISTERED_SITE_NONE_5,
+    CK_REGISTERED_SITE_EMPTY_STRING_6,
+    CK_CHECKIN_BODY_NULL_HOST_7,
+    CK_CHECKIN_BODY_SITE_HOST_FULL_8,
+    CK_CHECKIN_BODY_NO_MACHINE_9,
+    CK_APPLY_NULL_NO_SETACTIVE_10,
+    CK_APPLY_STATES_11,
+];
+
+/// One `server/GameApiCors.ts` / `NoStoreHeaders.ts` op (see
+/// `game_api_cors::RigHarness::run_op` docs). kind 0 reset, 1 scriptEnv
+/// (cors slice), 2 dumpDesktopOrigin, 3 isAllowedOrigin, 4
+/// applyCorsHeaders, 5 setNoStoreHeaders. setHeader events are
+/// [71, ...codec(name), ...codec(value)], env reads [72, method,
+/// ...codec] (pageHostFor 6-form carries the host argument).
+pub struct HdOp {
+    pub kind: u8,
+    pub args: &'static [f64],
+    pub res: &'static [f64],
+}
+pub struct HdScenario {
+    pub name: &'static str,
+    pub ops: &'static [HdOp],
+}
+
+const HD_DUMP_DESKTOP_ORIGIN_0_OPS: &[HdOp] = &[
+    HdOp { kind: 0, args: &[], res: &[0f64] },
+    HdOp { kind: 2, args: &[], res: &[15f64, 97f64, 112f64, 112f64, 58f64, 47f64, 47f64, 111f64, 112f64, 101f64, 110f64, 102f64, 114f64, 111f64, 110f64, 116f64] },
+];
+pub const HD_DUMP_DESKTOP_ORIGIN_0: HdScenario = HdScenario {
+    name: "hd_dump_desktop_origin_0",
+    ops: HD_DUMP_DESKTOP_ORIGIN_0_OPS,
+};
+
+const HD_DESKTOP_SHORTCIRCUIT_1_OPS: &[HdOp] = &[
+    HdOp { kind: 0, args: &[], res: &[0f64] },
+    HdOp { kind: 1, args: &[5f64, 12f64, 111f64, 112f64, 101f64, 110f64, 102f64, 114f64, 111f64, 110f64, 116f64, 46f64, 105f64, 111f64, 5f64, 17f64, 98f64, 108f64, 117f64, 101f64, 46f64, 111f64, 112f64, 101f64, 110f64, 102f64, 114f64, 111f64, 110f64, 116f64, 46f64, 105f64, 111f64, 0f64], res: &[0f64] },
+    HdOp { kind: 3, args: &[15f64, 97f64, 112f64, 112f64, 58f64, 47f64, 47f64, 111f64, 112f64, 101f64, 110f64, 102f64, 114f64, 111f64, 110f64, 116f64], res: &[0f64, 1f64] },
+];
+pub const HD_DESKTOP_SHORTCIRCUIT_1: HdScenario = HdScenario {
+    name: "hd_desktop_shortcircuit_1",
+    ops: HD_DESKTOP_SHORTCIRCUIT_1_OPS,
+};
+
+const HD_SITEHOST_HIT_2_OPS: &[HdOp] = &[
+    HdOp { kind: 0, args: &[], res: &[0f64] },
+    HdOp { kind: 1, args: &[5f64, 12f64, 111f64, 112f64, 101f64, 110f64, 102f64, 114f64, 111f64, 110f64, 116f64, 46f64, 105f64, 111f64, 1f64, 0f64], res: &[0f64] },
+    HdOp { kind: 3, args: &[20f64, 104f64, 116f64, 116f64, 112f64, 115f64, 58f64, 47f64, 47f64, 111f64, 112f64, 101f64, 110f64, 102f64, 114f64, 111f64, 110f64, 116f64, 46f64, 105f64, 111f64], res: &[16f64, 72f64, 0f64, 5f64, 12f64, 111f64, 112f64, 101f64, 110f64, 102f64, 114f64, 111f64, 110f64, 116f64, 46f64, 105f64, 111f64, 1f64] },
+];
+pub const HD_SITEHOST_HIT_2: HdScenario = HdScenario {
+    name: "hd_sitehost_hit_2",
+    ops: HD_SITEHOST_HIT_2_OPS,
+};
+
+const HD_OWN_UNDEFINED_FALSE_3_OPS: &[HdOp] = &[
+    HdOp { kind: 0, args: &[], res: &[0f64] },
+    HdOp { kind: 1, args: &[1f64, 1f64, 0f64], res: &[0f64] },
+    HdOp { kind: 3, args: &[12f64, 104f64, 116f64, 116f64, 112f64, 115f64, 58f64, 47f64, 47f64, 120f64, 46f64, 105f64, 111f64], res: &[6f64, 72f64, 0f64, 1f64, 72f64, 1f64, 1f64, 0f64] },
+];
+pub const HD_OWN_UNDEFINED_FALSE_3: HdScenario = HdScenario {
+    name: "hd_own_undefined_false_3",
+    ops: HD_OWN_UNDEFINED_FALSE_3_OPS,
+};
+
+const HD_OWN_HOST_HIT_4_OPS: &[HdOp] = &[
+    HdOp { kind: 0, args: &[], res: &[0f64] },
+    HdOp { kind: 1, args: &[1f64, 5f64, 17f64, 98f64, 108f64, 117f64, 101f64, 46f64, 111f64, 112f64, 101f64, 110f64, 102f64, 114f64, 111f64, 110f64, 116f64, 46f64, 105f64, 111f64, 0f64], res: &[0f64] },
+    HdOp { kind: 3, args: &[25f64, 104f64, 116f64, 116f64, 112f64, 115f64, 58f64, 47f64, 47f64, 98f64, 108f64, 117f64, 101f64, 46f64, 111f64, 112f64, 101f64, 110f64, 102f64, 114f64, 111f64, 110f64, 116f64, 46f64, 105f64, 111f64], res: &[24f64, 72f64, 0f64, 1f64, 72f64, 1f64, 5f64, 17f64, 98f64, 108f64, 117f64, 101f64, 46f64, 111f64, 112f64, 101f64, 110f64, 102f64, 114f64, 111f64, 110f64, 116f64, 46f64, 105f64, 111f64, 1f64] },
+];
+pub const HD_OWN_HOST_HIT_4: HdScenario = HdScenario {
+    name: "hd_own_host_hit_4",
+    ops: HD_OWN_HOST_HIT_4_OPS,
+};
+
+const HD_PAGE_HOST_HIT_5_OPS: &[HdOp] = &[
+    HdOp { kind: 0, args: &[], res: &[0f64] },
+    HdOp { kind: 1, args: &[1f64, 5f64, 25f64, 109f64, 97f64, 105f64, 110f64, 46f64, 115f64, 101f64, 114f64, 118f64, 101f64, 114f64, 46f64, 111f64, 112f64, 101f64, 110f64, 102f64, 114f64, 111f64, 110f64, 116f64, 46f64, 100f64, 101f64, 118f64, 1f64, 25f64, 109f64, 97f64, 105f64, 110f64, 46f64, 115f64, 101f64, 114f64, 118f64, 101f64, 114f64, 46f64, 111f64, 112f64, 101f64, 110f64, 102f64, 114f64, 111f64, 110f64, 116f64, 46f64, 100f64, 101f64, 118f64, 5f64, 18f64, 109f64, 97f64, 105f64, 110f64, 46f64, 111f64, 112f64, 101f64, 110f64, 102f64, 114f64, 111f64, 110f64, 116f64, 46f64, 100f64, 101f64, 118f64], res: &[0f64] },
+    HdOp { kind: 3, args: &[26f64, 104f64, 116f64, 116f64, 112f64, 115f64, 58f64, 47f64, 47f64, 109f64, 97f64, 105f64, 110f64, 46f64, 111f64, 112f64, 101f64, 110f64, 102f64, 114f64, 111f64, 110f64, 116f64, 46f64, 100f64, 101f64, 118f64], res: &[80f64, 72f64, 0f64, 1f64, 72f64, 1f64, 5f64, 25f64, 109f64, 97f64, 105f64, 110f64, 46f64, 115f64, 101f64, 114f64, 118f64, 101f64, 114f64, 46f64, 111f64, 112f64, 101f64, 110f64, 102f64, 114f64, 111f64, 110f64, 116f64, 46f64, 100f64, 101f64, 118f64, 72f64, 6f64, 25f64, 109f64, 97f64, 105f64, 110f64, 46f64, 115f64, 101f64, 114f64, 118f64, 101f64, 114f64, 46f64, 111f64, 112f64, 101f64, 110f64, 102f64, 114f64, 111f64, 110f64, 116f64, 46f64, 100f64, 101f64, 118f64, 5f64, 18f64, 109f64, 97f64, 105f64, 110f64, 46f64, 111f64, 112f64, 101f64, 110f64, 102f64, 114f64, 111f64, 110f64, 116f64, 46f64, 100f64, 101f64, 118f64, 1f64] },
+];
+pub const HD_PAGE_HOST_HIT_5: HdScenario = HdScenario {
+    name: "hd_page_host_hit_5",
+    ops: HD_PAGE_HOST_HIT_5_OPS,
+};
+
+const HD_ALL_MISS_6_OPS: &[HdOp] = &[
+    HdOp { kind: 0, args: &[], res: &[0f64] },
+    HdOp { kind: 1, args: &[5f64, 4f64, 115f64, 46f64, 105f64, 111f64, 5f64, 4f64, 103f64, 46f64, 105f64, 111f64, 1f64, 4f64, 103f64, 46f64, 105f64, 111f64, 5f64, 4f64, 112f64, 46f64, 105f64, 111f64], res: &[0f64] },
+    HdOp { kind: 3, args: &[20f64, 104f64, 116f64, 116f64, 112f64, 115f64, 58f64, 47f64, 47f64, 101f64, 118f64, 105f64, 108f64, 46f64, 101f64, 120f64, 97f64, 109f64, 112f64, 108f64, 101f64], res: &[29f64, 72f64, 0f64, 5f64, 4f64, 115f64, 46f64, 105f64, 111f64, 72f64, 1f64, 5f64, 4f64, 103f64, 46f64, 105f64, 111f64, 72f64, 6f64, 4f64, 103f64, 46f64, 105f64, 111f64, 5f64, 4f64, 112f64, 46f64, 105f64, 111f64, 0f64] },
+];
+pub const HD_ALL_MISS_6: HdScenario = HdScenario {
+    name: "hd_all_miss_6",
+    ops: HD_ALL_MISS_6_OPS,
+};
+
+const HD_CORS_UNDEFINED_ORIGIN_7_OPS: &[HdOp] = &[
+    HdOp { kind: 0, args: &[], res: &[0f64] },
+    HdOp { kind: 1, args: &[5f64, 4f64, 115f64, 46f64, 105f64, 111f64, 5f64, 4f64, 103f64, 46f64, 105f64, 111f64, 0f64], res: &[0f64] },
+    HdOp { kind: 4, args: &[1f64], res: &[13f64, 71f64, 4f64, 86f64, 97f64, 114f64, 121f64, 6f64, 79f64, 114f64, 105f64, 103f64, 105f64, 110f64, 0f64] },
+];
+pub const HD_CORS_UNDEFINED_ORIGIN_7: HdScenario = HdScenario {
+    name: "hd_cors_undefined_origin_7",
+    ops: HD_CORS_UNDEFINED_ORIGIN_7_OPS,
+};
+
+const HD_CORS_EMPTY_ORIGIN_8_OPS: &[HdOp] = &[
+    HdOp { kind: 0, args: &[], res: &[0f64] },
+    HdOp { kind: 1, args: &[1f64, 1f64, 0f64], res: &[0f64] },
+    HdOp { kind: 4, args: &[5f64, 0f64], res: &[19f64, 71f64, 4f64, 86f64, 97f64, 114f64, 121f64, 6f64, 79f64, 114f64, 105f64, 103f64, 105f64, 110f64, 72f64, 0f64, 1f64, 72f64, 1f64, 1f64, 0f64] },
+];
+pub const HD_CORS_EMPTY_ORIGIN_8: HdScenario = HdScenario {
+    name: "hd_cors_empty_origin_8",
+    ops: HD_CORS_EMPTY_ORIGIN_8_OPS,
+};
+
+const HD_CORS_ALLOWED_9_OPS: &[HdOp] = &[
+    HdOp { kind: 0, args: &[], res: &[0f64] },
+    HdOp { kind: 1, args: &[5f64, 12f64, 111f64, 112f64, 101f64, 110f64, 102f64, 114f64, 111f64, 110f64, 116f64, 46f64, 105f64, 111f64, 1f64, 0f64], res: &[0f64] },
+    HdOp { kind: 4, args: &[5f64, 20f64, 104f64, 116f64, 116f64, 112f64, 115f64, 58f64, 47f64, 47f64, 111f64, 112f64, 101f64, 110f64, 102f64, 114f64, 111f64, 110f64, 116f64, 46f64, 105f64, 111f64], res: &[216f64, 71f64, 4f64, 86f64, 97f64, 114f64, 121f64, 6f64, 79f64, 114f64, 105f64, 103f64, 105f64, 110f64, 72f64, 0f64, 5f64, 12f64, 111f64, 112f64, 101f64, 110f64, 102f64, 114f64, 111f64, 110f64, 116f64, 46f64, 105f64, 111f64, 71f64, 27f64, 65f64, 99f64, 99f64, 101f64, 115f64, 115f64, 45f64, 67f64, 111f64, 110f64, 116f64, 114f64, 111f64, 108f64, 45f64, 65f64, 108f64, 108f64, 111f64, 119f64, 45f64, 79f64, 114f64, 105f64, 103f64, 105f64, 110f64, 20f64, 104f64, 116f64, 116f64, 112f64, 115f64, 58f64, 47f64, 47f64, 111f64, 112f64, 101f64, 110f64, 102f64, 114f64, 111f64, 110f64, 116f64, 46f64, 105f64, 111f64, 71f64, 28f64, 65f64, 99f64, 99f64, 101f64, 115f64, 115f64, 45f64, 67f64, 111f64, 110f64, 116f64, 114f64, 111f64, 108f64, 45f64, 65f64, 108f64, 108f64, 111f64, 119f64, 45f64, 77f64, 101f64, 116f64, 104f64, 111f64, 100f64, 115f64, 18f64, 71f64, 69f64, 84f64, 44f64, 32f64, 80f64, 79f64, 83f64, 84f64, 44f64, 32f64, 79f64, 80f64, 84f64, 73f64, 79f64, 78f64, 83f64, 71f64, 28f64, 65f64, 99f64, 99f64, 101f64, 115f64, 115f64, 45f64, 67f64, 111f64, 110f64, 116f64, 114f64, 111f64, 108f64, 45f64, 65f64, 108f64, 108f64, 111f64, 119f64, 45f64, 72f64, 101f64, 97f64, 100f64, 101f64, 114f64, 115f64, 27f64, 65f64, 117f64, 116f64, 104f64, 111f64, 114f64, 105f64, 122f64, 97f64, 116f64, 105f64, 111f64, 110f64, 44f64, 32f64, 67f64, 111f64, 110f64, 116f64, 101f64, 110f64, 116f64, 45f64, 84f64, 121f64, 112f64, 101f64, 71f64, 22f64, 65f64, 99f64, 99f64, 101f64, 115f64, 115f64, 45f64, 67f64, 111f64, 110f64, 116f64, 114f64, 111f64, 108f64, 45f64, 77f64, 97f64, 120f64, 45f64, 65f64, 103f64, 101f64, 5f64, 56f64, 54f64, 52f64, 48f64, 48f64, 0f64] },
+];
+pub const HD_CORS_ALLOWED_9: HdScenario = HdScenario {
+    name: "hd_cors_allowed_9",
+    ops: HD_CORS_ALLOWED_9_OPS,
+};
+
+const HD_CORS_DENIED_10_OPS: &[HdOp] = &[
+    HdOp { kind: 0, args: &[], res: &[0f64] },
+    HdOp { kind: 1, args: &[5f64, 12f64, 111f64, 112f64, 101f64, 110f64, 102f64, 114f64, 111f64, 110f64, 116f64, 46f64, 105f64, 111f64, 5f64, 17f64, 98f64, 108f64, 117f64, 101f64, 46f64, 111f64, 112f64, 101f64, 110f64, 102f64, 114f64, 111f64, 110f64, 116f64, 46f64, 105f64, 111f64, 0f64], res: &[0f64] },
+    HdOp { kind: 4, args: &[5f64, 20f64, 104f64, 116f64, 116f64, 112f64, 115f64, 58f64, 47f64, 47f64, 101f64, 118f64, 105f64, 108f64, 46f64, 101f64, 120f64, 97f64, 109f64, 112f64, 108f64, 101f64], res: &[71f64, 71f64, 4f64, 86f64, 97f64, 114f64, 121f64, 6f64, 79f64, 114f64, 105f64, 103f64, 105f64, 110f64, 72f64, 0f64, 5f64, 12f64, 111f64, 112f64, 101f64, 110f64, 102f64, 114f64, 111f64, 110f64, 116f64, 46f64, 105f64, 111f64, 72f64, 1f64, 5f64, 17f64, 98f64, 108f64, 117f64, 101f64, 46f64, 111f64, 112f64, 101f64, 110f64, 102f64, 114f64, 111f64, 110f64, 116f64, 46f64, 105f64, 111f64, 72f64, 6f64, 17f64, 98f64, 108f64, 117f64, 101f64, 46f64, 111f64, 112f64, 101f64, 110f64, 102f64, 114f64, 111f64, 110f64, 116f64, 46f64, 105f64, 111f64, 1f64, 0f64] },
+];
+pub const HD_CORS_DENIED_10: HdScenario = HdScenario {
+    name: "hd_cors_denied_10",
+    ops: HD_CORS_DENIED_10_OPS,
+};
+
+const HD_NO_STORE_HEADERS_11_OPS: &[HdOp] = &[
+    HdOp { kind: 0, args: &[], res: &[0f64] },
+    HdOp { kind: 5, args: &[], res: &[97f64, 71f64, 13f64, 67f64, 97f64, 99f64, 104f64, 101f64, 45f64, 67f64, 111f64, 110f64, 116f64, 114f64, 111f64, 108f64, 53f64, 110f64, 111f64, 45f64, 115f64, 116f64, 111f64, 114f64, 101f64, 44f64, 32f64, 110f64, 111f64, 45f64, 99f64, 97f64, 99f64, 104f64, 101f64, 44f64, 32f64, 109f64, 117f64, 115f64, 116f64, 45f64, 114f64, 101f64, 118f64, 97f64, 108f64, 105f64, 100f64, 97f64, 116f64, 101f64, 44f64, 32f64, 112f64, 114f64, 111f64, 120f64, 121f64, 45f64, 114f64, 101f64, 118f64, 97f64, 108f64, 105f64, 100f64, 97f64, 116f64, 101f64, 71f64, 6f64, 80f64, 114f64, 97f64, 103f64, 109f64, 97f64, 8f64, 110f64, 111f64, 45f64, 99f64, 97f64, 99f64, 104f64, 101f64, 71f64, 7f64, 69f64, 120f64, 112f64, 105f64, 114f64, 101f64, 115f64, 1f64, 48f64, 0f64] },
+];
+pub const HD_NO_STORE_HEADERS_11: HdScenario = HdScenario {
+    name: "hd_no_store_headers_11",
+    ops: HD_NO_STORE_HEADERS_11_OPS,
+};
+
+pub const HD_SCENARIOS: &[HdScenario] = &[
+    HD_DUMP_DESKTOP_ORIGIN_0,
+    HD_DESKTOP_SHORTCIRCUIT_1,
+    HD_SITEHOST_HIT_2,
+    HD_OWN_UNDEFINED_FALSE_3,
+    HD_OWN_HOST_HIT_4,
+    HD_PAGE_HOST_HIT_5,
+    HD_ALL_MISS_6,
+    HD_CORS_UNDEFINED_ORIGIN_7,
+    HD_CORS_EMPTY_ORIGIN_8,
+    HD_CORS_ALLOWED_9,
+    HD_CORS_DENIED_10,
+    HD_NO_STORE_HEADERS_11,
+];
+

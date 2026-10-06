@@ -199,6 +199,15 @@ rust/
 │   │   ├── match_telemetry.rs     port of server/MatchTelemetryRecorder.ts
 │   │   │                          (recorder + identityFor; Date.now / emitter
 │   │   │                          scripted, event trace 60)
+│   │   ├── ranked_checkin_gate.rs port of server/RankedCheckin.ts (gate +
+│   │   │                          buildVersionField/buildSiteField subset;
+│   │   │                          isActive/log scripted, env trace 72)
+│   │   ├── cluster_checkin.rs     port of server/ClusterCheckin.ts (pure
+│   │   │                          subset; ServerEnv scripted facade, setActive
+│   │   │                          trace 73)
+│   │   ├── game_api_cors.rs       port of server/GameApiCors.ts +
+│   │   │                          server/NoStoreHeaders.ts (setHeader facade
+│   │   │                          trace 71, env trace 72)
 │   │   ├── wasm_probe.rs          `extern "C"` surface, feature-gated
 │   │   └── pathfinding/
 │   │       ├── mod.rs
@@ -1440,6 +1449,45 @@ WebSockets — stays excluded, mirroring the `src/core` exclusions).
     as BOTH `serverTick` and `payload.totalTurns`; `observedAt` is read AFTER
     the sequence increment; tick counts key through `NumMap` (+0/-0 collapse,
     NaN by bits). 36 scenarios (`pv_` 16, `rs_` 12, `mt_` 8).
+64. **`server/RankedCheckin.ts` + `server/ClusterCheckin.ts` +
+    `server/GameApiCors.ts` + `server/NoStoreHeaders.ts`**
+    (`ranked_checkin_gate`, `cluster_checkin`, `game_api_cors`) — the S7
+    small-decision cluster. `RankedCheckinGate` ports the flip latch
+    (`lastActive` SEEDED `true` — the first active pass logs nothing; a flip
+    traces the verbatim PAUSED/RESUMED line as `[70, ...codec(msg)]` and
+    `shouldCheckIn` returns the FRESH active, never latched) plus
+    `buildVersionField` (`isCommitLike ? {version: commit.toLowerCase()} : {}`
+    — the `{}` branch is the ABSENT-key literal) and `buildSiteField`
+    (`site !== undefined && isSiteLike(site) ? {site} : {}`).
+    `ClusterCheckin` ports `isRefusal` (`typeof result === "object" &&
+    result !== null` — strings/null false, objects/arrays true),
+    `registeredSite` (`siteHost() ?? publicHost()` — the `??` fires ONLY for
+    null/undefined, a siteHost hit reads publicHost ZERO times), `checkinBody`
+    (evaluation order publicHost → machine → site (registeredSite: siteHost,
+    then a SECOND publicHost read when siteHost is undefined) → letter →
+    version → numWorkers; key insertion order
+    site,letter,host,version,numWorkers,liveGames,(machine?) with the
+    conditional spread appending `machine` LAST only when `machine !==
+    undefined` STRICT; `host === undefined` STRICT → `null`) and
+    `applyCheckinState` (`result === null` STRICT return — `undefined` falls
+    THROUGH to `setActive(false)`; only the exact `"open"` string is true).
+    `GameApiCors` ports `isAllowedOrigin` (five-gate chain: desktop hit =
+    ZERO env reads; the strict `!== undefined` gates with the
+    `https://${host}` template compares; `own === undefined` ends the chain
+    false BEFORE pageHostFor) and `applyGameApiCorsHeaders` (`Vary` ALWAYS
+    first; `requestOrigin === undefined` short-circuits before the gate
+    chain, the empty string walks it; a grant adds the four verbatim
+    Access-Control-* headers, deliberately NO Allow-Credentials).
+    `NoStoreHeaders.setNoStoreHeaders` is the three verbatim cache-killer
+    headers. `ServerEnv` rides as the shared scripted facade
+    (`globalThis.__CK_ENV`, every read `[72, method, ...codec]`, pageHostFor
+    carrying the host arg); `setHeader` traces `[71, ...codec(name),
+    ...codec(value)]`, `setActive` `[73, bool]`, `log.info` `[70,
+    ...codec(msg)]`. zod is erased (the functional-enum shim keeps
+    `ServerStateSchema.options` dumpable); `sendCheckin` / `rankedCheckinPass`
+    / `startRankedCheckinLoops` / the express middleware are EXCLUDED
+    (fetch / GameManager / Math.random / req-res-next). 32 scenarios
+    (`ck_` 12, `rg_` 8, `hd_` 12).
 
 Regenerate whenever a ported source changes:
 
@@ -1473,7 +1521,7 @@ node rust/tools/run_wasm_parity.mjs
 
 `wasm-probe` exposes the ported functions through `extern "C"` scalar
 entrypoints (`src/wasm_probe.rs`); the runner imports `data/vectors.json` and
-compares every value. Last run: **285,710 comparisons, all bit-identical**.
+compares every value. Last run: **287,237 comparisons, all bit-identical**.
 
 ### Windows: the linker environment
 

@@ -3091,6 +3091,151 @@ function prepare(rel) {
     );
   }
 
+  if (rel.endsWith("server/ClusterCheckin.ts")) {
+    // S7: zod keeps the functional-enum branch (precedent: core/Schemas.ts)
+    // so `ServerStateSchema.options` — the real z.enum literal array the
+    // capture dumps — still evaluates; every other chain (z.object for the
+    // two wire schemas) falls through to the inert Proxy. The ServerEnv
+    // import becomes the shared __CK_ENV facade global (set by the capture
+    // BEFORE loading; every read is a [72, method, ...codec] trace event).
+    // sendCheckin (fetch / AbortSignal.timeout / zod safeParse) stays in the
+    // file but is never called (its unresolved identifiers sit in a dead
+    // body; strip mode is syntax-only).
+    out = must(
+      out,
+      'import { z } from "zod";\n',
+      "const z = new Proxy(function () {}, {\n" +
+        "  get: (_t, k) => {\n" +
+        "    if (k === \"enum\") {\n" +
+        "      return (a) => {\n" +
+        "        const base = {\n" +
+        "          options: a,\n" +
+        "          exclude: (b) => ({ options: a.filter((o) => !b.includes(o)) }),\n" +
+        "        };\n" +
+        "        return new Proxy(base, { get: (t, kk) => (kk in t ? t[kk] : z), apply: () => z });\n" +
+        "      };\n" +
+        "    }\n" +
+        "    return z;\n" +
+        "  },\n" +
+        "  apply: () => z,\n" +
+        "});\n",
+      "ClusterCheckin zod import",
+    );
+    out = must(
+      out,
+      'import { ServerEnv } from "./ServerEnv";\n',
+      "const ServerEnv = globalThis.__CK_ENV;\n",
+      "ClusterCheckin ServerEnv import",
+    );
+  }
+
+  if (rel.endsWith("server/RankedCheckin.ts")) {
+    // S7: the pure-decision subset. `import type winston` / the GameManager /
+    // MapPlaylist type imports are erased by strip mode. zod takes the same
+    // functional-enum shim as ClusterCheckin so MatchmakingAssignmentSchema
+    // (a module-level z.object) evaluates inertly. The ServerList /
+    // ClusterCheckin value imports ride on the prepared copies (registeredSite
+    // is the real TS call edge the Rust port mirrors). startPolling is only
+    // referenced inside the excluded startRankedCheckinLoops body -> drop the
+    // import (dead body, strip mode is syntax-only). The ctor's parameter
+    // properties are expanded (strip mode rejects them, precedent: Privilege).
+    // buildVersionField / buildSiteField are module-private -> exported so
+    // the capture can exercise them (precedent: ServerList pathNamesGame).
+    const rcSlRel = "src/core/ServerList.ts";
+    if (!prepared.has(rcSlRel)) prepare(rcSlRel);
+    const rcCcRel = "src/server/ClusterCheckin.ts";
+    if (!prepared.has(rcCcRel)) prepare(rcCcRel);
+    out = must(
+      out,
+      'import { z } from "zod";\n' +
+        'import { isCommitLike, isSiteLike } from "../core/ServerList";\n' +
+        'import { registeredSite } from "./ClusterCheckin";\n' +
+        'import type { GameManager } from "./GameManager";\n' +
+        'import type { MapPlaylist } from "./MapPlaylist";\n' +
+        'import { startPolling } from "./PollingLoop";\n' +
+        'import { ServerEnv } from "./ServerEnv";\n',
+      "const z = new Proxy(function () {}, {\n" +
+        "  get: (_t, k) => {\n" +
+        "    if (k === \"enum\") {\n" +
+        "      return (a) => {\n" +
+        "        const base = {\n" +
+        "          options: a,\n" +
+        "          exclude: (b) => ({ options: a.filter((o) => !b.includes(o)) }),\n" +
+        "        };\n" +
+        "        return new Proxy(base, { get: (t, kk) => (kk in t ? t[kk] : z), apply: () => z });\n" +
+        "      };\n" +
+        "    }\n" +
+        "    return z;\n" +
+        "  },\n" +
+        "  apply: () => z,\n" +
+        "});\n" +
+        `import { isCommitLike, isSiteLike } from "./${prepared.get(rcSlRel)}";\n` +
+        `import { registeredSite } from "./${prepared.get(rcCcRel)}";\n` +
+        "const ServerEnv = globalThis.__CK_ENV;\n",
+      "RankedCheckin imports",
+    );
+    out = must(
+      out,
+      "  constructor(\n" +
+        "    private readonly isActive: () => boolean,\n" +
+        "    private readonly log: Pick<winston.Logger, \"info\">,\n" +
+        "  ) {}",
+      "  isActive;\n" +
+        "  log;\n" +
+        "  constructor(isActive, log) {\n" +
+        "    this.isActive = isActive;\n" +
+        "    this.log = log;\n" +
+        "  }",
+      "RankedCheckinGate ctor",
+    );
+    out = must(
+      out,
+      "function buildVersionField(): { version?: string } {",
+      "export function buildVersionField(): { version?: string } {",
+      "RankedCheckin buildVersionField export",
+    );
+    out = must(
+      out,
+      "function buildSiteField(): { site?: string } {",
+      "export function buildSiteField(): { site?: string } {",
+      "RankedCheckin buildSiteField export",
+    );
+  }
+
+  if (rel.endsWith("server/GameApiCors.ts")) {
+    // S7: the `import type { ... } from "express"` line is erased by strip
+    // mode (the express package is unresolvable here, but the import never
+    // survives type stripping); drop it explicitly so the load does not
+    // depend on that erasure. ServerEnv becomes the shared __CK_ENV facade.
+    // isAllowedOrigin is module-private -> exported for the capture. The
+    // gameApiCors middleware (express req/res/next) stays but is never
+    // called (dead body).
+    out = must(
+      out,
+      'import type { NextFunction, Request, Response } from "express";\n' +
+        'import { ServerEnv } from "./ServerEnv";\n',
+      "const ServerEnv = globalThis.__CK_ENV;\n",
+      "GameApiCors imports",
+    );
+    out = must(
+      out,
+      "function isAllowedOrigin(origin: string): boolean {",
+      "export function isAllowedOrigin(origin: string): boolean {",
+      "GameApiCors isAllowedOrigin export",
+    );
+  }
+
+  if (rel.endsWith("server/NoStoreHeaders.ts")) {
+    // S7: the `import type { Response } from "express"` line is erased by
+    // strip mode; drop it explicitly (the package is unresolvable here).
+    out = must(
+      out,
+      'import type { Response } from "express";\n',
+      "",
+      "NoStoreHeaders express import",
+    );
+  }
+
   mkdirSync(cacheDir, { recursive: true });
   const hash = createHash("sha1").update(out).digest("hex").slice(0, 10);
   const base = `${basename(rel, ".ts")}-${hash}.ts`;

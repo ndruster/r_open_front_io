@@ -317,6 +317,56 @@ const mtEmitter = {
   },
 };
 const MT = await loadTs("src/server/MatchTelemetryRecorder.ts");
+
+// S7: the shared ServerEnv facade for ClusterCheckin.ts / RankedCheckin.ts /
+// GameApiCors.ts (precedent: the Censor matcher / MapPlaylist __MP_LOG).
+// The three modules' `import { ServerEnv }` is rewritten to
+// globalThis.__CK_ENV BEFORE loading; every method call pushes a trace event
+// [72, method, ...codec(value)] (pageHostFor carries the host argument too:
+// [72, 6, ...codec(host), ...codec(value)]), pinning the read ORDER and the
+// `??` / `!== undefined` short-circuits. The Rust twin is
+// `cluster_checkin::EnvTable::read`.
+let ckEnv = {
+  siteHost: undefined,
+  publicHost: undefined,
+  instanceLetter: "a",
+  gitCommit: "unknown",
+  numWorkers: 2,
+  machine: undefined,
+  pageHostFor: new Map(),
+};
+let ckTrace = [];
+const ckEnvRead = (method, value) => {
+  ckTrace.push(72, method, ...encVal(value));
+  return value;
+};
+globalThis.__CK_ENV = {
+  siteHost: () => ckEnvRead(0, ckEnv.siteHost),
+  publicHost: () => ckEnvRead(1, ckEnv.publicHost),
+  instanceLetter: () => ckEnvRead(2, ckEnv.instanceLetter),
+  gitCommit: () => ckEnvRead(3, ckEnv.gitCommit),
+  numWorkers: () => ckEnvRead(4, ckEnv.numWorkers),
+  machine: () => ckEnvRead(5, ckEnv.machine),
+  pageHostFor: (h) => {
+    const v = ckEnv.pageHostFor.has(h) ? ckEnv.pageHostFor.get(h) : undefined;
+    ckTrace.push(72, 6, ...encS(h), ...encVal(v));
+    return v;
+  },
+  // Only the excluded functions touch these; the capture never calls them.
+  jwtIssuer: () => {
+    throw new Error("ck capture: jwtIssuer is not ported");
+  },
+  apiKey: () => {
+    throw new Error("ck capture: apiKey is not ported");
+  },
+  generateGameIdForWorker: () => {
+    throw new Error("ck capture: generateGameIdForWorker is not ported");
+  },
+};
+const CK = await loadTs("src/server/ClusterCheckin.ts");
+const RG = await loadTs("src/server/RankedCheckin.ts");
+const HD = await loadTs("src/server/GameApiCors.ts");
+const NS = await loadTs("src/server/NoStoreHeaders.ts");
 const PF = await loadTs("src/core/pathfinding/PathFinder.ts");
 const { AStar } = await loadTs("src/core/pathfinding/algorithms/AStar.ts");
 const { AStarRail } = await loadTs("src/core/pathfinding/algorithms/AStar.Rail.ts");
@@ -12917,8 +12967,390 @@ runMT("mt_nummap_key_classes", [
   [5, NaN], // {1,1,0}
 ]);
 
+// ============================================================ S7: ClusterCheckin.ts
+// op stream. kind 0 reset -> [0]; 1 scriptEnv [siteHost, publicHost,
+// (letter-str), (commit-str), numWorkers, machine, n, (host-str, val)*n] ->
+// [0]; 2 dumpInterval -> [10000]; 3 dumpServerStates -> [3,(str)*3]; 4
+// isRefusal [result val] -> [0|1]; 5 registeredSite ->
+// [traceLen,(trace)*,...codec(result)]; 6 checkinBody [liveGames] ->
+// [traceLen,(trace)*,...codec(result)]; 7 applyCheckinState [result val] ->
+// [traceLen,(trace)*,0]. The env reads ride the shared __CK_ENV facade (72 =
+// [72,method,...codec], pageHostFor 6-form carries the host arg too); the
+// setActive callback is traced as [73, bool]. ckTrace is the unified trace
+// buffer (also reused by the cors setHeader events, code 71).
+const ckScenarios = [];
+let ckIdx = 0;
+function runCK(name, ops) {
+  const played = [];
+  for (const [k, ...a] of ops) {
+    let args, res;
+    if (k === 0) {
+      args = [];
+      ckEnv = {
+        siteHost: undefined,
+        publicHost: undefined,
+        instanceLetter: "a",
+        gitCommit: "unknown",
+        numWorkers: 2,
+        machine: undefined,
+        pageHostFor: new Map(),
+      };
+      ckTrace = [];
+      res = [0];
+    } else if (k === 1) {
+      const [site, pub, letter, commit, nw, machine, pages] = a;
+      args = [
+        ...encVal(site),
+        ...encVal(pub),
+        ...encS(letter),
+        ...encS(commit),
+        nw,
+        ...encVal(machine),
+        pages.length,
+        ...pages.flatMap(([h, v]) => [...encS(h), ...encVal(v)]),
+      ];
+      ckEnv = {
+        siteHost: site,
+        publicHost: pub,
+        instanceLetter: letter,
+        gitCommit: commit,
+        numWorkers: nw,
+        machine,
+        pageHostFor: new Map(pages),
+      };
+      res = [0];
+    } else if (k === 2) {
+      args = [];
+      res = [CK.CHECKIN_INTERVAL_MS];
+    } else if (k === 3) {
+      args = [];
+      const opts = CK.ServerStateSchema.options;
+      res = [opts.length, ...opts.flatMap(encS)];
+    } else if (k === 4) {
+      args = [...encVal(a[0])];
+      res = [CK.isRefusal(a[0]) ? 1 : 0];
+    } else if (k === 5) {
+      args = [];
+      ckTrace = [];
+      const v = CK.registeredSite();
+      res = [ckTrace.length, ...ckTrace, ...encVal(v)];
+    } else if (k === 6) {
+      args = [a[0]];
+      ckTrace = [];
+      const v = CK.checkinBody(a[0]);
+      res = [ckTrace.length, ...ckTrace, ...encVal(v)];
+    } else if (k === 7) {
+      args = [...encVal(a[0])];
+      ckTrace = [];
+      CK.applyCheckinState(a[0], (b) => ckTrace.push(73, b ? 1 : 0));
+      res = [ckTrace.length, ...ckTrace, 0];
+    } else {
+      throw new Error("ck: bad op kind " + k);
+    }
+    played.push({ kind: k, args: args.flat().map(uenc), res: res.flat().map(uenc) });
+  }
+  ckScenarios.push({ name: `${name}_${ckIdx++}`, ops: played });
+}
+
+const U = undefined;
+runCK("ck_dump_interval", [[0], [2]]);
+runCK("ck_dump_server_states", [[0], [3]]);
+runCK("ck_isrefusal_states", [
+  [0],
+  [4, "open"], // typeof "string" -> false (short before the null check)
+  [4, "draining"],
+  [4, "fenced"],
+  [4, null], // null -> false (typeof object but === null)
+  [4, { refused: "no reason given" }], // object -> true
+  [4, { refused: "host taken (host: b.io)" }],
+]);
+runCK("ck_registered_site_hit", [
+  [0],
+  [1, "openfront.io", "blue.openfront.io", "b", "cafe123", 3, "falk2", []],
+  [5], // siteHost hit -> publicHost NEVER read (one 72 event)
+]);
+runCK("ck_registered_site_fallback", [
+  [0],
+  [1, U, "main.server.openfront.dev", "a", "deadbeef", 2, U, []],
+  [5], // siteHost undefined -> reads publicHost too (two 72 events)
+]);
+runCK("ck_registered_site_none", [
+  [0],
+  [1, U, U, "a", "unknown", 2, U, []],
+  [5], // both undefined -> undefined (two 72 events)
+]);
+runCK("ck_registered_site_empty_string", [
+  [0],
+  [1, "", "blue.openfront.io", "a", "cafe123", 2, U, []],
+  [5], // "" is NOT null/undefined -> `??` does NOT fall back, publicHost
+  // never read (one 72 event) — the real siteHost() collapses "" to
+  // undefined, so only the scripted facade can pin the JS `??` semantics
+]);
+runCK("ck_checkin_body_null_host", [
+  [0],
+  [1, U, U, "a", "unknown", 2, "falk2", []],
+  [6, 5], // host undefined -> null, machine never read (one 72 event)
+]);
+runCK("ck_checkin_body_site_host_full", [
+  [0],
+  [1, "openfront.io", "blue.openfront.io", "b", "cafe123", 3, "falk2", []],
+  [6, 42], // siteHost hit: site from registeredSite, machine appended last
+]);
+runCK("ck_checkin_body_no_machine", [
+  [0],
+  [1, U, "main.openfront.dev", "a", "deadbeefcafe", 2, U, []],
+  [6, 0], // machine undefined -> key ABSENT (6 keys); site falls back to host
+]);
+runCK("ck_apply_null_no_setactive", [
+  [0],
+  [7, null], // === null STRICT -> return, zero setActive
+]);
+runCK("ck_apply_states", [
+  [0],
+  [7, "open"], // -> setActive(true)
+  [7, "draining"], // -> setActive(false)
+  [7, "fenced"], // -> setActive(false)
+  [7, { refused: "x" }], // refusal object -> setActive(false)
+]);
+
+// ============================================================ S7: RankedCheckin.ts
+// op stream. kind 0 reset -> [0]; 1 scriptActive [n,(bool)*n] -> [0]; 2
+// shouldCheckIn -> [traceLen,(trace)*,active 0|1] (log.info traced as
+// [70,...codec(msg)]); 3 scriptEnv [(commit-str), siteHost, publicHost, n,
+// (host-str,val)*n] -> [0]; 4 buildVersionField ->
+// [traceLen,(trace)*,...codec(result)]; 5 buildSiteField -> same; 6 dumpLogs
+// -> [2,(paused-str),(resumed-str)]. gitCommit / registeredSite ride the
+// shared __CK_ENV facade (ckTrace, code 72).
+const rgScenarios = [];
+let rgIdx = 0;
+let rgGate = null;
+let rgActiveQueue = [];
+let rgTrace = [];
+const rgIsActive = () => {
+  if (!rgActiveQueue.length) throw new Error("rg capture: unscripted isActive");
+  return rgActiveQueue.shift();
+};
+const rgLog = { info: (m) => rgTrace.push(70, ...encS(m)) };
+function runRG(name, ops) {
+  const played = [];
+  for (const [k, ...a] of ops) {
+    let args, res;
+    if (k === 0) {
+      args = [];
+      rgActiveQueue = [];
+      rgGate = new RG.RankedCheckinGate(rgIsActive, rgLog);
+      res = [0];
+    } else if (k === 1) {
+      const bools = a[0];
+      args = [bools.length, ...bools.map((b) => (b ? 1 : 0))];
+      rgActiveQueue = [...bools];
+      res = [0];
+    } else if (k === 2) {
+      args = [];
+      rgTrace = [];
+      const v = rgGate.shouldCheckIn();
+      res = [rgTrace.length, ...rgTrace, v ? 1 : 0];
+    } else if (k === 3) {
+      const [commit, site, pub, pages] = a;
+      args = [
+        ...encS(commit),
+        ...encVal(site),
+        ...encVal(pub),
+        pages.length,
+        ...pages.flatMap(([h, v]) => [...encS(h), ...encVal(v)]),
+      ];
+      ckEnv = {
+        ...ckEnv,
+        gitCommit: commit,
+        siteHost: site,
+        publicHost: pub,
+        pageHostFor: new Map(pages),
+      };
+      res = [0];
+    } else if (k === 4) {
+      args = [];
+      ckTrace = [];
+      const v = RG.buildVersionField();
+      res = [ckTrace.length, ...ckTrace, ...encVal(v)];
+    } else if (k === 5) {
+      args = [];
+      ckTrace = [];
+      const v = RG.buildSiteField();
+      res = [ckTrace.length, ...ckTrace, ...encVal(v)];
+    } else if (k === 6) {
+      args = [];
+      res = [2, ...encS(RG.RANKED_PAUSED_LOG), ...encS(RG.RANKED_RESUMED_LOG)];
+    } else {
+      throw new Error("rg: bad op kind " + k);
+    }
+    played.push({ kind: k, args: args.flat().map(uenc), res: res.flat().map(uenc) });
+  }
+  rgScenarios.push({ name: `${name}_${rgIdx++}`, ops: played });
+}
+
+runRG("rg_seeded_true_no_log", [
+  [0],
+  [1, [true]],
+  [2], // first pass active=true, lastActive seeded true -> no flip, no log
+]);
+runRG("rg_flip_sequence", [
+  [0],
+  [1, [false, false, true]],
+  [2], // true -> false: PAUSED
+  [2], // false -> false: zero log
+  [2], // false -> true: RESUMED
+]);
+runRG("rg_build_version_commit", [
+  [0],
+  [3, "DEADBEEF0123456789ABCDEF", U, U, []],
+  [4], // commit-like -> {version: lowercased}
+]);
+runRG("rg_build_version_dev_label", [
+  [0],
+  [3, "DEV", U, U, []],
+  [4], // "DEV" not commit-shaped -> {} (version key ABSENT)
+]);
+runRG("rg_build_site_present", [
+  [0],
+  [3, "unknown", "openfront.io", U, []],
+  [5], // siteHost hit -> {site} shorthand
+]);
+runRG("rg_build_site_malformed", [
+  [0],
+  [3, "unknown", "localhost:9000", U, []],
+  [5], // colon -> isSiteLike false -> {}
+]);
+runRG("rg_build_site_none", [
+  [0],
+  [3, "unknown", U, U, []],
+  [5], // both undefined -> {} (trace still pins two reads)
+]);
+runRG("rg_dump_logs", [[0], [6]]);
+
+// ============================================================ S7: GameApiCors.ts
+// + NoStoreHeaders.ts. op stream. kind 0 reset -> [0]; 1 scriptEnv
+// [siteHost, publicHost, n, (host-str,val)*n] -> [0]; 2 dumpDesktopOrigin ->
+// [(str)]; 3 isAllowedOrigin [(origin-str)] -> [traceLen,(trace)*,0|1]; 4
+// applyCorsHeaders [(origin val)] -> [traceLen,(trace)*,0]; 5
+// setNoStoreHeaders -> [traceLen,(trace)*,0]. setHeader events ride code 71
+// [71,...codec(name),...codec(value)]; env reads code 72 (shared ckTrace).
+const hdScenarios = [];
+let hdIdx = 0;
+function runHD(name, ops) {
+  const played = [];
+  for (const [k, ...a] of ops) {
+    let args, res;
+    if (k === 0) {
+      args = [];
+      ckEnv = {
+        siteHost: undefined,
+        publicHost: undefined,
+        instanceLetter: "a",
+        gitCommit: "unknown",
+        numWorkers: 2,
+        machine: undefined,
+        pageHostFor: new Map(),
+      };
+      ckTrace = [];
+      res = [0];
+    } else if (k === 1) {
+      const [site, pub, pages] = a;
+      args = [
+        ...encVal(site),
+        ...encVal(pub),
+        pages.length,
+        ...pages.flatMap(([h, v]) => [...encS(h), ...encVal(v)]),
+      ];
+      ckEnv = { ...ckEnv, siteHost: site, publicHost: pub, pageHostFor: new Map(pages) };
+      res = [0];
+    } else if (k === 2) {
+      args = [];
+      res = [...encS(HD.DESKTOP_APP_ORIGIN)];
+    } else if (k === 3) {
+      args = [...encS(a[0])];
+      ckTrace = [];
+      const v = HD.isAllowedOrigin(a[0]);
+      res = [ckTrace.length, ...ckTrace, v ? 1 : 0];
+    } else if (k === 4) {
+      args = [...encVal(a[0])];
+      ckTrace = [];
+      HD.applyGameApiCorsHeaders(a[0], (n, v) =>
+        ckTrace.push(71, ...encS(n), ...encS(v)),
+      );
+      res = [ckTrace.length, ...ckTrace, 0];
+    } else if (k === 5) {
+      args = [];
+      ckTrace = [];
+      NS.setNoStoreHeaders({
+        setHeader: (n, v) => ckTrace.push(71, ...encS(n), ...encS(v)),
+      });
+      res = [ckTrace.length, ...ckTrace, 0];
+    } else {
+      throw new Error("hd: bad op kind " + k);
+    }
+    played.push({ kind: k, args: args.flat().map(uenc), res: res.flat().map(uenc) });
+  }
+  hdScenarios.push({ name: `${name}_${hdIdx++}`, ops: played });
+}
+
+runHD("hd_dump_desktop_origin", [[0], [2]]);
+runHD("hd_desktop_shortcircuit", [
+  [0],
+  [1, "openfront.io", "blue.openfront.io", []],
+  [3, "app://openfront"], // desktop hit -> ZERO env reads
+]);
+runHD("hd_sitehost_hit", [
+  [0],
+  [1, "openfront.io", U, []],
+  [3, "https://openfront.io"], // siteHost match -> returns before publicHost
+]);
+runHD("hd_own_undefined_false", [
+  [0],
+  [1, U, U, []],
+  [3, "https://x.io"], // siteHost undef, publicHost undef -> false (2 reads)
+]);
+runHD("hd_own_host_hit", [
+  [0],
+  [1, U, "blue.openfront.io", []],
+  [3, "https://blue.openfront.io"], // own game host match
+]);
+runHD("hd_page_host_hit", [
+  [0],
+  [1, U, "main.server.openfront.dev", [["main.server.openfront.dev", "main.openfront.dev"]]],
+  [3, "https://main.openfront.dev"], // pageHostFor match
+]);
+runHD("hd_all_miss", [
+  [0],
+  [1, "s.io", "g.io", [["g.io", "p.io"]]],
+  [3, "https://evil.example"], // every gate fails
+]);
+runHD("hd_cors_undefined_origin", [
+  [0],
+  [1, "s.io", "g.io", []],
+  [4, U], // undefined origin -> Vary only, zero env reads
+]);
+runHD("hd_cors_empty_origin", [
+  [0],
+  [1, U, U, []],
+  [4, ""], // "" is defined -> walks the full chain, ends false -> Vary only
+]);
+runHD("hd_cors_allowed", [
+  [0],
+  [1, "openfront.io", U, []],
+  [4, "https://openfront.io"], // granted -> Vary + four headers
+]);
+runHD("hd_cors_denied", [
+  [0],
+  [1, "openfront.io", "blue.openfront.io", []],
+  [4, "https://evil.example"], // denied -> Vary only
+]);
+runHD("hd_no_store_headers", [[0], [5]]);
+
 const structures = {
   votetally: vtScenarios,
+  rankedcheckin: rgScenarios,
+  clustercheckin: ckScenarios,
+  gameapicors: hdScenarios,
   desyncdetector: ddScenarios,
   joinverify: jvScenarios,
   censor: cnScenarios,
@@ -15892,6 +16324,36 @@ opStream(
     "/// scriptNow (Date.now scripted via `globalThis.__MT_NOW`). The emit /\n" +
     "/// intentObserved / matchFinished res is trace-prefixed with the emitter\n" +
     "/// events: [60, ...codec(event), outcome 0|1|2].",
+);
+opStream(
+  "rankedcheckin",
+  "Rg",
+  "/// One `server/RankedCheckin.ts` gate op (see\n" +
+    "/// `ranked_checkin_gate::RigHarness::run_op` docs). kind 0 reset, 1\n" +
+    "/// scriptActive, 2 shouldCheckIn, 3 scriptEnv (gitCommit + the\n" +
+    "/// registeredSite pair), 4 buildVersionField, 5 buildSiteField, 6\n" +
+    "/// dumpLogs. shouldCheckIn res is trace-prefixed with the log events\n" +
+    "/// [70, ...codec(msg)]; buildVersionField / buildSiteField ride the env\n" +
+    "/// facade [72, method, ...codec(value)].",
+);
+opStream(
+  "clustercheckin",
+  "Ck",
+  "/// One `server/ClusterCheckin.ts` op (see `cluster_checkin::RigHarness::\n" +
+    "/// run_op` docs). kind 0 reset, 1 scriptEnv, 2 dumpInterval, 3\n" +
+    "/// dumpServerStates, 4 isRefusal, 5 registeredSite, 6 checkinBody,\n" +
+    "/// 7 applyCheckinState. Traced ops prefix [traceLen,(trace)*] with env\n" +
+    "/// reads [72, method, ...codec] and setActive [73, bool].",
+);
+opStream(
+  "gameapicors",
+  "Hd",
+  "/// One `server/GameApiCors.ts` / `NoStoreHeaders.ts` op (see\n" +
+    "/// `game_api_cors::RigHarness::run_op` docs). kind 0 reset, 1 scriptEnv\n" +
+    "/// (cors slice), 2 dumpDesktopOrigin, 3 isAllowedOrigin, 4\n" +
+    "/// applyCorsHeaders, 5 setNoStoreHeaders. setHeader events are\n" +
+    "/// [71, ...codec(name), ...codec(value)], env reads [72, method,\n" +
+    "/// ...codec] (pageHostFor 6-form carries the host argument).",
 );
 
 const dataDir = join(root, "crates", "core", "tests", "data");

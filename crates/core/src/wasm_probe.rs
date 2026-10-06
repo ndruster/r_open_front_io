@@ -4929,3 +4929,102 @@ pub extern "C" fn probe_mt_op(kind: u32) -> usize {
 pub extern "C" fn probe_mt_out_at(i: usize) -> f64 {
     MT_OUT.with(|o| o.borrow()[i])
 }
+
+// ============ S7: server/RankedCheckin.ts (ranked_checkin_gate) =============
+
+thread_local! {
+    static RG_HARNESS: std::cell::RefCell<crate::ranked_checkin_gate::RigHarness> =
+        std::cell::RefCell::new(crate::ranked_checkin_gate::RigHarness::new());
+    static RG_ARGS: std::cell::RefCell<Vec<f64>> = const { std::cell::RefCell::new(Vec::new()) };
+    static RG_OUT: std::cell::RefCell<Vec<f64>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
+#[no_mangle]
+pub extern "C" fn probe_rg_reset() {
+    RG_HARNESS.with(|h| h.borrow_mut().reset());
+}
+
+#[no_mangle]
+pub extern "C" fn probe_rg_arg(v: f64) {
+    RG_ARGS.with(|t| t.borrow_mut().push(v));
+}
+
+#[no_mangle]
+pub extern "C" fn probe_rg_op(kind: u32) -> usize {
+    let a = RG_ARGS.with(|t| std::mem::take(&mut *t.borrow_mut()));
+    let out = RG_HARNESS.with(|h| h.borrow_mut().run_op(kind as u8, &a));
+    let len = out.len();
+    RG_OUT.with(|o| *o.borrow_mut() = out);
+    len
+}
+
+#[no_mangle]
+pub extern "C" fn probe_rg_out_at(i: usize) -> f64 {
+    RG_OUT.with(|o| o.borrow()[i])
+}
+
+// ============ S7: server/ClusterCheckin.ts (cluster_checkin) ================
+
+thread_local! {
+    static CK_HARNESS: std::cell::RefCell<crate::cluster_checkin::RigHarness> =
+        std::cell::RefCell::new(crate::cluster_checkin::RigHarness::new());
+    static CK_ARGS: std::cell::RefCell<Vec<f64>> = const { std::cell::RefCell::new(Vec::new()) };
+    static CK_OUT: std::cell::RefCell<Vec<f64>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
+#[no_mangle]
+pub extern "C" fn probe_ck_reset() {
+    CK_HARNESS.with(|h| h.borrow_mut().reset());
+}
+
+#[no_mangle]
+pub extern "C" fn probe_ck_arg(v: f64) {
+    CK_ARGS.with(|t| t.borrow_mut().push(v));
+}
+
+#[no_mangle]
+pub extern "C" fn probe_ck_op(kind: u32) -> usize {
+    let a = CK_ARGS.with(|t| std::mem::take(&mut *t.borrow_mut()));
+    let out = CK_HARNESS.with(|h| h.borrow_mut().run_op(kind as u8, &a));
+    let len = out.len();
+    CK_OUT.with(|o| *o.borrow_mut() = out);
+    len
+}
+
+#[no_mangle]
+pub extern "C" fn probe_ck_out_at(i: usize) -> f64 {
+    CK_OUT.with(|o| o.borrow()[i])
+}
+
+// ============ S7: server/GameApiCors.ts + NoStoreHeaders.ts (game_api_cors) ==
+
+thread_local! {
+    static HD_HARNESS: std::cell::RefCell<crate::game_api_cors::RigHarness> =
+        std::cell::RefCell::new(crate::game_api_cors::RigHarness::new());
+    static HD_ARGS: std::cell::RefCell<Vec<f64>> = const { std::cell::RefCell::new(Vec::new()) };
+    static HD_OUT: std::cell::RefCell<Vec<f64>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
+#[no_mangle]
+pub extern "C" fn probe_hd_reset() {
+    HD_HARNESS.with(|h| h.borrow_mut().reset());
+}
+
+#[no_mangle]
+pub extern "C" fn probe_hd_arg(v: f64) {
+    HD_ARGS.with(|t| t.borrow_mut().push(v));
+}
+
+#[no_mangle]
+pub extern "C" fn probe_hd_op(kind: u32) -> usize {
+    let a = HD_ARGS.with(|t| std::mem::take(&mut *t.borrow_mut()));
+    let out = HD_HARNESS.with(|h| h.borrow_mut().run_op(kind as u8, &a));
+    let len = out.len();
+    HD_OUT.with(|o| *o.borrow_mut() = out);
+    len
+}
+
+#[no_mangle]
+pub extern "C" fn probe_hd_out_at(i: usize) -> f64 {
+    HD_OUT.with(|o| o.borrow()[i])
+}

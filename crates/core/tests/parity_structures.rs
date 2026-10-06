@@ -3324,3 +3324,107 @@ fn replay_matchtelemetry_scenarios() {
         }
     }
 }
+
+// server/RankedCheckin.ts (gate subset): replay the flip-latch op stream —
+// lastActive SEEDED true (first active pass logs nothing), the strict
+// boolean flip compare with the verbatim PAUSED/RESUMED log events [70,
+// ...codec(msg)], the fresh-read (never latched) return value and the
+// isActive queue consumption. buildVersionField / buildSiteField replay
+// through the shared env facade ([72,3,...] gitCommit, registeredSite's
+// siteHost/publicHost pair): the {version: lowercased} vs {} and {site} vs
+// {} branches pin the ABSENT-key object literals.
+#[test]
+fn replay_rankedcheckin_scenarios() {
+    use openfront_core::ranked_checkin_gate::RigHarness;
+    for s in vectors::RG_SCENARIOS {
+        let mut rig = RigHarness::new();
+        for op in s.ops {
+            let got = rig.run_op(op.kind, op.args);
+            assert_eq!(
+                got.len(),
+                op.res.len(),
+                "{} op[{:?}] res len: got {got:?} want {:?}",
+                s.name,
+                op.kind,
+                op.res
+            );
+            for (j, (g, w)) in got.iter().zip(op.res.iter()).enumerate() {
+                assert!(
+                    obj_is(*g, *w),
+                    "{} op[{:?}] res[{j}]: got {g} want {w}",
+                    s.name,
+                    op.kind
+                );
+            }
+        }
+    }
+}
+
+// server/ClusterCheckin.ts (pure subset): replay isRefusal's typeof domain,
+// registeredSite's `??` short-circuit (siteHost hit -> publicHost NEVER read,
+// pinned by the [72,...] trace), checkinBody's evaluation order + key
+// insertion order (site,letter,host,version,numWorkers,liveGames,(machine?))
+// with the ABSENT-vs-present machine quirk and the double publicHost read
+// when siteHost is undefined, applyCheckinState's STRICT `=== null` gate
+// (Undef falls through to setActive(false)) and the verbatim "open"
+// compare, plus the CHECKIN_INTERVAL_MS / z.enum literal dumps.
+#[test]
+fn replay_clustercheckin_scenarios() {
+    use openfront_core::cluster_checkin::RigHarness;
+    for s in vectors::CK_SCENARIOS {
+        let mut rig = RigHarness::new();
+        for op in s.ops {
+            let got = rig.run_op(op.kind, op.args);
+            assert_eq!(
+                got.len(),
+                op.res.len(),
+                "{} op[{:?}] res len: got {got:?} want {:?}",
+                s.name,
+                op.kind,
+                op.res
+            );
+            for (j, (g, w)) in got.iter().zip(op.res.iter()).enumerate() {
+                assert!(
+                    obj_is(*g, *w),
+                    "{} op[{:?}] res[{j}]: got {g} want {w}",
+                    s.name,
+                    op.kind
+                );
+            }
+        }
+    }
+}
+
+// server/GameApiCors.ts + NoStoreHeaders.ts: replay the isAllowedOrigin
+// five-gate chain (desktop hit = ZERO env reads, the strict `!== undefined`
+// gates, the `https://${host}` template compares, own-undefined ending the
+// chain before pageHostFor) and the setHeader sequences — Vary ALWAYS first,
+// the four verbatim grant headers on allow, the undefined-origin short
+// circuit vs the empty string walking the full chain, and the three
+// no-store headers. Header events are [71,...codec(name),...codec(value)].
+#[test]
+fn replay_gameapicors_scenarios() {
+    use openfront_core::game_api_cors::RigHarness;
+    for s in vectors::HD_SCENARIOS {
+        let mut rig = RigHarness::new();
+        for op in s.ops {
+            let got = rig.run_op(op.kind, op.args);
+            assert_eq!(
+                got.len(),
+                op.res.len(),
+                "{} op[{:?}] res len: got {got:?} want {:?}",
+                s.name,
+                op.kind,
+                op.res
+            );
+            for (j, (g, w)) in got.iter().zip(op.res.iter()).enumerate() {
+                assert!(
+                    obj_is(*g, *w),
+                    "{} op[{:?}] res[{j}]: got {g} want {w}",
+                    s.name,
+                    op.kind
+                );
+            }
+        }
+    }
+}

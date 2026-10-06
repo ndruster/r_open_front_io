@@ -132,6 +132,9 @@ for (const name of [
   "probe_pv_reset", "probe_pv_arg", "probe_pv_op", "probe_pv_out_at",
   "probe_rs_reset", "probe_rs_arg", "probe_rs_op", "probe_rs_out_at",
   "probe_mt_reset", "probe_mt_arg", "probe_mt_op", "probe_mt_out_at",
+  "probe_rg_reset", "probe_rg_arg", "probe_rg_op", "probe_rg_out_at",
+  "probe_ck_reset", "probe_ck_arg", "probe_ck_op", "probe_ck_out_at",
+  "probe_hd_reset", "probe_hd_arg", "probe_hd_op", "probe_hd_out_at",
 ]) {
   if (typeof ex[name] !== "function") {
     console.error(`missing wasm export ${name} - rebuild with --features wasm-probe`);
@@ -2379,6 +2382,31 @@ for (const [key, reset, arg, op, outAt] of [
   ["privilege", "probe_pv_reset", "probe_pv_arg", "probe_pv_op", "probe_pv_out_at"],
   ["roster", "probe_rs_reset", "probe_rs_arg", "probe_rs_op", "probe_rs_out_at"],
   ["matchtelemetry", "probe_mt_reset", "probe_mt_arg", "probe_mt_op", "probe_mt_out_at"],
+]) {
+  for (const s of S[key]) {
+    ex[reset]();
+    for (const o of s.ops) {
+      for (const a of o.args) ex[arg](numTok(a));
+      const len = Number(ex[op](o.kind));
+      if (len !== o.res.length) {
+        fail(`${s.name} op${o.kind} res len`, 0, len, o.res.length);
+        continue;
+      }
+      for (let i = 0; i < len; i++) {
+        checks++;
+        const g = ex[outAt](i);
+        const w = numTok(o.res[i]);
+        if (!Object.is(g, w)) fail(`${s.name} op${o.kind} res[${i}]`, 0, g, w);
+      }
+    }
+  }
+}
+
+// --- S7: server/RankedCheckin.ts / ClusterCheckin.ts / GameApiCors.ts --------------
+for (const [key, reset, arg, op, outAt] of [
+  ["rankedcheckin", "probe_rg_reset", "probe_rg_arg", "probe_rg_op", "probe_rg_out_at"],
+  ["clustercheckin", "probe_ck_reset", "probe_ck_arg", "probe_ck_op", "probe_ck_out_at"],
+  ["gameapicors", "probe_hd_reset", "probe_hd_arg", "probe_hd_op", "probe_hd_out_at"],
 ]) {
   for (const s of S[key]) {
     ex[reset]();

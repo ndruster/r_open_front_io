@@ -1969,6 +1969,43 @@ WebSockets — stays excluded, mirroring the `src/core` exclusions).
     shim `__pmResetRailLoop` mirrors the Rust `thread_local` latch reset so
     the built-vs-cached identity is pinned. 22 scenarios (`gir_` 10, `tp_`
     7, `pm_` 5).
+72. **`server/StaticAssetCache.ts` + `client/render/frame/Upload.ts` +
+    `client/components/LobbyCard.ts` + `client/sound/Sounds.ts` +
+    `client/components/baseComponents/stats/GameTypeLabels.ts` +
+    `client/components/InputCardStyles.ts`** (`static_asset_cache`,
+    `frame_upload`, `lobby_card`, `sounds`, `misc_pure`) — the S14 batch-2
+    pure islands.
+    `StaticAssetCache` — `stripQueryString` (first `?` truncation, `""` /
+    `?` / `a?b?c` → `a`), the falsy `!urlPath` gate (`""` / `undefined` →
+    no header), the `/assets/` and `/_assets/` prefixes (one letter off, no
+    trailing slash, case and `assets/x` all miss) and the `setHeader` facade
+    trace; `IMMUTABLE_CACHE_CONTROL` dumped verbatim.
+    `Upload` — `uploadFrameData` as a `(methodId, params…)` trace over the
+    16-method `FrameUploadTarget` declaration order: `changedTiles` truthy
+    gate (the empty array `[]` IS truthy — enters the delta branch, then the
+    `length > 0` gate skips the upload — tagged `0` falsy / `1` array),
+    `trailDirtyRowMax >= 0` INSIDE that branch (NaN false, `-0` true),
+    `railroadDirty` / `structuresDirty` / `relationsDirty` as truthy-num
+    gates, the three event lists on independent `length > 0` gates,
+    `updateNames` snap literally `false`, and the unconditional methods
+    (spiral / units / rings / telegraphs / clusters) pinned.
+    `LobbyCard` — `viewerIsTrusted` (the strict `!== false` first gate;
+    `undefined` / `null` / a player-less object throw a `TypeError` → status
+    1; a primitive `player` boxes → `Ok(false)`; only
+    `trustTier === "trusted"` passes), `canJoinTrustedLobby` (the `?.`
+    protects only `gameConfig`; ONLY a literal `true` defers to
+    `viewerTrusted`) and `viewerIsSignedIn` delegating to the ported
+    `account_identity::response_has_linked_identity`.
+    `Sounds` — the 31-key `CUE_CATEGORY` table in declaration order
+    (`message` → `"alerts"`), the four-key `ambienceUrls` set and
+    `categoryOf` (the ambience `has` gate wins first; out-of-domain reads
+    `undefined` → status 1). The `assetUrl(...)` calls become their literal
+    argument in the loader (URL values irrelevant to `categoryOf`).
+    `misc_pure` — `isFfa` (the `"Free For All"` strict `===` short-circuit
+    vs the `mode === undefined` AND nullish-`playerTeams` fallback — a null
+    WITH a mode is still a Team game) and `cardClass` (default parameter
+    fires only on `undefined`; the template's double space survives).
+    21 scenarios (`sac_` 4, `ufr_` 8, `lg_` 3, `snd_` 3, `mpp_` 3).
 
 Regenerate whenever a ported source changes:
 
@@ -2002,7 +2039,7 @@ node rust/tools/run_wasm_parity.mjs
 
 `wasm-probe` exposes the ported functions through `extern "C"` scalar
 entrypoints (`src/wasm_probe.rs`); the runner imports `data/vectors.json` and
-compares every value. Last run: **797,721 comparisons, all bit-identical**.
+compares every value. Last run: **800,103 comparisons, all bit-identical**.
 
 ### Windows: the linker environment
 

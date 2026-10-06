@@ -5338,3 +5338,27 @@ pub extern "C" fn probe_pm_op(kind: u32) -> usize {
 pub extern "C" fn probe_pm_out_at(i: usize) -> f64 {
     PM_OUT.with(|o| o.borrow()[i])
 }
+
+// =============== S14 b2: asset cache / frame upload / lobby / sound / misc ===
+
+s8_stateless_probe!(
+    probe_sac_reset, probe_sac_arg, probe_sac_op, probe_sac_out_at,
+    SAC_ARGS, SAC_OUT, crate::static_asset_cache::run_op
+);
+s8_stateless_probe!(
+    probe_ufr_reset, probe_ufr_arg, probe_ufr_op, probe_ufr_out_at,
+    UFR_ARGS, UFR_OUT, crate::frame_upload::run_op
+);
+s8_stateless_probe!(
+    probe_lg_reset, probe_lg_arg, probe_lg_op, probe_lg_out_at,
+    LG_ARGS, LG_OUT, crate::lobby_card::run_op
+);
+// `probe_sc_` is taken by the Schemas.ts cluster, `probe_mp_` by motion_plans.
+s8_stateless_probe!(
+    probe_snd_reset, probe_snd_arg, probe_snd_op, probe_snd_out_at,
+    SND_ARGS, SND_OUT, crate::sounds::run_op
+);
+s8_stateless_probe!(
+    probe_mpp_reset, probe_mpp_arg, probe_mpp_op, probe_mpp_out_at,
+    MPP_ARGS, MPP_OUT, crate::misc_pure::run_op
+);

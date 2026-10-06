@@ -4419,3 +4419,42 @@ fn replay_previewmap_scenarios() {
         }
     }
 }
+
+// ---- S14 b2: asset cache / frame upload / lobby / sound / misc --------------
+
+// server/StaticAssetCache.ts: the falsy urlPath gate, the split("?",1)[0]
+// strip and the /assets/ + /_assets/ prefixes over the setHeader trace.
+replay_s12!(
+    replay_staticassetcache_scenarios,
+    SAC_SCENARIOS,
+    openfront_core::static_asset_cache::run_op
+);
+// client/render/frame/Upload.ts: the uploadFrameData dispatch trace - the
+// truthy [] gate, the NaN / -0 rowMax compares and the event-length gates.
+replay_s12!(
+    replay_frameupload_scenarios,
+    UFR_SCENARIOS,
+    openfront_core::frame_upload::run_op
+);
+// client/components/LobbyCard.ts: the strict !== false trust gate with the
+// TypeError domain, the only-literal-true trusted lobby check and the
+// account_identity signed-in delegation.
+replay_s12!(
+    replay_lobbycard_scenarios,
+    LG_SCENARIOS,
+    openfront_core::lobby_card::run_op
+);
+// client/sound/Sounds.ts: the ambience-set-wins categoryOf gate and the
+// 31-entry CUE_CATEGORY declaration order.
+replay_s12!(
+    replay_soundscat_scenarios,
+    SND_SCENARIOS,
+    openfront_core::sounds::run_op
+);
+// GameTypeLabels.isFfa + InputCardStyles.cardClass: the strict enum-literal
+// FFA gate, the nullish fallback and the default-parameter template spaces.
+replay_s12!(
+    replay_miscpure_scenarios,
+    MPP_SCENARIOS,
+    openfront_core::misc_pure::run_op
+);

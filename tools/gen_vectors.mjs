@@ -518,6 +518,15 @@ const DS = await loadTs("src/client/DesktopShell.ts");
 const GIR = await loadTs("src/client/components/baseComponents/ranking/GameInfoRanking.ts");
 const TP = await loadTs("src/client/hud/Tutorial.ts");
 const PM = await loadTs("src/client/render/preview/PreviewMap.ts");
+// S14 b2: static asset cache / frame upload / lobby predicates / sound cue
+// table / misc pure helpers (SAC / UFR / LC / SND / MPP - the SC and MP probe
+// tags are taken by Schemas / motion_plans).
+const SAC = await loadTs("src/server/StaticAssetCache.ts");
+const UFR = await loadTs("src/client/render/frame/Upload.ts");
+const LC = await loadTs("src/client/components/LobbyCard.ts");
+const SND = await loadTs("src/client/sound/Sounds.ts");
+const GTL = await loadTs("src/client/components/baseComponents/stats/GameTypeLabels.ts");
+const ICS = await loadTs("src/client/components/InputCardStyles.ts");
 
 const PF = await loadTs("src/core/pathfinding/PathFinder.ts");
 const { AStar } = await loadTs("src/core/pathfinding/algorithms/AStar.ts");
@@ -17785,6 +17794,406 @@ runPM("pm_loop_latch", [
   [2, null],
 ]);
 
+// --- S14 b2: StaticAssetCache.ts ----------------------------------------------
+// Kind table (matches `static_asset_cache::run_op`): 0 getStaticAssetCacheControl
+// batch [n,(codec urlPath)*n] -> (0|1)*n; 1 stripQueryString batch
+// [n,(encS)*n] -> (encS out)*n; 2 apply trace [n,(codec urlPath)*n] -> per
+// urlPath [1, encS(name), encS(value)] | [0]; 3 the IMMUTABLE constant dump.
+const sacScenarios = [];
+let sacIdx = 0;
+function runSAC(name, ops) {
+  const played = [];
+  for (const [k, ...vals] of ops) {
+    let args;
+    let res;
+    if (k === 0) {
+      args = [vals.length, ...vals.flatMap(encVal)];
+      res = vals.map((v) => (SAC.getStaticAssetCacheControl(v) !== undefined ? 1 : 0));
+    } else if (k === 1) {
+      args = [vals.length, ...vals.flatMap((s) => encS(s))];
+      res = vals.flatMap((s) => encS(SAC.__stripQueryString(s)));
+    } else if (k === 2) {
+      args = [vals.length, ...vals.flatMap(encVal)];
+      res = [];
+      for (const v of vals) {
+        const hdr = [];
+        SAC.applyStaticAssetCacheControl((n2, val) => hdr.push([n2, val]), v);
+        if (hdr.length === 0) res.push(0);
+        else res.push(1, ...encS(hdr[0][0]), ...encS(hdr[0][1]));
+      }
+    } else {
+      args = [];
+      res = encS(SAC.__IMMUTABLE_CACHE_CONTROL);
+    }
+    played.push({ kind: k, args: args.flat().map(uenc), res: res.flat().map(uenc) });
+  }
+  sacScenarios.push({ name: `${name}_${sacIdx++}`, ops: played });
+}
+runSAC("sac_get", [
+  [
+    0,
+    undefined,
+    "", // falsy gate: the empty string reads like undefined
+    "/assets/x",
+    "/_assets/y?v=2",
+    "/asset/x", // one letter off
+    "/assets", // no trailing slash
+    "/Assets/x", // case-sensitive
+    "assets/x", // no leading slash
+    "?lead",
+    "/assets/",
+    "x/assets/y",
+    "/_assets/",
+  ],
+]);
+runSAC("sac_strip", [
+  [1, "/assets/a.js", "/assets/a.js?v=1", "?lead", "a?b?c", "", "?", "noq?"],
+]);
+runSAC("sac_apply", [
+  [2, undefined, "", "/assets/x", "/_assets/a?v=2", "/asset/x"],
+]);
+runSAC("sac_const", [[3]]);
+
+// --- S14 b2: Upload.ts ---------------------------------------------------------
+// Kind table (matches `frame_upload::run_op`): 0 uploadFrameData over the 13
+// scripted gate tokens -> [count, (methodId, numeric params...)*count]. The
+// view is a trace recorder keyed by the FrameUploadTarget declaration order;
+// array payloads ride as scripted {length} objects so NaN / negative lengths
+// model the JS numeric gates without RangeError.
+const ufrScenarios = [];
+let ufrIdx = 0;
+const UFR_METHODS = [
+  "uploadTileAndTrailState",
+  "uploadLiveDelta",
+  "uploadLiveTrailDelta",
+  "updateSpiralRibbons",
+  "uploadRailroadState",
+  "applyRailroadDust",
+  "updateUnits",
+  "updateStructures",
+  "applyDeadUnits",
+  "applyConquestEvents",
+  "applyBonusEvents",
+  "updateAttackRings",
+  "updateNukeTelegraphs",
+  "updateNames",
+  "updateRelations",
+  "setSAMAllianceClusters",
+];
+function runUFR(name, frames) {
+  const played = [];
+  for (const f of frames) {
+    const [
+      changedTag,
+      changedLen,
+      rowMin,
+      rowMax,
+      railroadDirty,
+      revealedLen,
+      tick,
+      structuresDirty,
+      deadLen,
+      conquestLen,
+      bonusLen,
+      relationsDirty,
+      relationSize,
+    ] = f;
+    const frame = {
+      tileState: "T",
+      trailState: "S",
+      changedTiles: changedTag === 1 ? { length: changedLen } : null,
+      trailDirtyRowMin: rowMin,
+      trailDirtyRowMax: rowMax,
+      spiralRibbons: "R",
+      railroadDirty: railroadDirty,
+      railroadState: "RS",
+      revealedRailTiles: { length: revealedLen },
+      units: "U",
+      tick: tick,
+      structuresDirty: structuresDirty,
+      events: {
+        deadUnits: { length: deadLen },
+        conquestEvents: { length: conquestLen },
+        bonusEvents: { length: bonusLen },
+      },
+      attackRings: "AR",
+      nukeTelegraphs: "NT",
+      names: "N",
+      players: "P",
+      playerStatus: "PS",
+      relationsDirty: relationsDirty,
+      relationMatrix: "RM",
+      relationSize: relationSize,
+      allianceClusters: "AC",
+    };
+    let count = 0;
+    const trace = [];
+    const view = {};
+    UFR_METHODS.forEach((m, id) => {
+      view[m] = (...ps) => {
+        count += 1;
+        trace.push(id);
+        if (id === 2) trace.push(ps[1], ps[2]);
+        else if (id === 6) trace.push(ps[1]);
+        else if (id === 13) trace.push(ps[2] ? 1 : 0);
+        else if (id === 14) trace.push(ps[1]);
+      };
+    });
+    UFR.uploadFrameData(view, frame);
+    played.push({
+      kind: 0,
+      args: f.map(uenc),
+      res: [count, ...trace].flat().map(uenc),
+    });
+  }
+  ufrScenarios.push({ name: `${name}_${ufrIdx++}`, ops: played });
+}
+runUFR("ufr_all_on", [
+  [1, 1, 0, 5, 1, 1, 42, 1, 1, 1, 1, 1, 3],
+]);
+runUFR("ufr_empty_delta", [
+  // [] is truthy: enters the branch, skips the delta; rowMax -1 skips the
+  // trail delta too - and the full upload NEVER happens.
+  [1, 0, 0, -1, 0, 0, 7, 0, 0, 0, 0, 0, 0],
+]);
+runUFR("ufr_nan_rowmax", [
+  [1, 3, 0, NaN, 0, 0, 7, 0, 0, 0, 0, 0, 0],
+]);
+runUFR("ufr_negzero_rowmax", [
+  // -0 >= 0 is true: the trail delta fires with a -0 param.
+  [1, 3, 2, -0, 0, 0, 7, 0, 0, 0, 0, 0, 0],
+]);
+runUFR("ufr_falsy_changed", [
+  [0, 0, 0, 5, 0, 0, 7, 0, 0, 0, 0, 0, 0],
+  [NaN, 0, 0, 5, 0, 0, 7, 0, 0, 0, 0, 0, 0],
+]);
+runUFR("ufr_rail_gates", [
+  [1, 1, 0, 5, NaN, 3, 7, 0, 0, 0, 0, 0, 0], // railroadDirty NaN: no dust either
+  [1, 1, 0, 5, 1, 0, 7, 0, 0, 0, 0, 0, 0], // dirty, no revealed tiles
+  [1, 1, 0, 5, -1, 2, 7, 0, 0, 0, 0, 0, 0], // -0-falsy? no: -1 truthy
+]);
+runUFR("ufr_event_gates", [
+  [1, 1, 0, 5, 0, 0, 7, 0, 0, 2, NaN, 0, 0],
+]);
+runUFR("ufr_relations_gate", [
+  [1, 1, 0, 5, 0, 0, 7, 1, 0, 0, 0, 0, 9],
+  [1, 1, 0, 5, 0, 0, 7, 1, 0, 0, 0, 1, NaN],
+]);
+
+// --- S14 b2: LobbyCard.ts (pure predicates) ------------------------------------
+// Kind table (matches `lobby_card::run_op`): 0 viewerIsTrusted batch
+// [n,(codec userMe)*n] -> (status, bool?)*n (status 1 = TypeError); 1
+// canJoinTrustedLobby [n,(codec lobby, vt)*n] -> (0|1)*n; 2 viewerIsSignedIn
+// [n,(codec userMe)*n] -> (0|1)*n (stays inside the typed UserMeResponse |
+// false domain - a nullish response throws in TS but is out of the port's
+// documented domain, same as the ai_ capture).
+const lgScenarios = [];
+let lgIdx = 0;
+function runLG(name, ops) {
+  const played = [];
+  for (const [k, ...vals] of ops) {
+    let args;
+    let res;
+    if (k === 0) {
+      args = [vals.length, ...vals.flatMap(encVal)];
+      res = [];
+      for (const v of vals) {
+        try {
+          res.push(0, LC.viewerIsTrusted(v) ? 1 : 0);
+        } catch (e) {
+          if (!(e instanceof TypeError)) throw e;
+          res.push(1);
+        }
+      }
+    } else if (k === 1) {
+      args = [vals.length, ...vals.flatMap(([lobby, vt]) => [...encVal(lobby), vt ? 1 : 0])];
+      res = vals.map(([lobby, vt]) => (LC.canJoinTrustedLobby(lobby, vt) ? 1 : 0));
+    } else {
+      args = [vals.length, ...vals.flatMap(encVal)];
+      res = vals.map((v) => (LC.viewerIsSignedIn(v) ? 1 : 0));
+    }
+    played.push({ kind: k, args: args.flat().map(uenc), res: res.flat().map(uenc) });
+  }
+  lgScenarios.push({ name: `${name}_${lgIdx++}`, ops: played });
+}
+runLG("lg_trusted", [
+  [
+    0,
+    false, // strict !== false short-circuit
+    { player: { trustTier: "trusted" } },
+    { player: { trustTier: "untrusted" } },
+    { player: {} }, // trustTier missing -> undefined
+    { player: { trustTier: null } },
+    { player: { trustTier: "Trusted" } }, // case-sensitive
+    undefined, // TypeError
+    null, // TypeError
+    {}, // player missing -> TypeError
+    { player: null }, // TypeError
+    { player: undefined }, // TypeError
+    { player: 42 }, // boxes -> trustTier undefined -> false
+    { player: "trusted" }, // boxes -> undefined -> false
+    { player: [] }, // boxes -> undefined -> false
+    { player: { trustTier: "trusted" }, extra: 1 },
+  ],
+]);
+runLG("lg_canjoin", [
+  [
+    1,
+    [{ gameConfig: { trusted: true } }, false],
+    [{ gameConfig: { trusted: true } }, true],
+    [{ gameConfig: { trusted: "true" } }, false], // only literal true defers
+    [{ gameConfig: { trusted: 1 } }, false],
+    [{ gameConfig: { trusted: undefined } }, false],
+    [{ gameConfig: { trusted: null } }, false],
+    [{ gameConfig: {} }, false], // trusted missing -> undefined
+    [{ gameConfig: undefined }, false],
+    [{ gameConfig: null }, false],
+    [{}, false], // gameConfig missing -> optional chain short-circuits
+    [{ gameConfig: { trusted: false } }, false],
+  ],
+]);
+runLG("lg_signedin", [
+  [
+    2,
+    false,
+    { user: undefined },
+    { user: {} },
+    { user: { email: "" } },
+    { user: { steam: "s" } },
+    {},
+    { user: { discord: null } }, // present-null counts (!== undefined)
+  ],
+]);
+
+// --- S14 b2: Sounds.ts (pure subset) ------------------------------------------
+// Kind table (matches `sounds::run_op`): 0 categoryOf batch [n,(encS name)*n]
+// -> (1, encS cat | 0)*n (0 models the out-of-domain undefined read); 1 the
+// 31-entry CUE_CATEGORY dump in declaration order; 2 the ambienceUrls key set.
+const sndScenarios = [];
+let sndIdx = 0;
+function runSND(name, ops) {
+  const played = [];
+  for (const [k, ...vals] of ops) {
+    let args;
+    let res;
+    if (k === 0) {
+      args = [vals.length, ...vals.flatMap((s) => encS(s))];
+      res = [];
+      for (const s of vals) {
+        const c = SND.categoryOf(s);
+        if (c === undefined) res.push(0);
+        else res.push(1, ...encS(c));
+      }
+    } else if (k === 1) {
+      args = [];
+      const keys = Object.keys(SND.__CUE_CATEGORY);
+      res = [keys.length, ...keys.flatMap((key) => [...encS(key), ...encS(SND.__CUE_CATEGORY[key])])];
+    } else {
+      args = [];
+      const keys = [...SND.ambienceUrls.keys()];
+      res = [keys.length, ...keys.flatMap(encS)];
+    }
+    played.push({ kind: k, args: args.flat().map(uenc), res: res.flat().map(uenc) });
+  }
+  sndScenarios.push({ name: `${name}_${sndIdx++}`, ops: played });
+}
+runSND("snd_cat", [
+  [
+    0,
+    "city",
+    "factory",
+    "missile-silo",
+    "sam-silo", // the ambience set wins
+    "click",
+    "click-3",
+    "slider",
+    "nuke-warning",
+    "message", // alerts, despite the shared alliance asset
+    "defeat",
+    "master", // out of the cue table -> undefined
+    "music",
+    "",
+    "nope",
+  ],
+]);
+runSND("snd_table", [[1]]);
+runSND("snd_ambience", [[2]]);
+
+// --- S14 b2: GameTypeLabels.isFfa + InputCardStyles.cardClass ------------------
+// Kind table (matches `misc_pure::run_op`): 0 isFfa batch
+// [n,(encVal mode, encVal playerTeams)*n] -> (0|1)*n (present-undefined models
+// the missing key - the port merges Absent/Undef in both gates); 1 cardClass
+// batch [n,(active, extraTag, extra?)*n] -> (encS class)*n; 2 the constant
+// dump [encS(ACTIVE), encS(INACTIVE), encS(PREFIX), encS(FFA)] - PREFIX is
+// derived by slicing the template result, FFA rides on GAME.GameMode.
+const mppScenarios = [];
+let mppIdx = 0;
+function runMPP(name, ops) {
+  const played = [];
+  for (const [k, ...vals] of ops) {
+    let args;
+    let res;
+    if (k === 0) {
+      args = [vals.length, ...vals.flatMap(([mode, pt]) => [...encVal(mode), ...encVal(pt)])];
+      res = vals.map(([mode, pt]) => {
+        const game = {};
+        if (mode !== undefined) game.mode = mode;
+        if (pt !== undefined) game.playerTeams = pt;
+        return GTL.isFfa(game) ? 1 : 0;
+      });
+    } else if (k === 1) {
+      args = [vals.length];
+      res = [];
+      for (const [active, extra] of vals) {
+        if (extra === undefined) args.push(active ? 1 : 0, 0);
+        else {
+          args.push(active ? 1 : 0, 1, ...encS(extra));
+        }
+        res.push(...encS(ICS.cardClass(active, extra)));
+      }
+    } else {
+      args = [];
+      const cls = ICS.cardClass(true, undefined);
+      const prefix = cls.slice(0, cls.length - ICS.ACTIVE_CARD.length - 1);
+      res = [
+        ...encS(ICS.ACTIVE_CARD),
+        ...encS(ICS.INACTIVE_CARD),
+        ...encS(prefix),
+        ...encS(GAME.GameMode.FFA),
+      ];
+    }
+    played.push({ kind: k, args: args.flat().map(uenc), res: res.flat().map(uenc) });
+  }
+  mppScenarios.push({ name: `${name}_${mppIdx++}`, ops: played });
+}
+runMPP("mpp_is_ffa", [
+  [
+    0,
+    ["Free For All", null], // enum literal wins over the null teams
+    ["Free For All", "Duos"],
+    ["Team", null], // legacy team rows keep their NULL player_teams
+    ["Team", undefined],
+    [undefined, null], // absent mode + nullish teams
+    [undefined, undefined],
+    [undefined, "Duos"],
+    [undefined, ""], // "" is NOT nullish
+    [undefined, 0], // 0 is NOT nullish
+    ["", null], // present-but-empty mode blocks the fallback
+    ["Free For All ", null], // strict ===, trailing space misses
+  ],
+]);
+runMPP("mpp_card_class", [
+  [
+    1,
+    [true, undefined], // default parameter
+    [false, undefined],
+    [true, ""], // explicit "" agrees with the default
+    [false, "px-2"],
+    [true, "a b"],
+  ],
+]);
+runMPP("mpp_consts", [[2]]);
+
 // --- S12: AtlasData.ts --------------------------------------------------------
 // Kind table (matches `atlas_data::run_op`): 0 buildGlyphTables batch ->
 // the FULL 3x384 Float32Array contents; 1 buildKernTable batch -> sparse
@@ -18366,6 +18775,11 @@ const structures = {
   gameranking: girScenarios,
   tutorialprogress: tpScenarios,
   previewmap: pmScenarios,
+  staticassetcache: sacScenarios,
+  frameupload: ufrScenarios,
+  lobbycard: lgScenarios,
+  soundscat: sndScenarios,
+  miscpure: mppScenarios,
 };
 
 // ================================================================ JSON
@@ -21686,6 +22100,43 @@ opStream(
     "/// tags) -> dump | [1, msg], 1 previewTileRef, 2 getPreviewRailLoop\n" +
     "/// (sparse state dump, cached flag), 3 reset the module latch, 4 the\n" +
     "/// constants + RailType names table.",
+);
+opStream(
+  "staticassetcache",
+  "Sac",
+  "/// One `server/StaticAssetCache.ts` op (see `static_asset_cache::run_op`\n" +
+    "/// docs). kind 0 getStaticAssetCacheControl batch, 1 stripQueryString\n" +
+    "/// batch, 2 the applyStaticAssetCacheControl setHeader trace, 3 the\n" +
+    "/// IMMUTABLE constant dump.",
+);
+opStream(
+  "frameupload",
+  "Ufr",
+  "/// One `client/render/frame/Upload.ts` op (see `frame_upload::run_op`\n" +
+    "/// docs). kind 0 uploadFrameData over the 13 scripted gate tokens ->\n" +
+    "/// [count, (methodId, numeric params...)*count] view-trace.",
+);
+opStream(
+  "lobbycard",
+  "Lg",
+  "/// One `client/components/LobbyCard.ts` pure-predicate op (see\n" +
+    "/// `lobby_card::run_op` docs). kind 0 viewerIsTrusted batch ->\n" +
+    "/// (status, bool?)*n (status 1 = TypeError), 1 canJoinTrustedLobby\n" +
+    "/// batch, 2 viewerIsSignedIn batch (the account_identity delegation).",
+);
+opStream(
+  "soundscat",
+  "Snd",
+  "/// One `client/sound/Sounds.ts` pure-subset op (see `sounds::run_op`\n" +
+    "/// docs). kind 0 categoryOf batch -> (1, encS cat | 0)*n, 1 the 31-entry\n" +
+    "/// CUE_CATEGORY declaration-order dump, 2 the ambienceUrls key set.",
+);
+opStream(
+  "miscpure",
+  "Mpp",
+  "/// One `GameTypeLabels.isFfa` + `InputCardStyles.cardClass` op (see\n" +
+    "/// `misc_pure::run_op` docs). kind 0 isFfa batch, 1 cardClass batch\n" +
+    "/// (extraTag 0 = default parameter), 2 the constants dump.",
 );
 
 const dataDir = join(root, "crates", "core", "tests", "data");

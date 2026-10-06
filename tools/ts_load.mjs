@@ -4286,6 +4286,119 @@ function prepare(rel) {
       "export function __pmResetRailLoop() {\n  railLoop = undefined;\n}\n";
   }
 
+  if (rel.endsWith("server/StaticAssetCache.ts")) {
+    // S14 b2: no imports (plain load), but stripQueryString and the
+    // IMMUTABLE constant are module-private; the capture needs both, so
+    // append capture-only re-exports (PreviewMap __pmResetRailLoop
+    // precedent).
+    out +=
+      "\n/** Capture-only: expose the private helpers for the sac_ capture. */\n" +
+      "export function __stripQueryString(urlPath) {\n  return stripQueryString(urlPath);\n}\n" +
+      "export const __IMMUTABLE_CACHE_CONTROL = IMMUTABLE_CACHE_CONTROL;\n";
+  }
+
+  if (rel.endsWith("components/LobbyCard.ts")) {
+    // S14 b2: the lit / Utils / ConfirmDialog half of the file is host-bound;
+    // the capture keeps only the three pure predicates (viewerIsTrusted,
+    // viewerIsSignedIn, canJoinTrustedLobby). Strip mode erases the
+    // UserMeResponse / PublicGameInfo type annotations, so the rewritten
+    // header only needs the AccountIdentity delegation, which rides on the
+    // prepared AccountIdentity.ts copy (precedent: GameModeSelector header
+    // rebuild).
+    const lcAiRel = "src/client/AccountIdentity.ts";
+    if (!prepared.has(lcAiRel)) prepare(lcAiRel);
+    const lcHead = out.indexOf("export function viewerIsTrusted");
+    if (lcHead === -1) {
+      throw new Error("ts_load: LobbyCard viewerIsTrusted anchor not found");
+    }
+    const lcTail = out.indexOf("export function trustRequiredDialog");
+    if (lcTail === -1) {
+      throw new Error("ts_load: LobbyCard trustRequiredDialog anchor not found");
+    }
+    out =
+      `import { responseHasLinkedIdentity } from "./${prepared.get(lcAiRel)}";\n\n` +
+      out.slice(lcHead, lcTail);
+  }
+
+  if (rel.endsWith("sound/Sounds.ts")) {
+    // S14 b2: assetUrl / GameEvent / AudioCategory all back out-of-scope
+    // machinery (the URL maps are load-time side effects, the event classes
+    // ride the GameEvent bus, AudioCategory is type-only). The assetUrl("...")
+    // calls become their literal argument — the lg_/snd_ captures only need
+    // the ambienceUrls KEY set for categoryOf's `has` gate and the
+    // CUE_CATEGORY declaration order, so the URL values are placeholders.
+    out = must(
+      out,
+      'import { assetUrl } from "../../core/AssetUrls";\n',
+      "",
+      "Sounds assetUrl import",
+    );
+    out = must(
+      out,
+      'import { GameEvent } from "../../core/EventBus";\n',
+      "",
+      "Sounds GameEvent import",
+    );
+    out = must(
+      out,
+      'import { AudioCategory } from "../../core/game/UserSettings";\n',
+      "",
+      "Sounds AudioCategory import",
+    );
+    out = out.replace(/assetUrl\("([^"]*)"\)/g, '"$1"');
+    // Parameter-property ctors are rejected by the strip-only loader;
+    // desugar both event classes in place (Tutorial precedent).
+    out = must(
+      out,
+      "export class PlaySoundEffectEvent implements GameEvent {\n" +
+        "  constructor(public readonly effect: SoundEffect) {}\n" +
+        "}",
+      "export class PlaySoundEffectEvent {\n" +
+        "  constructor(effect) {\n    this.effect = effect;\n  }\n" +
+        "}",
+      "Sounds PlaySoundEffectEvent ctor",
+    );
+    out = must(
+      out,
+      "  constructor(\n" +
+        "    public readonly track: AmbienceTrack | null,\n" +
+        "    public readonly gain: number = 1,\n" +
+        "  ) {}",
+      "  constructor(track, gain = 1) {\n" +
+        "    this.track = track;\n    this.gain = gain;\n  }",
+      "Sounds SetAmbienceEvent ctor",
+    );
+    // CUE_CATEGORY is module-private; the snd_ dump needs its key order.
+    out +=
+      "\n/** Capture-only: expose the private cue table for the snd_ capture. */\n" +
+      "export const __CUE_CATEGORY = CUE_CATEGORY;\n";
+  }
+
+  if (rel.endsWith("stats/GameTypeLabels.ts")) {
+    // S14 b2: formatGameType is translateText / intl-bound and cut from the
+    // tail; isFfa keeps the GameMode *value* import and rides on the prepared
+    // Game.ts copy (the enum is inlined to a plain object there).
+    const gtlGameRel = "src/core/game/Game.ts";
+    if (!prepared.has(gtlGameRel)) prepare(gtlGameRel);
+    out = must(
+      out,
+      'import { translateText } from "../../../Utils";\n',
+      "",
+      "GameTypeLabels translateText import",
+    );
+    out = must(
+      out,
+      'import { GameMode } from "../../../../core/game/Game";\n',
+      `import { GameMode } from "./${prepared.get(gtlGameRel)}";\n`,
+      "GameTypeLabels GameMode import",
+    );
+    const gtlCut = out.indexOf("// FFA / Duos / 7 Teams");
+    if (gtlCut === -1) {
+      throw new Error("ts_load: GameTypeLabels formatGameType comment anchor not found");
+    }
+    out = out.slice(0, gtlCut);
+  }
+
   mkdirSync(cacheDir, { recursive: true });
   const hash = createHash("sha1").update(out).digest("hex").slice(0, 10);
   const base = `${basename(rel, ".ts")}-${hash}.ts`;

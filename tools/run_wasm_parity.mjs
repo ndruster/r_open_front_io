@@ -174,6 +174,11 @@ for (const name of [
   "probe_gir_reset", "probe_gir_arg", "probe_gir_op", "probe_gir_out_at",
   "probe_tp_reset", "probe_tp_arg", "probe_tp_op", "probe_tp_out_at",
   "probe_pm_reset", "probe_pm_arg", "probe_pm_op", "probe_pm_out_at",
+  "probe_sac_reset", "probe_sac_arg", "probe_sac_op", "probe_sac_out_at",
+  "probe_ufr_reset", "probe_ufr_arg", "probe_ufr_op", "probe_ufr_out_at",
+  "probe_lg_reset", "probe_lg_arg", "probe_lg_op", "probe_lg_out_at",
+  "probe_snd_reset", "probe_snd_arg", "probe_snd_op", "probe_snd_out_at",
+  "probe_mpp_reset", "probe_mpp_arg", "probe_mpp_op", "probe_mpp_out_at",
 ]) {
   if (typeof ex[name] !== "function") {
     console.error(`missing wasm export ${name} - rebuild with --features wasm-probe`);
@@ -2603,6 +2608,11 @@ for (const [key, reset, arg, op, outAt] of [
   ["gameranking", "probe_gir_reset", "probe_gir_arg", "probe_gir_op", "probe_gir_out_at"],
   ["tutorialprogress", "probe_tp_reset", "probe_tp_arg", "probe_tp_op", "probe_tp_out_at"],
   ["previewmap", "probe_pm_reset", "probe_pm_arg", "probe_pm_op", "probe_pm_out_at"],
+  ["staticassetcache", "probe_sac_reset", "probe_sac_arg", "probe_sac_op", "probe_sac_out_at"],
+  ["frameupload", "probe_ufr_reset", "probe_ufr_arg", "probe_ufr_op", "probe_ufr_out_at"],
+  ["lobbycard", "probe_lg_reset", "probe_lg_arg", "probe_lg_op", "probe_lg_out_at"],
+  ["soundscat", "probe_snd_reset", "probe_snd_arg", "probe_snd_op", "probe_snd_out_at"],
+  ["miscpure", "probe_mpp_reset", "probe_mpp_arg", "probe_mpp_op", "probe_mpp_out_at"],
 ]) {
   for (const s of S[key]) {
     ex[reset]();

@@ -321,6 +321,33 @@
 //!   180-tile rail rectangle through the reused
 //!   [`railroad_cache::compute_rail_tiles`] and the module-singleton
 //!   `getPreviewRailLoop` latch (sparse `railroadState` dump))
+//! * [`static_asset_cache`] — `src/server/StaticAssetCache.ts` (the
+//!   `split("?", 1)[0]` query strip, the falsy `!urlPath` gate, the
+//!   `/assets/` / `/_assets/` prefix test and the `setHeader` truthy gate
+//!   over a facade trace)
+//! * [`frame_upload`] — `src/client/render/frame/Upload.ts` (the
+//!   `uploadFrameData` dispatch loop over a `(methodId, params…)` trace: the
+//!   `changedTiles` truthy-vs-`length > 0` split (the empty array is truthy),
+//!   the `trailDirtyRowMax >= 0` numeric gate inside the branch, the
+//!   railroad / structures / relations truthy gates and the three
+//!   independent event-length gates; the unconditional spiral / units /
+//!   rings / telegraphs / names / clusters calls)
+//! * [`lobby_card`] — the pure predicate subset of
+//!   `src/client/components/LobbyCard.ts` (`viewerIsTrusted` with the strict
+//!   `!== false` gate and the `.player.trustTier` TypeError domain,
+//!   `canJoinTrustedLobby` with the `gameConfig?.trusted !== true` optional
+//!   chain; `viewerIsSignedIn` delegates to [`account_identity`]; the lit /
+//!   fetch-bound dialog and aspect-ratio cache are out of scope)
+//! * [`sounds`] — the pure subset of `src/client/sound/Sounds.ts` (the
+//!   31-entry `CUE_CATEGORY` declaration-order table, the four-key
+//!   `ambienceUrls` set and the `categoryOf` ambience-first lookup; the
+//!   `assetUrl`-bound `soundEffectUrls` and the `GameEvent` classes are out
+//!   of scope)
+//! * [`misc_pure`] — `isFfa` from `GameTypeLabels.ts` (the `GameMode.FFA`
+//!   string gate and the mode-undefined + nullish-`playerTeams` fallback;
+//!   `formatGameType` is intl-bound and out of scope) and `cardClass` from
+//!   `InputCardStyles.ts` (the undefined-only default parameter and the
+//!   verbatim template spacing)
 //!
 //! Two rules govern every future port into this crate:
 //!
@@ -362,6 +389,7 @@ pub mod effect_editor_state;
 pub mod event_bus;
 pub mod exec_util;
 pub mod execution_manager;
+pub mod frame_upload;
 pub mod fx_settings;
 pub mod game_api_cors;
 pub mod game_config_helpers;
@@ -380,10 +408,12 @@ pub mod js_json;
 pub mod jsnum;
 pub mod line;
 pub mod listing_state;
+pub mod lobby_card;
 pub mod map_layer_settings;
 pub mod map_playlist;
 pub mod maps_gen;
 pub mod match_telemetry;
+pub mod misc_pure;
 pub mod motion_plans;
 pub mod name_box_calculator;
 pub mod name_visibility;
@@ -418,7 +448,9 @@ pub mod server_list;
 pub mod settings_utils;
 pub mod shared_water_cache;
 pub mod spiral_trails;
+pub mod sounds;
 pub mod stable_stringify;
+pub mod static_asset_cache;
 pub mod stats_constants;
 pub mod station_manager;
 pub mod stats_impl;

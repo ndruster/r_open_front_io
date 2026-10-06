@@ -3695,6 +3695,58 @@ function prepare(rel) {
     );
   }
 
+  if (rel.endsWith("render/gl/RenderSettings.ts")) {
+    // S13: the three JSON imports need absolute URLs + the JSON module
+    // attribute (ColorUtils precedent). PALETTE_NAMES is a *value* import
+    // from the zod GraphicsOverrides graph -> inlined (enum-inlining
+    // precedent); the two members are the exact `as const` tuple.
+    out = must(
+      out,
+      'import colorblindTheme from "./colorblind-theme.json";\n' +
+        'import defaultTheme from "./default-theme.json";\n',
+      `import colorblindTheme from "${TS_URL}src/client/render/gl/colorblind-theme.json" with { type: "json" };\n` +
+        `import defaultTheme from "${TS_URL}src/client/render/gl/default-theme.json" with { type: "json" };\n`,
+      "RenderSettings theme JSON imports",
+    );
+    out = must(
+      out,
+      'import defaults from "./render-settings.json";\n',
+      `import defaults from "${TS_URL}src/client/render/gl/render-settings.json" with { type: "json" };\n`,
+      "RenderSettings defaults JSON import",
+    );
+    out = must(
+      out,
+      'import { PALETTE_NAMES } from "./GraphicsOverrides";\n',
+      'const PALETTE_NAMES = ["default", "colorblind"];\n',
+      "RenderSettings PALETTE_NAMES import",
+    );
+  }
+
+  if (rel.endsWith("render/gl/RenderOverrides.ts")) {
+    // S13: createThemeSettings is a *value* import -> redirect to the
+    // prepared RenderSettings copy; the `, type RenderSettings` inline
+    // specifier is dropped (BootInterrupts UserMeResponse precedent). The
+    // hexToRgb import redirects to the prepared ColorUtils copy (S11, its
+    // JSON import already rewritten). The GraphicsOverrides import is an
+    // explicit `import type` -> erased by strip mode.
+    const roRsRel = "src/client/render/gl/RenderSettings.ts";
+    if (!prepared.has(roRsRel)) prepare(roRsRel);
+    out = must(
+      out,
+      'import { createThemeSettings, type RenderSettings } from "./RenderSettings";\n',
+      `import { createThemeSettings } from "./${prepared.get(roRsRel)}";\n`,
+      "RenderOverrides RenderSettings import",
+    );
+    const roCuRel = "src/client/render/gl/utils/ColorUtils.ts";
+    if (!prepared.has(roCuRel)) prepare(roCuRel);
+    out = must(
+      out,
+      'import { hexToRgb } from "./utils/ColorUtils";\n',
+      `import { hexToRgb } from "./${prepared.get(roCuRel)}";\n`,
+      "RenderOverrides ColorUtils import",
+    );
+  }
+
   if (rel.endsWith("view/CosmeticVisibility.ts")) {
     // S11: effectTypeForSlot is a *value* import -> redirect to the prepared
     // CosmeticSchemas copy (its zod / jose graph is already shimmed away).

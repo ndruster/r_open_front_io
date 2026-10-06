@@ -1885,6 +1885,47 @@ WebSockets — stays excluded, mirroring the `src/core` exclusions).
     31 scenarios (`ai_` 2, `vr_` 2, `gv_` 2, `bi_` 7, `mls_` 2, `fxs_` 1,
     `atd_` 3, `ees_` 3, `pn_` 6, `gms_` 3).
 
+70. **`client/render/gl/RenderSettings.ts` +
+    `client/render/gl/RenderOverrides.ts`**
+    (`render_settings`, `render_overrides`) — the S13 settings-factory pair.
+    The three JSON modules (`render-settings.json`, `default-theme.json`,
+    `colorblind-theme.json`) are copied byte-for-byte into
+    `crates/core/data/` and embedded through `include_str!` (a wasm build
+    cannot read the upstream checkout), parsed once into the `JsVal` codec
+    domain by the new `js_json::json_parse` (strict JSON grammar, V8
+    integer-key ordering, UTF-16 surrogate-pair escapes; the embedded data
+    itself has no integer keys, so the `JSON.parse(JSON.stringify(x))` deep
+    copy is an identity on the codec value and a plain `clone()` is
+    equivalent — pinned by a mutate-then-reread independence scenario).
+    `RenderSettings` — `createThemeSettings(name = "default")`: the default
+    parameter fires ONLY on `undefined`; `null` / `""` / out-of-domain strings
+    read `THEMES[name]` → `undefined` → `JSON.parse(undefined)` throws
+    `SyntaxError` (modelled as the `[1]` status token); `createRenderSettings`
+    spreads the 24 render-settings.json keys in own-key order and APPENDS
+    `theme` last (25 keys). `dumpSettings` stays in TS (Blob /
+    `URL.createObjectURL` / `document` — host-bound). `GraphicsOverrides.ts`
+    contributes only the `PALETTE_NAMES` constant (inlined in the loader; the
+    zod schema stays in TS per the schema-exclusion precedent).
+    `RenderOverrides` — `applyGraphicsOverrides` in full: every `?.Y !==
+    undefined` gate is STRICT (a present `null` PASSES and lands raw),
+    `classicIcons ?? true` falls back ONLY on nullish (`false`/`0`/`""` skip —
+    no else branch), `showDots === false` is the strict-literal gate,
+    `classicNumbers !== undefined` lets `null` through (the `??`/`!==`
+    split pinned side by side), the hex gates divide `hexToRgb` channels by 255
+    (reusing `color_utils`), an unparseable hex writes NOTHING and the
+    function CONTINUES (no early return — pinned by a scenario where the
+    later tint and palette swap both apply), a NON-string hex throws a
+    TypeError inside `hexToRgb`'s `.trim()` (`[1]` with the partial mutation
+    dumped), `ambient < 1` uses JS relational ToNumber (`NaN`/`Infinity`/`1`
+    false, `-0`/`null`/`""`/`"0.5"` true, `true` false), `darkNames` assigns
+    `!dark` as a BOOLEAN but `outlineUsePlayerColor` the RAW value, `fallout`
+    is one toggle driving BOTH passes, and the `palette` swap evaluates
+    `createThemeSettings` BEFORE assigning — an out-of-domain palette throws
+    `SyntaxError` (`[2]`) with the earlier gates already applied and `theme`
+    left intact; a valid palette replaces `theme` IN PLACE (key position
+    survives). A nullish `overrides` throws on the first `?.` read before any
+    mutation. 19 scenarios (`rs_` 4, `ro_` 15).
+
 Regenerate whenever a ported source changes:
 
 ```
@@ -1917,7 +1958,7 @@ node rust/tools/run_wasm_parity.mjs
 
 `wasm-probe` exposes the ported functions through `extern "C"` scalar
 entrypoints (`src/wasm_probe.rs`); the runner imports `data/vectors.json` and
-compares every value. Last run: **307,077 comparisons, all bit-identical**.
+compares every value. Last run: **790,209 comparisons, all bit-identical**.
 
 ### Windows: the linker environment
 

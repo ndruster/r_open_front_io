@@ -5285,3 +5285,14 @@ s8_stateless_probe!(
     probe_gms_reset, probe_gms_arg, probe_gms_op, probe_gms_out_at,
     GMS_ARGS, GMS_OUT, crate::game_mode_gate::run_op
 );
+
+// =============== S13: client render/gl settings + overrides =================
+
+s8_stateless_probe!(
+    probe_rset_reset, probe_rset_arg, probe_rset_op, probe_rset_out_at,
+    RSET_ARGS, RSET_OUT, crate::render_settings::run_op
+);
+s8_stateless_probe!(
+    probe_ro_reset, probe_ro_arg, probe_ro_op, probe_ro_out_at,
+    RO_ARGS, RO_OUT, crate::render_overrides::run_op
+);

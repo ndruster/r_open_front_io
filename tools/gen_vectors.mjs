@@ -506,6 +506,10 @@ const FXS = await loadTs("src/client/render/gl/passes/fx-pass/FxSettings.ts");
 const ATD = await loadTs("src/client/render/gl/passes/name-pass/AtlasData.ts");
 const ATY = await loadTs("src/client/render/gl/passes/name-pass/Types.ts");
 const EES = await loadTs("src/client/render/gl/debug/EffectEditorState.ts");
+// S13: render/gl settings factories + the override pass (RSET/ROVR: RS is
+// taken by server/Roster.ts).
+const RSET = await loadTs("src/client/render/gl/RenderSettings.ts");
+const ROVR = await loadTs("src/client/render/gl/RenderOverrides.ts");
 const PN = await loadTs("src/client/PlayerName.ts");
 const VU = await loadTs("src/core/validations/username.ts");
 const GMS = await loadTs("src/client/GameModeSelector.ts");
@@ -17018,6 +17022,183 @@ runFXS("fxs_radius", [
   [0, { nukeRadiusAtom: 0 }, "Atom Bomb"],
 ]);
 
+// --- S13: RenderSettings.ts ----------------------------------------------------
+// Kind table (matches `render_settings::run_op`): 0 createThemeSettings
+// (codec name; the omitted argument rides [1] undefined and triggers the
+// default parameter) -> [0, codec theme] | [1] threw (V8 SyntaxError:
+// "undefined" is not valid JSON); 1 createRenderSettings -> [0, codec
+// settings]; 2 createRenderSettings + the scripted independence mutation
+// (passEnabled.terrain = false, theme.teamColors.Red = "#000000") -> [0,
+// codec settings]. A throw op records res = [1] only.
+const rs13Scenarios = [];
+let rs13Idx = 0;
+function runRS13(name, ops) {
+  const played = [];
+  for (const [k, ...a] of ops) {
+    let args;
+    let res;
+    if (k === 0) {
+      args = encVal(a[0]);
+      try {
+        res = [0, ...encVal(RSET.createThemeSettings(a[0]))];
+      } catch (e) {
+        if (!(e instanceof SyntaxError)) throw e;
+        res = [1];
+      }
+    } else if (k === 1) {
+      args = [];
+      res = [0, ...encVal(RSET.createRenderSettings())];
+    } else if (k === 2) {
+      args = [];
+      const st = RSET.createRenderSettings();
+      st.passEnabled.terrain = false;
+      st.theme.teamColors.Red = "#000000";
+      res = [0, ...encVal(st)];
+    } else throw new Error("rs: bad op kind " + k);
+    played.push({ kind: k, args: args.flat().map(uenc), res: res.flat().map(uenc) });
+  }
+  rs13Scenarios.push({ name: `${name}_${rs13Idx++}`, ops: played });
+}
+runRS13("rs_theme_default", [
+  [0, undefined], // default parameter fires
+  [0, "default"],
+  [0, "colorblind"],
+]);
+runRS13("rs_theme_throw", [
+  [0, null], // THEMES[null] undefined -> JSON.parse("undefined") throws
+  [0, ""], // out-of-domain string
+  [0, "deuteranopia"], // out-of-domain string
+  [0, 0], // THEMES[0] undefined -> throws
+  [0, true], // THEMES[true] undefined -> throws
+  [0, {}], // THEMES[[object Object]] undefined -> throws
+]);
+runRS13("rs_render_settings", [[1]]);
+runRS13("rs_independence", [
+  [2], // mutated dump
+  [1], // following clean dump must be pristine (deep copy isolates)
+]);
+
+// --- S13: RenderOverrides.ts ---------------------------------------------------
+// Kind table (matches `render_overrides::run_op`): 0 applyGraphicsOverrides
+// (codec settings, codec overrides) -> [status, codec settings-after].
+// status 0 ok, 1 TypeError (nullish overrides / non-string hex), 2
+// SyntaxError (out-of-domain palette). The settings dump ALWAYS follows.
+const roScenarios = [];
+let roIdx = 0;
+function runRO(name, ops) {
+  const played = [];
+  for (const [a0, a1] of ops) {
+    const args = [...encVal(a0), ...encVal(a1)];
+    let res;
+    try {
+      ROVR.applyGraphicsOverrides(a0, a1);
+      res = [0, ...encVal(a0)];
+    } catch (e) {
+      res = [e instanceof SyntaxError ? 2 : 1, ...encVal(a0)];
+    }
+    played.push({ kind: 0, args: args.flat().map(uenc), res: res.flat().map(uenc) });
+  }
+  roScenarios.push({ name: `${name}_${roIdx++}`, ops: played });
+}
+runRO("ro_empty", [[RSET.createRenderSettings(), {}]]);
+runRO("ro_numeric", [
+  [
+    RSET.createRenderSettings(),
+    {
+      name: { nameScaleFactor: 1.5, cullThreshold: 0, hoverFadeAlpha: -0, hoverGlowWidth: NaN, hoverGlowAlpha: Infinity },
+      cosmetics: { flagOpacity: 0.5 },
+      structure: { iconSize: 2 },
+      mapOverlay: { navalHighlight: false, highlightFillBrighten: 1, highlightBrighten: 2, highlightThicken: 3, territorySaturation: 0, territoryAlpha: 1, coordinateGridOpacity: 0.5 },
+      altView: { fillAlpha: 0.25 },
+      railroad: { railMinZoom: 4, railThickness: 1.5 },
+      smallPlayerGlow: { strength: 0 },
+      passEnabled: { fx: false },
+      terrain: { backgroundColor: "#ffffff", oceanColor: "#000000", sandColor: "#111111", plainsColor: "#222222", highlandColor: "#333333", mountainColor: "#444444" },
+      lighting: { ambient: 0.5, falloffPower: 2 },
+    },
+  ],
+]);
+runRO("ro_classic_icons", [
+  [RSET.createRenderSettings(), { structure: { classicIcons: false } }],
+  [RSET.createRenderSettings(), { structure: { classicIcons: null } }], // ?? fallback -> writes run
+  [RSET.createRenderSettings(), { structure: { classicIcons: 0 } }], // falsy but not nullish -> skip
+  [RSET.createRenderSettings(), { structure: { classicIcons: undefined } }], // -> writes run
+]);
+runRO("ro_show_dots", [
+  [RSET.createRenderSettings(), { structure: { showDots: false } }],
+  [RSET.createRenderSettings(), { structure: { showDots: true } }],
+  [RSET.createRenderSettings(), { structure: { showDots: null } }],
+  [RSET.createRenderSettings(), { structure: { showDots: undefined } }],
+]);
+runRO("ro_classic_numbers", [
+  [RSET.createRenderSettings(), { structure: { classicNumbers: false } }],
+  [RSET.createRenderSettings(), { structure: { classicNumbers: null } }], // strict gate passes, raw null lands
+]);
+runRO("ro_hex", [
+  [RSET.createRenderSettings(), { mapOverlay: { staleNukeColor: "#ff8000" } }],
+  [RSET.createRenderSettings(), { mapOverlay: { staleNukeColor: "zz" } }], // hexToRgb null -> no writes
+  // Unparseable staleNukeColor must NOT abort: the friendly tint and the
+  // palette swap after it both apply.
+  [RSET.createRenderSettings(), { mapOverlay: { staleNukeColor: "zz", friendlyTintColor: "#00ff00" }, palette: "colorblind" }],
+  [RSET.createRenderSettings(), { mapOverlay: { friendlyTintColor: "#123456", embargoTintColor: "bad" } }],
+  [RSET.createRenderSettings(), { affiliation: { selfColor: "#ffffff", allyColor: "nothex", enemyColor: "#000000" } }],
+]);
+runRO("ro_hex_typeerror", [
+  [RSET.createRenderSettings(), { mapOverlay: { staleNukeColor: null } }], // null.trim TypeError, partial state
+  [RSET.createRenderSettings(), { mapOverlay: { friendlyTintColor: 5 } }],
+  [RSET.createRenderSettings(), { affiliation: { selfColor: {} } }],
+]);
+runRO("ro_ambient", [
+  [RSET.createRenderSettings(), { lighting: { ambient: NaN } }],
+  [RSET.createRenderSettings(), { lighting: { ambient: Infinity } }],
+  [RSET.createRenderSettings(), { lighting: { ambient: 1 } }],
+  [RSET.createRenderSettings(), { lighting: { ambient: -0 } }],
+  [RSET.createRenderSettings(), { lighting: { ambient: null } }],
+  [RSET.createRenderSettings(), { lighting: { ambient: true } }],
+  [RSET.createRenderSettings(), { lighting: { ambient: false } }],
+  [RSET.createRenderSettings(), { lighting: { ambient: "0.5" } }],
+  [RSET.createRenderSettings(), { lighting: { ambient: "" } }],
+  [RSET.createRenderSettings(), { lighting: { ambient: "abc" } }],
+]);
+runRO("ro_dark_names", [
+  [RSET.createRenderSettings(), { name: { darkNames: true } }],
+  [RSET.createRenderSettings(), { name: { darkNames: false } }],
+  [RSET.createRenderSettings(), { name: { darkNames: null } }], // raw null -> outlineUsePlayerColor
+  [RSET.createRenderSettings(), { name: { darkNames: "yes" } }], // truthy raw -> outlineUsePlayerColor
+]);
+runRO("ro_fallout", [
+  [RSET.createRenderSettings(), { passEnabled: { fallout: false } }],
+  [RSET.createRenderSettings(), { passEnabled: { fallout: true } }],
+]);
+runRO("ro_palette", [
+  [RSET.createRenderSettings(), { palette: "colorblind" }],
+  [RSET.createRenderSettings(), { palette: "default" }],
+]);
+runRO("ro_palette_throw", [
+  [RSET.createRenderSettings(), { name: { nameScaleFactor: 9 }, palette: "nope" }], // SyntaxError, prior gate applied
+  [RSET.createRenderSettings(), { palette: null }],
+  [RSET.createRenderSettings(), { palette: 0 }],
+]);
+runRO("ro_nullish_overrides", [
+  [RSET.createRenderSettings(), null], // TypeError on the first property read
+  [RSET.createRenderSettings(), undefined],
+]);
+runRO("ro_nonobject_containers", [
+  [RSET.createRenderSettings(), { name: 5, structure: true, mapOverlay: [], lighting: null, terrain: 0, affiliation: "", cosmetics: 0, altView: 0, railroad: 0, passEnabled: 0, smallPlayerGlow: 0 }],
+]);
+runRO("ro_combined", [
+  [
+    RSET.createRenderSettings(),
+    {
+      name: { nameScaleFactor: 2, darkNames: true },
+      structure: { iconSize: 3, classicIcons: false, showDots: false, classicNumbers: true },
+      mapOverlay: { staleNukeColor: "#010203", territoryAlpha: 0.5 },
+      lighting: { ambient: 0.8 },
+      palette: "colorblind",
+    },
+  ],
+]);
+
 // --- S12: AtlasData.ts --------------------------------------------------------
 // Kind table (matches `atlas_data::run_op`): 0 buildGlyphTables batch ->
 // the FULL 3x384 Float32Array contents; 1 buildKernTable batch -> sparse
@@ -17594,6 +17775,8 @@ const structures = {
   effecteditorstate: eesScenarios,
   playername: pnScenarios,
   gamemodegate: gmsScenarios,
+  rendersettings: rs13Scenarios,
+  renderoverrides: roScenarios,
 };
 
 // ================================================================ JSON
@@ -20871,6 +21054,24 @@ opStream(
     "/// 3 shouldBlockMultiplayerAction, 4 lobbyFeedSuspended, 5\n" +
     "/// shouldBlockSocketSourcedAction, 6 joinIsGateable, 7 shouldBlockJoin, 8\n" +
     "/// failedAllowsMultiplayer (codec kind|null|undefined).",
+);
+opStream(
+  "rendersettings",
+  "Rset",
+  "/// One `client/render/gl/RenderSettings.ts` op (see `render_settings::run_op`\n" +
+    "/// docs). kind 0 createThemeSettings (codec name; omitted argument rides\n" +
+    "/// [1] undefined) -> [0, codec theme] | [1] threw (SyntaxError), 1\n" +
+    "/// createRenderSettings -> [0, codec settings], 2 createRenderSettings +\n" +
+    "/// the scripted independence mutation -> [0, codec settings].",
+);
+opStream(
+  "renderoverrides",
+  "Ro",
+  "/// One `client/render/gl/RenderOverrides.ts` op (see\n" +
+    "/// `render_overrides::run_op` docs). kind 0 applyGraphicsOverrides (codec\n" +
+    "/// settings, codec overrides) -> [status, codec settings-after]; status\n" +
+    "/// 0 ok, 1 TypeError (nullish overrides / non-string hex), 2 SyntaxError\n" +
+    "/// (out-of-domain palette). The dump always follows.",
 );
 
 const dataDir = join(root, "crates", "core", "tests", "data");

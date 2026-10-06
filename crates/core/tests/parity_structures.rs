@@ -4345,3 +4345,24 @@ replay_s12!(
     GMS_SCENARIOS,
     openfront_core::game_mode_gate::run_op
 );
+// client/render/gl/RenderSettings.ts: the theme factory (default parameter
+// only on undefined, the THEMES[bad] -> JSON.parse("undefined") SyntaxError
+// throw path), the 25-key createRenderSettings order (theme appended last)
+// and the deep-copy independence (the mutation op, then a pristine dump).
+replay_s12!(
+    replay_rendersettings_scenarios,
+    RSET_SCENARIOS,
+    openfront_core::render_settings::run_op
+);
+// client/render/gl/RenderOverrides.ts: every override gate — the strict
+// !== undefined reads (null passes), the classicIcons `?? true` fallback,
+// the showDots === false gate, the hexToRgb channels (/255, null no-write,
+// TypeError on non-strings), the ambient `< 1` enabled derivation (NaN /
+// Infinity / 1 / -0 / string ToNumber), the darkNames raw-value writes, the
+// fallout one-drives-two, the palette theme swap (in-place key, SyntaxError
+// passthrough with partial state) and the nullish-overrides TypeError.
+replay_s12!(
+    replay_renderoverrides_scenarios,
+    RO_SCENARIOS,
+    openfront_core::render_overrides::run_op
+);

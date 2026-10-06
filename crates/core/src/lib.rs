@@ -386,6 +386,8 @@ pub mod railroad;
 pub mod railroad_cache;
 pub mod railroad_spatial_grid;
 pub mod relation_matrix;
+pub mod render_overrides;
+pub mod render_settings;
 pub mod renderer_consts;
 pub mod replay_speed;
 pub mod roster;

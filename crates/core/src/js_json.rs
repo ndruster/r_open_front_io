@@ -168,6 +168,265 @@ fn ser_units(units: &[u16], out: &mut String) {
     out.push('"');
 }
 
+// ---------------------------------------------------------------- JSON.parse
+//
+// Strict `JSON.parse` for the embedded render-settings / theme JSON (S13).
+// `None` models the `SyntaxError` V8 throws (the golden captures the throw
+// path as a status token, never a value). Objects come back with V8 own-key
+// order — integer-like keys sort numerically ahead of the string keys, which
+// keep insertion order — exactly like the private parser `boot_interrupts`
+// uses for the claim-prompt store; `JSON.parse` materialises properties in
+// that ordinary order, so `Object.keys` over a parsed theme / settings tree
+// follows it (the embedded data has no integer-like object keys, but the
+// capture scripts arbitrary JSON strings too).
+
+/// Canonical decimal-integer object key (V8 integer-key section): digits
+/// only, no leading zeros (except "0" itself), value < 2^53.
+fn canon_int_key(k: &str) -> Option<u64> {
+    let b = k.as_bytes();
+    if b.is_empty() || !b.iter().all(|c| c.is_ascii_digit()) {
+        return None;
+    }
+    if b[0] == b'0' && b.len() > 1 {
+        return None;
+    }
+    if b.len() > 16 {
+        return None;
+    }
+    k.parse::<u64>().ok().filter(|v| *v < (1u64 << 53))
+}
+
+/// `map[key] = value` in V8 own-key order (integer keys first, ascending;
+/// string keys keep insertion order; an existing key overwrites in place).
+fn obj_set_v8(m: &mut Vec<(String, JsVal)>, key: String, v: JsVal) {
+    if let Some(slot) = m.iter_mut().find(|(k, _)| *k == key) {
+        slot.1 = v;
+        return;
+    }
+    match canon_int_key(&key) {
+        Some(val) => {
+            let pos = m
+                .iter()
+                .position(|(k, _)| match canon_int_key(k) {
+                    Some(kv) => kv > val,
+                    None => true,
+                })
+                .unwrap_or(m.len());
+            m.insert(pos, (key, v));
+        }
+        None => m.push((key, v)),
+    }
+}
+
+fn jv_ws(b: &[u8], i: &mut usize) {
+    while *i < b.len() && matches!(b[*i], b' ' | b'\t' | b'\n' | b'\r') {
+        *i += 1;
+    }
+}
+
+fn jv_lit(b: &[u8], i: &mut usize, word: &str) -> bool {
+    if b.len() >= *i + word.len() && &b[*i..*i + word.len()] == word.as_bytes() {
+        *i += word.len();
+        true
+    } else {
+        false
+    }
+}
+
+fn jv_value(b: &[u8], i: &mut usize) -> Option<JsVal> {
+    jv_ws(b, i);
+    if *i >= b.len() {
+        return None;
+    }
+    match b[*i] {
+        b'n' => jv_lit(b, i, "null").then_some(JsVal::Null),
+        b't' => jv_lit(b, i, "true").then_some(JsVal::Bool(true)),
+        b'f' => jv_lit(b, i, "false").then_some(JsVal::Bool(false)),
+        b'"' => jv_string(b, i).map(JsVal::Str),
+        b'[' => {
+            *i += 1;
+            let mut items = Vec::new();
+            jv_ws(b, i);
+            if b.get(*i)? == &b']' {
+                *i += 1;
+                return Some(JsVal::Arr(items));
+            }
+            loop {
+                items.push(jv_value(b, i)?);
+                jv_ws(b, i);
+                match b.get(*i)? {
+                    b',' => *i += 1,
+                    b']' => {
+                        *i += 1;
+                        return Some(JsVal::Arr(items));
+                    }
+                    _ => return None,
+                }
+            }
+        }
+        b'{' => {
+            *i += 1;
+            let mut fields: Vec<(String, JsVal)> = Vec::new();
+            jv_ws(b, i);
+            if b.get(*i)? == &b'}' {
+                *i += 1;
+                return Some(JsVal::Obj(fields));
+            }
+            loop {
+                jv_ws(b, i);
+                let key = jv_string(b, i)?;
+                jv_ws(b, i);
+                if b.get(*i)? != &b':' {
+                    return None;
+                }
+                *i += 1;
+                let v = jv_value(b, i)?;
+                obj_set_v8(&mut fields, key, v);
+                jv_ws(b, i);
+                match b.get(*i)? {
+                    b',' => *i += 1,
+                    b'}' => {
+                        *i += 1;
+                        return Some(JsVal::Obj(fields));
+                    }
+                    _ => return None,
+                }
+            }
+        }
+        _ => jv_number(b, i),
+    }
+}
+
+fn jv_string(b: &[u8], i: &mut usize) -> Option<String> {
+    if b.get(*i)? != &b'"' {
+        return None;
+    }
+    *i += 1;
+    // Collect UTF-16 units so `\uXXXX` escapes (and astral pairs) decode like
+    // JS. Raw non-ASCII bytes are re-encoded from their UTF-8 sequence.
+    let mut units: Vec<u16> = Vec::new();
+    loop {
+        let c = *b.get(*i)?;
+        *i += 1;
+        match c {
+            b'"' => return Some(String::from_utf16_lossy(&units)),
+            0x5C => {
+                let e = *b.get(*i)?;
+                *i += 1;
+                match e {
+                    b'"' => units.push(0x22),
+                    b'\\' => units.push(0x5C),
+                    b'/' => units.push(0x2F),
+                    b'b' => units.push(0x08),
+                    b'f' => units.push(0x0C),
+                    b'n' => units.push(0x0A),
+                    b'r' => units.push(0x0D),
+                    b't' => units.push(0x09),
+                    b'u' => {
+                        if *i + 4 > b.len() {
+                            return None;
+                        }
+                        let hex = std::str::from_utf8(&b[*i..*i + 4]).ok()?;
+                        if !hex.bytes().all(|x| x.is_ascii_hexdigit()) {
+                            return None;
+                        }
+                        let cp = u32::from_str_radix(hex, 16).ok()?;
+                        *i += 4;
+                        units.push(cp as u16);
+                        // A high surrogate followed by a `\u` low surrogate
+                        // forms one astral character; `from_utf16_lossy`
+                        // reassembles valid pairs (lone surrogates become
+                        // U+FFFD — the repo's standard lossy UTF-16 model).
+                    }
+                    _ => return None,
+                }
+            }
+            // Unescaped control characters are invalid JSON.
+            0x00..=0x1F => return None,
+            0x20..=0x7F => units.push(c as u16),
+            lead => {
+                // Multi-byte UTF-8 sequence: decode the char, push its
+                // UTF-16 units.
+                let len = if lead >= 0xF0 {
+                    4
+                } else if lead >= 0xE0 {
+                    3
+                } else if lead >= 0xC0 {
+                    2
+                } else {
+                    return None; // stray continuation byte
+                };
+                if *i + len - 1 > b.len() {
+                    return None;
+                }
+                let s = std::str::from_utf8(&b[*i - 1..*i + len - 1]).ok()?;
+                let mut chars = s.chars();
+                let ch = chars.next()?;
+                if chars.next().is_some() {
+                    return None;
+                }
+                *i += len - 1;
+                let mut buf = [0u16; 2];
+                units.extend_from_slice(ch.encode_utf16(&mut buf));
+            }
+        }
+    }
+}
+
+fn jv_number(b: &[u8], i: &mut usize) -> Option<JsVal> {
+    let start = *i;
+    if b.get(*i)? == &b'-' {
+        *i += 1;
+    }
+    // int part: 0 | [1-9][0-9]*
+    match b.get(*i)? {
+        b'0' => *i += 1,
+        b'1'..=b'9' => {
+            while *i < b.len() && b[*i].is_ascii_digit() {
+                *i += 1;
+            }
+        }
+        _ => return None,
+    }
+    if b.get(*i) == Some(&b'.') {
+        *i += 1;
+        if !matches!(b.get(*i), Some(c) if c.is_ascii_digit()) {
+            return None;
+        }
+        while matches!(b.get(*i), Some(c) if c.is_ascii_digit()) {
+            *i += 1;
+        }
+    }
+    if matches!(b.get(*i), Some(b'e') | Some(b'E')) {
+        *i += 1;
+        if matches!(b.get(*i), Some(b'+') | Some(b'-')) {
+            *i += 1;
+        }
+        if !matches!(b.get(*i), Some(c) if c.is_ascii_digit()) {
+            return None;
+        }
+        while matches!(b.get(*i), Some(c) if c.is_ascii_digit()) {
+            *i += 1;
+        }
+    }
+    let s = std::str::from_utf8(&b[start..*i]).ok()?;
+    // JSON numbers are IEEE-754 doubles; Rust's parse is correctly rounded
+    // like V8's fast path.
+    s.parse::<f64>().ok().map(JsVal::Num)
+}
+
+/// `JSON.parse(text)` — `None` models the `SyntaxError` throw.
+pub fn json_parse(s: &str) -> Option<JsVal> {
+    let b = s.as_bytes();
+    let mut i = 0usize;
+    let v = jv_value(b, &mut i)?;
+    jv_ws(b, &mut i);
+    if i != b.len() {
+        return None; // trailing garbage throws
+    }
+    Some(v)
+}
+
 // ---------------------------------------------------------------- harness codec
 //
 // The `cp_` / `ia_` / `cv_` op streams carry JS object values with the
@@ -429,5 +688,93 @@ mod tests {
             ("t".to_string(), JsonValue::Bool(false)),
         ]);
         assert_eq!(json_stringify(&v).as_deref(), Some("{\"w\":{\"p\":3},\"t\":false}"));
+    }
+
+    #[test]
+    fn parse_scalars_and_containers() {
+        assert_eq!(json_parse("null"), Some(JsVal::Null));
+        assert_eq!(json_parse("true"), Some(JsVal::Bool(true)));
+        assert_eq!(json_parse(" false "), Some(JsVal::Bool(false)));
+        assert_eq!(json_parse("42"), Some(JsVal::Num(42.0)));
+        assert_eq!(json_parse("-1.5e3"), Some(JsVal::Num(-1500.0)));
+        assert_eq!(json_parse("1E+2"), Some(JsVal::Num(100.0)));
+        assert_eq!(json_parse("\"a\\nb\""), Some(JsVal::Str("a\nb".to_string())));
+        assert_eq!(json_parse("[]"), Some(JsVal::Arr(vec![])));
+        assert_eq!(json_parse("{}"), Some(JsVal::Obj(vec![])));
+        assert_eq!(
+            json_parse("[1,null,\"x\",[true],{\"a\":0}]"),
+            Some(JsVal::Arr(vec![
+                JsVal::Num(1.0),
+                JsVal::Null,
+                JsVal::Str("x".to_string()),
+                JsVal::Arr(vec![JsVal::Bool(true)]),
+                JsVal::Obj(vec![("a".to_string(), JsVal::Num(0.0))]),
+            ]))
+        );
+    }
+
+    #[test]
+    fn parse_rejects_invalid() {
+        // SyntaxError paths: bare undefined / NaN / Infinity are not JSON,
+        // leading zeros, trailing garbage, trailing commas, control chars.
+        for bad in [
+            "", "undefined", "NaN", "Infinity", "-Infinity", "01", "+1", ".5",
+            "1.", "1e", "{a:1}", "{'a':1}", "[1,]", "{\"a\":1,}", "\"a\tb\"",
+            "{\"a\":1}{\"b\":2}", "tru", "nul", "[1 2]", "{\"a\"1}", "\"\\x41\"",
+        ] {
+            assert_eq!(json_parse(bad), None, "must reject {bad:?}");
+        }
+    }
+
+    #[test]
+    fn parse_string_escapes_and_surrogates() {
+        assert_eq!(
+            json_parse("\"\\ud83d\\ude00\""),
+            Some(JsVal::Str("\u{1F600}".to_string()))
+        );
+        // A lone surrogate becomes U+FFFD (the repo's lossy UTF-16 model).
+        assert_eq!(json_parse("\"\\ud83d\""), Some(JsVal::Str("\u{FFFD}".to_string())));
+        assert_eq!(json_parse("\"\\/\\\\\\\"\""), Some(JsVal::Str("/\\\"".to_string())));
+        assert_eq!(json_parse("\"\\b\\f\\n\\r\\t\""), Some(JsVal::Str("\u{8}\u{c}\n\r\t".to_string())));
+        assert_eq!(json_parse("\"café\""), Some(JsVal::Str("café".to_string())));
+        assert_eq!(json_parse("\"😀\""), Some(JsVal::Str("😀".to_string())));
+    }
+
+    #[test]
+    fn parse_object_v8_key_order() {
+        // Integer-like keys sort ahead of string keys; duplicates overwrite
+        // the first slot's value but keep its position (V8 semantics).
+        let v = json_parse("{\"b\":1,\"10\":2,\"a\":3,\"2\":4,\"b\":5}").unwrap();
+        let JsVal::Obj(fields) = &v else { panic!("object expected") };
+        let keys: Vec<&str> = fields.iter().map(|(k, _)| k.as_str()).collect();
+        assert_eq!(keys, ["2", "10", "b", "a"]);
+        assert_eq!(
+            json_stringify(&to_json(&v)).unwrap(),
+            "{\"2\":4,\"10\":2,\"b\":5,\"a\":3}"
+        );
+    }
+
+    #[test]
+    fn parse_round_trip_stable_stringify() {
+        // parse -> stringify reproduces the canonical (whitespace-free) form
+        // for the embedded-data shapes.
+        let src = "{\"a\":[1,2.5,null,true],\"b\":{\"c\":\"x\"},\"d\":0}";
+        let v = json_parse(src).unwrap();
+        assert_eq!(json_stringify(&to_json(&v)).unwrap(), src);
+        // -0 parses to -0.0 but JSON.stringify prints 0 (js_num_str).
+        let z = json_parse("-0").unwrap();
+        assert_eq!(json_stringify(&to_json(&z)).unwrap(), "0");
+    }
+
+    #[test]
+    fn parse_embedded_data_parses() {
+        // The three include_str! payloads must parse (guards the data files).
+        for s in [
+            crate::render_settings::RENDER_SETTINGS_JSON,
+            crate::render_settings::DEFAULT_THEME_JSON,
+            crate::render_settings::COLORBLIND_THEME_JSON,
+        ] {
+            assert!(json_parse(s).is_some());
+        }
     }
 }

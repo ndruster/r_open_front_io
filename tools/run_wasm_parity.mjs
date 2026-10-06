@@ -2595,6 +2595,8 @@ for (const [key, reset, arg, op, outAt] of [
   ["effecteditorstate", "probe_ees_reset", "probe_ees_arg", "probe_ees_op", "probe_ees_out_at"],
   ["playername", "probe_pn_reset", "probe_pn_arg", "probe_pn_op", "probe_pn_out_at"],
   ["gamemodegate", "probe_gms_reset", "probe_gms_arg", "probe_gms_op", "probe_gms_out_at"],
+  ["rendersettings", "probe_rset_reset", "probe_rset_arg", "probe_rset_op", "probe_rset_out_at"],
+  ["renderoverrides", "probe_ro_reset", "probe_ro_arg", "probe_ro_op", "probe_ro_out_at"],
 ]) {
   for (const s of S[key]) {
     ex[reset]();

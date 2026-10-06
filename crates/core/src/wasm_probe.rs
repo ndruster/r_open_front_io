@@ -5028,3 +5028,132 @@ pub extern "C" fn probe_hd_op(kind: u32) -> usize {
 pub extern "C" fn probe_hd_out_at(i: usize) -> f64 {
     HD_OUT.with(|o| o.borrow()[i])
 }
+
+// =============== S8: client render/hud pure modules (13 clusters) ============
+//
+// Stateless clusters (module-level `run_op`) keep a no-op reset so the parity
+// replay loop stays uniform; stateful clusters (RigHarness) reset the harness.
+
+macro_rules! s8_stateless_probe {
+    ($reset:ident, $arg:ident, $op:ident, $out_at:ident, $args:ident, $out:ident, $run_op:path) => {
+        thread_local! {
+            static $args: std::cell::RefCell<Vec<f64>> =
+                const { std::cell::RefCell::new(Vec::new()) };
+            static $out: std::cell::RefCell<Vec<f64>> =
+                const { std::cell::RefCell::new(Vec::new()) };
+        }
+
+        #[no_mangle]
+        pub extern "C" fn $reset() {
+            // stateless: nothing to reset
+        }
+
+        #[no_mangle]
+        pub extern "C" fn $arg(v: f64) {
+            $args.with(|t| t.borrow_mut().push(v));
+        }
+
+        #[no_mangle]
+        pub extern "C" fn $op(kind: u32) -> usize {
+            let a = $args.with(|t| std::mem::take(&mut *t.borrow_mut()));
+            let res = $run_op(kind as u8, &a);
+            let len = res.len();
+            $out.with(|o| *o.borrow_mut() = res);
+            len
+        }
+
+        #[no_mangle]
+        pub extern "C" fn $out_at(i: usize) -> f64 {
+            $out.with(|o| o.borrow()[i])
+        }
+    };
+}
+
+macro_rules! s8_harness_probe {
+    ($reset:ident, $arg:ident, $op:ident, $out_at:ident, $harness:ident, $args:ident, $out:ident, $h:path) => {
+        thread_local! {
+            static $harness: std::cell::RefCell<$h> = std::cell::RefCell::new(<$h>::new());
+            static $args: std::cell::RefCell<Vec<f64>> =
+                const { std::cell::RefCell::new(Vec::new()) };
+            static $out: std::cell::RefCell<Vec<f64>> =
+                const { std::cell::RefCell::new(Vec::new()) };
+        }
+
+        #[no_mangle]
+        pub extern "C" fn $reset() {
+            $harness.with(|h| h.borrow_mut().reset());
+        }
+
+        #[no_mangle]
+        pub extern "C" fn $arg(v: f64) {
+            $args.with(|t| t.borrow_mut().push(v));
+        }
+
+        #[no_mangle]
+        pub extern "C" fn $op(kind: u32) -> usize {
+            let a = $args.with(|t| std::mem::take(&mut *t.borrow_mut()));
+            let res = $harness.with(|h| h.borrow_mut().run_op(kind as u8, &a));
+            let len = res.len();
+            $out.with(|o| *o.borrow_mut() = res);
+            len
+        }
+
+        #[no_mangle]
+        pub extern "C" fn $out_at(i: usize) -> f64 {
+            $out.with(|o| o.borrow()[i])
+        }
+    };
+}
+
+s8_stateless_probe!(
+    probe_tc_reset, probe_tc_arg, probe_tc_op, probe_tc_out_at,
+    TC_ARGS, TC_OUT, crate::tile_codec::run_op
+);
+s8_stateless_probe!(
+    probe_ut_reset, probe_ut_arg, probe_ut_op, probe_ut_out_at,
+    UT_ARGS, UT_OUT, crate::unit_types::run_op
+);
+s8_stateless_probe!(
+    probe_rnc_reset, probe_rnc_arg, probe_rnc_op, probe_rnc_out_at,
+    RNC_ARGS, RNC_OUT, crate::renderer_consts::run_op
+);
+s8_stateless_probe!(
+    probe_spp_reset, probe_spp_arg, probe_spp_op, probe_spp_out_at,
+    SPP_ARGS, SPP_OUT, crate::subscription_policy::run_op
+);
+s8_stateless_probe!(
+    probe_stc_reset, probe_stc_arg, probe_stc_op, probe_stc_out_at,
+    STC_ARGS, STC_OUT, crate::stats_constants::run_op
+);
+s8_stateless_probe!(
+    probe_rps_reset, probe_rps_arg, probe_rps_op, probe_rps_out_at,
+    RPS_ARGS, RPS_OUT, crate::replay_speed::run_op
+);
+s8_harness_probe!(
+    probe_grt_reset, probe_grt_arg, probe_grt_op, probe_grt_out_at,
+    GRT_HARNESS, GRT_ARGS, GRT_OUT, crate::gold_rate_tracker::RigHarness
+);
+s8_stateless_probe!(
+    probe_ac_reset, probe_ac_arg, probe_ac_op, probe_ac_out_at,
+    AC_ARGS, AC_OUT, crate::alliance_clusters::run_op
+);
+s8_stateless_probe!(
+    probe_arr_reset, probe_arr_arg, probe_arr_op, probe_arr_out_at,
+    ARR_ARGS, ARR_OUT, crate::attack_rings::run_op
+);
+s8_stateless_probe!(
+    probe_nkt_reset, probe_nkt_arg, probe_nkt_op, probe_nkt_out_at,
+    NKT_ARGS, NKT_OUT, crate::nuke_telegraphs::run_op
+);
+s8_stateless_probe!(
+    probe_pst_reset, probe_pst_arg, probe_pst_op, probe_pst_out_at,
+    PST_ARGS, PST_OUT, crate::player_status::run_op
+);
+s8_harness_probe!(
+    probe_rmx_reset, probe_rmx_arg, probe_rmx_op, probe_rmx_out_at,
+    RMX_HARNESS, RMX_ARGS, RMX_OUT, crate::relation_matrix::RigHarness
+);
+s8_stateless_probe!(
+    probe_trs_reset, probe_trs_arg, probe_trs_op, probe_trs_out_at,
+    TRS_ARGS, TRS_OUT, crate::terrain_row_spans::run_op
+);

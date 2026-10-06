@@ -367,6 +367,19 @@ const CK = await loadTs("src/server/ClusterCheckin.ts");
 const RG = await loadTs("src/server/RankedCheckin.ts");
 const HD = await loadTs("src/server/GameApiCors.ts");
 const NS = await loadTs("src/server/NoStoreHeaders.ts");
+const TC = await loadTs("src/client/render/gl/utils/TileCodec.ts");
+const UTP = await loadTs("src/client/render/types/UnitType.ts");
+const RNC = await loadTs("src/client/render/types/Renderer.ts");
+const SPP = await loadTs("src/client/SubscriptionPolicy.ts");
+const STC = await loadTs("src/client/StatsConstants.ts");
+const RPS = await loadTs("src/client/utilities/ReplaySpeedMultiplier.ts");
+const GRT = await loadTs("src/client/hud/layers/lib/GoldRateTracker.ts");
+const ACL = await loadTs("src/client/render/frame/derive/AllianceClusters.ts");
+const ARK = await loadTs("src/client/render/frame/derive/AttackRings.ts");
+const NKT = await loadTs("src/client/render/frame/derive/NukeTelegraphs.ts");
+const PST = await loadTs("src/client/render/frame/derive/PlayerStatus.ts");
+const RMX = await loadTs("src/client/render/frame/derive/RelationMatrix.ts");
+const TRS = await loadTs("src/client/render/frame/derive/TerrainRowSpans.ts");
 const PF = await loadTs("src/core/pathfinding/PathFinder.ts");
 const { AStar } = await loadTs("src/core/pathfinding/algorithms/AStar.ts");
 const { AStarRail } = await loadTs("src/core/pathfinding/algorithms/AStar.Rail.ts");
@@ -13346,6 +13359,828 @@ runHD("hd_cors_denied", [
 ]);
 runHD("hd_no_store_headers", [[0], [5]]);
 
+// ================================================================ S8: client
+// render/hud pure modules. The three host-object codecs mirror the Rust
+// `renderer_consts::{push_player,push_unit,push_static}` wire forms verbatim.
+const mkRPlayer = (o = {}) => ({
+  smallID: o.smallID ?? 0,
+  isAlive: o.isAlive ?? false,
+  isDisconnected: o.isDisconnected ?? false,
+  isTraitor: o.isTraitor ?? false,
+  inDoomsdayClock: o.inDoomsdayClock ?? false,
+  isDecaying: o.isDecaying ?? false,
+  tilesOwned: o.tilesOwned ?? 0,
+  traitorRemainingTicks: o.traitorRemainingTicks ?? 0,
+  markedDoomsdayClockTick: o.markedDoomsdayClockTick ?? 0,
+  allies: o.allies ?? [],
+  embargoes: o.embargoes ?? [],
+  targets: o.targets ?? [],
+  outgoingAllianceRequests: o.outgoingAllianceRequests ?? [],
+  alliances: o.alliances ?? [],
+});
+const mkRUnit = (o = {}) => ({
+  id: o.id ?? 0,
+  unitType: o.unitType ?? "Transport",
+  ownerID: o.ownerID ?? 0,
+  isActive: o.isActive ?? false,
+  retreating: o.retreating ?? false,
+  waitTicks: o.waitTicks ?? 0,
+  targetTile: o.targetTile === undefined ? null : o.targetTile,
+});
+const mkRStatic = (o) => ({ smallID: o.smallID, team: o.team === undefined ? null : o.team });
+const encRPlayer = (p) => [
+  p.smallID,
+  p.isAlive ? 1 : 0,
+  p.isDisconnected ? 1 : 0,
+  p.isTraitor ? 1 : 0,
+  p.inDoomsdayClock ? 1 : 0,
+  p.isDecaying ? 1 : 0,
+  p.tilesOwned,
+  p.traitorRemainingTicks,
+  p.markedDoomsdayClockTick,
+  p.allies.length,
+  ...p.allies,
+  p.embargoes.length,
+  ...p.embargoes,
+  p.targets.length,
+  ...p.targets,
+  p.outgoingAllianceRequests.length,
+  ...p.outgoingAllianceRequests.flatMap(encS),
+  p.alliances.length,
+  ...p.alliances.flatMap((a) => [...encS(a.other), a.expiresAt]),
+];
+const encRUnit = (u) => [
+  u.id,
+  ...encS(u.unitType),
+  u.ownerID,
+  u.isActive ? 1 : 0,
+  u.retreating ? 1 : 0,
+  u.waitTicks,
+  ...(u.targetTile === null ? [2] : [3, u.targetTile]),
+];
+const encRStatic = (p) => [p.smallID, ...(p.team === null ? [2] : [5, ...encS(p.team)])];
+const encRStatus = (d) => [
+  d.crown ? 1 : 0,
+  d.traitor ? 1 : 0,
+  d.disconnected ? 1 : 0,
+  d.inDoomsdayClock ? 1 : 0,
+  d.doomsdayClockDraining ? 1 : 0,
+  d.doomsdayClockDecaying ? 1 : 0,
+  d.alliance ? 1 : 0,
+  d.allianceReq ? 1 : 0,
+  d.target ? 1 : 0,
+  d.embargo ? 1 : 0,
+  d.nukeActive ? 1 : 0,
+  d.nukeTargetsMe ? 1 : 0,
+  d.doomsdayClockWarnProgress,
+  d.traitorRemainingTicks,
+  d.allianceFraction,
+  d.allianceRemainingTicks,
+];
+const toMap = (arr, key) => new Map(arr.map((x) => [x[key], x]));
+
+// ---- TileCodec.ts (tc_) -----------------------------------------------------
+const tcScenarios = [];
+let tcIdx = 0;
+function runTC(name, ops) {
+  const played = [];
+  for (const [k, ...a] of ops) {
+    let args = [];
+    let res;
+    if (k === 0) {
+      res = [TC.OWNER_MASK, TC.FALLOUT_BIT, TC.DEFENSE_BIT];
+    } else if (k === 1) {
+      const entries = Object.entries(TC.TILE_DEFINES);
+      res = [entries.length, ...entries.flatMap(([key, v]) => [...encS(key), v])];
+    } else throw new Error("tc: bad op kind " + k);
+    void a;
+    played.push({ kind: k, args: args.flat().map(uenc), res: res.flat().map(uenc) });
+  }
+  tcScenarios.push({ name: `${name}_${tcIdx++}`, ops: played });
+}
+runTC("tc_dumps", [[0], [1]]);
+
+// ---- UnitType.ts (ut_) ------------------------------------------------------
+const utScenarios = [];
+let utIdx = 0;
+function runUT(name, ops) {
+  const played = [];
+  for (const [k, ...a] of ops) {
+    let args;
+    let res;
+    if (k === 0) {
+      args = [];
+      res = [UTP.ALL_UNIT_TYPES.length, ...UTP.ALL_UNIT_TYPES.map(String).flatMap(encS)];
+    } else if (k >= 1 && k <= 3) {
+      const set = k === 1 ? UTP.STRUCTURE_TYPES : k === 2 ? UTP.NUKE_TYPES : UTP.SMOOTHED_NUKE_TYPES;
+      const probes = a[0].map(String);
+      args = [probes.length, ...probes.flatMap(encS)];
+      res = [
+        set.size,
+        ...[...set].flatMap(encS),
+        probes.length,
+        ...probes.flatMap((p) => [...encS(p), set.has(p) ? 1 : 0]),
+      ];
+    } else if (k === 4) {
+      const M = UTP.NUKE_MAGNITUDES;
+      const keys = Object.keys(M);
+      const probes = a[0].map(String);
+      args = [probes.length, ...probes.flatMap(encS)];
+      res = [
+        keys.length,
+        ...keys.flatMap((key) => [...encS(key), M[key].inner, M[key].outer]),
+        probes.length,
+        ...probes.flatMap((p) => {
+          const m = M[p];
+          return [...encS(p), m ? 1 : 0, m ? m.inner : 0, m ? m.outer : 0];
+        }),
+      ];
+    } else throw new Error("ut: bad op kind " + k);
+    played.push({ kind: k, args: args.flat().map(uenc), res: res.flat().map(uenc) });
+  }
+  utScenarios.push({ name: `${name}_${utIdx++}`, ops: played });
+}
+runUT("ut_all_types", [[0]]);
+runUT("ut_structure_set", [[1, ["City", "Port", "Train", "Missile Silo", "Nuke", "Defense Post"]]]);
+runUT("ut_nuke_set", [[2, ["Atom Bomb", "MIRV", "MIRV Warhead", "Shell"]]]);
+runUT("ut_smoothed_set", [[3, ["MIRV Warhead", "MIRV", "Shell", "Hydrogen Bomb", ""]]]);
+runUT("ut_magnitudes", [[4, ["Atom Bomb", "MIRV", "MIRV Warhead", "Transport", "Hydrogen Bomb"]]]);
+
+// ---- Renderer.ts enums + constants (rnc_) ------------------------------------
+const rncScenarios = [];
+let rncIdx = 0;
+function runRNC(name, ops) {
+  const played = [];
+  for (const [k, ...a] of ops) {
+    let args = [];
+    let res;
+    if (k === 0 || k === 2) {
+      const names = k === 0 ? ["Engine", "TailEngine", "Carriage"] : ["Human", "Bot", "Nation"];
+      const E = k === 0 ? RNC.TrainType : RNC.PlayerTypeEnum;
+      res = [names.length, ...names.flatMap((n) => [...encS(n), E[n]])];
+    } else if (k === 1 || k === 3) {
+      const E = k === 1 ? RNC.TrainType : RNC.PlayerTypeEnum;
+      const keys = Object.keys(E);
+      res = [keys.length, ...keys.map(String).flatMap(encS)];
+    } else if (k === 4) {
+      res = [RNC.MAX_NUKE_EXPLOSION_COLORS, RNC.DEFAULT_NUKE_EXPLOSION_COLOR.length, ...RNC.DEFAULT_NUKE_EXPLOSION_COLOR];
+    } else throw new Error("rnc: bad op kind " + k);
+    void a;
+    played.push({ kind: k, args: args.flat().map(uenc), res: res.flat().map(uenc) });
+  }
+  rncScenarios.push({ name: `${name}_${rncIdx++}`, ops: played });
+}
+runRNC("rnc_train", [[0], [1]]);
+runRNC("rnc_player_type", [[2], [3]]);
+runRNC("rnc_nuke_colors", [[4]]);
+
+// ---- SubscriptionPolicy.ts (spp_) + StatsConstants.ts (stc_) +
+// ReplaySpeedMultiplier.ts (rps_) ---------------------------------------------
+const sppScenarios = [];
+let sppIdx = 0;
+function runSPP(name, ops) {
+  const played = [];
+  for (const [k, ...a] of ops) {
+    let args = [];
+    let res;
+    if (k === 0) res = [SPP.STEAM_TIER_CHANGE_IN_APP ? 1 : 0];
+    else throw new Error("spp: bad op kind " + k);
+    void a;
+    played.push({ kind: k, args, res: res.flat().map(uenc) });
+  }
+  sppScenarios.push({ name: `${name}_${sppIdx++}`, ops: played });
+}
+runSPP("spp_flag", [[0]]);
+
+const stcScenarios = [];
+let stcIdx = 0;
+function runSTC(name, ops) {
+  const played = [];
+  for (const [k, ...a] of ops) {
+    let args = [];
+    let res;
+    if (k === 0) {
+      res = [STC.COLUMN_IDS.length, ...STC.COLUMN_IDS.map(String).flatMap(encS)];
+    } else if (k === 1) {
+      const entries = Object.entries(STC.DEFAULT_STATS_COLUMNS);
+      res = [
+        entries.length,
+        ...entries.flatMap(([key, arr]) => [...encS(key), arr.length, ...arr.map(String).flatMap(encS)]),
+      ];
+    } else throw new Error("stc: bad op kind " + k);
+    void a;
+    played.push({ kind: k, args, res: res.flat().map(uenc) });
+  }
+  stcScenarios.push({ name: `${name}_${stcIdx++}`, ops: played });
+}
+runSTC("stc_tables", [[0], [1]]);
+
+const rpsScenarios = [];
+let rpsIdx = 0;
+function runRPS(name, ops) {
+  const played = [];
+  for (const [k, ...a] of ops) {
+    let args = [];
+    let res;
+    if (k === 0) {
+      const names = ["slow", "normal", "fast", "fastest"];
+      res = [names.length, ...names.flatMap((n) => [...encS(n), RPS.ReplaySpeedMultiplier[n]])];
+    } else if (k === 1) {
+      res = [RPS.defaultReplaySpeedMultiplier];
+    } else throw new Error("rps: bad op kind " + k);
+    void a;
+    played.push({ kind: k, args, res: res.flat().map(uenc) });
+  }
+  rpsScenarios.push({ name: `${name}_${rpsIdx++}`, ops: played });
+}
+runRPS("rps_table", [[0], [1]]);
+
+// ---- GoldRateTracker.ts (grt_, harness) --------------------------------------
+const grtScenarios = [];
+let grtIdx = 0;
+let grtTracker = null;
+const grtDump = () => [
+  grtTracker.history.size,
+  ...[...grtTracker.history].flatMap(([sid, samples]) => [
+    sid,
+    samples.length,
+    ...samples.flatMap((s) => [s.income, s.trade, s.train, s.piracy, s.tick]),
+  ]),
+];
+function runGRT(name, ops) {
+  const played = [];
+  for (const [k, ...a] of ops) {
+    let args;
+    let res;
+    if (k === 0) {
+      args = [];
+      grtTracker = new GRT.GoldRateTracker();
+      res = [0];
+    } else if (k === 1) {
+      const [sid, income, trade, train, piracy, tick] = a;
+      args = [sid, income, trade, train, piracy, tick];
+      grtTracker.record(sid, { income, trade, train, piracy }, tick);
+      res = [0];
+    } else if (k === 2) {
+      args = [a[0]];
+      grtTracker.forget(a[0]);
+      res = [0];
+    } else if (k === 3) {
+      args = [];
+      grtTracker.resetAll();
+      res = [0];
+    } else if (k === 4) {
+      const [sid, pick] = a;
+      args = [sid, pick];
+      const fn = [
+        (s) => grtTracker.goldIncomePerMin(s),
+        (s) => grtTracker.shipTradeGoldPerMin(s),
+        (s) => grtTracker.trainTradeGoldPerMin(s),
+        (s) => grtTracker.piracyGoldPerMin(s),
+      ][pick];
+      res = [fn(sid)];
+    } else if (k === 5) {
+      args = [];
+      res = grtDump();
+    } else throw new Error("grt: bad op kind " + k);
+    played.push({ kind: k, args: args.flat().map(uenc), res: res.flat().map(uenc) });
+  }
+  grtScenarios.push({ name: `${name}_${grtIdx++}`, ops: played });
+}
+runGRT("grt_slope", [
+  [0],
+  [1, 7, 100, 10, 5, 1, 0],
+  [1, 7, 160, 14, 9, 4, 600],
+  [4, 7, 0], [4, 7, 1], [4, 7, 2], [4, 7, 3],
+  [4, 8, 0], // unknown key -> 0
+  [5],
+]);
+runGRT("grt_window", [
+  [0],
+  [1, 3, 0, 0, 0, 0, 0],
+  [1, 3, 100, 0, 0, 0, 1200], // cutoff 0: tick-0 sample SURVIVES (strict <)
+  [4, 3, 0],
+  [1, 3, 160, 0, 0, 0, 1201], // cutoff 1: tick-0 evicted
+  [4, 3, 0],
+  [5],
+]);
+runGRT("grt_frozen", [
+  [0],
+  [1, 5, 10, 0, 0, 0, 500],
+  [1, 5, 40, 0, 0, 0, 500], // dtMin 0 -> 0
+  [4, 5, 0],
+  [1, 5, 90, 0, 0, 0, 400], // backwards pair -> dtMin < 0 -> 0
+  [4, 5, 0],
+  [5],
+]);
+runGRT("grt_single", [
+  [0],
+  [1, 9, 500, 0, 0, 0, 100], // one sample -> len<2 -> 0
+  [4, 9, 0],
+  [5],
+]);
+runGRT("grt_forget_reset", [
+  [0],
+  [1, 1, 1, 0, 0, 0, 0],
+  [1, 2, 2, 0, 0, 0, 0],
+  [1, 1, 2, 0, 0, 0, 100],
+  [2, 2], // forget -> key AND array gone (insertion order of 1 unchanged)
+  [5],
+  [3], // resetAll -> Map#clear
+  [5],
+]);
+runGRT("grt_cap", [
+  [0],
+  ...Array.from({ length: 241 }, (_, i) => [1, 4, i, 0, 0, 0, i]), // ticks 0..240, no eviction
+  [5], // 240 samples, first (tick 0) spliced away by the STRICT > cap
+]);
+
+// ---- AllianceClusters.ts (ac_) ------------------------------------------------
+const acScenarios = [];
+let acIdx = 0;
+function runAC(name, ops) {
+  const played = [];
+  for (const [k, ...a] of ops) {
+    let args;
+    let res;
+    if (k === 0) {
+      const players = a[0];
+      args = [players.length, ...players.flatMap(encRPlayer)];
+      const r = ACL.computeAllianceClusters(toMap(players, "smallID"));
+      res = [r.size, ...[...r].flatMap(([key, v]) => [key, v])];
+    } else if (k === 1) {
+      // Scripted find/union session — verbatim clone of the module internals
+      // (the public API cannot expose the path-halving step mutations).
+      const [seeds, session] = a;
+      args = [seeds.length, ...seeds, session.length, ...session.flat()];
+      const parent = new Map();
+      for (const sid of seeds) parent.set(sid, sid);
+      const find = (x) => {
+        while (parent.get(x) !== x) {
+          const p = parent.get(x);
+          parent.set(x, parent.get(p));
+          x = p;
+        }
+        return x;
+      };
+      const union = (u, v) => {
+        const ru = find(u);
+        const rv = find(v);
+        if (ru !== rv) parent.set(rv, ru);
+      };
+      const rets = [];
+      for (const [sk, x, y] of session) {
+        if (sk === 0) rets.push([0, find(x)]);
+        else { union(x, y); rets.push([1, 0]); }
+      }
+      res = [
+        rets.length,
+        ...rets.flat(),
+        parent.size,
+        ...[...parent].flatMap(([key, v]) => [key, v]),
+      ];
+    } else throw new Error("ac: bad op kind " + k);
+    played.push({ kind: k, args: args.flat().map(uenc), res: res.flat().map(uenc) });
+  }
+  acScenarios.push({ name: `${name}_${acIdx++}`, ops: played });
+}
+runAC("ac_compute_chain", [
+  [0, [
+    mkRPlayer({ smallID: 1, allies: [2] }),
+    mkRPlayer({ smallID: 2, allies: [3] }),
+    mkRPlayer({ smallID: 3, allies: [4] }),
+    mkRPlayer({ smallID: 4, allies: [5] }),
+    mkRPlayer({ smallID: 5 }),
+  ]],
+]);
+runAC("ac_compute_gates", [
+  [0, [
+    mkRPlayer({ smallID: 0, allies: [1] }), // smallID <= 0: never seeded, never unioned
+    mkRPlayer({ smallID: -2, allies: [1] }),
+    mkRPlayer({ smallID: 1, allies: [999] }), // ally outside the player set: ignored
+    mkRPlayer({ smallID: 2, allies: [1] }),
+    mkRPlayer({ smallID: 3 }),
+  ]],
+]);
+runAC("ac_session_halving", [
+  [1, [1, 2, 3, 4, 5], [
+    [1, 1, 2],
+    [1, 3, 4],
+    [1, 2, 3],
+    [1, 4, 5],
+    [0, 5, 0],
+    [0, 4, 0],
+    [0, 1, 0],
+  ]],
+  [1, [7, 8], [
+    [0, 7, 0], // find on a root: no mutation
+    [1, 7, 8],
+    [1, 8, 7], // same roots: no set
+    [0, 8, 0],
+  ]],
+]);
+
+// ---- AttackRings.ts (arr_) ---------------------------------------------------
+const arrScenarios = [];
+let arrIdx = 0;
+function runARR(name, ops) {
+  const played = [];
+  for (const [k, ...a] of ops) {
+    let args;
+    let res;
+    if (k === 0) {
+      const [mapW, owner, units] = a;
+      args = [mapW, owner, units.length, ...units.flatMap(encRUnit)];
+      const r = ARK.extractAttackRings(toMap(units, "id"), mapW, owner);
+      res = [r.length, ...r.flatMap((x) => [x.x, x.y, x.unitId])];
+    } else throw new Error("arr: bad op kind " + k);
+    played.push({ kind: k, args: args.flat().map(uenc), res: res.flat().map(uenc) });
+  }
+  arrScenarios.push({ name: `${name}_${arrIdx++}`, ops: played });
+}
+runARR("arr_gates", [
+  [0, 100, 9, [
+    mkRUnit({ id: 1, unitType: "Transport", ownerID: 9, isActive: true, targetTile: 12345 }),
+    mkRUnit({ id: 2, unitType: "Trade Ship", ownerID: 9, isActive: true, targetTile: 5 }),
+    mkRUnit({ id: 3, unitType: "Transport", ownerID: 9, isActive: true, targetTile: null }),
+    mkRUnit({ id: 4, unitType: "Transport", ownerID: 9, isActive: false, targetTile: 5 }),
+    mkRUnit({ id: 5, unitType: "Transport", ownerID: 9, isActive: true, retreating: true, targetTile: 5 }),
+    mkRUnit({ id: 6, unitType: "Transport", ownerID: 8, isActive: true, targetTile: 5 }),
+    mkRUnit({ id: 7, unitType: "Transport", ownerID: 9, isActive: true, targetTile: 0 }),
+    mkRUnit({ id: 8, unitType: "Transport", ownerID: -0, isActive: true, targetTile: 99 }),
+  ]],
+]);
+
+// ---- NukeTelegraphs.ts (nkt_) --------------------------------------------------
+const nktScenarios = [];
+let nktIdx = 0;
+const nktEncMatrixArg = (cells) => [cells.length, ...cells.flat()];
+function runNKT(name, ops) {
+  const played = [];
+  for (const [k, ...a] of ops) {
+    let args;
+    let res;
+    if (k === 0 || k === 1) {
+      const [o] = a; // { mapW, lpi, matrix (null|cells), relSize, plans (null|pairs), tick, units, ids }
+      const matrix = o.matrix === null ? null : new Uint8Array(o.relSize * o.relSize);
+      if (matrix) for (const [idx, v] of o.matrix) matrix[idx] = v;
+      const plans = o.plans === null ? null : new Map(o.plans.map(([id, st]) => [id, { startTick: st }]));
+      args = [
+        o.mapW,
+        o.lpi ?? 0,
+        o.matrix === null ? 0 : 1,
+        o.relSize ?? 0,
+        o.plans === null ? 0 : 1,
+        o.tick ?? 0,
+      ];
+      if (k === 1) args.push(o.ids.length, ...o.ids);
+      args.push(o.units.length, ...o.units.flatMap(encRUnit));
+      if (o.plans !== null) args.push(o.plans.length, ...o.plans.flat());
+      if (o.matrix !== null) args.push(...nktEncMatrixArg(o.matrix));
+      const unitsMap = toMap(o.units, "id");
+      const r = k === 0
+        ? NKT.extractNukeTelegraphs(unitsMap, o.mapW, o.lpi, matrix ?? undefined, o.relSize, plans ?? undefined, o.tick)
+        : NKT.extractNukeTelegraphsFromIds(o.ids, unitsMap, o.mapW, o.lpi, matrix ?? undefined, o.relSize, plans ?? undefined, o.tick);
+      res = [r.length, ...r.flatMap((t) => [t.x, t.y, t.innerRadius, t.outerRadius, t.relation])];
+    } else if (k === 2) {
+      const [owner, lpi, cells, relSize] = a;
+      const matrix = cells === null ? null : new Uint8Array(relSize * relSize);
+      if (matrix) for (const [idx, v] of cells) matrix[idx] = v;
+      args = [owner, lpi, cells === null ? 0 : 1, relSize];
+      if (cells !== null) args.push(...nktEncMatrixArg(cells));
+      res = [NKT.classifyOwner(owner, lpi, matrix ?? undefined, relSize)];
+    } else throw new Error("nkt: bad op kind " + k);
+    played.push({ kind: k, args: args.flat().map(uenc), res: res.flat().map(uenc) });
+  }
+  nktScenarios.push({ name: `${name}_${nktIdx++}`, ops: played });
+}
+runNKT("nkt_gates", [
+  [0, {
+    mapW: 100, lpi: 0, matrix: null, relSize: 0, tick: 10,
+    plans: [[6, 10], [7, 10], [9, 5]],
+    units: [
+      mkRUnit({ id: 1, unitType: "Atom Bomb", ownerID: 9, isActive: true, targetTile: 5050 }),
+      mkRUnit({ id: 2, unitType: "MIRV", ownerID: 9, isActive: true, targetTile: 4 }), // no mag -> skipped
+      mkRUnit({ id: 3, unitType: "Hydrogen Bomb", ownerID: 9, isActive: true, waitTicks: 1, targetTile: 5 }),
+      mkRUnit({ id: 4, unitType: "Atom Bomb", ownerID: 9, isActive: false, targetTile: 6 }),
+      mkRUnit({ id: 5, unitType: "Atom Bomb", ownerID: 9, isActive: true, targetTile: null }),
+      mkRUnit({ id: 6, unitType: "Atom Bomb", ownerID: 9, isActive: true, targetTile: 30 }), // plan 10 > 10? no -> passes? startTick 10 > currentTick 10 false -> passes
+      mkRUnit({ id: 7, unitType: "Shell", ownerID: 9, isActive: true, targetTile: 31 }), // plan but no mag
+      mkRUnit({ id: 8, unitType: "MIRV Warhead", ownerID: 9, isActive: true, targetTile: 32 }),
+      mkRUnit({ id: 9, unitType: "Atom Bomb", ownerID: 9, isActive: true, targetTile: 33 }), // plan 5 <= 10 -> passes
+    ],
+  }],
+]);
+runNKT("nkt_relation", [
+  [0, {
+    mapW: 64, lpi: 3, relSize: 64, matrix: [[3 * 64 + 5, 1], [3 * 64 + 9, 2]], plans: null, tick: 0,
+    units: [
+      mkRUnit({ id: 1, unitType: "Atom Bomb", ownerID: 5, isActive: true, targetTile: 100 }), // friendly
+      mkRUnit({ id: 2, unitType: "Atom Bomb", ownerID: 3, isActive: true, targetTile: 101 }), // self
+      mkRUnit({ id: 3, unitType: "Atom Bomb", ownerID: 9, isActive: true, targetTile: 102 }), // cell 2 -> enemy
+      mkRUnit({ id: 4, unitType: "Atom Bomb", ownerID: -1, isActive: true, targetTile: 103 }), // owner<=0
+      mkRUnit({ id: 5, unitType: "Atom Bomb", ownerID: 70, isActive: true, targetTile: 104 }), // >= size
+      mkRUnit({ id: 6, unitType: "Atom Bomb", ownerID: 7, isActive: true, targetTile: 105 }), // neutral cell
+    ],
+  }],
+]);
+runNKT("nkt_fromids", [
+  [1, {
+    mapW: 100, lpi: 0, matrix: null, relSize: 0, tick: 0, plans: null,
+    ids: [1, 999, 2, 1],
+    units: [
+      mkRUnit({ id: 1, unitType: "Atom Bomb", ownerID: 4, isActive: true, targetTile: 7 }),
+      mkRUnit({ id: 2, unitType: "MIRV", ownerID: 4, isActive: true, targetTile: 8 }),
+    ],
+  }],
+]);
+runNKT("nkt_classify", [
+  [2, 5, 3, [[3 * 64 + 5, 1]], 64],
+  [2, 3, 3, [[3 * 64 + 5, 1]], 64],
+  [2, 5, 0, [[3 * 64 + 5, 1]], 64],
+  [2, 5, 3, null, 64],
+  [2, 70, 3, [[3 * 64 + 5, 1]], 64],
+  [2, -1, 3, [[3 * 64 + 5, 1]], 64],
+  [2, 5, 3, [[3 * 64 + 5, 2]], 64],
+  [2, 5, 3, [[3 * 64 + 5, 1]], 0],
+]);
+
+// ---- PlayerStatus.ts (pst_) ----------------------------------------------------
+const pstScenarios = [];
+let pstIdx = 0;
+function runPST(name, ops) {
+  const played = [];
+  for (const [k, ...a] of ops) {
+    let args;
+    let res;
+    if (k === 0) {
+      const [o, players, units] = a;
+      args = [];
+      const opt = (present, vals) => {
+        args.push(present ? 1 : 0);
+        if (present) args.push(...vals);
+      };
+      opt(o.lpsid !== undefined, [o.lpsid]);
+      opt(o.lpid !== undefined, o.lpid === undefined ? [] : encS(o.lpid));
+      const wrapped = o.tileState === undefined ? null : [...new Uint16Array(o.tileState)];
+      opt(o.tileState !== undefined, wrapped === null ? [] : [wrapped.length, ...wrapped]);
+      opt(o.tick !== undefined, [o.tick]);
+      opt(o.allianceDuration !== undefined, [o.allianceDuration]);
+      opt(o.tt !== undefined, o.tt === undefined ? [] : [o.tt.length, ...o.tt]);
+      opt(o.warn !== undefined, [o.warn]);
+      args.push(players.length, ...players.flatMap(encRPlayer));
+      args.push(units.length, ...units.flatMap(encRUnit));
+      const opts = {};
+      if (o.lpsid !== undefined) opts.localPlayerSmallID = o.lpsid;
+      if (o.lpid !== undefined) opts.localPlayerID = o.lpid;
+      if (o.tileState !== undefined) opts.tileState = new Uint16Array(o.tileState);
+      if (o.tick !== undefined) opts.tick = o.tick;
+      if (o.allianceDuration !== undefined) opts.allianceDuration = o.allianceDuration;
+      if (o.tt !== undefined) opts.isTransitiveTarget = (sid) => o.tt.includes(sid);
+      if (o.warn !== undefined) opts.doomsdayClockWarnTicks = o.warn;
+      const r = PST.computePlayerStatus(toMap(players, "smallID"), toMap(units, "id"), opts);
+      res = [r.size, ...[...r].flatMap(([sid, d]) => [sid, ...encRStatus(d)])];
+    } else if (k === 1) {
+      args = [];
+      res = [PST.OWNER_MASK, PST.NUKE_ACTIVE_TYPES.size, ...[...PST.NUKE_ACTIVE_TYPES].flatMap(encS)];
+    } else throw new Error("pst: bad op kind " + k);
+    played.push({ kind: k, args: args.flat().map(uenc), res: res.flat().map(uenc) });
+  }
+  pstScenarios.push({ name: `${name}_${pstIdx++}`, ops: played });
+}
+runPST("pst_replay_crown", [
+  [0, {}, [
+    mkRPlayer({ smallID: 1, isAlive: true, tilesOwned: 100 }),
+    mkRPlayer({ smallID: 2, isAlive: true, tilesOwned: 100 }), // tie -> first keeps crown
+    mkRPlayer({ smallID: 3, isAlive: false, isTraitor: true }), // dead -> excluded
+    mkRPlayer({ smallID: 4, isAlive: true, traitorRemainingTicks: 5 }),
+    mkRPlayer({ smallID: 5, isAlive: true }), // all-false -> NO entry (11-OR gate)
+    mkRPlayer({ smallID: 6, isAlive: true, isDecaying: true }), // decaying alone: no entry
+  ], [
+    mkRUnit({ id: 1, unitType: "Atom Bomb", ownerID: 2, isActive: true }),
+    mkRUnit({ id: 2, unitType: "Shell", ownerID: 4, isActive: true }),
+    mkRUnit({ id: 3, unitType: "MIRV", ownerID: 4, isActive: false }),
+  ]],
+  [1],
+]);
+runPST("pst_doomsday", [
+  [0, { tick: 100, warn: 40 }, [
+    mkRPlayer({ smallID: 1, isAlive: true, inDoomsdayClock: true, markedDoomsdayClockTick: 50 }), // under 50 -> drain, prog 1
+    mkRPlayer({ smallID: 2, isAlive: true, inDoomsdayClock: true, markedDoomsdayClockTick: -100 }), // under 200 -> prog 1
+    mkRPlayer({ smallID: 3, isAlive: true, inDoomsdayClock: true, isDecaying: true, markedDoomsdayClockTick: 90 }), // 0.25, decaying
+  ], []],
+  [0, { tick: 100 }, [
+    mkRPlayer({ smallID: 1, isAlive: true, inDoomsdayClock: true, markedDoomsdayClockTick: 50 }), // warn absent -> >= 0 drains, prog 0
+  ], []],
+  [0, { tick: 100, warn: 0 }, [
+    mkRPlayer({ smallID: 1, isAlive: true, inDoomsdayClock: true, markedDoomsdayClockTick: 51 }), // under 49 >= 0, prog 0 (warn>0 false)
+  ], []],
+]);
+runPST("pst_nuke_targets_me", [
+  [0, { lpsid: 2, tileState: [0, 0, 0, 0, 0, 0, 0, 2] }, [
+    mkRPlayer({ smallID: 2, isAlive: true }),
+    mkRPlayer({ smallID: 5, isAlive: true }),
+    mkRPlayer({ smallID: 6, isAlive: true }),
+    mkRPlayer({ smallID: 7, isAlive: true }),
+  ], [
+    mkRUnit({ id: 1, unitType: "Atom Bomb", ownerID: 5, isActive: true, targetTile: 7 }), // owner 2 on tile 7 -> targetsMe
+    mkRUnit({ id: 2, unitType: "Atom Bomb", ownerID: 6, isActive: true, targetTile: 99 }), // OOB -> undefined & 0xfff = 0
+    mkRUnit({ id: 3, unitType: "Hydrogen Bomb", ownerID: 7, isActive: true, targetTile: 0 }), // owner 0 != 2
+  ]],
+  [0, { lpsid: 2 }, [
+    mkRPlayer({ smallID: 5, isAlive: true }),
+  ], [
+    mkRUnit({ id: 1, unitType: "Atom Bomb", ownerID: 5, isActive: true, targetTile: 7 }), // no tileState -> nukeActive only
+  ]],
+]);
+runPST("pst_relative_flags", [
+  [0, { lpsid: 1, lpid: "p1", tick: 60, allianceDuration: 100, tt: [6] }, [
+    mkRPlayer({ smallID: 1, isAlive: true, allies: [2], embargoes: [4], targets: [99] }),
+    mkRPlayer({ smallID: 2, isAlive: true, alliances: [{ other: "p1", expiresAt: 100 }] }), // ally + frac 0.4/40
+    mkRPlayer({ smallID: 3, isAlive: true, outgoingAllianceRequests: ["p1"] }), // allianceReq
+    mkRPlayer({ smallID: 4, isAlive: true }), // embargo (lp side)
+    mkRPlayer({ smallID: 5, isAlive: true, embargoes: [1] }), // embargo (ps side)
+    mkRPlayer({ smallID: 6, isAlive: true }), // target via callback (NOT in lp.targets)
+    mkRPlayer({ smallID: 99, isAlive: true }), // target via lp.targets fallback? tt present -> callback says no
+  ], []],
+  [0, { lpsid: 1, tt: [] }, [
+    mkRPlayer({ smallID: 1, isAlive: true, targets: [2] }),
+    mkRPlayer({ smallID: 2, isAlive: true }), // callback present but empty -> target false
+  ], []],
+]);
+runPST("pst_empty_lpid", [
+  [0, { lpsid: 1, lpid: "", tick: 60, allianceDuration: 100 }, [
+    mkRPlayer({ smallID: 1, isAlive: true, allies: [2] }),
+    mkRPlayer({ smallID: 2, isAlive: true, outgoingAllianceRequests: [""], alliances: [{ other: "", expiresAt: 100 }] }), // req matches "" but fraction gate DEAD (truthy "")
+  ], []],
+  [0, { lpsid: 1, tick: 60, allianceDuration: 0 }, [
+    mkRPlayer({ smallID: 1, isAlive: true, allies: [2] }),
+    mkRPlayer({ smallID: 2, isAlive: true, alliances: [{ other: "lp", expiresAt: 100 }] }), // dur 0 -> max(1,0)=1 -> frac 1
+  ], []],
+  [0, { lpsid: 1, lpid: "lp", tick: 200, allianceDuration: 100 }, [
+    mkRPlayer({ smallID: 1, isAlive: true, allies: [2] }),
+    mkRPlayer({ smallID: 2, isAlive: true, alliances: [{ other: "lp", expiresAt: 100 }] }), // expired -> 0/0
+  ], []],
+]);
+runPST("pst_zero_lpsid", [
+  [0, { lpsid: 0 }, [
+    mkRPlayer({ smallID: 1, isAlive: true, tilesOwned: 5, allies: [2] }),
+    mkRPlayer({ smallID: 2, isAlive: true }),
+  ], [
+    mkRUnit({ id: 1, unitType: "MIRV Warhead", ownerID: 2, isActive: true, targetTile: 3 }),
+  ]], // lpsid 0: no local player -> all relative flags false
+  [0, { lpsid: -5 }, [
+    mkRPlayer({ smallID: 1, isAlive: true }),
+  ], []], // negative lpsid: localPlayer undefined
+]);
+
+// ---- RelationMatrix.ts (rmx_, harness) -----------------------------------------
+const rmxScenarios = [];
+let rmxIdx = 0;
+let rmxRef = null;
+const rmxNonzero = (m) => {
+  const out = [0];
+  for (let i = 0; i < m.length; i++) {
+    if (m[i] !== 0) {
+      out[0]++;
+      out.push(i, m[i]);
+    }
+  }
+  return out;
+};
+function runRMX(name, ops) {
+  const played = [];
+  for (const [k, ...a] of ops) {
+    let args;
+    let res;
+    if (k === 0) {
+      args = [];
+      if (rmxRef) rmxRef.fill(0);
+      rmxRef = null;
+      res = [0];
+    } else if (k === 1) {
+      const [players, teams] = a; // teams: null = omitted, else [[sid, team]*]
+      args = [players.length, ...players.flatMap(encRPlayer)];
+      args.push(teams === null ? 0 : 1);
+      if (teams !== null) args.push(teams.length, ...teams.flatMap(([sid, t]) => [sid, ...encS(t)]));
+      const r = RMX.buildRelationMatrix(
+        toMap(players, "smallID"),
+        teams === null ? undefined : new Map(teams),
+      );
+      rmxRef = r.matrix;
+      res = rmxNonzero(rmxRef);
+    } else if (k === 2) {
+      const [statics] = a;
+      args = [statics.length, ...statics.flatMap(encRStatic)];
+      const m = RMX.buildTeamMap(statics);
+      res = [m.size, ...[...m].flatMap(([sid, t]) => [sid, ...encS(t)])];
+    } else if (k === 3) {
+      args = [];
+      res = rmxRef ? rmxNonzero(rmxRef) : [0];
+    } else throw new Error("rmx: bad op kind " + k);
+    played.push({ kind: k, args: args.flat().map(uenc), res: res.flat().map(uenc) });
+  }
+  rmxScenarios.push({ name: `${name}_${rmxIdx++}`, ops: played });
+}
+runRMX("rmx_teams", [
+  [0],
+  [1, [
+    mkRPlayer({ smallID: 1, isAlive: true }),
+    mkRPlayer({ smallID: 2, isAlive: true }),
+    mkRPlayer({ smallID: 3, isAlive: true }),
+  ], [[1, "red"], [2, "red"], [3, "blue"], [0, "red"], [1024, "red"], [-4, "red"]]],
+]);
+runRMX("rmx_embargo_override", [
+  [0],
+  [1, [
+    mkRPlayer({ smallID: 1, allies: [2] }),
+    mkRPlayer({ smallID: 2, embargoes: [1] }),
+  ], null],
+  [0],
+  [1, [
+    mkRPlayer({ smallID: 1, embargoes: [2] }),
+    mkRPlayer({ smallID: 2, allies: [1] }), // later alliance CANNOT downgrade the 2
+  ], null],
+]);
+runRMX("rmx_empty_teams", [
+  [0],
+  [1, [mkRPlayer({ smallID: 1, allies: [2] }), mkRPlayer({ smallID: 2 })], []],
+  [0],
+  [1, [mkRPlayer({ smallID: 1, allies: [2] }), mkRPlayer({ smallID: 2 })], null],
+]);
+runRMX("rmx_sid_gates", [
+  [0],
+  [1, [
+    mkRPlayer({ smallID: 0, allies: [1] }),
+    mkRPlayer({ smallID: 1024, allies: [1] }),
+    mkRPlayer({ smallID: -3, embargoes: [1] }),
+    mkRPlayer({ smallID: 1, allies: [0, 1024, -5, 5], embargoes: [0, 1024, 7] }),
+  ], null],
+]);
+runRMX("rmx_teammap", [
+  [0],
+  [2, [
+    mkRStatic({ smallID: 1, team: "red" }),
+    mkRStatic({ smallID: 2, team: null }),
+    mkRStatic({ smallID: 3, team: "blue" }),
+    mkRStatic({ smallID: 1, team: "green" }), // re-set: value updates, position stays
+  ]],
+]);
+runRMX("rmx_state", [
+  [0],
+  [3], // dump before any build -> all zeros
+  [1, [mkRPlayer({ smallID: 4, allies: [9] })], null],
+  [3], // state probe: same dump as the build returned
+  [0],
+  [3], // after reset -> zeros again
+]);
+
+// ---- TerrainRowSpans.ts (trs_) ---------------------------------------------------
+const trsScenarios = [];
+let trsIdx = 0;
+const tbyte = (ref) => (ref * 7 + 3) & 0xff;
+function runTRS(name, ops) {
+  const played = [];
+  for (const [k, ...a] of ops) {
+    let args;
+    let res;
+    if (k === 0) {
+      const [mapW, refs] = a;
+      args = [mapW, refs.length, ...refs];
+      const r = TRS.buildTerrainRowSpans(refs, mapW, tbyte);
+      res = [
+        r.rects.length,
+        ...r.rects.flatMap((q) => [q.x, q.y, q.w, q.h]),
+        r.bytes.length,
+        ...r.bytes,
+      ];
+    } else if (k === 1) {
+      args = [];
+      res = [TRS.MAX_MERGE_OVERDRAW_RATIO, TRS.MAX_MERGE_EXTRA_TEXELS];
+    } else if (k === 2) {
+      const [refs] = a;
+      args = [refs.length, ...refs];
+      res = [refs.length, ...refs.map(tbyte)];
+    } else throw new Error("trs: bad op kind " + k);
+    played.push({ kind: k, args: args.flat().map(uenc), res: res.flat().map(uenc) });
+  }
+  trsScenarios.push({ name: `${name}_${trsIdx++}`, ops: played });
+}
+runTRS("trs_single", [[0, 10, [5]]]);
+runTRS("trs_merge_chain", [
+  [0, 10, [0, 1, 10, 11, 20]], // rows 0:[0,1] 1:[0,1] 2:[0] -> one 2x3 rect
+  [0, 10, [0, 100]], // non-adjacent rows -> two rects
+]);
+runTRS("trs_merge_ratio", [
+  [0, 10000, [...Array.from({ length: 11 }, (_, i) => i), ...Array.from({ length: 11 }, (_, i) => 10000 + 5 + i)]], // rows 0:[0,10] 1:[5,15]: merged 32 <= 22*1.5 -> merge
+]);
+runTRS("trs_merge_extra", [
+  [0, 100, [0, 50]], // merged 102 > 3 but extra 100 <= 4096 -> merge (OR second arm)
+  [0, 10000, [0, 13000]], // merged 3001*2=6002, extra 6000 > 4096 -> REJECT
+]);
+runTRS("trs_unsorted", [[0, 10, [21, 2, 12, 3]]]); // refs interleaved across rows
+runTRS("trs_constants", [[1], [2, [0, 1, 2, 1000, 36, 255]]]);
+
 const structures = {
   votetally: vtScenarios,
   rankedcheckin: rgScenarios,
@@ -13426,6 +14261,19 @@ const structures = {
   componentcheck: ccTScenarios,
   shorecoercing: sctScenarios,
   smoothingwater: swtScenarios,
+  tilecodec: tcScenarios,
+  unittypes: utScenarios,
+  rendererconsts: rncScenarios,
+  subscriptionpolicy: sppScenarios,
+  statsconstants: stcScenarios,
+  replayspeed: rpsScenarios,
+  goldratetracker: grtScenarios,
+  allianceclusters: acScenarios,
+  attackrings: arrScenarios,
+  nuketelegraphs: nktScenarios,
+  playerstatus: pstScenarios,
+  relationmatrix: rmxScenarios,
+  terrainrowspans: trsScenarios,
 };
 
 // ================================================================ JSON
@@ -16354,6 +17202,103 @@ opStream(
     "/// applyCorsHeaders, 5 setNoStoreHeaders. setHeader events are\n" +
     "/// [71, ...codec(name), ...codec(value)], env reads [72, method,\n" +
     "/// ...codec] (pageHostFor 6-form carries the host argument).",
+);
+
+// ---- S8 client render/hud emitters -------------------------------------------
+opStream(
+  "tilecodec",
+  "Tc",
+  "/// One `client/render/gl/utils/TileCodec.ts` op (see\n" +
+    "/// `tile_codec::run_op` docs). kind 0 mask triple, 1 TILE_DEFINES dump\n" +
+    "/// (bit INDICES, not masks).",
+);
+opStream(
+  "unittypes",
+  "Ut",
+  "/// One `client/render/types/UnitType.ts` op (see `unit_types::run_op`\n" +
+    "/// docs). kind 0 ALL_UNIT_TYPES, 1-3 set dumps + membership probes\n" +
+    "/// (STRUCTURE/NUKE/SMOOTHED), 4 NUKE_MAGNITUDES dump + property probes.",
+);
+opStream(
+  "rendererconsts",
+  "Rnc",
+  "/// One `client/render/types/Renderer.ts` op (see `renderer_consts::run_op`\n" +
+    "/// docs). kind 0/2 TrainType/PlayerTypeEnum forward tables, 1/3 the full\n" +
+    "/// runtime-object key dumps (reverse-mapping integers first), 4 the\n" +
+    "/// nuke-explosion colour constants.",
+);
+opStream(
+  "subscriptionpolicy",
+  "Spp",
+  "/// One `client/SubscriptionPolicy.ts` op (see `subscription_policy::run_op`\n" +
+    "/// docs). kind 0 dumps STEAM_TIER_CHANGE_IN_APP as 0|1.",
+);
+opStream(
+  "statsconstants",
+  "Stc",
+  "/// One `client/StatsConstants.ts` op (see `stats_constants::run_op` docs).\n" +
+    "/// kind 0 COLUMN_IDS, 1 DEFAULT_STATS_COLUMNS (key order player,team).",
+);
+opStream(
+  "replayspeed",
+  "Rps",
+  "/// One `client/utilities/ReplaySpeedMultiplier.ts` op (see\n" +
+    "/// `replay_speed::run_op` docs). kind 0 the forward table (the enum is\n" +
+    "/// inlined plain-object for the strip loader), 1 the default.",
+);
+opStream(
+  "goldratetracker",
+  "Grt",
+  "/// One `client/hud/layers/lib/GoldRateTracker.ts` op (see\n" +
+    "/// `gold_rate_tracker::RigHarness::run_op` docs). kind 0 reset, 1 record,\n" +
+    "/// 2 forget, 3 resetAll, 4 rate [sid,pick], 5 history dump.",
+);
+opStream(
+  "allianceclusters",
+  "Ac",
+  "/// One `client/render/frame/derive/AllianceClusters.ts` op (see\n" +
+    "/// `alliance_clusters::run_op` docs). kind 0 compute over the player\n" +
+    "/// list, 1 scripted find/union session over a fresh finder (seeds +\n" +
+    "/// ops) whose res carries the post-session parent dump — pins the\n" +
+    "/// path-halving step mutations the public API cannot expose.",
+);
+opStream(
+  "attackrings",
+  "Arr",
+  "/// One `client/render/frame/derive/AttackRings.ts` op (see\n" +
+    "/// `attack_rings::run_op` docs). kind 0 extractAttackRings [mapW,owner,\n" +
+    "/// n,(UnitState)*n] -> [m,(x,y,unitId)*m].",
+);
+opStream(
+  "nuketelegraphs",
+  "Nkt",
+  "/// One `client/render/frame/derive/NukeTelegraphs.ts` op (see\n" +
+    "/// `nuke_telegraphs::run_op` docs). kind 0 extractNukeTelegraphs, 1 the\n" +
+    "/// FromIds variant (ids before the units), 2 classifyOwner direct. The\n" +
+    "/// relation matrix rides sparse [k,(index,value)*k].",
+);
+opStream(
+  "playerstatus",
+  "Pst",
+  "/// One `client/render/frame/derive/PlayerStatus.ts` op (see\n" +
+    "/// `player_status::run_op` docs). kind 0 computePlayerStatus with the\n" +
+    "/// Option-flagged opts prefix; kind 1 OWNER_MASK + NUKE_ACTIVE_TYPES.\n" +
+    "/// tileState crosses pre-wrapped through Uint16Array.",
+);
+opStream(
+  "relationmatrix",
+  "Rmx",
+  "/// One `client/render/frame/derive/RelationMatrix.ts` op (see\n" +
+    "/// `relation_matrix::RigHarness::run_op` docs). kind 0 reset, 1 build\n" +
+    "/// (players + optional teams) -> nonzero dump, 2 buildTeamMap, 3 dump.",
+);
+opStream(
+  "terrainrowspans",
+  "Trs",
+  "/// One `client/render/frame/derive/TerrainRowSpans.ts` op (see\n" +
+    "/// `terrain_row_spans::run_op` docs). kind 0 build [mapW,n,(ref)*n] ->\n" +
+    "/// rects + bytes (terrainByteAt = (ref*7+3)&0xff on both sides), 1 the\n" +
+    "/// merge constants, 2 byte probes.",
 );
 
 const dataDir = join(root, "crates", "core", "tests", "data");

@@ -135,6 +135,19 @@ for (const name of [
   "probe_rg_reset", "probe_rg_arg", "probe_rg_op", "probe_rg_out_at",
   "probe_ck_reset", "probe_ck_arg", "probe_ck_op", "probe_ck_out_at",
   "probe_hd_reset", "probe_hd_arg", "probe_hd_op", "probe_hd_out_at",
+  "probe_tc_reset", "probe_tc_arg", "probe_tc_op", "probe_tc_out_at",
+  "probe_ut_reset", "probe_ut_arg", "probe_ut_op", "probe_ut_out_at",
+  "probe_rnc_reset", "probe_rnc_arg", "probe_rnc_op", "probe_rnc_out_at",
+  "probe_spp_reset", "probe_spp_arg", "probe_spp_op", "probe_spp_out_at",
+  "probe_stc_reset", "probe_stc_arg", "probe_stc_op", "probe_stc_out_at",
+  "probe_rps_reset", "probe_rps_arg", "probe_rps_op", "probe_rps_out_at",
+  "probe_grt_reset", "probe_grt_arg", "probe_grt_op", "probe_grt_out_at",
+  "probe_ac_reset", "probe_ac_arg", "probe_ac_op", "probe_ac_out_at",
+  "probe_arr_reset", "probe_arr_arg", "probe_arr_op", "probe_arr_out_at",
+  "probe_nkt_reset", "probe_nkt_arg", "probe_nkt_op", "probe_nkt_out_at",
+  "probe_pst_reset", "probe_pst_arg", "probe_pst_op", "probe_pst_out_at",
+  "probe_rmx_reset", "probe_rmx_arg", "probe_rmx_op", "probe_rmx_out_at",
+  "probe_trs_reset", "probe_trs_arg", "probe_trs_op", "probe_trs_out_at",
 ]) {
   if (typeof ex[name] !== "function") {
     console.error(`missing wasm export ${name} - rebuild with --features wasm-probe`);
@@ -2407,6 +2420,41 @@ for (const [key, reset, arg, op, outAt] of [
   ["rankedcheckin", "probe_rg_reset", "probe_rg_arg", "probe_rg_op", "probe_rg_out_at"],
   ["clustercheckin", "probe_ck_reset", "probe_ck_arg", "probe_ck_op", "probe_ck_out_at"],
   ["gameapicors", "probe_hd_reset", "probe_hd_arg", "probe_hd_op", "probe_hd_out_at"],
+]) {
+  for (const s of S[key]) {
+    ex[reset]();
+    for (const o of s.ops) {
+      for (const a of o.args) ex[arg](numTok(a));
+      const len = Number(ex[op](o.kind));
+      if (len !== o.res.length) {
+        fail(`${s.name} op${o.kind} res len`, 0, len, o.res.length);
+        continue;
+      }
+      for (let i = 0; i < len; i++) {
+        checks++;
+        const g = ex[outAt](i);
+        const w = numTok(o.res[i]);
+        if (!Object.is(g, w)) fail(`${s.name} op${o.kind} res[${i}]`, 0, g, w);
+      }
+    }
+  }
+}
+
+// --- S8: client render/hud pure modules --------------------------------------------
+for (const [key, reset, arg, op, outAt] of [
+  ["tilecodec", "probe_tc_reset", "probe_tc_arg", "probe_tc_op", "probe_tc_out_at"],
+  ["unittypes", "probe_ut_reset", "probe_ut_arg", "probe_ut_op", "probe_ut_out_at"],
+  ["rendererconsts", "probe_rnc_reset", "probe_rnc_arg", "probe_rnc_op", "probe_rnc_out_at"],
+  ["subscriptionpolicy", "probe_spp_reset", "probe_spp_arg", "probe_spp_op", "probe_spp_out_at"],
+  ["statsconstants", "probe_stc_reset", "probe_stc_arg", "probe_stc_op", "probe_stc_out_at"],
+  ["replayspeed", "probe_rps_reset", "probe_rps_arg", "probe_rps_op", "probe_rps_out_at"],
+  ["goldratetracker", "probe_grt_reset", "probe_grt_arg", "probe_grt_op", "probe_grt_out_at"],
+  ["allianceclusters", "probe_ac_reset", "probe_ac_arg", "probe_ac_op", "probe_ac_out_at"],
+  ["attackrings", "probe_arr_reset", "probe_arr_arg", "probe_arr_op", "probe_arr_out_at"],
+  ["nuketelegraphs", "probe_nkt_reset", "probe_nkt_arg", "probe_nkt_op", "probe_nkt_out_at"],
+  ["playerstatus", "probe_pst_reset", "probe_pst_arg", "probe_pst_op", "probe_pst_out_at"],
+  ["relationmatrix", "probe_rmx_reset", "probe_rmx_arg", "probe_rmx_op", "probe_rmx_out_at"],
+  ["terrainrowspans", "probe_trs_reset", "probe_trs_arg", "probe_trs_op", "probe_trs_out_at"],
 ]) {
   for (const s of S[key]) {
     ex[reset]();

@@ -1486,8 +1486,86 @@ WebSockets — stays excluded, mirroring the `src/core` exclusions).
     ...codec(msg)]`. zod is erased (the functional-enum shim keeps
     `ServerStateSchema.options` dumpable); `sendCheckin` / `rankedCheckinPass`
     / `startRankedCheckinLoops` / the express middleware are EXCLUDED
-    (fetch / GameManager / Math.random / req-res-next). 32 scenarios
+    (`fetch / GameManager / Math.random / req-res-next). 32 scenarios
     (`ck_` 12, `rg_` 8, `hd_` 12).
+65. **`client/render/gl/utils/TileCodec.ts` +
+    `client/render/types/UnitType.ts` + `client/render/types/Renderer.ts` +
+    `client/SubscriptionPolicy.ts` + `client/StatsConstants.ts` +
+    `client/utilities/ReplaySpeedMultiplier.ts` +
+    `client/hud/layers/lib/GoldRateTracker.ts` +
+    `client/render/frame/derive/{AllianceClusters,AttackRings,NukeTelegraphs,PlayerStatus,RelationMatrix,TerrainRowSpans}.ts`**
+    (`tile_codec`, `unit_types`, `renderer_consts`, `subscription_policy`,
+    `stats_constants`, `replay_speed`, `gold_rate_tracker`,
+    `alliance_clusters`, `attack_rings`, `nuke_telegraphs`, `player_status`,
+    `relation_matrix`, `terrain_row_spans`) — the S8 client cluster: six pure
+    constant/data modules, the GoldRateTracker bookkeeping class, and the
+    six-module frame-derive pipeline.
+    `TileCodec`
+    dumps the mask forms (`0xfff`, `1<<13`, `1<<14`) AND the `TILE_DEFINES`
+    table whose values are the BIT INDICES (13/14), the shader's injection
+    form. `UnitType` dumps the 16 atlas-ordered strings, the three derived
+    `ReadonlySet`s probed by membership (STRUCTURE 6 / NUKE 3 / SMOOTHED 4 —
+    insertion order), and the `NUKE_MAGNITUDES` radii with property-read
+    probes. `Renderer` ports the numeric enums WITH their reverse mappings
+    (the capture emits the exact `t[t["Engine"]=0]="Engine"` IIFE so
+    `Object.keys` order matches the real enum: "0","1","2" first) plus
+    `MAX_NUKE_EXPLOSION_COLORS` and the `[0.6, 0.1, 1]` fallback triple; the
+    PlayerState/UnitState/PlayerStatic interfaces become the shared wire
+    codecs (`push_*`/`read_*`) the derive ports ride. `SubscriptionPolicy` is
+    the one-boolean launch switch (`STEAM_TIER_CHANGE_IN_APP = false`);
+    `StatsConstants` the 21 `COLUMN_IDS` plus the two-key `DEFAULT_STATS_COLUMNS`
+    membership dump; `ReplaySpeedMultiplier` the speed table. `GoldRateTracker`
+    ports the whole bookkeeping class over game TICKS: `record`'s eviction is
+    a `while (samples[0].tick < cutoff) shift()` with STRICT `<` — a sample
+    exactly AT the cutoff survives (`grt_window`); the hard cap is STRICT `>`
+    — 240 samples never splice, the 241st drains the head (`grt_cap`);
+    `rate` is the two-point slope with the `dtMin <= 0 → 0` gate (frozen clock
+    yields 0, never a divide); `history` is insertion-ordered per smallID
+    (observable through the dump). `AllianceClusters` ports the union-find
+    with path HALVING — each pass mutates `parent[x] = parent[parent[x]]` then
+    advances on the OLD parent, and the step-by-step mutation is pinned through
+    the parent-map dump after a scripted find/union session (`ac_session_halving`);
+    the seeding gate is `smallID > 0`, the union gate requires
+    `parent.has(allyID)` (a foreign ally is never seeded, never unioned), and
+    the result iterates `parent.keys()` in seed order. `AttackRings` pins the
+    five-gate ORDER with the owner filter LAST — a foreign transport still
+    walks the first four gates — and the STRICT `targetTile === null` check
+    (`undefined` would pass; the codec keeps null as the only absent form).
+    `NukeTelegraphs` ports both extract variants plus `classifyOwner`: the
+    `startTick > currentTick` gate is STRICT `>` (a plan starting exactly now
+    STILL telegraphs), `NUKE_MAGNITUDES[unitType]` is a truthy gate — a MIRV
+    has NO mag entry and is SKIPPED even though it is a NUKE_TYPE — and the
+    relation matrix rides SPARSE (nonzero cells only; out-of-range cell writes
+    are silently dropped, matching `Uint8Array` semantics). `PlayerStatus`
+    pins the crown scan's STRICT `>` (a tilesOwned tie keeps the FIRST alive
+    player), the `localPlayerSmallID > 0` truthy gate, the nuke-targets-me
+    chain `lpsid > 0` → `tileState !== undefined` → `targetTile !== null` →
+    `(tileState[targetTile] & 0xfff) === lpsid` where an OOB / negative /
+    fractional `Uint16Array` read is `undefined` and `undefined & 0xfff` → 0
+    (`pst_nuke_targets_me` feeds tile 99 into an 8-slot array), the alliance
+    fraction gate's RAW-`localPlayerID` TRUTHINESS (`""` falsy disables the
+    progress bar even though the `?? ""` copy still feeds `allianceReq` —
+    `pst_empty_lpid`), and the eleven-flag OR gate that admits an entry to the
+    result map (draining/decaying/warnProgress alone do NOT qualify —
+    `pst_replay_crown` players 5/6 get no entry). `RelationMatrix` holds the
+    ONE reusable `Uint8Array(1024*1024)` in the harness; the alliance upgrade
+    is `if (matrix[ab] < 1) matrix[ab] = 1` — an EMBARGO (2) is NEVER
+    downgraded by a later alliance — while embargo writes are UNCONDITIONAL
+    overwrites both directions (a same-team friendly written earlier for the
+    same pair LOSES; `rmx_embargo_override` pins both directions), the sid
+    gate is `sid <= 0 || sid >= 1024`, and `buildTeamMap` filters
+    `p.team !== null` STRICT. `TerrainRowSpans` ports the ref→row→merge
+    pipeline: the merge gate is adjacent rows AND (`mergedArea <=
+    sourceArea * 1.5` OR `extraTexels <= 4096`) — `trs_merge_ratio` passes on
+    the ratio arm, `trs_merge_extra` on the texel arm, and a wide-map pair
+    fails both; the pending rect mutates in place (`x = minX`, `w`, `h++`,
+    `sourceArea += rowWidth`); `bytes` fills in RECT order then dy then dx
+    through the deterministic `(ref * 7 + 3) & 0xff` closed form both sides
+    compute. Excluded: the GL upload calls, the React/HUD layers, and
+    everything host-bound (the TS `terrainByteAt` callback is modelled as the
+    same closed form on both sides). 44 scenarios (`tc_` 1, `ut_` 5, `rnc_` 3,
+    `spp_` 1, `stc_` 1, `rps_` 1, `grt_` 6, `ac_` 3, `arr_` 1, `nkt_` 4,
+    `pst_` 6, `rmx_` 6, `trs_` 6).
 
 Regenerate whenever a ported source changes:
 
@@ -1521,7 +1599,7 @@ node rust/tools/run_wasm_parity.mjs
 
 `wasm-probe` exposes the ported functions through `extern "C"` scalar
 entrypoints (`src/wasm_probe.rs`); the runner imports `data/vectors.json` and
-compares every value. Last run: **287,237 comparisons, all bit-identical**.
+compares every value. Last run: **290,556 comparisons, all bit-identical**.
 
 ### Windows: the linker environment
 

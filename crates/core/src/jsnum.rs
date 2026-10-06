@@ -69,6 +69,14 @@ pub fn to_float32(v: f64) -> f32 {
     v as f32
 }
 
+/// JS `%` (fmod): the result takes the sign of the dividend; Rust's `f64 %
+/// f64` is IEEE fmod and matches V8 for the finite domain the client derive
+/// ports feed it (tile refs are non-negative integers).
+#[inline]
+pub fn js_mod(a: f64, b: f64) -> f64 {
+    a % b
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

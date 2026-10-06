@@ -3428,3 +3428,291 @@ fn replay_gameapicors_scenarios() {
         }
     }
 }
+
+// ---- S8: client render/hud pure modules --------------------------------------
+
+// client/render/gl/utils/TileCodec.ts: the mask triple and the TILE_DEFINES
+// dump — the bit-INDEX values (13/14), not the masks.
+#[test]
+fn replay_tilecodec_scenarios() {
+    for s in vectors::TC_SCENARIOS {
+        for op in s.ops {
+            let got = openfront_core::tile_codec::run_op(op.kind, op.args);
+            assert_eq!(
+                got.len(),
+                op.res.len(),
+                "{} op[{:?}] res len: got {got:?} want {:?}",
+                s.name,
+                op.kind,
+                op.res
+            );
+            for (j, (g, w)) in got.iter().zip(op.res.iter()).enumerate() {
+                assert!(obj_is(*g, *w), "{} op[{:?}] res[{j}]: got {g} want {w}", s.name, op.kind);
+            }
+        }
+    }
+}
+
+// client/render/types/UnitType.ts: the 16 canonical strings, the three set
+// dumps with membership probes (MIRV Warhead NOT in NUKE_TYPES), and the
+// NUKE_MAGNITUDES property reads (MIRV has no entry -> the telegraph skip).
+#[test]
+fn replay_unittypes_scenarios() {
+    for s in vectors::UT_SCENARIOS {
+        for op in s.ops {
+            let got = openfront_core::unit_types::run_op(op.kind, op.args);
+            assert_eq!(
+                got.len(),
+                op.res.len(),
+                "{} op[{:?}] res len: got {got:?} want {:?}",
+                s.name,
+                op.kind,
+                op.res
+            );
+            for (j, (g, w)) in got.iter().zip(op.res.iter()).enumerate() {
+                assert!(obj_is(*g, *w), "{} op[{:?}] res[{j}]: got {g} want {w}", s.name, op.kind);
+            }
+        }
+    }
+}
+
+// client/render/types/Renderer.ts: the numeric-enum forward tables AND the
+// full runtime-object key dumps ("0","1","2" before the names — the reverse
+// mapping order), plus the nuke-explosion colour constants.
+#[test]
+fn replay_rendererconsts_scenarios() {
+    for s in vectors::RNC_SCENARIOS {
+        for op in s.ops {
+            let got = openfront_core::renderer_consts::run_op(op.kind, op.args);
+            assert_eq!(
+                got.len(),
+                op.res.len(),
+                "{} op[{:?}] res len: got {got:?} want {:?}",
+                s.name,
+                op.kind,
+                op.res
+            );
+            for (j, (g, w)) in got.iter().zip(op.res.iter()).enumerate() {
+                assert!(obj_is(*g, *w), "{} op[{:?}] res[{j}]: got {g} want {w}", s.name, op.kind);
+            }
+        }
+    }
+}
+
+// client/SubscriptionPolicy.ts: the single launch switch.
+#[test]
+fn replay_subscriptionpolicy_scenarios() {
+    for s in vectors::SPP_SCENARIOS {
+        for op in s.ops {
+            let got = openfront_core::subscription_policy::run_op(op.kind, op.args);
+            assert_eq!(got.len(), op.res.len(), "{} op[{:?}]", s.name, op.kind);
+            for (j, (g, w)) in got.iter().zip(op.res.iter()).enumerate() {
+                assert!(obj_is(*g, *w), "{} op[{:?}] res[{j}]: got {g} want {w}", s.name, op.kind);
+            }
+        }
+    }
+}
+
+// client/StatsConstants.ts: COLUMN_IDS (21) + DEFAULT_STATS_COLUMNS
+// (key order player,team).
+#[test]
+fn replay_statsconstants_scenarios() {
+    for s in vectors::STC_SCENARIOS {
+        for op in s.ops {
+            let got = openfront_core::stats_constants::run_op(op.kind, op.args);
+            assert_eq!(got.len(), op.res.len(), "{} op[{:?}]", s.name, op.kind);
+            for (j, (g, w)) in got.iter().zip(op.res.iter()).enumerate() {
+                assert!(obj_is(*g, *w), "{} op[{:?}] res[{j}]: got {g} want {w}", s.name, op.kind);
+            }
+        }
+    }
+}
+
+// client/utilities/ReplaySpeedMultiplier.ts: the forward table (seconds per
+// tick, fastest = 0 freezes) + the default (normal).
+#[test]
+fn replay_replayspeed_scenarios() {
+    for s in vectors::RPS_SCENARIOS {
+        for op in s.ops {
+            let got = openfront_core::replay_speed::run_op(op.kind, op.args);
+            assert_eq!(got.len(), op.res.len(), "{} op[{:?}]", s.name, op.kind);
+            for (j, (g, w)) in got.iter().zip(op.res.iter()).enumerate() {
+                assert!(obj_is(*g, *w), "{} op[{:?}] res[{j}]: got {g} want {w}", s.name, op.kind);
+            }
+        }
+    }
+}
+
+// client/hud/layers/lib/GoldRateTracker.ts: the STRICT `<` cutoff eviction
+// (a sample exactly at the cutoff survives), the STRICT `>` 240 cap, the
+// `< 2` and `dtMin <= 0` rate gates (frozen/backwards clock -> 0), forget /
+// resetAll Map semantics and the insertion-order history dump.
+#[test]
+fn replay_goldratetracker_scenarios() {
+    use openfront_core::gold_rate_tracker::RigHarness;
+    for s in vectors::GRT_SCENARIOS {
+        let mut rig = RigHarness::new();
+        for op in s.ops {
+            let got = rig.run_op(op.kind, op.args);
+            assert_eq!(
+                got.len(),
+                op.res.len(),
+                "{} op[{:?}] res len: got {got:?} want {:?}",
+                s.name,
+                op.kind,
+                op.res
+            );
+            for (j, (g, w)) in got.iter().zip(op.res.iter()).enumerate() {
+                assert!(obj_is(*g, *w), "{} op[{:?}] res[{j}]: got {g} want {w}", s.name, op.kind);
+            }
+        }
+    }
+}
+
+// client/render/frame/derive/AllianceClusters.ts: the union-find seed/union
+// gates (smallID <= 0 never seeded, ally outside the set ignored) and the
+// scripted find/union sessions whose parent dumps pin the path-halving STEP
+// mutations (the compute result pass re-finds and masks them).
+#[test]
+fn replay_allianceclusters_scenarios() {
+    for s in vectors::AC_SCENARIOS {
+        for op in s.ops {
+            let got = openfront_core::alliance_clusters::run_op(op.kind, op.args);
+            assert_eq!(
+                got.len(),
+                op.res.len(),
+                "{} op[{:?}] res len: got {got:?} want {:?}",
+                s.name,
+                op.kind,
+                op.res
+            );
+            for (j, (g, w)) in got.iter().zip(op.res.iter()).enumerate() {
+                assert!(obj_is(*g, *w), "{} op[{:?}] res[{j}]: got {g} want {w}", s.name, op.kind);
+            }
+        }
+    }
+}
+
+// client/render/frame/derive/AttackRings.ts: the five-gate order (type,
+// targetTile null, active, retreating, owner LAST) and the f64 position split.
+#[test]
+fn replay_attackrings_scenarios() {
+    for s in vectors::ARR_SCENARIOS {
+        for op in s.ops {
+            let got = openfront_core::attack_rings::run_op(op.kind, op.args);
+            assert_eq!(
+                got.len(),
+                op.res.len(),
+                "{} op[{:?}] res len: got {got:?} want {:?}",
+                s.name,
+                op.kind,
+                op.res
+            );
+            for (j, (g, w)) in got.iter().zip(op.res.iter()).enumerate() {
+                assert!(obj_is(*g, *w), "{} op[{:?}] res[{j}]: got {g} want {w}", s.name, op.kind);
+            }
+        }
+    }
+}
+
+// client/render/frame/derive/NukeTelegraphs.ts: the STRICT null targetTile /
+// STRICT waitTicks>0 / plan startTick>currentTick gates (a plan starting
+// exactly now still telegraphs), the MIRV-has-no-mag skip, the classifyOwner
+// gate chain (lpi<=0 -> ENEMY, === -> SELF, matrix truthy + range + ===1 ->
+// FRIENDLY) and the FromIds missing-id continue.
+#[test]
+fn replay_nuketelegraphs_scenarios() {
+    for s in vectors::NKT_SCENARIOS {
+        for op in s.ops {
+            let got = openfront_core::nuke_telegraphs::run_op(op.kind, op.args);
+            assert_eq!(
+                got.len(),
+                op.res.len(),
+                "{} op[{:?}] res len: got {got:?} want {:?}",
+                s.name,
+                op.kind,
+                op.res
+            );
+            for (j, (g, w)) in got.iter().zip(op.res.iter()).enumerate() {
+                assert!(obj_is(*g, *w), "{} op[{:?}] res[{j}]: got {g} want {w}", s.name, op.kind);
+            }
+        }
+    }
+}
+
+// client/render/frame/derive/PlayerStatus.ts: the STRICT `>` crown tie, the
+// Uint16Array OOB -> undefined -> 0 nukeTargetsMe read, the `?? 0` doomsday
+// math with the STRICT `>=` draining gate, the truthy `opts.localPlayerID`
+// fraction gate ("" kills the progress bar while `?? ""` still feeds
+// allianceReq), the callback-vs-includes target branch, the bilateral
+// embargo, the max(1,duration) guard and the 11-flag OR entry gate.
+#[test]
+fn replay_playerstatus_scenarios() {
+    for s in vectors::PST_SCENARIOS {
+        for op in s.ops {
+            let got = openfront_core::player_status::run_op(op.kind, op.args);
+            assert_eq!(
+                got.len(),
+                op.res.len(),
+                "{} op[{:?}] res len: got {got:?} want {:?}",
+                s.name,
+                op.kind,
+                op.res
+            );
+            for (j, (g, w)) in got.iter().zip(op.res.iter()).enumerate() {
+                assert!(obj_is(*g, *w), "{} op[{:?}] res[{j}]: got {g} want {w}", s.name, op.kind);
+            }
+        }
+    }
+}
+
+// client/render/frame/derive/RelationMatrix.ts: the shared-buffer fill(0)
+// rewrite, the teams `size > 0` gate, the byTeam insertion-order buckets,
+// the sid/ally range gates, the alliance `< FRIENDLY` upgrade (never
+// downgrades an EMBARGO) and the unconditional embargo override; plus
+// buildTeamMap's STRICT `!== null` and Map re-set position semantics.
+#[test]
+fn replay_relationmatrix_scenarios() {
+    use openfront_core::relation_matrix::RigHarness;
+    for s in vectors::RMX_SCENARIOS {
+        let mut rig = RigHarness::new();
+        for op in s.ops {
+            let got = rig.run_op(op.kind, op.args);
+            assert_eq!(
+                got.len(),
+                op.res.len(),
+                "{} op[{:?}] res len: got {got:?} want {:?}",
+                s.name,
+                op.kind,
+                op.res
+            );
+            for (j, (g, w)) in got.iter().zip(op.res.iter()).enumerate() {
+                assert!(obj_is(*g, *w), "{} op[{:?}] res[{j}]: got {g} want {w}", s.name, op.kind);
+            }
+        }
+    }
+}
+
+// client/render/frame/derive/TerrainRowSpans.ts: the row min/max in-place
+// mutation, the ascending ys re-sort, the merge gate on BOTH arms of the OR
+// (ratio pass, extra-texels pass, reject) and the rect-order byte concat
+// through the deterministic (ref*7+3)&0xff callback.
+#[test]
+fn replay_terrainrowspans_scenarios() {
+    for s in vectors::TRS_SCENARIOS {
+        for op in s.ops {
+            let got = openfront_core::terrain_row_spans::run_op(op.kind, op.args);
+            assert_eq!(
+                got.len(),
+                op.res.len(),
+                "{} op[{:?}] res len: got {got:?} want {:?}",
+                s.name,
+                op.kind,
+                op.res
+            );
+            for (j, (g, w)) in got.iter().zip(op.res.iter()).enumerate() {
+                assert!(obj_is(*g, *w), "{} op[{:?}] res[{j}]: got {g} want {w}", s.name, op.kind);
+            }
+        }
+    }
+}

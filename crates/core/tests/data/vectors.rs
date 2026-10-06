@@ -44316,3 +44316,921 @@ pub const HD_SCENARIOS: &[HdScenario] = &[
     HD_NO_STORE_HEADERS_11,
 ];
 
+/// One `client/render/gl/utils/TileCodec.ts` op (see
+/// `tile_codec::run_op` docs). kind 0 mask triple, 1 TILE_DEFINES dump
+/// (bit INDICES, not masks).
+pub struct TcOp {
+    pub kind: u8,
+    pub args: &'static [f64],
+    pub res: &'static [f64],
+}
+pub struct TcScenario {
+    pub name: &'static str,
+    pub ops: &'static [TcOp],
+}
+
+const TC_DUMPS_0_OPS: &[TcOp] = &[
+    TcOp { kind: 0, args: &[], res: &[4095f64, 8192f64, 16384f64] },
+    TcOp { kind: 1, args: &[], res: &[3f64, 10f64, 79f64, 87f64, 78f64, 69f64, 82f64, 95f64, 77f64, 65f64, 83f64, 75f64, 4095f64, 11f64, 70f64, 65f64, 76f64, 76f64, 79f64, 85f64, 84f64, 95f64, 66f64, 73f64, 84f64, 13f64, 11f64, 68f64, 69f64, 70f64, 69f64, 78f64, 83f64, 69f64, 95f64, 66f64, 73f64, 84f64, 14f64] },
+];
+pub const TC_DUMPS_0: TcScenario = TcScenario {
+    name: "tc_dumps_0",
+    ops: TC_DUMPS_0_OPS,
+};
+
+pub const TC_SCENARIOS: &[TcScenario] = &[
+    TC_DUMPS_0,
+];
+
+/// One `client/render/types/UnitType.ts` op (see `unit_types::run_op`
+/// docs). kind 0 ALL_UNIT_TYPES, 1-3 set dumps + membership probes
+/// (STRUCTURE/NUKE/SMOOTHED), 4 NUKE_MAGNITUDES dump + property probes.
+pub struct UtOp {
+    pub kind: u8,
+    pub args: &'static [f64],
+    pub res: &'static [f64],
+}
+pub struct UtScenario {
+    pub name: &'static str,
+    pub ops: &'static [UtOp],
+}
+
+const UT_ALL_TYPES_0_OPS: &[UtOp] = &[
+    UtOp { kind: 0, args: &[], res: &[16f64, 9f64, 84f64, 114f64, 97f64, 110f64, 115f64, 112f64, 111f64, 114f64, 116f64, 10f64, 84f64, 114f64, 97f64, 100f64, 101f64, 32f64, 83f64, 104f64, 105f64, 112f64, 7f64, 87f64, 97f64, 114f64, 115f64, 104f64, 105f64, 112f64, 9f64, 65f64, 116f64, 111f64, 109f64, 32f64, 66f64, 111f64, 109f64, 98f64, 13f64, 72f64, 121f64, 100f64, 114f64, 111f64, 103f64, 101f64, 110f64, 32f64, 66f64, 111f64, 109f64, 98f64, 4f64, 77f64, 73f64, 82f64, 86f64, 10f64, 83f64, 65f64, 77f64, 77f64, 105f64, 115f64, 115f64, 105f64, 108f64, 101f64, 5f64, 83f64, 104f64, 101f64, 108f64, 108f64, 12f64, 77f64, 73f64, 82f64, 86f64, 32f64, 87f64, 97f64, 114f64, 104f64, 101f64, 97f64, 100f64, 4f64, 67f64, 105f64, 116f64, 121f64, 4f64, 80f64, 111f64, 114f64, 116f64, 7f64, 70f64, 97f64, 99f64, 116f64, 111f64, 114f64, 121f64, 12f64, 68f64, 101f64, 102f64, 101f64, 110f64, 115f64, 101f64, 32f64, 80f64, 111f64, 115f64, 116f64, 12f64, 83f64, 65f64, 77f64, 32f64, 76f64, 97f64, 117f64, 110f64, 99f64, 104f64, 101f64, 114f64, 12f64, 77f64, 105f64, 115f64, 115f64, 105f64, 108f64, 101f64, 32f64, 83f64, 105f64, 108f64, 111f64, 5f64, 84f64, 114f64, 97f64, 105f64, 110f64] },
+];
+pub const UT_ALL_TYPES_0: UtScenario = UtScenario {
+    name: "ut_all_types_0",
+    ops: UT_ALL_TYPES_0_OPS,
+};
+
+const UT_STRUCTURE_SET_1_OPS: &[UtOp] = &[
+    UtOp { kind: 1, args: &[6f64, 4f64, 67f64, 105f64, 116f64, 121f64, 4f64, 80f64, 111f64, 114f64, 116f64, 5f64, 84f64, 114f64, 97f64, 105f64, 110f64, 12f64, 77f64, 105f64, 115f64, 115f64, 105f64, 108f64, 101f64, 32f64, 83f64, 105f64, 108f64, 111f64, 4f64, 78f64, 117f64, 107f64, 101f64, 12f64, 68f64, 101f64, 102f64, 101f64, 110f64, 115f64, 101f64, 32f64, 80f64, 111f64, 115f64, 116f64], res: &[6f64, 4f64, 67f64, 105f64, 116f64, 121f64, 4f64, 80f64, 111f64, 114f64, 116f64, 7f64, 70f64, 97f64, 99f64, 116f64, 111f64, 114f64, 121f64, 12f64, 68f64, 101f64, 102f64, 101f64, 110f64, 115f64, 101f64, 32f64, 80f64, 111f64, 115f64, 116f64, 12f64, 83f64, 65f64, 77f64, 32f64, 76f64, 97f64, 117f64, 110f64, 99f64, 104f64, 101f64, 114f64, 12f64, 77f64, 105f64, 115f64, 115f64, 105f64, 108f64, 101f64, 32f64, 83f64, 105f64, 108f64, 111f64, 6f64, 4f64, 67f64, 105f64, 116f64, 121f64, 1f64, 4f64, 80f64, 111f64, 114f64, 116f64, 1f64, 5f64, 84f64, 114f64, 97f64, 105f64, 110f64, 0f64, 12f64, 77f64, 105f64, 115f64, 115f64, 105f64, 108f64, 101f64, 32f64, 83f64, 105f64, 108f64, 111f64, 1f64, 4f64, 78f64, 117f64, 107f64, 101f64, 0f64, 12f64, 68f64, 101f64, 102f64, 101f64, 110f64, 115f64, 101f64, 32f64, 80f64, 111f64, 115f64, 116f64, 1f64] },
+];
+pub const UT_STRUCTURE_SET_1: UtScenario = UtScenario {
+    name: "ut_structure_set_1",
+    ops: UT_STRUCTURE_SET_1_OPS,
+};
+
+const UT_NUKE_SET_2_OPS: &[UtOp] = &[
+    UtOp { kind: 2, args: &[4f64, 9f64, 65f64, 116f64, 111f64, 109f64, 32f64, 66f64, 111f64, 109f64, 98f64, 4f64, 77f64, 73f64, 82f64, 86f64, 12f64, 77f64, 73f64, 82f64, 86f64, 32f64, 87f64, 97f64, 114f64, 104f64, 101f64, 97f64, 100f64, 5f64, 83f64, 104f64, 101f64, 108f64, 108f64], res: &[3f64, 9f64, 65f64, 116f64, 111f64, 109f64, 32f64, 66f64, 111f64, 109f64, 98f64, 13f64, 72f64, 121f64, 100f64, 114f64, 111f64, 103f64, 101f64, 110f64, 32f64, 66f64, 111f64, 109f64, 98f64, 4f64, 77f64, 73f64, 82f64, 86f64, 4f64, 9f64, 65f64, 116f64, 111f64, 109f64, 32f64, 66f64, 111f64, 109f64, 98f64, 1f64, 4f64, 77f64, 73f64, 82f64, 86f64, 1f64, 12f64, 77f64, 73f64, 82f64, 86f64, 32f64, 87f64, 97f64, 114f64, 104f64, 101f64, 97f64, 100f64, 0f64, 5f64, 83f64, 104f64, 101f64, 108f64, 108f64, 0f64] },
+];
+pub const UT_NUKE_SET_2: UtScenario = UtScenario {
+    name: "ut_nuke_set_2",
+    ops: UT_NUKE_SET_2_OPS,
+};
+
+const UT_SMOOTHED_SET_3_OPS: &[UtOp] = &[
+    UtOp { kind: 3, args: &[5f64, 12f64, 77f64, 73f64, 82f64, 86f64, 32f64, 87f64, 97f64, 114f64, 104f64, 101f64, 97f64, 100f64, 4f64, 77f64, 73f64, 82f64, 86f64, 5f64, 83f64, 104f64, 101f64, 108f64, 108f64, 13f64, 72f64, 121f64, 100f64, 114f64, 111f64, 103f64, 101f64, 110f64, 32f64, 66f64, 111f64, 109f64, 98f64, 0f64], res: &[4f64, 9f64, 65f64, 116f64, 111f64, 109f64, 32f64, 66f64, 111f64, 109f64, 98f64, 13f64, 72f64, 121f64, 100f64, 114f64, 111f64, 103f64, 101f64, 110f64, 32f64, 66f64, 111f64, 109f64, 98f64, 4f64, 77f64, 73f64, 82f64, 86f64, 12f64, 77f64, 73f64, 82f64, 86f64, 32f64, 87f64, 97f64, 114f64, 104f64, 101f64, 97f64, 100f64, 5f64, 12f64, 77f64, 73f64, 82f64, 86f64, 32f64, 87f64, 97f64, 114f64, 104f64, 101f64, 97f64, 100f64, 1f64, 4f64, 77f64, 73f64, 82f64, 86f64, 1f64, 5f64, 83f64, 104f64, 101f64, 108f64, 108f64, 0f64, 13f64, 72f64, 121f64, 100f64, 114f64, 111f64, 103f64, 101f64, 110f64, 32f64, 66f64, 111f64, 109f64, 98f64, 1f64, 0f64, 0f64] },
+];
+pub const UT_SMOOTHED_SET_3: UtScenario = UtScenario {
+    name: "ut_smoothed_set_3",
+    ops: UT_SMOOTHED_SET_3_OPS,
+};
+
+const UT_MAGNITUDES_4_OPS: &[UtOp] = &[
+    UtOp { kind: 4, args: &[5f64, 9f64, 65f64, 116f64, 111f64, 109f64, 32f64, 66f64, 111f64, 109f64, 98f64, 4f64, 77f64, 73f64, 82f64, 86f64, 12f64, 77f64, 73f64, 82f64, 86f64, 32f64, 87f64, 97f64, 114f64, 104f64, 101f64, 97f64, 100f64, 9f64, 84f64, 114f64, 97f64, 110f64, 115f64, 112f64, 111f64, 114f64, 116f64, 13f64, 72f64, 121f64, 100f64, 114f64, 111f64, 103f64, 101f64, 110f64, 32f64, 66f64, 111f64, 109f64, 98f64], res: &[3f64, 9f64, 65f64, 116f64, 111f64, 109f64, 32f64, 66f64, 111f64, 109f64, 98f64, 12f64, 30f64, 13f64, 72f64, 121f64, 100f64, 114f64, 111f64, 103f64, 101f64, 110f64, 32f64, 66f64, 111f64, 109f64, 98f64, 80f64, 100f64, 12f64, 77f64, 73f64, 82f64, 86f64, 32f64, 87f64, 97f64, 114f64, 104f64, 101f64, 97f64, 100f64, 12f64, 18f64, 5f64, 9f64, 65f64, 116f64, 111f64, 109f64, 32f64, 66f64, 111f64, 109f64, 98f64, 1f64, 12f64, 30f64, 4f64, 77f64, 73f64, 82f64, 86f64, 0f64, 0f64, 0f64, 12f64, 77f64, 73f64, 82f64, 86f64, 32f64, 87f64, 97f64, 114f64, 104f64, 101f64, 97f64, 100f64, 1f64, 12f64, 18f64, 9f64, 84f64, 114f64, 97f64, 110f64, 115f64, 112f64, 111f64, 114f64, 116f64, 0f64, 0f64, 0f64, 13f64, 72f64, 121f64, 100f64, 114f64, 111f64, 103f64, 101f64, 110f64, 32f64, 66f64, 111f64, 109f64, 98f64, 1f64, 80f64, 100f64] },
+];
+pub const UT_MAGNITUDES_4: UtScenario = UtScenario {
+    name: "ut_magnitudes_4",
+    ops: UT_MAGNITUDES_4_OPS,
+};
+
+pub const UT_SCENARIOS: &[UtScenario] = &[
+    UT_ALL_TYPES_0,
+    UT_STRUCTURE_SET_1,
+    UT_NUKE_SET_2,
+    UT_SMOOTHED_SET_3,
+    UT_MAGNITUDES_4,
+];
+
+/// One `client/render/types/Renderer.ts` op (see `renderer_consts::run_op`
+/// docs). kind 0/2 TrainType/PlayerTypeEnum forward tables, 1/3 the full
+/// runtime-object key dumps (reverse-mapping integers first), 4 the
+/// nuke-explosion colour constants.
+pub struct RncOp {
+    pub kind: u8,
+    pub args: &'static [f64],
+    pub res: &'static [f64],
+}
+pub struct RncScenario {
+    pub name: &'static str,
+    pub ops: &'static [RncOp],
+}
+
+const RNC_TRAIN_0_OPS: &[RncOp] = &[
+    RncOp { kind: 0, args: &[], res: &[3f64, 6f64, 69f64, 110f64, 103f64, 105f64, 110f64, 101f64, 0f64, 10f64, 84f64, 97f64, 105f64, 108f64, 69f64, 110f64, 103f64, 105f64, 110f64, 101f64, 1f64, 8f64, 67f64, 97f64, 114f64, 114f64, 105f64, 97f64, 103f64, 101f64, 2f64] },
+    RncOp { kind: 1, args: &[], res: &[6f64, 1f64, 48f64, 1f64, 49f64, 1f64, 50f64, 6f64, 69f64, 110f64, 103f64, 105f64, 110f64, 101f64, 10f64, 84f64, 97f64, 105f64, 108f64, 69f64, 110f64, 103f64, 105f64, 110f64, 101f64, 8f64, 67f64, 97f64, 114f64, 114f64, 105f64, 97f64, 103f64, 101f64] },
+];
+pub const RNC_TRAIN_0: RncScenario = RncScenario {
+    name: "rnc_train_0",
+    ops: RNC_TRAIN_0_OPS,
+};
+
+const RNC_PLAYER_TYPE_1_OPS: &[RncOp] = &[
+    RncOp { kind: 2, args: &[], res: &[3f64, 5f64, 72f64, 117f64, 109f64, 97f64, 110f64, 0f64, 3f64, 66f64, 111f64, 116f64, 1f64, 6f64, 78f64, 97f64, 116f64, 105f64, 111f64, 110f64, 2f64] },
+    RncOp { kind: 3, args: &[], res: &[6f64, 1f64, 48f64, 1f64, 49f64, 1f64, 50f64, 5f64, 72f64, 117f64, 109f64, 97f64, 110f64, 3f64, 66f64, 111f64, 116f64, 6f64, 78f64, 97f64, 116f64, 105f64, 111f64, 110f64] },
+];
+pub const RNC_PLAYER_TYPE_1: RncScenario = RncScenario {
+    name: "rnc_player_type_1",
+    ops: RNC_PLAYER_TYPE_1_OPS,
+};
+
+const RNC_NUKE_COLORS_2_OPS: &[RncOp] = &[
+    RncOp { kind: 4, args: &[], res: &[4f64, 3f64, 0.6f64, 0.1f64, 1f64] },
+];
+pub const RNC_NUKE_COLORS_2: RncScenario = RncScenario {
+    name: "rnc_nuke_colors_2",
+    ops: RNC_NUKE_COLORS_2_OPS,
+};
+
+pub const RNC_SCENARIOS: &[RncScenario] = &[
+    RNC_TRAIN_0,
+    RNC_PLAYER_TYPE_1,
+    RNC_NUKE_COLORS_2,
+];
+
+/// One `client/SubscriptionPolicy.ts` op (see `subscription_policy::run_op`
+/// docs). kind 0 dumps STEAM_TIER_CHANGE_IN_APP as 0|1.
+pub struct SppOp {
+    pub kind: u8,
+    pub args: &'static [f64],
+    pub res: &'static [f64],
+}
+pub struct SppScenario {
+    pub name: &'static str,
+    pub ops: &'static [SppOp],
+}
+
+const SPP_FLAG_0_OPS: &[SppOp] = &[
+    SppOp { kind: 0, args: &[], res: &[0f64] },
+];
+pub const SPP_FLAG_0: SppScenario = SppScenario {
+    name: "spp_flag_0",
+    ops: SPP_FLAG_0_OPS,
+};
+
+pub const SPP_SCENARIOS: &[SppScenario] = &[
+    SPP_FLAG_0,
+];
+
+/// One `client/StatsConstants.ts` op (see `stats_constants::run_op` docs).
+/// kind 0 COLUMN_IDS, 1 DEFAULT_STATS_COLUMNS (key order player,team).
+pub struct StcOp {
+    pub kind: u8,
+    pub args: &'static [f64],
+    pub res: &'static [f64],
+}
+pub struct StcScenario {
+    pub name: &'static str,
+    pub ops: &'static [StcOp],
+}
+
+const STC_TABLES_0_OPS: &[StcOp] = &[
+    StcOp { kind: 0, args: &[], res: &[21f64, 4f64, 114f64, 97f64, 110f64, 107f64, 4f64, 99f64, 108f64, 97f64, 110f64, 6f64, 112f64, 108f64, 97f64, 121f64, 101f64, 114f64, 10f64, 112f64, 108f64, 97f64, 121f64, 101f64, 114f64, 84f64, 121f64, 112f64, 101f64, 4f64, 116f64, 101f64, 97f64, 109f64, 5f64, 116f64, 105f64, 108f64, 101f64, 115f64, 4f64, 103f64, 111f64, 108f64, 100f64, 16f64, 103f64, 111f64, 108f64, 100f64, 73f64, 110f64, 99f64, 111f64, 109f64, 101f64, 80f64, 101f64, 114f64, 77f64, 105f64, 110f64, 19f64, 115f64, 104f64, 105f64, 112f64, 84f64, 114f64, 97f64, 100f64, 101f64, 71f64, 111f64, 108f64, 100f64, 80f64, 101f64, 114f64, 77f64, 105f64, 110f64, 16f64, 112f64, 105f64, 114f64, 97f64, 99f64, 121f64, 71f64, 111f64, 108f64, 100f64, 80f64, 101f64, 114f64, 77f64, 105f64, 110f64, 20f64, 116f64, 114f64, 97f64, 105f64, 110f64, 84f64, 114f64, 97f64, 100f64, 101f64, 71f64, 111f64, 108f64, 100f64, 80f64, 101f64, 114f64, 77f64, 105f64, 110f64, 6f64, 116f64, 114f64, 111f64, 111f64, 112f64, 115f64, 9f64, 109f64, 97f64, 120f64, 116f64, 114f64, 111f64, 111f64, 112f64, 115f64, 6f64, 99f64, 105f64, 116f64, 105f64, 101f64, 115f64, 5f64, 112f64, 111f64, 114f64, 116f64, 115f64, 9f64, 102f64, 97f64, 99f64, 116f64, 111f64, 114f64, 105f64, 101f64, 115f64, 5f64, 115f64, 105f64, 108f64, 111f64, 115f64, 4f64, 115f64, 97f64, 109f64, 115f64, 8f64, 119f64, 97f64, 114f64, 115f64, 104f64, 105f64, 112f64, 115f64, 6f64, 97f64, 108f64, 108f64, 105f64, 101f64, 115f64, 9f64, 98f64, 101f64, 116f64, 114f64, 97f64, 121f64, 97f64, 108f64, 115f64] },
+    StcOp { kind: 1, args: &[], res: &[2f64, 6f64, 112f64, 108f64, 97f64, 121f64, 101f64, 114f64, 4f64, 4f64, 99f64, 108f64, 97f64, 110f64, 5f64, 116f64, 105f64, 108f64, 101f64, 115f64, 4f64, 103f64, 111f64, 108f64, 100f64, 9f64, 109f64, 97f64, 120f64, 116f64, 114f64, 111f64, 111f64, 112f64, 115f64, 4f64, 116f64, 101f64, 97f64, 109f64, 3f64, 5f64, 116f64, 105f64, 108f64, 101f64, 115f64, 4f64, 103f64, 111f64, 108f64, 100f64, 9f64, 109f64, 97f64, 120f64, 116f64, 114f64, 111f64, 111f64, 112f64, 115f64] },
+];
+pub const STC_TABLES_0: StcScenario = StcScenario {
+    name: "stc_tables_0",
+    ops: STC_TABLES_0_OPS,
+};
+
+pub const STC_SCENARIOS: &[StcScenario] = &[
+    STC_TABLES_0,
+];
+
+/// One `client/utilities/ReplaySpeedMultiplier.ts` op (see
+/// `replay_speed::run_op` docs). kind 0 the forward table (the enum is
+/// inlined plain-object for the strip loader), 1 the default.
+pub struct RpsOp {
+    pub kind: u8,
+    pub args: &'static [f64],
+    pub res: &'static [f64],
+}
+pub struct RpsScenario {
+    pub name: &'static str,
+    pub ops: &'static [RpsOp],
+}
+
+const RPS_TABLE_0_OPS: &[RpsOp] = &[
+    RpsOp { kind: 0, args: &[], res: &[4f64, 4f64, 115f64, 108f64, 111f64, 119f64, 2f64, 6f64, 110f64, 111f64, 114f64, 109f64, 97f64, 108f64, 1f64, 4f64, 102f64, 97f64, 115f64, 116f64, 0.5f64, 7f64, 102f64, 97f64, 115f64, 116f64, 101f64, 115f64, 116f64, 0f64] },
+    RpsOp { kind: 1, args: &[], res: &[1f64] },
+];
+pub const RPS_TABLE_0: RpsScenario = RpsScenario {
+    name: "rps_table_0",
+    ops: RPS_TABLE_0_OPS,
+};
+
+pub const RPS_SCENARIOS: &[RpsScenario] = &[
+    RPS_TABLE_0,
+];
+
+/// One `client/hud/layers/lib/GoldRateTracker.ts` op (see
+/// `gold_rate_tracker::RigHarness::run_op` docs). kind 0 reset, 1 record,
+/// 2 forget, 3 resetAll, 4 rate [sid,pick], 5 history dump.
+pub struct GrtOp {
+    pub kind: u8,
+    pub args: &'static [f64],
+    pub res: &'static [f64],
+}
+pub struct GrtScenario {
+    pub name: &'static str,
+    pub ops: &'static [GrtOp],
+}
+
+const GRT_SLOPE_0_OPS: &[GrtOp] = &[
+    GrtOp { kind: 0, args: &[], res: &[0f64] },
+    GrtOp { kind: 1, args: &[7f64, 100f64, 10f64, 5f64, 1f64, 0f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[7f64, 160f64, 14f64, 9f64, 4f64, 600f64], res: &[0f64] },
+    GrtOp { kind: 4, args: &[7f64, 0f64], res: &[60f64] },
+    GrtOp { kind: 4, args: &[7f64, 1f64], res: &[4f64] },
+    GrtOp { kind: 4, args: &[7f64, 2f64], res: &[4f64] },
+    GrtOp { kind: 4, args: &[7f64, 3f64], res: &[3f64] },
+    GrtOp { kind: 4, args: &[8f64, 0f64], res: &[0f64] },
+    GrtOp { kind: 5, args: &[], res: &[1f64, 7f64, 2f64, 100f64, 10f64, 5f64, 1f64, 0f64, 160f64, 14f64, 9f64, 4f64, 600f64] },
+];
+pub const GRT_SLOPE_0: GrtScenario = GrtScenario {
+    name: "grt_slope_0",
+    ops: GRT_SLOPE_0_OPS,
+};
+
+const GRT_WINDOW_1_OPS: &[GrtOp] = &[
+    GrtOp { kind: 0, args: &[], res: &[0f64] },
+    GrtOp { kind: 1, args: &[3f64, 0f64, 0f64, 0f64, 0f64, 0f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[3f64, 100f64, 0f64, 0f64, 0f64, 1200f64], res: &[0f64] },
+    GrtOp { kind: 4, args: &[3f64, 0f64], res: &[50f64] },
+    GrtOp { kind: 1, args: &[3f64, 160f64, 0f64, 0f64, 0f64, 1201f64], res: &[0f64] },
+    GrtOp { kind: 4, args: &[3f64, 0f64], res: &[36000f64] },
+    GrtOp { kind: 5, args: &[], res: &[1f64, 3f64, 2f64, 100f64, 0f64, 0f64, 0f64, 1200f64, 160f64, 0f64, 0f64, 0f64, 1201f64] },
+];
+pub const GRT_WINDOW_1: GrtScenario = GrtScenario {
+    name: "grt_window_1",
+    ops: GRT_WINDOW_1_OPS,
+};
+
+const GRT_FROZEN_2_OPS: &[GrtOp] = &[
+    GrtOp { kind: 0, args: &[], res: &[0f64] },
+    GrtOp { kind: 1, args: &[5f64, 10f64, 0f64, 0f64, 0f64, 500f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[5f64, 40f64, 0f64, 0f64, 0f64, 500f64], res: &[0f64] },
+    GrtOp { kind: 4, args: &[5f64, 0f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[5f64, 90f64, 0f64, 0f64, 0f64, 400f64], res: &[0f64] },
+    GrtOp { kind: 4, args: &[5f64, 0f64], res: &[0f64] },
+    GrtOp { kind: 5, args: &[], res: &[1f64, 5f64, 3f64, 10f64, 0f64, 0f64, 0f64, 500f64, 40f64, 0f64, 0f64, 0f64, 500f64, 90f64, 0f64, 0f64, 0f64, 400f64] },
+];
+pub const GRT_FROZEN_2: GrtScenario = GrtScenario {
+    name: "grt_frozen_2",
+    ops: GRT_FROZEN_2_OPS,
+};
+
+const GRT_SINGLE_3_OPS: &[GrtOp] = &[
+    GrtOp { kind: 0, args: &[], res: &[0f64] },
+    GrtOp { kind: 1, args: &[9f64, 500f64, 0f64, 0f64, 0f64, 100f64], res: &[0f64] },
+    GrtOp { kind: 4, args: &[9f64, 0f64], res: &[0f64] },
+    GrtOp { kind: 5, args: &[], res: &[1f64, 9f64, 1f64, 500f64, 0f64, 0f64, 0f64, 100f64] },
+];
+pub const GRT_SINGLE_3: GrtScenario = GrtScenario {
+    name: "grt_single_3",
+    ops: GRT_SINGLE_3_OPS,
+};
+
+const GRT_FORGET_RESET_4_OPS: &[GrtOp] = &[
+    GrtOp { kind: 0, args: &[], res: &[0f64] },
+    GrtOp { kind: 1, args: &[1f64, 1f64, 0f64, 0f64, 0f64, 0f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[2f64, 2f64, 0f64, 0f64, 0f64, 0f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[1f64, 2f64, 0f64, 0f64, 0f64, 100f64], res: &[0f64] },
+    GrtOp { kind: 2, args: &[2f64], res: &[0f64] },
+    GrtOp { kind: 5, args: &[], res: &[1f64, 1f64, 2f64, 1f64, 0f64, 0f64, 0f64, 0f64, 2f64, 0f64, 0f64, 0f64, 100f64] },
+    GrtOp { kind: 3, args: &[], res: &[0f64] },
+    GrtOp { kind: 5, args: &[], res: &[0f64] },
+];
+pub const GRT_FORGET_RESET_4: GrtScenario = GrtScenario {
+    name: "grt_forget_reset_4",
+    ops: GRT_FORGET_RESET_4_OPS,
+};
+
+const GRT_CAP_5_OPS: &[GrtOp] = &[
+    GrtOp { kind: 0, args: &[], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 0f64, 0f64, 0f64, 0f64, 0f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 1f64, 0f64, 0f64, 0f64, 1f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 2f64, 0f64, 0f64, 0f64, 2f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 3f64, 0f64, 0f64, 0f64, 3f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 4f64, 0f64, 0f64, 0f64, 4f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 5f64, 0f64, 0f64, 0f64, 5f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 6f64, 0f64, 0f64, 0f64, 6f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 7f64, 0f64, 0f64, 0f64, 7f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 8f64, 0f64, 0f64, 0f64, 8f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 9f64, 0f64, 0f64, 0f64, 9f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 10f64, 0f64, 0f64, 0f64, 10f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 11f64, 0f64, 0f64, 0f64, 11f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 12f64, 0f64, 0f64, 0f64, 12f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 13f64, 0f64, 0f64, 0f64, 13f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 14f64, 0f64, 0f64, 0f64, 14f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 15f64, 0f64, 0f64, 0f64, 15f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 16f64, 0f64, 0f64, 0f64, 16f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 17f64, 0f64, 0f64, 0f64, 17f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 18f64, 0f64, 0f64, 0f64, 18f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 19f64, 0f64, 0f64, 0f64, 19f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 20f64, 0f64, 0f64, 0f64, 20f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 21f64, 0f64, 0f64, 0f64, 21f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 22f64, 0f64, 0f64, 0f64, 22f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 23f64, 0f64, 0f64, 0f64, 23f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 24f64, 0f64, 0f64, 0f64, 24f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 25f64, 0f64, 0f64, 0f64, 25f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 26f64, 0f64, 0f64, 0f64, 26f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 27f64, 0f64, 0f64, 0f64, 27f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 28f64, 0f64, 0f64, 0f64, 28f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 29f64, 0f64, 0f64, 0f64, 29f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 30f64, 0f64, 0f64, 0f64, 30f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 31f64, 0f64, 0f64, 0f64, 31f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 32f64, 0f64, 0f64, 0f64, 32f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 33f64, 0f64, 0f64, 0f64, 33f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 34f64, 0f64, 0f64, 0f64, 34f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 35f64, 0f64, 0f64, 0f64, 35f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 36f64, 0f64, 0f64, 0f64, 36f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 37f64, 0f64, 0f64, 0f64, 37f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 38f64, 0f64, 0f64, 0f64, 38f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 39f64, 0f64, 0f64, 0f64, 39f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 40f64, 0f64, 0f64, 0f64, 40f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 41f64, 0f64, 0f64, 0f64, 41f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 42f64, 0f64, 0f64, 0f64, 42f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 43f64, 0f64, 0f64, 0f64, 43f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 44f64, 0f64, 0f64, 0f64, 44f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 45f64, 0f64, 0f64, 0f64, 45f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 46f64, 0f64, 0f64, 0f64, 46f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 47f64, 0f64, 0f64, 0f64, 47f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 48f64, 0f64, 0f64, 0f64, 48f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 49f64, 0f64, 0f64, 0f64, 49f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 50f64, 0f64, 0f64, 0f64, 50f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 51f64, 0f64, 0f64, 0f64, 51f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 52f64, 0f64, 0f64, 0f64, 52f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 53f64, 0f64, 0f64, 0f64, 53f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 54f64, 0f64, 0f64, 0f64, 54f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 55f64, 0f64, 0f64, 0f64, 55f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 56f64, 0f64, 0f64, 0f64, 56f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 57f64, 0f64, 0f64, 0f64, 57f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 58f64, 0f64, 0f64, 0f64, 58f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 59f64, 0f64, 0f64, 0f64, 59f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 60f64, 0f64, 0f64, 0f64, 60f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 61f64, 0f64, 0f64, 0f64, 61f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 62f64, 0f64, 0f64, 0f64, 62f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 63f64, 0f64, 0f64, 0f64, 63f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 64f64, 0f64, 0f64, 0f64, 64f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 65f64, 0f64, 0f64, 0f64, 65f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 66f64, 0f64, 0f64, 0f64, 66f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 67f64, 0f64, 0f64, 0f64, 67f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 68f64, 0f64, 0f64, 0f64, 68f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 69f64, 0f64, 0f64, 0f64, 69f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 70f64, 0f64, 0f64, 0f64, 70f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 71f64, 0f64, 0f64, 0f64, 71f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 72f64, 0f64, 0f64, 0f64, 72f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 73f64, 0f64, 0f64, 0f64, 73f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 74f64, 0f64, 0f64, 0f64, 74f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 75f64, 0f64, 0f64, 0f64, 75f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 76f64, 0f64, 0f64, 0f64, 76f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 77f64, 0f64, 0f64, 0f64, 77f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 78f64, 0f64, 0f64, 0f64, 78f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 79f64, 0f64, 0f64, 0f64, 79f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 80f64, 0f64, 0f64, 0f64, 80f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 81f64, 0f64, 0f64, 0f64, 81f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 82f64, 0f64, 0f64, 0f64, 82f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 83f64, 0f64, 0f64, 0f64, 83f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 84f64, 0f64, 0f64, 0f64, 84f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 85f64, 0f64, 0f64, 0f64, 85f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 86f64, 0f64, 0f64, 0f64, 86f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 87f64, 0f64, 0f64, 0f64, 87f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 88f64, 0f64, 0f64, 0f64, 88f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 89f64, 0f64, 0f64, 0f64, 89f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 90f64, 0f64, 0f64, 0f64, 90f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 91f64, 0f64, 0f64, 0f64, 91f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 92f64, 0f64, 0f64, 0f64, 92f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 93f64, 0f64, 0f64, 0f64, 93f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 94f64, 0f64, 0f64, 0f64, 94f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 95f64, 0f64, 0f64, 0f64, 95f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 96f64, 0f64, 0f64, 0f64, 96f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 97f64, 0f64, 0f64, 0f64, 97f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 98f64, 0f64, 0f64, 0f64, 98f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 99f64, 0f64, 0f64, 0f64, 99f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 100f64, 0f64, 0f64, 0f64, 100f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 101f64, 0f64, 0f64, 0f64, 101f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 102f64, 0f64, 0f64, 0f64, 102f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 103f64, 0f64, 0f64, 0f64, 103f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 104f64, 0f64, 0f64, 0f64, 104f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 105f64, 0f64, 0f64, 0f64, 105f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 106f64, 0f64, 0f64, 0f64, 106f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 107f64, 0f64, 0f64, 0f64, 107f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 108f64, 0f64, 0f64, 0f64, 108f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 109f64, 0f64, 0f64, 0f64, 109f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 110f64, 0f64, 0f64, 0f64, 110f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 111f64, 0f64, 0f64, 0f64, 111f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 112f64, 0f64, 0f64, 0f64, 112f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 113f64, 0f64, 0f64, 0f64, 113f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 114f64, 0f64, 0f64, 0f64, 114f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 115f64, 0f64, 0f64, 0f64, 115f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 116f64, 0f64, 0f64, 0f64, 116f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 117f64, 0f64, 0f64, 0f64, 117f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 118f64, 0f64, 0f64, 0f64, 118f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 119f64, 0f64, 0f64, 0f64, 119f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 120f64, 0f64, 0f64, 0f64, 120f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 121f64, 0f64, 0f64, 0f64, 121f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 122f64, 0f64, 0f64, 0f64, 122f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 123f64, 0f64, 0f64, 0f64, 123f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 124f64, 0f64, 0f64, 0f64, 124f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 125f64, 0f64, 0f64, 0f64, 125f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 126f64, 0f64, 0f64, 0f64, 126f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 127f64, 0f64, 0f64, 0f64, 127f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 128f64, 0f64, 0f64, 0f64, 128f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 129f64, 0f64, 0f64, 0f64, 129f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 130f64, 0f64, 0f64, 0f64, 130f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 131f64, 0f64, 0f64, 0f64, 131f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 132f64, 0f64, 0f64, 0f64, 132f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 133f64, 0f64, 0f64, 0f64, 133f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 134f64, 0f64, 0f64, 0f64, 134f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 135f64, 0f64, 0f64, 0f64, 135f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 136f64, 0f64, 0f64, 0f64, 136f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 137f64, 0f64, 0f64, 0f64, 137f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 138f64, 0f64, 0f64, 0f64, 138f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 139f64, 0f64, 0f64, 0f64, 139f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 140f64, 0f64, 0f64, 0f64, 140f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 141f64, 0f64, 0f64, 0f64, 141f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 142f64, 0f64, 0f64, 0f64, 142f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 143f64, 0f64, 0f64, 0f64, 143f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 144f64, 0f64, 0f64, 0f64, 144f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 145f64, 0f64, 0f64, 0f64, 145f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 146f64, 0f64, 0f64, 0f64, 146f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 147f64, 0f64, 0f64, 0f64, 147f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 148f64, 0f64, 0f64, 0f64, 148f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 149f64, 0f64, 0f64, 0f64, 149f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 150f64, 0f64, 0f64, 0f64, 150f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 151f64, 0f64, 0f64, 0f64, 151f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 152f64, 0f64, 0f64, 0f64, 152f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 153f64, 0f64, 0f64, 0f64, 153f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 154f64, 0f64, 0f64, 0f64, 154f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 155f64, 0f64, 0f64, 0f64, 155f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 156f64, 0f64, 0f64, 0f64, 156f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 157f64, 0f64, 0f64, 0f64, 157f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 158f64, 0f64, 0f64, 0f64, 158f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 159f64, 0f64, 0f64, 0f64, 159f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 160f64, 0f64, 0f64, 0f64, 160f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 161f64, 0f64, 0f64, 0f64, 161f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 162f64, 0f64, 0f64, 0f64, 162f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 163f64, 0f64, 0f64, 0f64, 163f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 164f64, 0f64, 0f64, 0f64, 164f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 165f64, 0f64, 0f64, 0f64, 165f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 166f64, 0f64, 0f64, 0f64, 166f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 167f64, 0f64, 0f64, 0f64, 167f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 168f64, 0f64, 0f64, 0f64, 168f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 169f64, 0f64, 0f64, 0f64, 169f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 170f64, 0f64, 0f64, 0f64, 170f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 171f64, 0f64, 0f64, 0f64, 171f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 172f64, 0f64, 0f64, 0f64, 172f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 173f64, 0f64, 0f64, 0f64, 173f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 174f64, 0f64, 0f64, 0f64, 174f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 175f64, 0f64, 0f64, 0f64, 175f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 176f64, 0f64, 0f64, 0f64, 176f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 177f64, 0f64, 0f64, 0f64, 177f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 178f64, 0f64, 0f64, 0f64, 178f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 179f64, 0f64, 0f64, 0f64, 179f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 180f64, 0f64, 0f64, 0f64, 180f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 181f64, 0f64, 0f64, 0f64, 181f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 182f64, 0f64, 0f64, 0f64, 182f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 183f64, 0f64, 0f64, 0f64, 183f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 184f64, 0f64, 0f64, 0f64, 184f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 185f64, 0f64, 0f64, 0f64, 185f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 186f64, 0f64, 0f64, 0f64, 186f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 187f64, 0f64, 0f64, 0f64, 187f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 188f64, 0f64, 0f64, 0f64, 188f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 189f64, 0f64, 0f64, 0f64, 189f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 190f64, 0f64, 0f64, 0f64, 190f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 191f64, 0f64, 0f64, 0f64, 191f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 192f64, 0f64, 0f64, 0f64, 192f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 193f64, 0f64, 0f64, 0f64, 193f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 194f64, 0f64, 0f64, 0f64, 194f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 195f64, 0f64, 0f64, 0f64, 195f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 196f64, 0f64, 0f64, 0f64, 196f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 197f64, 0f64, 0f64, 0f64, 197f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 198f64, 0f64, 0f64, 0f64, 198f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 199f64, 0f64, 0f64, 0f64, 199f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 200f64, 0f64, 0f64, 0f64, 200f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 201f64, 0f64, 0f64, 0f64, 201f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 202f64, 0f64, 0f64, 0f64, 202f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 203f64, 0f64, 0f64, 0f64, 203f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 204f64, 0f64, 0f64, 0f64, 204f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 205f64, 0f64, 0f64, 0f64, 205f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 206f64, 0f64, 0f64, 0f64, 206f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 207f64, 0f64, 0f64, 0f64, 207f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 208f64, 0f64, 0f64, 0f64, 208f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 209f64, 0f64, 0f64, 0f64, 209f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 210f64, 0f64, 0f64, 0f64, 210f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 211f64, 0f64, 0f64, 0f64, 211f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 212f64, 0f64, 0f64, 0f64, 212f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 213f64, 0f64, 0f64, 0f64, 213f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 214f64, 0f64, 0f64, 0f64, 214f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 215f64, 0f64, 0f64, 0f64, 215f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 216f64, 0f64, 0f64, 0f64, 216f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 217f64, 0f64, 0f64, 0f64, 217f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 218f64, 0f64, 0f64, 0f64, 218f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 219f64, 0f64, 0f64, 0f64, 219f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 220f64, 0f64, 0f64, 0f64, 220f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 221f64, 0f64, 0f64, 0f64, 221f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 222f64, 0f64, 0f64, 0f64, 222f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 223f64, 0f64, 0f64, 0f64, 223f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 224f64, 0f64, 0f64, 0f64, 224f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 225f64, 0f64, 0f64, 0f64, 225f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 226f64, 0f64, 0f64, 0f64, 226f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 227f64, 0f64, 0f64, 0f64, 227f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 228f64, 0f64, 0f64, 0f64, 228f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 229f64, 0f64, 0f64, 0f64, 229f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 230f64, 0f64, 0f64, 0f64, 230f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 231f64, 0f64, 0f64, 0f64, 231f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 232f64, 0f64, 0f64, 0f64, 232f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 233f64, 0f64, 0f64, 0f64, 233f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 234f64, 0f64, 0f64, 0f64, 234f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 235f64, 0f64, 0f64, 0f64, 235f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 236f64, 0f64, 0f64, 0f64, 236f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 237f64, 0f64, 0f64, 0f64, 237f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 238f64, 0f64, 0f64, 0f64, 238f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 239f64, 0f64, 0f64, 0f64, 239f64], res: &[0f64] },
+    GrtOp { kind: 1, args: &[4f64, 240f64, 0f64, 0f64, 0f64, 240f64], res: &[0f64] },
+    GrtOp { kind: 5, args: &[], res: &[1f64, 4f64, 240f64, 1f64, 0f64, 0f64, 0f64, 1f64, 2f64, 0f64, 0f64, 0f64, 2f64, 3f64, 0f64, 0f64, 0f64, 3f64, 4f64, 0f64, 0f64, 0f64, 4f64, 5f64, 0f64, 0f64, 0f64, 5f64, 6f64, 0f64, 0f64, 0f64, 6f64, 7f64, 0f64, 0f64, 0f64, 7f64, 8f64, 0f64, 0f64, 0f64, 8f64, 9f64, 0f64, 0f64, 0f64, 9f64, 10f64, 0f64, 0f64, 0f64, 10f64, 11f64, 0f64, 0f64, 0f64, 11f64, 12f64, 0f64, 0f64, 0f64, 12f64, 13f64, 0f64, 0f64, 0f64, 13f64, 14f64, 0f64, 0f64, 0f64, 14f64, 15f64, 0f64, 0f64, 0f64, 15f64, 16f64, 0f64, 0f64, 0f64, 16f64, 17f64, 0f64, 0f64, 0f64, 17f64, 18f64, 0f64, 0f64, 0f64, 18f64, 19f64, 0f64, 0f64, 0f64, 19f64, 20f64, 0f64, 0f64, 0f64, 20f64, 21f64, 0f64, 0f64, 0f64, 21f64, 22f64, 0f64, 0f64, 0f64, 22f64, 23f64, 0f64, 0f64, 0f64, 23f64, 24f64, 0f64, 0f64, 0f64, 24f64, 25f64, 0f64, 0f64, 0f64, 25f64, 26f64, 0f64, 0f64, 0f64, 26f64, 27f64, 0f64, 0f64, 0f64, 27f64, 28f64, 0f64, 0f64, 0f64, 28f64, 29f64, 0f64, 0f64, 0f64, 29f64, 30f64, 0f64, 0f64, 0f64, 30f64, 31f64, 0f64, 0f64, 0f64, 31f64, 32f64, 0f64, 0f64, 0f64, 32f64, 33f64, 0f64, 0f64, 0f64, 33f64, 34f64, 0f64, 0f64, 0f64, 34f64, 35f64, 0f64, 0f64, 0f64, 35f64, 36f64, 0f64, 0f64, 0f64, 36f64, 37f64, 0f64, 0f64, 0f64, 37f64, 38f64, 0f64, 0f64, 0f64, 38f64, 39f64, 0f64, 0f64, 0f64, 39f64, 40f64, 0f64, 0f64, 0f64, 40f64, 41f64, 0f64, 0f64, 0f64, 41f64, 42f64, 0f64, 0f64, 0f64, 42f64, 43f64, 0f64, 0f64, 0f64, 43f64, 44f64, 0f64, 0f64, 0f64, 44f64, 45f64, 0f64, 0f64, 0f64, 45f64, 46f64, 0f64, 0f64, 0f64, 46f64, 47f64, 0f64, 0f64, 0f64, 47f64, 48f64, 0f64, 0f64, 0f64, 48f64, 49f64, 0f64, 0f64, 0f64, 49f64, 50f64, 0f64, 0f64, 0f64, 50f64, 51f64, 0f64, 0f64, 0f64, 51f64, 52f64, 0f64, 0f64, 0f64, 52f64, 53f64, 0f64, 0f64, 0f64, 53f64, 54f64, 0f64, 0f64, 0f64, 54f64, 55f64, 0f64, 0f64, 0f64, 55f64, 56f64, 0f64, 0f64, 0f64, 56f64, 57f64, 0f64, 0f64, 0f64, 57f64, 58f64, 0f64, 0f64, 0f64, 58f64, 59f64, 0f64, 0f64, 0f64, 59f64, 60f64, 0f64, 0f64, 0f64, 60f64, 61f64, 0f64, 0f64, 0f64, 61f64, 62f64, 0f64, 0f64, 0f64, 62f64, 63f64, 0f64, 0f64, 0f64, 63f64, 64f64, 0f64, 0f64, 0f64, 64f64, 65f64, 0f64, 0f64, 0f64, 65f64, 66f64, 0f64, 0f64, 0f64, 66f64, 67f64, 0f64, 0f64, 0f64, 67f64, 68f64, 0f64, 0f64, 0f64, 68f64, 69f64, 0f64, 0f64, 0f64, 69f64, 70f64, 0f64, 0f64, 0f64, 70f64, 71f64, 0f64, 0f64, 0f64, 71f64, 72f64, 0f64, 0f64, 0f64, 72f64, 73f64, 0f64, 0f64, 0f64, 73f64, 74f64, 0f64, 0f64, 0f64, 74f64, 75f64, 0f64, 0f64, 0f64, 75f64, 76f64, 0f64, 0f64, 0f64, 76f64, 77f64, 0f64, 0f64, 0f64, 77f64, 78f64, 0f64, 0f64, 0f64, 78f64, 79f64, 0f64, 0f64, 0f64, 79f64, 80f64, 0f64, 0f64, 0f64, 80f64, 81f64, 0f64, 0f64, 0f64, 81f64, 82f64, 0f64, 0f64, 0f64, 82f64, 83f64, 0f64, 0f64, 0f64, 83f64, 84f64, 0f64, 0f64, 0f64, 84f64, 85f64, 0f64, 0f64, 0f64, 85f64, 86f64, 0f64, 0f64, 0f64, 86f64, 87f64, 0f64, 0f64, 0f64, 87f64, 88f64, 0f64, 0f64, 0f64, 88f64, 89f64, 0f64, 0f64, 0f64, 89f64, 90f64, 0f64, 0f64, 0f64, 90f64, 91f64, 0f64, 0f64, 0f64, 91f64, 92f64, 0f64, 0f64, 0f64, 92f64, 93f64, 0f64, 0f64, 0f64, 93f64, 94f64, 0f64, 0f64, 0f64, 94f64, 95f64, 0f64, 0f64, 0f64, 95f64, 96f64, 0f64, 0f64, 0f64, 96f64, 97f64, 0f64, 0f64, 0f64, 97f64, 98f64, 0f64, 0f64, 0f64, 98f64, 99f64, 0f64, 0f64, 0f64, 99f64, 100f64, 0f64, 0f64, 0f64, 100f64, 101f64, 0f64, 0f64, 0f64, 101f64, 102f64, 0f64, 0f64, 0f64, 102f64, 103f64, 0f64, 0f64, 0f64, 103f64, 104f64, 0f64, 0f64, 0f64, 104f64, 105f64, 0f64, 0f64, 0f64, 105f64, 106f64, 0f64, 0f64, 0f64, 106f64, 107f64, 0f64, 0f64, 0f64, 107f64, 108f64, 0f64, 0f64, 0f64, 108f64, 109f64, 0f64, 0f64, 0f64, 109f64, 110f64, 0f64, 0f64, 0f64, 110f64, 111f64, 0f64, 0f64, 0f64, 111f64, 112f64, 0f64, 0f64, 0f64, 112f64, 113f64, 0f64, 0f64, 0f64, 113f64, 114f64, 0f64, 0f64, 0f64, 114f64, 115f64, 0f64, 0f64, 0f64, 115f64, 116f64, 0f64, 0f64, 0f64, 116f64, 117f64, 0f64, 0f64, 0f64, 117f64, 118f64, 0f64, 0f64, 0f64, 118f64, 119f64, 0f64, 0f64, 0f64, 119f64, 120f64, 0f64, 0f64, 0f64, 120f64, 121f64, 0f64, 0f64, 0f64, 121f64, 122f64, 0f64, 0f64, 0f64, 122f64, 123f64, 0f64, 0f64, 0f64, 123f64, 124f64, 0f64, 0f64, 0f64, 124f64, 125f64, 0f64, 0f64, 0f64, 125f64, 126f64, 0f64, 0f64, 0f64, 126f64, 127f64, 0f64, 0f64, 0f64, 127f64, 128f64, 0f64, 0f64, 0f64, 128f64, 129f64, 0f64, 0f64, 0f64, 129f64, 130f64, 0f64, 0f64, 0f64, 130f64, 131f64, 0f64, 0f64, 0f64, 131f64, 132f64, 0f64, 0f64, 0f64, 132f64, 133f64, 0f64, 0f64, 0f64, 133f64, 134f64, 0f64, 0f64, 0f64, 134f64, 135f64, 0f64, 0f64, 0f64, 135f64, 136f64, 0f64, 0f64, 0f64, 136f64, 137f64, 0f64, 0f64, 0f64, 137f64, 138f64, 0f64, 0f64, 0f64, 138f64, 139f64, 0f64, 0f64, 0f64, 139f64, 140f64, 0f64, 0f64, 0f64, 140f64, 141f64, 0f64, 0f64, 0f64, 141f64, 142f64, 0f64, 0f64, 0f64, 142f64, 143f64, 0f64, 0f64, 0f64, 143f64, 144f64, 0f64, 0f64, 0f64, 144f64, 145f64, 0f64, 0f64, 0f64, 145f64, 146f64, 0f64, 0f64, 0f64, 146f64, 147f64, 0f64, 0f64, 0f64, 147f64, 148f64, 0f64, 0f64, 0f64, 148f64, 149f64, 0f64, 0f64, 0f64, 149f64, 150f64, 0f64, 0f64, 0f64, 150f64, 151f64, 0f64, 0f64, 0f64, 151f64, 152f64, 0f64, 0f64, 0f64, 152f64, 153f64, 0f64, 0f64, 0f64, 153f64, 154f64, 0f64, 0f64, 0f64, 154f64, 155f64, 0f64, 0f64, 0f64, 155f64, 156f64, 0f64, 0f64, 0f64, 156f64, 157f64, 0f64, 0f64, 0f64, 157f64, 158f64, 0f64, 0f64, 0f64, 158f64, 159f64, 0f64, 0f64, 0f64, 159f64, 160f64, 0f64, 0f64, 0f64, 160f64, 161f64, 0f64, 0f64, 0f64, 161f64, 162f64, 0f64, 0f64, 0f64, 162f64, 163f64, 0f64, 0f64, 0f64, 163f64, 164f64, 0f64, 0f64, 0f64, 164f64, 165f64, 0f64, 0f64, 0f64, 165f64, 166f64, 0f64, 0f64, 0f64, 166f64, 167f64, 0f64, 0f64, 0f64, 167f64, 168f64, 0f64, 0f64, 0f64, 168f64, 169f64, 0f64, 0f64, 0f64, 169f64, 170f64, 0f64, 0f64, 0f64, 170f64, 171f64, 0f64, 0f64, 0f64, 171f64, 172f64, 0f64, 0f64, 0f64, 172f64, 173f64, 0f64, 0f64, 0f64, 173f64, 174f64, 0f64, 0f64, 0f64, 174f64, 175f64, 0f64, 0f64, 0f64, 175f64, 176f64, 0f64, 0f64, 0f64, 176f64, 177f64, 0f64, 0f64, 0f64, 177f64, 178f64, 0f64, 0f64, 0f64, 178f64, 179f64, 0f64, 0f64, 0f64, 179f64, 180f64, 0f64, 0f64, 0f64, 180f64, 181f64, 0f64, 0f64, 0f64, 181f64, 182f64, 0f64, 0f64, 0f64, 182f64, 183f64, 0f64, 0f64, 0f64, 183f64, 184f64, 0f64, 0f64, 0f64, 184f64, 185f64, 0f64, 0f64, 0f64, 185f64, 186f64, 0f64, 0f64, 0f64, 186f64, 187f64, 0f64, 0f64, 0f64, 187f64, 188f64, 0f64, 0f64, 0f64, 188f64, 189f64, 0f64, 0f64, 0f64, 189f64, 190f64, 0f64, 0f64, 0f64, 190f64, 191f64, 0f64, 0f64, 0f64, 191f64, 192f64, 0f64, 0f64, 0f64, 192f64, 193f64, 0f64, 0f64, 0f64, 193f64, 194f64, 0f64, 0f64, 0f64, 194f64, 195f64, 0f64, 0f64, 0f64, 195f64, 196f64, 0f64, 0f64, 0f64, 196f64, 197f64, 0f64, 0f64, 0f64, 197f64, 198f64, 0f64, 0f64, 0f64, 198f64, 199f64, 0f64, 0f64, 0f64, 199f64, 200f64, 0f64, 0f64, 0f64, 200f64, 201f64, 0f64, 0f64, 0f64, 201f64, 202f64, 0f64, 0f64, 0f64, 202f64, 203f64, 0f64, 0f64, 0f64, 203f64, 204f64, 0f64, 0f64, 0f64, 204f64, 205f64, 0f64, 0f64, 0f64, 205f64, 206f64, 0f64, 0f64, 0f64, 206f64, 207f64, 0f64, 0f64, 0f64, 207f64, 208f64, 0f64, 0f64, 0f64, 208f64, 209f64, 0f64, 0f64, 0f64, 209f64, 210f64, 0f64, 0f64, 0f64, 210f64, 211f64, 0f64, 0f64, 0f64, 211f64, 212f64, 0f64, 0f64, 0f64, 212f64, 213f64, 0f64, 0f64, 0f64, 213f64, 214f64, 0f64, 0f64, 0f64, 214f64, 215f64, 0f64, 0f64, 0f64, 215f64, 216f64, 0f64, 0f64, 0f64, 216f64, 217f64, 0f64, 0f64, 0f64, 217f64, 218f64, 0f64, 0f64, 0f64, 218f64, 219f64, 0f64, 0f64, 0f64, 219f64, 220f64, 0f64, 0f64, 0f64, 220f64, 221f64, 0f64, 0f64, 0f64, 221f64, 222f64, 0f64, 0f64, 0f64, 222f64, 223f64, 0f64, 0f64, 0f64, 223f64, 224f64, 0f64, 0f64, 0f64, 224f64, 225f64, 0f64, 0f64, 0f64, 225f64, 226f64, 0f64, 0f64, 0f64, 226f64, 227f64, 0f64, 0f64, 0f64, 227f64, 228f64, 0f64, 0f64, 0f64, 228f64, 229f64, 0f64, 0f64, 0f64, 229f64, 230f64, 0f64, 0f64, 0f64, 230f64, 231f64, 0f64, 0f64, 0f64, 231f64, 232f64, 0f64, 0f64, 0f64, 232f64, 233f64, 0f64, 0f64, 0f64, 233f64, 234f64, 0f64, 0f64, 0f64, 234f64, 235f64, 0f64, 0f64, 0f64, 235f64, 236f64, 0f64, 0f64, 0f64, 236f64, 237f64, 0f64, 0f64, 0f64, 237f64, 238f64, 0f64, 0f64, 0f64, 238f64, 239f64, 0f64, 0f64, 0f64, 239f64, 240f64, 0f64, 0f64, 0f64, 240f64] },
+];
+pub const GRT_CAP_5: GrtScenario = GrtScenario {
+    name: "grt_cap_5",
+    ops: GRT_CAP_5_OPS,
+};
+
+pub const GRT_SCENARIOS: &[GrtScenario] = &[
+    GRT_SLOPE_0,
+    GRT_WINDOW_1,
+    GRT_FROZEN_2,
+    GRT_SINGLE_3,
+    GRT_FORGET_RESET_4,
+    GRT_CAP_5,
+];
+
+/// One `client/render/frame/derive/AllianceClusters.ts` op (see
+/// `alliance_clusters::run_op` docs). kind 0 compute over the player
+/// list, 1 scripted find/union session over a fresh finder (seeds +
+/// ops) whose res carries the post-session parent dump — pins the
+/// path-halving step mutations the public API cannot expose.
+pub struct AcOp {
+    pub kind: u8,
+    pub args: &'static [f64],
+    pub res: &'static [f64],
+}
+pub struct AcScenario {
+    pub name: &'static str,
+    pub ops: &'static [AcOp],
+}
+
+const AC_COMPUTE_CHAIN_0_OPS: &[AcOp] = &[
+    AcOp { kind: 0, args: &[5f64, 1f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 1f64, 2f64, 0f64, 0f64, 0f64, 0f64, 2f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 1f64, 3f64, 0f64, 0f64, 0f64, 0f64, 3f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 1f64, 4f64, 0f64, 0f64, 0f64, 0f64, 4f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 1f64, 5f64, 0f64, 0f64, 0f64, 0f64, 5f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64], res: &[5f64, 1f64, 1f64, 2f64, 1f64, 3f64, 1f64, 4f64, 1f64, 5f64, 1f64] },
+];
+pub const AC_COMPUTE_CHAIN_0: AcScenario = AcScenario {
+    name: "ac_compute_chain_0",
+    ops: AC_COMPUTE_CHAIN_0_OPS,
+};
+
+const AC_COMPUTE_GATES_1_OPS: &[AcOp] = &[
+    AcOp { kind: 0, args: &[5f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 1f64, 1f64, 0f64, 0f64, 0f64, 0f64, -2f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 1f64, 1f64, 0f64, 0f64, 0f64, 0f64, 1f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 1f64, 999f64, 0f64, 0f64, 0f64, 0f64, 2f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 1f64, 1f64, 0f64, 0f64, 0f64, 0f64, 3f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64], res: &[3f64, 1f64, 2f64, 2f64, 2f64, 3f64, 3f64] },
+];
+pub const AC_COMPUTE_GATES_1: AcScenario = AcScenario {
+    name: "ac_compute_gates_1",
+    ops: AC_COMPUTE_GATES_1_OPS,
+};
+
+const AC_SESSION_HALVING_2_OPS: &[AcOp] = &[
+    AcOp { kind: 1, args: &[5f64, 1f64, 2f64, 3f64, 4f64, 5f64, 7f64, 1f64, 1f64, 2f64, 1f64, 3f64, 4f64, 1f64, 2f64, 3f64, 1f64, 4f64, 5f64, 0f64, 5f64, 0f64, 0f64, 4f64, 0f64, 0f64, 1f64, 0f64], res: &[7f64, 1f64, 0f64, 1f64, 0f64, 1f64, 0f64, 1f64, 0f64, 0f64, 1f64, 0f64, 1f64, 0f64, 1f64, 5f64, 1f64, 1f64, 2f64, 1f64, 3f64, 1f64, 4f64, 1f64, 5f64, 1f64] },
+    AcOp { kind: 1, args: &[2f64, 7f64, 8f64, 4f64, 0f64, 7f64, 0f64, 1f64, 7f64, 8f64, 1f64, 8f64, 7f64, 0f64, 8f64, 0f64], res: &[4f64, 0f64, 7f64, 1f64, 0f64, 1f64, 0f64, 0f64, 7f64, 2f64, 7f64, 7f64, 8f64, 7f64] },
+];
+pub const AC_SESSION_HALVING_2: AcScenario = AcScenario {
+    name: "ac_session_halving_2",
+    ops: AC_SESSION_HALVING_2_OPS,
+};
+
+pub const AC_SCENARIOS: &[AcScenario] = &[
+    AC_COMPUTE_CHAIN_0,
+    AC_COMPUTE_GATES_1,
+    AC_SESSION_HALVING_2,
+];
+
+/// One `client/render/frame/derive/AttackRings.ts` op (see
+/// `attack_rings::run_op` docs). kind 0 extractAttackRings [mapW,owner,
+/// n,(UnitState)*n] -> [m,(x,y,unitId)*m].
+pub struct ArrOp {
+    pub kind: u8,
+    pub args: &'static [f64],
+    pub res: &'static [f64],
+}
+pub struct ArrScenario {
+    pub name: &'static str,
+    pub ops: &'static [ArrOp],
+}
+
+const ARR_GATES_0_OPS: &[ArrOp] = &[
+    ArrOp { kind: 0, args: &[100f64, 9f64, 8f64, 1f64, 9f64, 84f64, 114f64, 97f64, 110f64, 115f64, 112f64, 111f64, 114f64, 116f64, 9f64, 1f64, 0f64, 0f64, 3f64, 12345f64, 2f64, 10f64, 84f64, 114f64, 97f64, 100f64, 101f64, 32f64, 83f64, 104f64, 105f64, 112f64, 9f64, 1f64, 0f64, 0f64, 3f64, 5f64, 3f64, 9f64, 84f64, 114f64, 97f64, 110f64, 115f64, 112f64, 111f64, 114f64, 116f64, 9f64, 1f64, 0f64, 0f64, 2f64, 4f64, 9f64, 84f64, 114f64, 97f64, 110f64, 115f64, 112f64, 111f64, 114f64, 116f64, 9f64, 0f64, 0f64, 0f64, 3f64, 5f64, 5f64, 9f64, 84f64, 114f64, 97f64, 110f64, 115f64, 112f64, 111f64, 114f64, 116f64, 9f64, 1f64, 1f64, 0f64, 3f64, 5f64, 6f64, 9f64, 84f64, 114f64, 97f64, 110f64, 115f64, 112f64, 111f64, 114f64, 116f64, 8f64, 1f64, 0f64, 0f64, 3f64, 5f64, 7f64, 9f64, 84f64, 114f64, 97f64, 110f64, 115f64, 112f64, 111f64, 114f64, 116f64, 9f64, 1f64, 0f64, 0f64, 3f64, 0f64, 8f64, 9f64, 84f64, 114f64, 97f64, 110f64, 115f64, 112f64, 111f64, 114f64, 116f64, -0.0f64, 1f64, 0f64, 0f64, 3f64, 99f64], res: &[2f64, 45f64, 123f64, 1f64, 0f64, 0f64, 7f64] },
+];
+pub const ARR_GATES_0: ArrScenario = ArrScenario {
+    name: "arr_gates_0",
+    ops: ARR_GATES_0_OPS,
+};
+
+pub const ARR_SCENARIOS: &[ArrScenario] = &[
+    ARR_GATES_0,
+];
+
+/// One `client/render/frame/derive/NukeTelegraphs.ts` op (see
+/// `nuke_telegraphs::run_op` docs). kind 0 extractNukeTelegraphs, 1 the
+/// FromIds variant (ids before the units), 2 classifyOwner direct. The
+/// relation matrix rides sparse [k,(index,value)*k].
+pub struct NktOp {
+    pub kind: u8,
+    pub args: &'static [f64],
+    pub res: &'static [f64],
+}
+pub struct NktScenario {
+    pub name: &'static str,
+    pub ops: &'static [NktOp],
+}
+
+const NKT_GATES_0_OPS: &[NktOp] = &[
+    NktOp { kind: 0, args: &[100f64, 0f64, 0f64, 0f64, 1f64, 10f64, 9f64, 1f64, 9f64, 65f64, 116f64, 111f64, 109f64, 32f64, 66f64, 111f64, 109f64, 98f64, 9f64, 1f64, 0f64, 0f64, 3f64, 5050f64, 2f64, 4f64, 77f64, 73f64, 82f64, 86f64, 9f64, 1f64, 0f64, 0f64, 3f64, 4f64, 3f64, 13f64, 72f64, 121f64, 100f64, 114f64, 111f64, 103f64, 101f64, 110f64, 32f64, 66f64, 111f64, 109f64, 98f64, 9f64, 1f64, 0f64, 1f64, 3f64, 5f64, 4f64, 9f64, 65f64, 116f64, 111f64, 109f64, 32f64, 66f64, 111f64, 109f64, 98f64, 9f64, 0f64, 0f64, 0f64, 3f64, 6f64, 5f64, 9f64, 65f64, 116f64, 111f64, 109f64, 32f64, 66f64, 111f64, 109f64, 98f64, 9f64, 1f64, 0f64, 0f64, 2f64, 6f64, 9f64, 65f64, 116f64, 111f64, 109f64, 32f64, 66f64, 111f64, 109f64, 98f64, 9f64, 1f64, 0f64, 0f64, 3f64, 30f64, 7f64, 5f64, 83f64, 104f64, 101f64, 108f64, 108f64, 9f64, 1f64, 0f64, 0f64, 3f64, 31f64, 8f64, 12f64, 77f64, 73f64, 82f64, 86f64, 32f64, 87f64, 97f64, 114f64, 104f64, 101f64, 97f64, 100f64, 9f64, 1f64, 0f64, 0f64, 3f64, 32f64, 9f64, 9f64, 65f64, 116f64, 111f64, 109f64, 32f64, 66f64, 111f64, 109f64, 98f64, 9f64, 1f64, 0f64, 0f64, 3f64, 33f64, 3f64, 6f64, 10f64, 7f64, 10f64, 9f64, 5f64], res: &[4f64, 50f64, 50f64, 12f64, 30f64, 2f64, 30f64, 0f64, 12f64, 30f64, 2f64, 32f64, 0f64, 12f64, 18f64, 2f64, 33f64, 0f64, 12f64, 30f64, 2f64] },
+];
+pub const NKT_GATES_0: NktScenario = NktScenario {
+    name: "nkt_gates_0",
+    ops: NKT_GATES_0_OPS,
+};
+
+const NKT_RELATION_1_OPS: &[NktOp] = &[
+    NktOp { kind: 0, args: &[64f64, 3f64, 1f64, 64f64, 0f64, 0f64, 6f64, 1f64, 9f64, 65f64, 116f64, 111f64, 109f64, 32f64, 66f64, 111f64, 109f64, 98f64, 5f64, 1f64, 0f64, 0f64, 3f64, 100f64, 2f64, 9f64, 65f64, 116f64, 111f64, 109f64, 32f64, 66f64, 111f64, 109f64, 98f64, 3f64, 1f64, 0f64, 0f64, 3f64, 101f64, 3f64, 9f64, 65f64, 116f64, 111f64, 109f64, 32f64, 66f64, 111f64, 109f64, 98f64, 9f64, 1f64, 0f64, 0f64, 3f64, 102f64, 4f64, 9f64, 65f64, 116f64, 111f64, 109f64, 32f64, 66f64, 111f64, 109f64, 98f64, -1f64, 1f64, 0f64, 0f64, 3f64, 103f64, 5f64, 9f64, 65f64, 116f64, 111f64, 109f64, 32f64, 66f64, 111f64, 109f64, 98f64, 70f64, 1f64, 0f64, 0f64, 3f64, 104f64, 6f64, 9f64, 65f64, 116f64, 111f64, 109f64, 32f64, 66f64, 111f64, 109f64, 98f64, 7f64, 1f64, 0f64, 0f64, 3f64, 105f64, 2f64, 197f64, 1f64, 201f64, 2f64], res: &[6f64, 36f64, 1f64, 12f64, 30f64, 1f64, 37f64, 1f64, 12f64, 30f64, 0f64, 38f64, 1f64, 12f64, 30f64, 2f64, 39f64, 1f64, 12f64, 30f64, 2f64, 40f64, 1f64, 12f64, 30f64, 2f64, 41f64, 1f64, 12f64, 30f64, 2f64] },
+];
+pub const NKT_RELATION_1: NktScenario = NktScenario {
+    name: "nkt_relation_1",
+    ops: NKT_RELATION_1_OPS,
+};
+
+const NKT_FROMIDS_2_OPS: &[NktOp] = &[
+    NktOp { kind: 1, args: &[100f64, 0f64, 0f64, 0f64, 0f64, 0f64, 4f64, 1f64, 999f64, 2f64, 1f64, 2f64, 1f64, 9f64, 65f64, 116f64, 111f64, 109f64, 32f64, 66f64, 111f64, 109f64, 98f64, 4f64, 1f64, 0f64, 0f64, 3f64, 7f64, 2f64, 4f64, 77f64, 73f64, 82f64, 86f64, 4f64, 1f64, 0f64, 0f64, 3f64, 8f64], res: &[2f64, 7f64, 0f64, 12f64, 30f64, 2f64, 7f64, 0f64, 12f64, 30f64, 2f64] },
+];
+pub const NKT_FROMIDS_2: NktScenario = NktScenario {
+    name: "nkt_fromids_2",
+    ops: NKT_FROMIDS_2_OPS,
+};
+
+const NKT_CLASSIFY_3_OPS: &[NktOp] = &[
+    NktOp { kind: 2, args: &[5f64, 3f64, 1f64, 64f64, 1f64, 197f64, 1f64], res: &[1f64] },
+    NktOp { kind: 2, args: &[3f64, 3f64, 1f64, 64f64, 1f64, 197f64, 1f64], res: &[0f64] },
+    NktOp { kind: 2, args: &[5f64, 0f64, 1f64, 64f64, 1f64, 197f64, 1f64], res: &[2f64] },
+    NktOp { kind: 2, args: &[5f64, 3f64, 0f64, 64f64], res: &[2f64] },
+    NktOp { kind: 2, args: &[70f64, 3f64, 1f64, 64f64, 1f64, 197f64, 1f64], res: &[2f64] },
+    NktOp { kind: 2, args: &[-1f64, 3f64, 1f64, 64f64, 1f64, 197f64, 1f64], res: &[2f64] },
+    NktOp { kind: 2, args: &[5f64, 3f64, 1f64, 64f64, 1f64, 197f64, 2f64], res: &[2f64] },
+    NktOp { kind: 2, args: &[5f64, 3f64, 1f64, 0f64, 1f64, 197f64, 1f64], res: &[2f64] },
+];
+pub const NKT_CLASSIFY_3: NktScenario = NktScenario {
+    name: "nkt_classify_3",
+    ops: NKT_CLASSIFY_3_OPS,
+};
+
+pub const NKT_SCENARIOS: &[NktScenario] = &[
+    NKT_GATES_0,
+    NKT_RELATION_1,
+    NKT_FROMIDS_2,
+    NKT_CLASSIFY_3,
+];
+
+/// One `client/render/frame/derive/PlayerStatus.ts` op (see
+/// `player_status::run_op` docs). kind 0 computePlayerStatus with the
+/// Option-flagged opts prefix; kind 1 OWNER_MASK + NUKE_ACTIVE_TYPES.
+/// tileState crosses pre-wrapped through Uint16Array.
+pub struct PstOp {
+    pub kind: u8,
+    pub args: &'static [f64],
+    pub res: &'static [f64],
+}
+pub struct PstScenario {
+    pub name: &'static str,
+    pub ops: &'static [PstOp],
+}
+
+const PST_REPLAY_CROWN_0_OPS: &[PstOp] = &[
+    PstOp { kind: 0, args: &[0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 6f64, 1f64, 1f64, 0f64, 0f64, 0f64, 0f64, 100f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 2f64, 1f64, 0f64, 0f64, 0f64, 0f64, 100f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 3f64, 0f64, 0f64, 1f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 4f64, 1f64, 0f64, 0f64, 0f64, 0f64, 0f64, 5f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 5f64, 1f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 6f64, 1f64, 0f64, 0f64, 0f64, 1f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 3f64, 1f64, 9f64, 65f64, 116f64, 111f64, 109f64, 32f64, 66f64, 111f64, 109f64, 98f64, 2f64, 1f64, 0f64, 0f64, 2f64, 2f64, 5f64, 83f64, 104f64, 101f64, 108f64, 108f64, 4f64, 1f64, 0f64, 0f64, 2f64, 3f64, 4f64, 77f64, 73f64, 82f64, 86f64, 4f64, 0f64, 0f64, 0f64, 2f64], res: &[3f64, 1f64, 1f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 2f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 1f64, 0f64, 0f64, 0f64, 0f64, 0f64, 4f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 5f64, 0f64, 0f64] },
+    PstOp { kind: 1, args: &[], res: &[4095f64, 4f64, 9f64, 65f64, 116f64, 111f64, 109f64, 32f64, 66f64, 111f64, 109f64, 98f64, 13f64, 72f64, 121f64, 100f64, 114f64, 111f64, 103f64, 101f64, 110f64, 32f64, 66f64, 111f64, 109f64, 98f64, 4f64, 77f64, 73f64, 82f64, 86f64, 12f64, 77f64, 73f64, 82f64, 86f64, 32f64, 87f64, 97f64, 114f64, 104f64, 101f64, 97f64, 100f64] },
+];
+pub const PST_REPLAY_CROWN_0: PstScenario = PstScenario {
+    name: "pst_replay_crown_0",
+    ops: PST_REPLAY_CROWN_0_OPS,
+};
+
+const PST_DOOMSDAY_1_OPS: &[PstOp] = &[
+    PstOp { kind: 0, args: &[0f64, 0f64, 0f64, 1f64, 100f64, 0f64, 0f64, 1f64, 40f64, 3f64, 1f64, 1f64, 0f64, 0f64, 1f64, 0f64, 0f64, 0f64, 50f64, 0f64, 0f64, 0f64, 0f64, 0f64, 2f64, 1f64, 0f64, 0f64, 1f64, 0f64, 0f64, 0f64, -100f64, 0f64, 0f64, 0f64, 0f64, 0f64, 3f64, 1f64, 0f64, 0f64, 1f64, 1f64, 0f64, 0f64, 90f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64], res: &[3f64, 1f64, 0f64, 0f64, 0f64, 1f64, 1f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 1f64, 0f64, 0f64, 0f64, 2f64, 0f64, 0f64, 0f64, 1f64, 1f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 1f64, 0f64, 0f64, 0f64, 3f64, 0f64, 0f64, 0f64, 1f64, 0f64, 1f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0.25f64, 0f64, 0f64, 0f64] },
+    PstOp { kind: 0, args: &[0f64, 0f64, 0f64, 1f64, 100f64, 0f64, 0f64, 0f64, 1f64, 1f64, 1f64, 0f64, 0f64, 1f64, 0f64, 0f64, 0f64, 50f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64], res: &[1f64, 1f64, 0f64, 0f64, 0f64, 1f64, 1f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64] },
+    PstOp { kind: 0, args: &[0f64, 0f64, 0f64, 1f64, 100f64, 0f64, 0f64, 1f64, 0f64, 1f64, 1f64, 1f64, 0f64, 0f64, 1f64, 0f64, 0f64, 0f64, 51f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64], res: &[1f64, 1f64, 0f64, 0f64, 0f64, 1f64, 1f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64] },
+];
+pub const PST_DOOMSDAY_1: PstScenario = PstScenario {
+    name: "pst_doomsday_1",
+    ops: PST_DOOMSDAY_1_OPS,
+};
+
+const PST_NUKE_TARGETS_ME_2_OPS: &[PstOp] = &[
+    PstOp { kind: 0, args: &[1f64, 2f64, 0f64, 1f64, 8f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 2f64, 0f64, 0f64, 0f64, 0f64, 4f64, 2f64, 1f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 5f64, 1f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 6f64, 1f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 7f64, 1f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 3f64, 1f64, 9f64, 65f64, 116f64, 111f64, 109f64, 32f64, 66f64, 111f64, 109f64, 98f64, 5f64, 1f64, 0f64, 0f64, 3f64, 7f64, 2f64, 9f64, 65f64, 116f64, 111f64, 109f64, 32f64, 66f64, 111f64, 109f64, 98f64, 6f64, 1f64, 0f64, 0f64, 3f64, 99f64, 3f64, 13f64, 72f64, 121f64, 100f64, 114f64, 111f64, 103f64, 101f64, 110f64, 32f64, 66f64, 111f64, 109f64, 98f64, 7f64, 1f64, 0f64, 0f64, 3f64, 0f64], res: &[3f64, 5f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 1f64, 1f64, 0f64, 0f64, 0f64, 0f64, 6f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 1f64, 0f64, 0f64, 0f64, 0f64, 0f64, 7f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 1f64, 0f64, 0f64, 0f64, 0f64, 0f64] },
+    PstOp { kind: 0, args: &[1f64, 2f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 1f64, 5f64, 1f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 1f64, 1f64, 9f64, 65f64, 116f64, 111f64, 109f64, 32f64, 66f64, 111f64, 109f64, 98f64, 5f64, 1f64, 0f64, 0f64, 3f64, 7f64], res: &[1f64, 5f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 1f64, 0f64, 0f64, 0f64, 0f64, 0f64] },
+];
+pub const PST_NUKE_TARGETS_ME_2: PstScenario = PstScenario {
+    name: "pst_nuke_targets_me_2",
+    ops: PST_NUKE_TARGETS_ME_2_OPS,
+};
+
+const PST_RELATIVE_FLAGS_3_OPS: &[PstOp] = &[
+    PstOp { kind: 0, args: &[1f64, 1f64, 1f64, 2f64, 112f64, 49f64, 0f64, 1f64, 60f64, 1f64, 100f64, 1f64, 1f64, 6f64, 0f64, 7f64, 1f64, 1f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 1f64, 2f64, 1f64, 4f64, 1f64, 99f64, 0f64, 0f64, 2f64, 1f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 1f64, 2f64, 112f64, 49f64, 100f64, 3f64, 1f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 1f64, 2f64, 112f64, 49f64, 0f64, 4f64, 1f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 5f64, 1f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 1f64, 1f64, 0f64, 0f64, 0f64, 6f64, 1f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 99f64, 1f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64], res: &[5f64, 2f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 1f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0.4f64, 40f64, 3f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 1f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 4f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 1f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 5f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 1f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 6f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 1f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64] },
+    PstOp { kind: 0, args: &[1f64, 1f64, 0f64, 0f64, 0f64, 0f64, 1f64, 0f64, 0f64, 2f64, 1f64, 1f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 1f64, 2f64, 0f64, 0f64, 2f64, 1f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64], res: &[0f64] },
+];
+pub const PST_RELATIVE_FLAGS_3: PstScenario = PstScenario {
+    name: "pst_relative_flags_3",
+    ops: PST_RELATIVE_FLAGS_3_OPS,
+};
+
+const PST_EMPTY_LPID_4_OPS: &[PstOp] = &[
+    PstOp { kind: 0, args: &[1f64, 1f64, 1f64, 0f64, 0f64, 1f64, 60f64, 1f64, 100f64, 0f64, 0f64, 2f64, 1f64, 1f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 1f64, 2f64, 0f64, 0f64, 0f64, 0f64, 2f64, 1f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 1f64, 0f64, 1f64, 0f64, 100f64, 0f64], res: &[1f64, 2f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 1f64, 1f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64] },
+    PstOp { kind: 0, args: &[1f64, 1f64, 0f64, 0f64, 1f64, 60f64, 1f64, 0f64, 0f64, 0f64, 2f64, 1f64, 1f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 1f64, 2f64, 0f64, 0f64, 0f64, 0f64, 2f64, 1f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 1f64, 2f64, 108f64, 112f64, 100f64, 0f64], res: &[1f64, 2f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 1f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64] },
+    PstOp { kind: 0, args: &[1f64, 1f64, 1f64, 2f64, 108f64, 112f64, 0f64, 1f64, 200f64, 1f64, 100f64, 0f64, 0f64, 2f64, 1f64, 1f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 1f64, 2f64, 0f64, 0f64, 0f64, 0f64, 2f64, 1f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 1f64, 2f64, 108f64, 112f64, 100f64, 0f64], res: &[1f64, 2f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 1f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64] },
+];
+pub const PST_EMPTY_LPID_4: PstScenario = PstScenario {
+    name: "pst_empty_lpid_4",
+    ops: PST_EMPTY_LPID_4_OPS,
+};
+
+const PST_ZERO_LPSID_5_OPS: &[PstOp] = &[
+    PstOp { kind: 0, args: &[1f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 2f64, 1f64, 1f64, 0f64, 0f64, 0f64, 0f64, 5f64, 0f64, 0f64, 1f64, 2f64, 0f64, 0f64, 0f64, 0f64, 2f64, 1f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 1f64, 1f64, 12f64, 77f64, 73f64, 82f64, 86f64, 32f64, 87f64, 97f64, 114f64, 104f64, 101f64, 97f64, 100f64, 2f64, 1f64, 0f64, 0f64, 3f64, 3f64], res: &[2f64, 1f64, 1f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 2f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 1f64, 0f64, 0f64, 0f64, 0f64, 0f64] },
+    PstOp { kind: 0, args: &[1f64, -5f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 1f64, 1f64, 1f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64], res: &[0f64] },
+];
+pub const PST_ZERO_LPSID_5: PstScenario = PstScenario {
+    name: "pst_zero_lpsid_5",
+    ops: PST_ZERO_LPSID_5_OPS,
+};
+
+pub const PST_SCENARIOS: &[PstScenario] = &[
+    PST_REPLAY_CROWN_0,
+    PST_DOOMSDAY_1,
+    PST_NUKE_TARGETS_ME_2,
+    PST_RELATIVE_FLAGS_3,
+    PST_EMPTY_LPID_4,
+    PST_ZERO_LPSID_5,
+];
+
+/// One `client/render/frame/derive/RelationMatrix.ts` op (see
+/// `relation_matrix::RigHarness::run_op` docs). kind 0 reset, 1 build
+/// (players + optional teams) -> nonzero dump, 2 buildTeamMap, 3 dump.
+pub struct RmxOp {
+    pub kind: u8,
+    pub args: &'static [f64],
+    pub res: &'static [f64],
+}
+pub struct RmxScenario {
+    pub name: &'static str,
+    pub ops: &'static [RmxOp],
+}
+
+const RMX_TEAMS_0_OPS: &[RmxOp] = &[
+    RmxOp { kind: 0, args: &[], res: &[0f64] },
+    RmxOp { kind: 1, args: &[3f64, 1f64, 1f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 2f64, 1f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 3f64, 1f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 1f64, 6f64, 1f64, 3f64, 114f64, 101f64, 100f64, 2f64, 3f64, 114f64, 101f64, 100f64, 3f64, 4f64, 98f64, 108f64, 117f64, 101f64, 0f64, 3f64, 114f64, 101f64, 100f64, 1024f64, 3f64, 114f64, 101f64, 100f64, -4f64, 3f64, 114f64, 101f64, 100f64], res: &[2f64, 1026f64, 1f64, 2049f64, 1f64] },
+];
+pub const RMX_TEAMS_0: RmxScenario = RmxScenario {
+    name: "rmx_teams_0",
+    ops: RMX_TEAMS_0_OPS,
+};
+
+const RMX_EMBARGO_OVERRIDE_1_OPS: &[RmxOp] = &[
+    RmxOp { kind: 0, args: &[], res: &[0f64] },
+    RmxOp { kind: 1, args: &[2f64, 1f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 1f64, 2f64, 0f64, 0f64, 0f64, 0f64, 2f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 1f64, 1f64, 0f64, 0f64, 0f64, 0f64], res: &[2f64, 1026f64, 2f64, 2049f64, 2f64] },
+    RmxOp { kind: 0, args: &[], res: &[0f64] },
+    RmxOp { kind: 1, args: &[2f64, 1f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 1f64, 2f64, 0f64, 0f64, 0f64, 2f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 1f64, 1f64, 0f64, 0f64, 0f64, 0f64, 0f64], res: &[2f64, 1026f64, 2f64, 2049f64, 2f64] },
+];
+pub const RMX_EMBARGO_OVERRIDE_1: RmxScenario = RmxScenario {
+    name: "rmx_embargo_override_1",
+    ops: RMX_EMBARGO_OVERRIDE_1_OPS,
+};
+
+const RMX_EMPTY_TEAMS_2_OPS: &[RmxOp] = &[
+    RmxOp { kind: 0, args: &[], res: &[0f64] },
+    RmxOp { kind: 1, args: &[2f64, 1f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 1f64, 2f64, 0f64, 0f64, 0f64, 0f64, 2f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 1f64, 0f64], res: &[2f64, 1026f64, 1f64, 2049f64, 1f64] },
+    RmxOp { kind: 0, args: &[], res: &[0f64] },
+    RmxOp { kind: 1, args: &[2f64, 1f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 1f64, 2f64, 0f64, 0f64, 0f64, 0f64, 2f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64], res: &[2f64, 1026f64, 1f64, 2049f64, 1f64] },
+];
+pub const RMX_EMPTY_TEAMS_2: RmxScenario = RmxScenario {
+    name: "rmx_empty_teams_2",
+    ops: RMX_EMPTY_TEAMS_2_OPS,
+};
+
+const RMX_SID_GATES_3_OPS: &[RmxOp] = &[
+    RmxOp { kind: 0, args: &[], res: &[0f64] },
+    RmxOp { kind: 1, args: &[4f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 1f64, 1f64, 0f64, 0f64, 0f64, 0f64, 1024f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 1f64, 1f64, 0f64, 0f64, 0f64, 0f64, -3f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 1f64, 1f64, 0f64, 0f64, 0f64, 1f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 4f64, 0f64, 1024f64, -5f64, 5f64, 3f64, 0f64, 1024f64, 7f64, 0f64, 0f64, 0f64, 0f64], res: &[4f64, 1029f64, 1f64, 1031f64, 2f64, 5121f64, 1f64, 7169f64, 2f64] },
+];
+pub const RMX_SID_GATES_3: RmxScenario = RmxScenario {
+    name: "rmx_sid_gates_3",
+    ops: RMX_SID_GATES_3_OPS,
+};
+
+const RMX_TEAMMAP_4_OPS: &[RmxOp] = &[
+    RmxOp { kind: 0, args: &[], res: &[0f64] },
+    RmxOp { kind: 2, args: &[4f64, 1f64, 5f64, 3f64, 114f64, 101f64, 100f64, 2f64, 2f64, 3f64, 5f64, 4f64, 98f64, 108f64, 117f64, 101f64, 1f64, 5f64, 5f64, 103f64, 114f64, 101f64, 101f64, 110f64], res: &[2f64, 1f64, 5f64, 103f64, 114f64, 101f64, 101f64, 110f64, 3f64, 4f64, 98f64, 108f64, 117f64, 101f64] },
+];
+pub const RMX_TEAMMAP_4: RmxScenario = RmxScenario {
+    name: "rmx_teammap_4",
+    ops: RMX_TEAMMAP_4_OPS,
+};
+
+const RMX_STATE_5_OPS: &[RmxOp] = &[
+    RmxOp { kind: 0, args: &[], res: &[0f64] },
+    RmxOp { kind: 3, args: &[], res: &[0f64] },
+    RmxOp { kind: 1, args: &[1f64, 4f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64, 1f64, 9f64, 0f64, 0f64, 0f64, 0f64, 0f64], res: &[2f64, 4105f64, 1f64, 9220f64, 1f64] },
+    RmxOp { kind: 3, args: &[], res: &[2f64, 4105f64, 1f64, 9220f64, 1f64] },
+    RmxOp { kind: 0, args: &[], res: &[0f64] },
+    RmxOp { kind: 3, args: &[], res: &[0f64] },
+];
+pub const RMX_STATE_5: RmxScenario = RmxScenario {
+    name: "rmx_state_5",
+    ops: RMX_STATE_5_OPS,
+};
+
+pub const RMX_SCENARIOS: &[RmxScenario] = &[
+    RMX_TEAMS_0,
+    RMX_EMBARGO_OVERRIDE_1,
+    RMX_EMPTY_TEAMS_2,
+    RMX_SID_GATES_3,
+    RMX_TEAMMAP_4,
+    RMX_STATE_5,
+];
+
+/// One `client/render/frame/derive/TerrainRowSpans.ts` op (see
+/// `terrain_row_spans::run_op` docs). kind 0 build [mapW,n,(ref)*n] ->
+/// rects + bytes (terrainByteAt = (ref*7+3)&0xff on both sides), 1 the
+/// merge constants, 2 byte probes.
+pub struct TrsOp {
+    pub kind: u8,
+    pub args: &'static [f64],
+    pub res: &'static [f64],
+}
+pub struct TrsScenario {
+    pub name: &'static str,
+    pub ops: &'static [TrsOp],
+}
+
+const TRS_SINGLE_0_OPS: &[TrsOp] = &[
+    TrsOp { kind: 0, args: &[10f64, 1f64, 5f64], res: &[1f64, 5f64, 0f64, 1f64, 1f64, 1f64, 38f64] },
+];
+pub const TRS_SINGLE_0: TrsScenario = TrsScenario {
+    name: "trs_single_0",
+    ops: TRS_SINGLE_0_OPS,
+};
+
+const TRS_MERGE_CHAIN_1_OPS: &[TrsOp] = &[
+    TrsOp { kind: 0, args: &[10f64, 5f64, 0f64, 1f64, 10f64, 11f64, 20f64], res: &[1f64, 0f64, 0f64, 2f64, 3f64, 6f64, 3f64, 10f64, 73f64, 80f64, 143f64, 150f64] },
+    TrsOp { kind: 0, args: &[10f64, 2f64, 0f64, 100f64], res: &[2f64, 0f64, 0f64, 1f64, 1f64, 0f64, 10f64, 1f64, 1f64, 2f64, 3f64, 191f64] },
+];
+pub const TRS_MERGE_CHAIN_1: TrsScenario = TrsScenario {
+    name: "trs_merge_chain_1",
+    ops: TRS_MERGE_CHAIN_1_OPS,
+};
+
+const TRS_MERGE_RATIO_2_OPS: &[TrsOp] = &[
+    TrsOp { kind: 0, args: &[10000f64, 22f64, 0f64, 1f64, 2f64, 3f64, 4f64, 5f64, 6f64, 7f64, 8f64, 9f64, 10f64, 10005f64, 10006f64, 10007f64, 10008f64, 10009f64, 10010f64, 10011f64, 10012f64, 10013f64, 10014f64, 10015f64], res: &[1f64, 0f64, 0f64, 16f64, 2f64, 32f64, 3f64, 10f64, 17f64, 24f64, 31f64, 38f64, 45f64, 52f64, 59f64, 66f64, 73f64, 80f64, 87f64, 94f64, 101f64, 108f64, 115f64, 122f64, 129f64, 136f64, 143f64, 150f64, 157f64, 164f64, 171f64, 178f64, 185f64, 192f64, 199f64, 206f64, 213f64, 220f64] },
+];
+pub const TRS_MERGE_RATIO_2: TrsScenario = TrsScenario {
+    name: "trs_merge_ratio_2",
+    ops: TRS_MERGE_RATIO_2_OPS,
+};
+
+const TRS_MERGE_EXTRA_3_OPS: &[TrsOp] = &[
+    TrsOp { kind: 0, args: &[100f64, 2f64, 0f64, 50f64], res: &[1f64, 0f64, 0f64, 51f64, 1f64, 51f64, 3f64, 10f64, 17f64, 24f64, 31f64, 38f64, 45f64, 52f64, 59f64, 66f64, 73f64, 80f64, 87f64, 94f64, 101f64, 108f64, 115f64, 122f64, 129f64, 136f64, 143f64, 150f64, 157f64, 164f64, 171f64, 178f64, 185f64, 192f64, 199f64, 206f64, 213f64, 220f64, 227f64, 234f64, 241f64, 248f64, 255f64, 6f64, 13f64, 20f64, 27f64, 34f64, 41f64, 48f64, 55f64, 62f64, 69f64, 76f64, 83f64, 90f64, 97f64] },
+    TrsOp { kind: 0, args: &[10000f64, 2f64, 0f64, 13000f64], res: &[2f64, 0f64, 0f64, 1f64, 1f64, 3000f64, 1f64, 1f64, 1f64, 2f64, 3f64, 123f64] },
+];
+pub const TRS_MERGE_EXTRA_3: TrsScenario = TrsScenario {
+    name: "trs_merge_extra_3",
+    ops: TRS_MERGE_EXTRA_3_OPS,
+};
+
+const TRS_UNSORTED_4_OPS: &[TrsOp] = &[
+    TrsOp { kind: 0, args: &[10f64, 4f64, 21f64, 2f64, 12f64, 3f64], res: &[1f64, 1f64, 0f64, 3f64, 3f64, 9f64, 10f64, 17f64, 24f64, 80f64, 87f64, 94f64, 150f64, 157f64, 164f64] },
+];
+pub const TRS_UNSORTED_4: TrsScenario = TrsScenario {
+    name: "trs_unsorted_4",
+    ops: TRS_UNSORTED_4_OPS,
+};
+
+const TRS_CONSTANTS_5_OPS: &[TrsOp] = &[
+    TrsOp { kind: 1, args: &[], res: &[1.5f64, 4096f64] },
+    TrsOp { kind: 2, args: &[6f64, 0f64, 1f64, 2f64, 1000f64, 36f64, 255f64], res: &[6f64, 3f64, 10f64, 17f64, 91f64, 255f64, 252f64] },
+];
+pub const TRS_CONSTANTS_5: TrsScenario = TrsScenario {
+    name: "trs_constants_5",
+    ops: TRS_CONSTANTS_5_OPS,
+};
+
+pub const TRS_SCENARIOS: &[TrsScenario] = &[
+    TRS_SINGLE_0,
+    TRS_MERGE_CHAIN_1,
+    TRS_MERGE_RATIO_2,
+    TRS_MERGE_EXTRA_3,
+    TRS_UNSORTED_4,
+    TRS_CONSTANTS_5,
+];
+

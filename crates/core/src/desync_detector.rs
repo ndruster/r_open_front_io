@@ -58,6 +58,18 @@ impl<V> NumMap<V> {
         let kk = svz_key(k);
         self.entries.iter().find(|(x, _)| svz_key(*x) == kk).map(|(_, v)| v)
     }
+    /// `get(k)`, inserting `default()` when absent (JS `if (!m.get(k))
+    /// m.set(k, [])` bookkeeping; an EXISTING value is reused in place).
+    pub(crate) fn get_mut_or_default(&mut self, k: f64) -> &mut V
+    where
+        V: Default,
+    {
+        let kk = svz_key(k);
+        if !self.entries.iter().any(|(x, _)| svz_key(*x) == kk) {
+            self.entries.push((k, V::default()));
+        }
+        &mut self.entries.iter_mut().find(|(x, _)| svz_key(*x) == kk).unwrap().1
+    }
     pub(crate) fn set(&mut self, k: f64, v: V) {
         let kk = svz_key(k);
         if let Some(slot) = self.entries.iter_mut().find(|(x, _)| svz_key(*x) == kk) {
@@ -69,6 +81,24 @@ impl<V> NumMap<V> {
     pub(crate) fn delete(&mut self, k: f64) {
         let kk = svz_key(k);
         self.entries.retain(|(x, _)| svz_key(*x) != kk);
+    }
+    /// JS `Map#keys()` in insertion order.
+    pub(crate) fn keys(&self) -> impl Iterator<Item = f64> + '_ {
+        self.entries.iter().map(|(k, _)| *k)
+    }
+    /// JS `Map` iteration in insertion order (`(key, value)` pairs).
+    pub(crate) fn iter(&self) -> impl Iterator<Item = (f64, &V)> + '_ {
+        self.entries.iter().map(|(k, v)| (*k, v))
+    }
+    /// JS `Map#values()` in insertion order.
+    pub(crate) fn values(&self) -> impl Iterator<Item = &V> {
+        self.entries.iter().map(|(_, v)| v)
+    }
+    pub(crate) fn len(&self) -> usize {
+        self.entries.len()
+    }
+    pub(crate) fn clear(&mut self) {
+        self.entries.clear();
     }
 }
 

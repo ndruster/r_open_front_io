@@ -3236,6 +3236,166 @@ function prepare(rel) {
     );
   }
 
+  if (rel.endsWith("render/types/Renderer.ts")) {
+    // S8: the `import type { TileRef }` line is erased by strip mode; drop it
+    // explicitly (the GameMap graph is unresolvable here). Node's strip-only
+    // TS loader rejects `export enum`; the two numeric enums are inlined with
+    // the EXACT TypeScript emit shape (forward name->value plus the integer
+    // reverse mapping, inserted member-by-member) so `Object.keys` still
+    // lists "0","1","2" before the declaration-order names — the rnc_ key
+    // dump pins that order. The interfaces / type aliases strip clean.
+    out = must(
+      out,
+      'import type { TileRef } from "../../../core/game/GameMap";\n\n',
+      "",
+      "Renderer TileRef import",
+    );
+    out = must(
+      out,
+      "export enum TrainType {\n  Engine = 0,\n  TailEngine = 1,\n  Carriage = 2,\n}",
+      "export const TrainType = (() => {\n" +
+        "  const t: any = {};\n" +
+        '  t[t["Engine"] = 0] = "Engine";\n' +
+        '  t[t["TailEngine"] = 1] = "TailEngine";\n' +
+        '  t[t["Carriage"] = 2] = "Carriage";\n' +
+        "  return t;\n" +
+        "})();",
+      "Renderer TrainType enum",
+    );
+    out = must(
+      out,
+      "export enum PlayerTypeEnum {\n  Human = 0,\n  Bot = 1,\n  Nation = 2,\n}",
+      "export const PlayerTypeEnum = (() => {\n" +
+        "  const t: any = {};\n" +
+        '  t[t["Human"] = 0] = "Human";\n' +
+        '  t[t["Bot"] = 1] = "Bot";\n' +
+        '  t[t["Nation"] = 2] = "Nation";\n' +
+        "  return t;\n" +
+        "})();",
+      "Renderer PlayerTypeEnum enum",
+    );
+  }
+
+  if (rel.endsWith("utilities/ReplaySpeedMultiplier.ts")) {
+    // S8: no imports; the only strip-mode problem is `export enum`. Values
+    // are 2 / 1 / 0.5 / 0 — the rps_ dump only reads the forward members, so
+    // the plain-object inline (no reverse mapping) is sufficient here.
+    out = must(
+      out,
+      "export enum ReplaySpeedMultiplier {\n  slow = 2,\n  normal = 1,\n  fast = 0.5,\n  fastest = 0,\n}",
+      "export const ReplaySpeedMultiplier = { slow: 2, normal: 1, fast: 0.5, fastest: 0 };",
+      "ReplaySpeedMultiplier enum",
+    );
+  }
+
+  if (rel.endsWith("layers/lib/GoldRateTracker.ts")) {
+    // S8: `history` is a TS-PRIVATE readonly field — runtime-accessible, and
+    // the grt_ dump needs it. Strip mode erases the modifier.
+    out = must(
+      out,
+      "  private readonly history = new Map<number, Sample[]>();",
+      "  readonly history = new Map<number, Sample[]>();",
+      "GoldRateTracker history visibility",
+    );
+  }
+
+  // S8: the three derive modules that VALUE-import from the render types
+  // barrel (../../types) — the barrel re-exports Renderer.ts (interfaces +
+  // enums) and would pull the whole client graph in. Redirect the value
+  // imports to the prepared UnitType.ts copy (precedent: Privilege's
+  // isTemporaryUsername redirect); the `import type` lines are dropped.
+  const utRel = "src/client/render/types/UnitType.ts";
+  if (rel !== utRel && !prepared.has(utRel)) prepare(utRel);
+  const utImport = `./${prepared.get(utRel)}`;
+
+  if (rel.endsWith("derive/AttackRings.ts")) {
+    out = must(
+      out,
+      'import type { AttackRingInput, UnitState } from "../../types";\n' +
+        'import { UT_TRANSPORT } from "../../types";\n',
+      `import { UT_TRANSPORT } from "${utImport}";\n`,
+      "AttackRings types imports",
+    );
+  }
+
+  if (rel.endsWith("derive/NukeTelegraphs.ts")) {
+    out = must(
+      out,
+      'import type { NukeTelegraphData, UnitState } from "../../types";\n' +
+        'import { NUKE_MAGNITUDES } from "../../types";\n',
+      `import { NUKE_MAGNITUDES } from "${utImport}";\n`,
+      "NukeTelegraphs types imports",
+    );
+    // classifyOwner is module-private -> exported for the capture (precedent:
+    // GameApiCors isAllowedOrigin).
+    out = must(
+      out,
+      "function classifyOwner(",
+      "export function classifyOwner(",
+      "NukeTelegraphs classifyOwner export",
+    );
+  }
+
+  if (rel.endsWith("derive/PlayerStatus.ts")) {
+    out = must(
+      out,
+      'import type { PlayerState, PlayerStatusData, UnitState } from "../../types";\n' +
+        'import { NUKE_TYPES, UT_MIRV_WARHEAD } from "../../types";\n',
+      `import { NUKE_TYPES, UT_MIRV_WARHEAD } from "${utImport}";\n`,
+      "PlayerStatus types imports",
+    );
+    // The two module-private constants the pst_ kind-1 dump reads (precedent:
+    // classifyOwner / isAllowedOrigin).
+    out = must(
+      out,
+      "const NUKE_ACTIVE_TYPES: ReadonlySet<string> = new Set([",
+      "export const NUKE_ACTIVE_TYPES: ReadonlySet<string> = new Set([",
+      "PlayerStatus NUKE_ACTIVE_TYPES export",
+    );
+    out = must(
+      out,
+      "const OWNER_MASK = 0xfff;",
+      "export const OWNER_MASK = 0xfff;",
+      "PlayerStatus OWNER_MASK export",
+    );
+  }
+
+  if (rel.endsWith("derive/AllianceClusters.ts")) {
+    // Type-only barrel import; drop it explicitly (strip-mode erasure of
+    // `import type` is not something the load should depend on).
+    out = must(
+      out,
+      'import type { PlayerState } from "../../types";\n',
+      "",
+      "AllianceClusters types import",
+    );
+  }
+
+  if (rel.endsWith("derive/RelationMatrix.ts")) {
+    out = must(
+      out,
+      'import type { PlayerState, PlayerStatic } from "../../types";\n',
+      "",
+      "RelationMatrix types import",
+    );
+  }
+
+  if (rel.endsWith("derive/TerrainRowSpans.ts")) {
+    out = must(
+      out,
+      'import type { TerrainRect } from "../../types";\n',
+      "",
+      "TerrainRowSpans types import",
+    );
+    // The two module-private merge-gate constants the trs_ kind-1 dump reads.
+    out = must(
+      out,
+      "const MAX_MERGE_OVERDRAW_RATIO = 1.5;\nconst MAX_MERGE_EXTRA_TEXELS = 4096;",
+      "export const MAX_MERGE_OVERDRAW_RATIO = 1.5;\nexport const MAX_MERGE_EXTRA_TEXELS = 4096;",
+      "TerrainRowSpans merge constants export",
+    );
+  }
+
   mkdirSync(cacheDir, { recursive: true });
   const hash = createHash("sha1").update(out).digest("hex").slice(0, 10);
   const base = `${basename(rel, ".ts")}-${hash}.ts`;

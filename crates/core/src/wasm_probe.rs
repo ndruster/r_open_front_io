@@ -5242,3 +5242,46 @@ s8_harness_probe!(
     probe_un_reset, probe_un_arg, probe_un_op, probe_un_out_at,
     UN_HARNESS, UN_ARGS, UN_OUT, crate::utils_nav::RigHarness
 );
+
+// =============== S12: client identity/name/gate/editor modules ===============
+
+s8_stateless_probe!(
+    probe_ai_reset, probe_ai_arg, probe_ai_op, probe_ai_out_at,
+    AI_ARGS, AI_OUT, crate::account_identity::run_op
+);
+s8_stateless_probe!(
+    probe_vr_reset, probe_vr_arg, probe_vr_op, probe_vr_out_at,
+    VR_ARGS, VR_OUT, crate::versioned_replay::run_op
+);
+s8_stateless_probe!(
+    probe_gv_reset, probe_gv_arg, probe_gv_op, probe_gv_out_at,
+    GV_ARGS, GV_OUT, crate::game_version::run_op
+);
+s8_stateless_probe!(
+    probe_bi_reset, probe_bi_arg, probe_bi_op, probe_bi_out_at,
+    BI_ARGS, BI_OUT, crate::boot_interrupts::run_op
+);
+s8_stateless_probe!(
+    probe_mls_reset, probe_mls_arg, probe_mls_op, probe_mls_out_at,
+    MLS_ARGS, MLS_OUT, crate::map_layer_settings::run_op
+);
+s8_stateless_probe!(
+    probe_fxs_reset, probe_fxs_arg, probe_fxs_op, probe_fxs_out_at,
+    FXS_ARGS, FXS_OUT, crate::fx_settings::run_op
+);
+s8_stateless_probe!(
+    probe_atd_reset, probe_atd_arg, probe_atd_op, probe_atd_out_at,
+    ATD_ARGS, ATD_OUT, crate::atlas_data::run_op
+);
+s8_stateless_probe!(
+    probe_ees_reset, probe_ees_arg, probe_ees_op, probe_ees_out_at,
+    EES_ARGS, EES_OUT, crate::effect_editor_state::run_op
+);
+s8_stateless_probe!(
+    probe_pn_reset, probe_pn_arg, probe_pn_op, probe_pn_out_at,
+    PN_ARGS, PN_OUT, crate::player_name::run_op
+);
+s8_stateless_probe!(
+    probe_gms_reset, probe_gms_arg, probe_gms_op, probe_gms_out_at,
+    GMS_ARGS, GMS_OUT, crate::game_mode_gate::run_op
+);

@@ -4231,3 +4231,117 @@ fn replay_utilsformat_scenarios() {
         }
     }
 }
+
+// ---- S12: client identity / name / gate / editor modules ---------------------
+
+macro_rules! replay_s12 {
+    ($test:ident, $scen:ident, $run:path) => {
+        #[test]
+        fn $test() {
+            for s in vectors::$scen {
+                for op in s.ops {
+                    let got = $run(op.kind, op.args);
+                    assert_eq!(
+                        got.len(),
+                        op.res.len(),
+                        "{} op[{:?}] res len: got {got:?} want {:?}",
+                        s.name,
+                        op.kind,
+                        op.res
+                    );
+                    for (j, (g, w)) in got.iter().zip(op.res.iter()).enumerate() {
+                        assert!(
+                            obj_is(*g, *w),
+                            "{} op[{:?}] res[{j}]: got {g} want {w}",
+                            s.name,
+                            op.kind
+                        );
+                    }
+                }
+            }
+        }
+    };
+}
+
+// client/AccountIdentity.ts: the steam-primary AND gate and the strict
+// !== undefined linked-identity presence chain (empty-string email is no
+// identity) over the raw /users/@me unwrap.
+replay_s12!(
+    replay_accountidentity_scenarios,
+    AI_SCENARIOS,
+    openfront_core::account_identity::run_op
+);
+// client/VersionedReplay.ts: the replay URL join gate and the "replay."
+// prefix hostname test.
+replay_s12!(
+    replay_versionedreplay_scenarios,
+    VR_SCENARIOS,
+    openfront_core::versioned_replay::run_op
+);
+// client/GameVersion.ts: the VERSION_RE / SHA_RE compose fallback chain and
+// the trim + v-prefix tagging.
+replay_s12!(
+    replay_gameversion_scenarios,
+    GV_SCENARIOS,
+    openfront_core::game_version::run_op
+);
+// client/BootInterrupts.ts: the clean-homepage gate, the interrupt ranking
+// short-circuits, the claim-prompt store JSON parse (V8 key order, non-object
+// drop, Infinity/NaN/-0 passthrough), the due/shown interval math — the shown
+// op pins the Array#sort prune-and-rebuild order (future-timestamp pin,
+// stable ties, integer-key rebuild) — and the strings-ready translate gate.
+replay_s12!(
+    replay_bootinterrupts_scenarios,
+    BI_SCENARIOS,
+    openfront_core::boot_interrupts::run_op
+);
+// client/MapLayerSettings.ts: the `?.` + `??` override chains (0 kept, null
+// falls through, manifest default, bare 1).
+replay_s12!(
+    replay_maplayersettings_scenarios,
+    MLS_SCENARIOS,
+    openfront_core::map_layer_settings::run_op
+);
+// client/render/gl/passes/fx-pass/FxSettings.ts: the unit-type switch
+// routing to the radius field (case-sensitive, missing field -> undefined).
+replay_s12!(
+    replay_fxsettings_scenarios,
+    FXS_SCENARIOS,
+    openfront_core::fx_settings::run_op
+);
+// client/render/gl/passes/name-pass/AtlasData.ts: the glyph table build over
+// the 384 gate (Float32 widening, absent field -> NaN, -0 kept) and the
+// kerning Int8Array wrap (200 -> -56, 128 -> -128, NaN -> 0, 3.7 -> 3).
+replay_s12!(
+    replay_atlasdata_scenarios,
+    ATD_SCENARIOS,
+    openfront_core::atlas_data::run_op
+);
+// client/render/gl/debug/EffectEditorState.ts: the max-colors split, the
+// slot-type tables, the default slot state (bogus slot -> the TS TypeError
+// modelled as undefined) and the field-order chains.
+replay_s12!(
+    replay_effecteditorstate_scenarios,
+    EES_SCENARIOS,
+    openfront_core::effect_editor_state::run_op
+);
+// client/PlayerName.ts: the UTF-16-unit clamp, the verified-name / name-held
+// gates, the opt-in string table, the claim grace over the V8 Date.parse
+// domain (colon-less offsets accepted, Z-tail rejected, day overflow,
+// hour 25 / min 61 / month 13 invalid), the generated-name regex backtrack,
+// the resolve precedence, the code-point persona sanitise and the lapse
+// notice marker/due chain.
+replay_s12!(
+    replay_playername_scenarios,
+    PN_SCENARIOS,
+    openfront_core::player_name::run_op
+);
+// client/GameModeSelector.ts + DesktopShell.ts: the three-input multiplayer
+// gate, the feed suspension, the socket-sourced variant, the join gateable
+// rule (Singleplayer strict !== / gameRecord undefined check) and the
+// failed-update kind switch (undefined arm vs null default).
+replay_s12!(
+    replay_gamemodegate_scenarios,
+    GMS_SCENARIOS,
+    openfront_core::game_mode_gate::run_op
+);

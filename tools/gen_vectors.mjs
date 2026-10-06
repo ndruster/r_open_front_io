@@ -496,6 +496,20 @@ globalThis.__UN_NOW = () => {
   return v;
 };
 const UF = await loadTs("src/client/Utils.ts");
+// S12: client identity / name / gate / editor modules.
+const AI = await loadTs("src/client/AccountIdentity.ts");
+const VR = await loadTs("src/client/VersionedReplay.ts");
+const GV = await loadTs("src/client/GameVersion.ts");
+const BI = await loadTs("src/client/BootInterrupts.ts");
+const MLS = await loadTs("src/client/MapLayerSettings.ts");
+const FXS = await loadTs("src/client/render/gl/passes/fx-pass/FxSettings.ts");
+const ATD = await loadTs("src/client/render/gl/passes/name-pass/AtlasData.ts");
+const ATY = await loadTs("src/client/render/gl/passes/name-pass/Types.ts");
+const EES = await loadTs("src/client/render/gl/debug/EffectEditorState.ts");
+const PN = await loadTs("src/client/PlayerName.ts");
+const VU = await loadTs("src/core/validations/username.ts");
+const GMS = await loadTs("src/client/GameModeSelector.ts");
+const DS = await loadTs("src/client/DesktopShell.ts");
 
 const PF = await loadTs("src/core/pathfinding/PathFinder.ts");
 const { AStar } = await loadTs("src/core/pathfinding/algorithms/AStar.ts");
@@ -16559,6 +16573,905 @@ runUN("un_avatar_edges", [
   [6, { id: "1e1", avatar: "ab" }], // "1e1" is not /^\d+$/ -> disc absent -> null
 ]);
 
+// --- S12: AccountIdentity.ts --------------------------------------------------
+// Kind table (matches `account_identity::run_op`): 0 isSteamPrimaryUser,
+// 1 hasLinkedIdentity, 2 responseHasLinkedIdentity - each a batch
+// [n, (codec value)*n] -> [n, (0/1)*n].
+const aiScenarios = [];
+let aiIdx = 0;
+function runAI(name, ops) {
+  const played = [];
+  for (const [k, ...vals] of ops) {
+    const args = [vals.length, ...vals.flatMap(encVal)];
+    const res = [
+      vals.length,
+      ...vals.map((v) =>
+        k === 0
+          ? AI.isSteamPrimaryUser(v)
+            ? 1
+            : 0
+          : k === 1
+            ? AI.hasLinkedIdentity(v)
+              ? 1
+              : 0
+            : AI.responseHasLinkedIdentity(v)
+              ? 1
+              : 0,
+      ),
+    ];
+    played.push({ kind: k, args: args.flat().map(uenc), res: res.flat().map(uenc) });
+  }
+  aiScenarios.push({ name: `${name}_${aiIdx++}`, ops: played });
+}
+runAI("ai_steam_primary", [
+  [
+    0,
+    { steam: "7656119" },
+    { steam: "" }, // falsy steam
+    { steam: "s", email: "" }, // empty email still primary
+    { steam: "s", email: "a@b.c" },
+    { steam: "s", discord: "d" },
+    {},
+    undefined,
+    { discord: undefined, steam: "s" },
+    { steam: "s", google: null }, // null is falsy -> still primary
+    { steam: 0 },
+    { steam: 1 },
+  ],
+]);
+runAI("ai_linked_identity", [
+  [1, undefined, {}, { discord: null }, { google: undefined }, { email: "" }, { email: 0 }, { email: "x" }, { email: null }, { steam: "s" }],
+  [2, false, { user: undefined }, { user: {} }, { user: { email: "" } }, { user: { steam: "s" } }, {}, { user: { google: null } }],
+]);
+
+// --- S12: VersionedReplay.ts --------------------------------------------------
+// Kind table (matches `versioned_replay::run_op`): 0 versionedReplayUrl
+// single (codec audience, codec gameID) -> codec url|null; 1 batch
+// isReplayShellHost.
+const vrScenarios = [];
+let vrIdx = 0;
+function runVR(name, ops) {
+  const played = [];
+  for (const [k, ...a] of ops) {
+    let args;
+    let res;
+    if (k === 0) {
+      args = [...encVal(a[0]), ...encVal(a[1])];
+      res = encVal(VR.versionedReplayUrl(a[0], a[1]));
+    } else {
+      args = [a.length, ...a.flatMap((h) => encVal(h))];
+      res = [a.length, ...a.map((h) => (VR.isReplayShellHost(h) ? 1 : 0))];
+    }
+    played.push({ kind: k, args: args.flat().map(uenc), res: res.flat().map(uenc) });
+  }
+  vrScenarios.push({ name: `${name}_${vrIdx++}`, ops: played });
+}
+runVR("vr_url", [
+  [0, "", "g1"],
+  [0, "localhost", "g1"],
+  [0, "Localhost", "g1"], // case-sensitive gate
+  [0, "openfront.io", "abc-123"],
+  [0, "replay.openfront.io", "x"],
+  [0, "Localhost ", "g1"], // trailing space is not "localhost"
+]);
+runVR("vr_host", [
+  [1, "replay.openfront.io", "openfront.io", "", "replay.", "Replay.x", "notreplay.x", "replay", "xreplay.y"],
+]);
+
+// --- S12: GameVersion.ts ------------------------------------------------------
+// Kind table (matches `game_version::run_op`): 0 composeGameVersion single
+// ([len,units]*2 -> [len,units]*1); 1 taggedGameVersion batch. Strings cross
+// as raw UTF-16 unit lists (read_str / push_str).
+const gvScenarios = [];
+let gvIdx = 0;
+function runGV(name, ops) {
+  const played = [];
+  for (const [k, ...a] of ops) {
+    let args;
+    let res;
+    if (k === 0) {
+      args = [...encS(a[0]), ...encS(a[1])];
+      res = encS(GV.composeGameVersion(a[0], a[1]));
+    } else {
+      args = [a.length, ...a.flatMap((s) => encS(s))];
+      res = [a.length, ...a.flatMap((s) => encS(GV.taggedGameVersion(s)))];
+    }
+    played.push({ kind: k, args: args.flat().map(uenc), res: res.flat().map(uenc) });
+  }
+  gvScenarios.push({ name: `${name}_${gvIdx++}`, ops: played });
+}
+runGV("gv_compose", [
+  [0, "v1.2.3", "bf739f8"],
+  [0, "1.2.3-beta", "x"],
+  [0, "0.33.18", "x"],
+  [0, "x.xx.xx", "bf739f8de"], // placeholder fails, 9-hex sha wins
+  [0, "x.xx.xx", "  BF739F8DE  "], // trim + lowercase
+  [0, "x.xx.xx", "DEV"],
+  [0, "x.xx.xx", "desktop"],
+  [0, "x.xx.xx", ""],
+  [0, "V1.2.3", "x"], // uppercase V fails the regex, prefix added
+  [0, " 1.2.3 ", "x"], // trim makes VERSION_RE pass
+  [0, "1.2", "bf739f8"], // too short for VERSION_RE, sha wins
+  [0, "x.xx.xx", "abcdef"], // 6 hex chars fail SHA_RE {7,40}
+  [0, "x.xx.xx", "z".repeat(41)], // too long for SHA_RE -> returned as-is
+  [0, "x.xx.xx", "deadbeef"], // lowercase already
+]);
+runGV("gv_tagged", [
+  [1, "v1.2.3", "1.2.3", "", "V1", " 1.2 ", "vv2"],
+]);
+
+// --- S12: BootInterrupts.ts ---------------------------------------------------
+// Kind table (matches `boot_interrupts::run_op`): 0 isCleanHomepage batch
+// (hash, pathname, shell); 1 bootInterruptsAllowed batch (+inFlight,
+// handleNull); 2 joinOwnsInFlightFlag batch (a, b); 3 nextBootInterrupt batch
+// (clean, codec status, codec username, codec base, lapseDue, rewardCount,
+// claimDue, claimReady) -> codec str|null; 4 parseClaimPromptStore batch
+// (codec str|null) -> codec maps; 5 claimPromptDue batch (map, now, pid);
+// 6 claimPromptShown batch -> codec maps; 7 claimPromptStringsReady batch
+// (tBody, tHeading, tConfirm); 8 constants dump.
+const biScenarios = [];
+let biIdx = 0;
+function runBI(name, ops) {
+  const played = [];
+  for (const [k, ...a] of ops) {
+    let args;
+    let res;
+    if (k === 0) {
+      args = [a.length, ...a.flatMap(([h, p, s]) => [...encS(h), ...encS(p), s ? 1 : 0])];
+      res = [a.length, ...a.map(([h, p, s]) => (BI.isCleanHomepage({ hash: h, pathname: p }, s) ? 1 : 0))];
+    } else if (k === 1) {
+      args = [a.length, ...a.flatMap(([h, p, s, f, n]) => [...encS(h), ...encS(p), s ? 1 : 0, f ? 1 : 0, n ? 1 : 0])];
+      res = [
+        a.length,
+        ...a.map(
+          ([h, p, s, f, n]) =>
+            BI.bootInterruptsAllowed({ hash: h, pathname: p }, s, { joinInFlight: f, lobbyHandle: n ? null : {} }) ? 1 : 0,
+        ),
+      ];
+    } else if (k === 2) {
+      args = [a.length, ...a.flatMap(([x, y]) => [x, y])];
+      res = [a.length, ...a.map(([x, y]) => (BI.joinOwnsInFlightFlag(x, y) ? 1 : 0))];
+    } else if (k === 3) {
+      args = [
+        a.length,
+        ...a.flatMap(([clean, status, username, base, lapse, rewards, due, ready]) => [
+          clean ? 1 : 0,
+          ...encVal(status),
+          ...encVal(username),
+          ...encVal(base),
+          lapse ? 1 : 0,
+          rewards,
+          due ? 1 : 0,
+          ready ? 1 : 0,
+        ]),
+      ];
+      res = [
+        a.length,
+        ...a.map(([clean, status, username, base, lapse, rewards, due, ready]) =>
+          encVal(
+            BI.nextBootInterrupt({
+              cleanHomepage: clean,
+              usernameStatus: status,
+              username,
+              usernameBase: base,
+              lapseNoticeDue: lapse,
+              rewardCount: rewards,
+              claimPromptDue: due,
+              claimStringsReady: ready,
+            }),
+          ),
+        ),
+      ];
+    } else if (k === 4) {
+      args = [a.length, ...a.flatMap((raw) => encVal(raw))];
+      res = [a.length, ...a.map((raw) => encMap(BI.parseClaimPromptStore(raw)))];
+    } else if (k === 5 || k === 6) {
+      args = [a.length, ...a.flatMap(([store, now, pid]) => [...encMap(store), now, ...encS(pid)])];
+      res = [
+        a.length,
+        ...a.map(([store, now, pid]) =>
+          encMap(k === 5 ? [0, BI.claimPromptDue(store, now, pid)] : BI.claimPromptShown(store, now, pid)),
+        ),
+      ];
+      // kind 5 res is a flag, not a map: rebuild.
+      if (k === 5) res = [a.length, ...a.map(([store, now, pid]) => (BI.claimPromptDue(store, now, pid) ? 1 : 0))];
+    } else if (k === 7) {
+      const key = BI.BOOT_INTERRUPT_KEYS;
+      args = [a.length, ...a.flatMap(([b, h, c]) => [...encS(b), ...encS(h), ...encS(c)])];
+      res = [
+        a.length,
+        ...a.map(([b, h, c]) => {
+          const t = (kk) => (kk === key.claimBody ? b : kk === key.claimHeading ? h : c);
+          return BI.claimPromptStringsReady(t) ? 1 : 0;
+        }),
+      ];
+    } else if (k === 8) {
+      args = [];
+      res = [
+        BI.CLAIM_PROMPT_MAX_SHOWS,
+        BI.CLAIM_PROMPT_INTERVAL_MS,
+        BI.CLAIM_PROMPT_MAX_ACCOUNTS,
+        ...encS(BI.CLAIM_PROMPT_KEY),
+        ...encS(BI.USERNAME_FORM_HASH),
+        ...Object.entries(BI.BOOT_INTERRUPT_KEYS).flatMap(([kk, v]) => [...encS(kk), ...encS(v)]),
+      ];
+      // Insert the entry count before the pairs: rebuild cleanly.
+      const pairs = Object.entries(BI.BOOT_INTERRUPT_KEYS).flatMap(([kk, v]) => [...encS(kk), ...encS(v)]);
+      res = [
+        BI.CLAIM_PROMPT_MAX_SHOWS,
+        BI.CLAIM_PROMPT_INTERVAL_MS,
+        BI.CLAIM_PROMPT_MAX_ACCOUNTS,
+        ...encS(BI.CLAIM_PROMPT_KEY),
+        ...encS(BI.USERNAME_FORM_HASH),
+        Object.keys(BI.BOOT_INTERRUPT_KEYS).length,
+        ...pairs,
+      ];
+    } else throw new Error("bi: bad op kind " + k);
+    played.push({ kind: k, args: args.flat().map(uenc), res: res.flat().map(uenc) });
+  }
+  biScenarios.push({ name: `${name}_${biIdx++}`, ops: played });
+}
+const rec = (shows, last) => ({ shows, lastShownAt: last });
+runBI("bi_clean_homepage", [
+  [0, ["", "/", false], ["modal=x", "/", false], ["", "/index.html", true], ["", "/index.html", false], ["", "/join/1", false], ["#x", "/", true]],
+  [
+    1,
+    ["", "/", false, false, true],
+    ["", "/", false, true, true], // join in flight
+    ["", "/", false, false, false], // lobby handle present
+    ["modal=x", "/", true, false, true],
+    ["", "/index.html", true, false, true],
+    ["", "/index.html", false, false, true],
+  ],
+  [2, [5, 5], [5, 6], [0, 0], [Number.NaN, Number.NaN], [-0, 0]],
+]);
+runBI("bi_ranking", [
+  [
+    3,
+    // clean=false short-circuits everything
+    [false, "premium", null, "TEMPORARY1234", false, 0, false, false],
+    // 1: entitled + temporary base
+    [true, "premium", "Ninja", "TEMPORARY1234", false, 3, true, true],
+    [true, "indefinite", null, "TEMPORARY0000", false, 0, false, false],
+    [true, "free", null, "TEMPORARY1234", false, 0, false, false],
+    // 2: entitled, no name, due, ready
+    [true, "premium", null, "zoë", false, 5, true, true],
+    [true, "indefinite", null, null, false, 0, true, true],
+    // not due / not ready -> falls through
+    [true, "premium", null, "zoë", false, 2, false, true],
+    [true, "premium", null, "zoë", false, 2, true, false],
+    // 3: lapse notice
+    [true, "claimed", "zoë.1234", "zoë", true, 9, false, false],
+    // 4: rewards
+    [true, "free", "Ninja", "Ninja", false, 1, false, false],
+    [true, "free", "Ninja", "Ninja", false, 0, false, false],
+    // temporary wins over lapse AND rewards
+    [true, "premium", "TEMPORARY1234", "TEMPORARY1234", true, 9, true, true],
+    // status undefined / null reads not-entitled
+    [true, undefined, null, null, false, 4, true, true],
+    [true, null, null, null, true, 0, false, false],
+    // empty-string username is falsy -> claim branch eligible
+    [true, "premium", "", "zoë", false, 0, true, true],
+  ],
+]);
+runBI("bi_parse_store", [
+  [
+    4,
+    null,
+    "not json",
+    "[1,2]",
+    '"str"',
+    "42",
+    "null",
+    "{}",
+    '{"a":{"shows":1,"lastShownAt":100}}',
+    '{"":{"shows":1,"lastShownAt":1},"b":{"shows":2,"lastShownAt":2}}', // empty id dropped
+    '{"c":"x","d":null,"e":{"shows":"1","lastShownAt":1},"f":{"shows":1,"lastShownAt":NaN}}',
+    '{"2":{"shows":1,"lastShownAt":1},"10":{"shows":1,"lastShownAt":1},"z":{"shows":1,"lastShownAt":1},"01":{"shows":1,"lastShownAt":1}}', // V8 key order
+    '{"g":{"shows":Infinity,"lastShownAt":1},"h":{"shows":NaN,"lastShownAt":1},"i":{"shows":-0,"lastShownAt":0}}',
+    '{"j":{"shows":1}}', // lastShownAt absent -> dropped
+    '{"k":{}}',
+  ],
+]);
+runBI("bi_due", [
+  [
+    5,
+    [{}, 1000, "x"], // absent -> true
+    [{ x: rec(3, 0) }, 1000, "x"], // shows spent -> false
+    [{ x: rec(2, 0) }, 1000, "x"], // elapsed < interval -> false
+    [{ x: rec(2, 0) }, 86400000, "x"], // exactly the interval -> true
+    [{ x: rec(2, 100) }, 50, "x"], // clock backwards -> false
+    [{ x: rec(2, 100) }, 86400100, "x"],
+    [{ x: rec(0, 0) }, 0, "x"], // shows 0, elapsed 0 < interval -> false
+    [{ y: rec(3, 0) }, 0, "x"], // other account's record irrelevant
+  ],
+]);
+runBI("bi_shown", [
+  [
+    6,
+    // <= cap: spread + overwrite in place, key order preserved
+    [{ a: rec(1, 10), b: rec(2, 20) }, 1000, "a"],
+    [{ a: rec(1, 10), b: rec(2, 20) }, 1000, "c"], // new key appended
+    [{}, 1000, "x"], // single key
+    // cap+1 with a FUTURE timestamp on the recorded account: the pin keeps
+    // "cur" even though it sorts last (the OPE bug the comment describes)
+    [
+      {
+        cur: rec(0, 0),
+        f1: rec(1, 9e15),
+        f2: rec(1, 8e15),
+        f3: rec(1, 7e15),
+        f4: rec(1, 6e15),
+        f5: rec(1, 5e15),
+        f6: rec(1, 4e15),
+        f7: rec(1, 3e15),
+        f8: rec(1, 2e15),
+      },
+      1000,
+      "cur",
+    ],
+    // ties: stable sort keeps the pre-sort key order among equal lastShownAt
+    [
+      {
+        cur: rec(0, 0),
+        t1: rec(1, 500),
+        t2: rec(1, 500),
+        t3: rec(1, 500),
+        t4: rec(1, 500),
+        t5: rec(1, 500),
+        t6: rec(1, 500),
+        t7: rec(1, 500),
+        t8: rec(1, 500),
+      },
+      1000,
+      "cur",
+    ],
+    // numeric publicIds: V8 integer-key ordering in the pruned rebuild
+    [
+      {
+        5: rec(0, 0),
+        10: rec(1, 100),
+        2: rec(1, 200),
+        a: rec(1, 300),
+        b: rec(1, 400),
+        c: rec(1, 500),
+        d: rec(1, 600),
+        e: rec(1, 700),
+        f: rec(1, 800),
+      },
+      1000,
+      "5",
+    ],
+  ],
+]);
+runBI("bi_strings_ready", [
+  [7, ["body text", "heading", "confirm"], ["account_modal.username_claim_prompt", "h", "c"], ["b", "account_modal.username_claim_heading", "c"], ["b", "h", "account_modal.username_claim_prompt_confirm"]],
+]);
+runBI("bi_constants", [[8]]);
+
+// --- S12: MapLayerSettings.ts -------------------------------------------------
+// Kind table (matches `map_layer_settings::run_op`): 0 isLayerVisible single
+// (codec overrides, codec layerId); 1 layerAlpha single (+ codec
+// manifestDefault; an omitted argument rides [1] undefined).
+const mlsScenarios = [];
+let mlsIdx = 0;
+function runMLS(name, ops) {
+  const played = [];
+  for (const [k, ...a] of ops) {
+    let args;
+    let res;
+    if (k === 0) {
+      args = [...encVal(a[0]), ...encVal(a[1])];
+      res = encVal(MLS.isLayerVisible(a[0], a[1]));
+    } else {
+      const md = a.length > 2 ? a[2] : undefined;
+      args = [...encVal(a[0]), ...encVal(a[1]), ...encVal(md)];
+      res = encVal(MLS.layerAlpha(a[0], a[1], md));
+    }
+    played.push({ kind: k, args: args.flat().map(uenc), res: res.flat().map(uenc) });
+  }
+  mlsScenarios.push({ name: `${name}_${mlsIdx++}`, ops: played });
+}
+runMLS("mls_visibility", [
+  [0, { mapLayerVisibility: { a: false, b: null, c: undefined, d: 0, e: "" } }, "a"],
+  [0, { mapLayerVisibility: { a: false, b: null, c: undefined, d: 0, e: "" } }, "b"],
+  [0, { mapLayerVisibility: { a: false, b: null, c: undefined, d: 0, e: "" } }, "c"],
+  [0, { mapLayerVisibility: { a: false, b: null, c: undefined, d: 0, e: "" } }, "d"], // 0 is not nullish
+  [0, { mapLayerVisibility: { a: false, b: null, c: undefined, d: 0, e: "" } }, "z"],
+  [0, {}, "a"],
+  [0, { mapLayerVisibility: true }, "a"], // non-object index -> undefined -> true
+]);
+runMLS("mls_alpha", [
+  [1, { mapLayerAlpha: { a: 0.5, z: 0, n: null } }, "a", 0.9],
+  [1, { mapLayerAlpha: { a: 0.5, z: 0, n: null } }, "z", 0.9], // 0 wins over manifest
+  [1, { mapLayerAlpha: { a: 0.5, z: 0, n: null } }, "n", 0.9], // null falls through
+  [1, { mapLayerAlpha: { a: 0.5, z: 0, n: null } }, "b", 0.9],
+  [1, { mapLayerAlpha: { a: 0.5, z: 0, n: null } }, "b", undefined],
+  [1, { mapLayerAlpha: { a: 0.5, z: 0, n: null } }, "b", 0], // manifest 0 (not nullish)
+  [1, {}, "a"],
+  [1, { mapLayerAlpha: { s: "x" } }, "s", 0.2], // string passthrough
+]);
+
+// --- S12: FxSettings.ts -------------------------------------------------------
+// Kind table (matches `fx_settings::run_op`): 0 nukeExplosionRadius single
+// (codec fx, codec unitType) -> codec value.
+const fxsScenarios = [];
+let fxsIdx = 0;
+function runFXS(name, ops) {
+  const played = [];
+  for (const [k, ...a] of ops) {
+    if (k !== 0) throw new Error("fxs: bad op kind " + k);
+    const args = [...encVal(a[0]), ...encVal(a[1])];
+    const res = encVal(FXS.nukeExplosionRadius(a[0], a[1]));
+    played.push({ kind: k, args: args.flat().map(uenc), res: res.flat().map(uenc) });
+  }
+  fxsScenarios.push({ name: `${name}_${fxsIdx++}`, ops: played });
+}
+runFXS("fxs_radius", [
+  [0, { nukeRadiusAtom: 10, nukeRadiusHydro: 20, nukeRadiusMirv: 15 }, "Atom Bomb"],
+  [0, { nukeRadiusAtom: 10, nukeRadiusHydro: 20, nukeRadiusMirv: 15 }, "Hydrogen Bomb"],
+  [0, { nukeRadiusAtom: 10, nukeRadiusHydro: 20, nukeRadiusMirv: 15 }, "MIRV Warhead"],
+  [0, { nukeRadiusAtom: 10, nukeRadiusHydro: 20, nukeRadiusMirv: 15 }, "Steam Tank"],
+  [0, { nukeRadiusAtom: 10, nukeRadiusHydro: 20, nukeRadiusMirv: 15 }, "atom bomb"],
+  [0, { nukeRadiusAtom: 10, nukeRadiusHydro: 20, nukeRadiusMirv: 15 }, ""],
+  [0, {}, "Atom Bomb"], // missing field -> undefined
+  [0, { nukeRadiusAtom: 0 }, "Atom Bomb"],
+]);
+
+// --- S12: AtlasData.ts --------------------------------------------------------
+// Kind table (matches `atlas_data::run_op`): 0 buildGlyphTables batch ->
+// the FULL 3x384 Float32Array contents; 1 buildKernTable batch -> sparse
+// nonzero dump [k,(idx,val)*k]; 2 CHAR_RANGE dump.
+const atdScenarios = [];
+let atdIdx = 0;
+function runATD(name, ops) {
+  const played = [];
+  for (const [k, ...a] of ops) {
+    let args;
+    let res;
+    if (k === 0) {
+      args = [a.length, ...a.flatMap((c) => encVal(c))];
+      const t = ATD.buildGlyphTables(a);
+      res = [...t.advance, ...t.xOffset, ...t.visW];
+    } else if (k === 1) {
+      args = [a.length, ...a.flatMap((c) => encVal(c))];
+      const table = ATD.buildKernTable(a);
+      const nz = [];
+      for (let j = 0; j < table.length; j++) if (table[j] !== 0) nz.push(j, table[j]);
+      res = [nz.length / 2, ...nz];
+    } else if (k === 2) {
+      args = [];
+      res = [ATY.CHAR_RANGE];
+    } else throw new Error("atd: bad op kind " + k);
+    played.push({ kind: k, args: args.flat().map(uenc), res: res.flat().map(uenc) });
+  }
+  atdScenarios.push({ name: `${name}_${atdIdx++}`, ops: played });
+}
+runATD("atd_glyphs", [
+  [
+    0,
+    { id: 65, xadvance: 10.5, xoffset: -1.25, width: 7 },
+    { id: 383, xadvance: 1, xoffset: 2, width: 3 },
+    { id: 384, xadvance: 9, xoffset: 9, width: 9 }, // gate drops it
+    { id: 65.5, xadvance: 1, xoffset: 1, width: 1 }, // passes gate, no index write
+    { id: -1, xadvance: 1, xoffset: 1, width: 1 }, // negative index dropped
+    { id: 66, xadvance: 0.1, xoffset: 0, width: 1e21 }, // f32 rounding
+    { id: 67, xadvance: NaN, xoffset: 0, width: 0 },
+    { id: 68, xoffset: 0, width: 0 }, // xadvance absent -> undefined -> NaN
+    { id: 0, xadvance: -0, xoffset: 0, width: 0 },
+  ],
+]);
+runATD("atd_kerning", [
+  [
+    1,
+    { first: 65, second: 66, amount: -3 },
+    { first: 66, second: 65, amount: 4 },
+    { first: 384, second: 0, amount: 1 }, // first gate
+    { first: 0, second: 384, amount: 1 }, // second gate
+    { first: 67, second: 68, amount: 200 }, // i8 wrap: 200 -> -56
+    { first: 68, second: 67, amount: 128 }, // 128 -> -128
+    { first: 69, second: 70, amount: 0 }, // zero write stays zero
+    { first: 0, second: 0, amount: NaN }, // NaN -> ToInt8 0
+    { first: 1.5, second: 0, amount: 2 }, // fractional first: gate passes, index fractional -> dropped
+    { first: 70, second: 71, amount: 3.7 }, // 3.7 -> ToInt8 3
+  ],
+]);
+runATD("atd_char_range", [[2]]);
+
+// --- S12: EffectEditorState.ts ------------------------------------------------
+// Kind table (matches `effect_editor_state::run_op`): 0 maxColorsFor single;
+// 1 EFFECT_EDITOR_TYPES dump; 2 defaultSlotState single (a bogus slot THROWS
+// in TS -> the capture records [1] undefined, which the port returns);
+// 3 fieldsForType single -> [k,(field)*k]; 4 EFFECT_EDITOR_MAX_COLORS.
+const eesScenarios = [];
+let eesIdx = 0;
+function runEES(name, ops) {
+  const played = [];
+  for (const [k, ...a] of ops) {
+    let args;
+    let res;
+    if (k === 0) {
+      args = encVal(a[0]);
+      res = [EES.maxColorsFor(a[0])];
+    } else if (k === 1) {
+      args = [];
+      const entries = Object.entries(EES.EFFECT_EDITOR_TYPES);
+      res = [entries.length, ...entries.flatMap(([kk, v]) => [...encS(kk), v.length, ...v.flatMap((o) => encS(o))])];
+    } else if (k === 2) {
+      args = encVal(a[0]);
+      let s;
+      try {
+        s = EES.defaultSlotState(a[0]);
+      } catch {
+        s = undefined;
+      }
+      // Rust emits the bare map (push_map, the bi_ kind 4/6 convention); a
+      // bogus slot's undefined crosses as [1].
+      res = s === undefined ? [1] : encMap(s);
+    } else if (k === 3) {
+      args = [...encVal(a[0]), ...encVal(a[1])];
+      const f = [...EES.fieldsForType(a[0], a[1])];
+      res = [f.length, ...f.flatMap((x) => encS(x))];
+    } else if (k === 4) {
+      args = [];
+      res = [EES.EFFECT_EDITOR_MAX_COLORS];
+    } else throw new Error("ees: bad op kind " + k);
+    played.push({ kind: k, args: args.flat().map(uenc), res: res.flat().map(uenc) });
+  }
+  eesScenarios.push({ name: `${name}_${eesIdx++}`, ops: played });
+}
+runEES("ees_max_colors", [
+  [0, "nukeExplosion"],
+  [0, "nukeTrail"],
+  [0, "transportShipTrail"],
+  [0, "bogus slot"],
+  [1],
+  [4],
+]);
+runEES("ees_defaults", [
+  [2, "nukeTrail"],
+  [2, "nukeExplosion"],
+  [2, "transportShipTrail"],
+  [2, "bogus"], // TS TypeError -> [1]
+]);
+runEES("ees_fields", [
+  [3, "nukeExplosion", "shockwave"],
+  [3, "nukeExplosion", "sparkles"],
+  [3, "nukeExplosion", "embers"],
+  [3, "nukeTrail", "gradient"],
+  [3, "nukeTrail", "transition"],
+  [3, "nukeTrail", "spiral"],
+  [3, "train", "gradient"],
+  [3, "train", "spiral"], // non-trail slot: spiral falls to the else branch
+  [3, "bogus", "gradient"],
+]);
+
+// --- S12: PlayerName.ts -------------------------------------------------------
+// Kind table (matches `player_name::run_op`): 0 clampUsername batch;
+// 1 accountVerifiedName batch -> codec str|null; 2 accountNameHeld batch;
+// 3 verifiedNameOptIn batch (codec stored, defaultAllowed); 4
+// verifiedClaimGrace batch (codec userMe, now_ms) -> codec null|{name,
+// expiresAt, atRisk}; 5 lapseNoticeMarker batch (name, atRisk); 6
+// looksGenerated batch; 7 resolvePlayerName single (codec inputs); 8
+// sanitizePersona batch; 9 new Date(iso).getTime() batch -> num|NaN;
+// 10 lapseNoticeDue single (userMe, marker, now_ms); 11 constants.
+const pnScenarios = [];
+let pnIdx = 0;
+function runPN(name, ops) {
+  const played = [];
+  for (const [k, ...a] of ops) {
+    let args;
+    let res;
+    if (k === 0) {
+      args = [a.length, ...a.flatMap((s) => encS(s))];
+      res = [a.length, ...a.flatMap((s) => encS(PN.clampUsername(s)))];
+    } else if (k === 1) {
+      args = [a.length, ...a.flatMap((u) => encVal(u))];
+      res = [a.length, ...a.flatMap((u) => encVal(PN.accountVerifiedName(u)))];
+    } else if (k === 2) {
+      args = [a.length, ...a.flatMap((u) => encVal(u))];
+      res = [a.length, ...a.map((u) => (PN.accountNameHeld(u) ? 1 : 0))];
+    } else if (k === 3) {
+      args = [a.length, ...a.flatMap(([s, d]) => [...encVal(s), d ? 1 : 0])];
+      res = [a.length, ...a.map(([s, d]) => (PN.verifiedNameOptIn(s, d) ? 1 : 0))];
+    } else if (k === 4) {
+      args = [a.length, ...a.flatMap(([u, now]) => [...encVal(u), now])];
+      res = [
+        a.length,
+        ...a.flatMap(([u, now]) => {
+          const g = PN.verifiedClaimGrace(u, new Date(now));
+          return encVal(g === null ? null : { name: g.name, expiresAt: g.expiresAt.getTime(), atRisk: g.atRisk });
+        }),
+      ];
+    } else if (k === 5) {
+      args = [a.length, ...a.flatMap(([n, r]) => [...encS(n), r ? 1 : 0])];
+      res = [a.length, ...a.flatMap(([n, r]) => encS(PN.lapseNoticeMarker({ name: n, atRisk: r })))];
+    } else if (k === 6) {
+      args = [a.length, ...a.flatMap((s) => encS(s))];
+      res = [a.length, ...a.map((s) => (PN.looksGenerated(s) ? 1 : 0))];
+    } else if (k === 7) {
+      // Single-input op: one captured op per scenario entry.
+      for (const inputs of a) {
+        played.push({
+          kind: 7,
+          args: encVal(inputs).flat().map(uenc),
+          res: encVal(PN.resolvePlayerName(inputs)).flat().map(uenc),
+        });
+      }
+      continue;
+    } else if (k === 8) {
+      args = [a.length, ...a.flatMap((p) => encVal(p))];
+      res = [a.length, ...a.flatMap((p) => encVal(PN.sanitizePersona(p)))];
+    } else if (k === 9) {
+      args = [a.length, ...a.flatMap((s) => encS(s))];
+      res = [a.length, ...a.map((s) => new Date(s).getTime())];
+    } else if (k === 10) {
+      // Single-input op: one captured op per (userMe, marker, now) entry.
+      for (const [u, m, now] of a) {
+        played.push({
+          kind: 10,
+          args: [...encVal(u), ...encVal(m), now].flat().map(uenc),
+          res: [PN.lapseNoticeDue(u, m, new Date(now)) ? 1 : 0].map(uenc),
+        });
+      }
+      continue;
+    } else if (k === 11) {
+      args = [];
+      res = [VU.MIN_USERNAME_LENGTH, VU.MAX_USERNAME_LENGTH, ...encS(PN.LAPSE_NOTICE_KEY)];
+    } else throw new Error("pn: bad op kind " + k);
+    played.push({ kind: k, args: args.flat().map(uenc), res: res.flat().map(uenc) });
+  }
+  pnScenarios.push({ name: `${name}_${pnIdx++}`, ops: played });
+}
+const um = (fields) => ({ player: fields });
+runPN("pn_clamp", [
+  [0, "short", "a".repeat(20), "a".repeat(25), `${"a".repeat(19)} x`, "\u{1F600}".repeat(11), "", "  padded  ", "\u{1F600}".repeat(10) + "\u{1F600}"],
+]);
+runPN("pn_verified_name", [
+  [
+    1,
+    null,
+    false,
+    um({ usernameStatus: "free", username: "Ninja", usernameBase: "Ninja" }),
+    um({ usernameStatus: "premium", username: "zoë", usernameBase: "zoë" }),
+    um({ usernameStatus: "indefinite", username: "zoë.1234", usernameBase: "zoë" }),
+    um({ usernameStatus: "premium", username: "", usernameBase: "" }),
+    um({ usernameStatus: "premium", username: "TEMPORARY1234", usernameBase: "TEMPORARY1234" }),
+    um({ usernameStatus: "premium", username: "zoë", usernameBase: "TEMPORARY1234" }),
+    um({ usernameStatus: "premium", username: "zoë" }),
+    um({ usernameStatus: undefined, username: "zoë", usernameBase: "zoë" }),
+    // NOTE: `{}` (player absent) would throw a TypeError in TS — outside the
+    // UserMeResponse domain, so it is not captured (the fxs null-fx precedent).
+    um({ usernameStatus: "claimed", username: "zoë", usernameBase: "zoë" }),
+  ],
+  [
+    2,
+    null,
+    false,
+    um({ usernameStatus: "premium", username: "zoë", usernameBase: "zoë" }),
+    um({ usernameStatus: "indefinite", username: "zoë.1234", usernameBase: "zoë" }),
+    um({ usernameStatus: "premium", username: "", usernameBase: "zoë" }),
+    um({ usernameStatus: "premium", username: "zoë", usernameBase: "" }),
+    um({ usernameStatus: "free", username: "a", usernameBase: "b" }),
+    um({ usernameStatus: "premium", username: "a", usernameBase: undefined }),
+  ],
+]);
+runPN("pn_optin_grace", [
+  [3, ["true", false], ["false", true], ["", true], ["TRUE", false], [null, true], [null, false], ["yes", true], ["yes", false]],
+  [
+    4,
+    [null, 0],
+    [false, 0],
+    [um({ usernameStatus: "premium", usernameBase: "zoë", usernameClaimExpiresAt: "2026-01-01T00:00:00Z" }), 1767225600000],
+    [um({ usernameStatus: "claimed", usernameBase: "zoë", usernameClaimExpiresAt: "2026-01-01T00:00:00Z" }), 1767225600000], // atRisk (<=)
+    [um({ usernameStatus: "claimed", usernameBase: "zoë", usernameClaimExpiresAt: "2026-01-01T00:00:00Z" }), 1000], // future deadline
+    [um({ usernameStatus: "claimed", usernameBase: "zoë", usernameClaimExpiresAt: "garbage" }), 1000], // NaN expiry -> atRisk false
+    [um({ usernameStatus: "claimed", usernameBase: "zoë", usernameClaimExpiresAt: "" }), 1000], // falsy at -> null
+    [um({ usernameStatus: "claimed", usernameBase: "", usernameClaimExpiresAt: "2026-01-01T00:00:00Z" }), 1000],
+    [um({ usernameStatus: "claimed", usernameBase: "TEMPORARY1234", usernameClaimExpiresAt: "2026-01-01T00:00:00Z" }), 1000],
+    [um({ usernameStatus: "claimed", usernameClaimExpiresAt: "2026-01-01T00:00:00Z" }), 1000], // base absent
+    [um({ usernameStatus: "claimed", usernameBase: "zoë", usernameClaimExpiresAt: "2026-01-01T00:00:00+05:30" }), 1767225600000],
+    [um({ usernameStatus: "claimed", usernameBase: "zoë", usernameClaimExpiresAt: "1970-01-02" }), 0], // date-only UTC
+  ],
+  [5, ["zoë", true], ["zoë", false], ["a b", true], ["", false]],
+]);
+runPN("pn_generated_resolve", [
+  [6, "AnonAmethyst", "AnonAmethyst9", "AnonAmethyst99", "AnonCat", "AnonCat1", "AnonCat12", "AnonZzz", "anonAmethyst", "Anon", "Anon1", "", "AnonAmethystx"],
+  [
+    7,
+    { verifiedName: "zoë", verifiedOptIn: true, storedName: "typed", persona: null, generatedName: "AnonAmethyst" },
+    { verifiedName: "zoë", verifiedOptIn: false, storedName: "  typed  ", persona: null, generatedName: "AnonAmethyst" },
+    { verifiedName: null, verifiedOptIn: true, storedName: "   ", persona: "Ada🔥Lovelace", generatedName: "AnonAmethyst" },
+    { verifiedName: null, verifiedOptIn: true, storedName: null, persona: "★★★★", generatedName: "AnonAmethyst" },
+    { verifiedName: null, verifiedOptIn: false, storedName: null, persona: null, generatedName: "AnonAmethyst" },
+    { verifiedName: "zoë", verifiedOptIn: true, storedName: "x".repeat(25), persona: null, generatedName: "AnonAmethyst" },
+    { verifiedName: null, verifiedOptIn: false, storedName: "x".repeat(25), persona: null, generatedName: "AnonAmethyst" },
+  ],
+]);
+runPN("pn_persona", [
+  [
+    8,
+    null,
+    undefined,
+    "",
+    "Ada🔥Lovelace",
+    "★★★★",
+    "  spaces  ",
+    "ab",
+    "Ada Lovelace the Countess xx",
+    "\u{1F600}\u{1F600}\u{1F600}",
+    "Zoë",
+    "a.b-c_d",
+    "Müller",
+    " em thick", // U+2003 / U+2007 are \s -> collapse
+    "nel", // U+0085 is NOT \s, not renderable -> space
+    "﻿zwsp", // U+FEFF IS \s -> trimmed away
+    "  ...  ",
+    "😀😀😀x",
+  ],
+]);
+runPN("pn_iso_due", [
+  [9, "1970-01-02", "2026-02-30", "2026-02-29", "2026-13-01", "2026-01-01T00:00:00.1234Z", "2026-01-01T00:00:00+05:30", "garbage", "1970-01-02Z", "2026-01-01t00:00:00Z", "2026-01-01T00:00:00-00:00", "9999-12-31T23:59:59.999Z", "0000-01-01", "2026-00-01", "2026-01-00", "2026-01-01T25:00:00Z", "2026-01-01T00:61:00Z", "2026-01-01T00:00:00Z", "2026-01-01T00:00:00.9999Z", "2026-01-01T00:00:00+5:30", "2026-01-01T00:00:00+0530", "2026-01-01T00:00:00.Z", "2026-01-01T00:00:00Zjunk", "+275760-09-14"],
+  [
+    10,
+    [um({ usernameStatus: "premium", username: "zoë", usernameBase: "zoë" }), null, 0], // eligible -> false
+    [um({ usernameStatus: "free", username: "Ninja", usernameBase: "Ninja" }), null, 0], // no grace -> false
+    [
+      um({ usernameStatus: "claimed", usernameBase: "zoë", usernameClaimExpiresAt: "2026-01-01T00:00:00Z" }),
+      "zoë:atrisk",
+      1767225600000,
+    ], // marker matches -> false
+    [
+      um({ usernameStatus: "claimed", usernameBase: "zoë", usernameClaimExpiresAt: "2026-01-01T00:00:00Z" }),
+      "zoë:reserved",
+      1767225600000,
+    ], // phase changed -> true
+    [
+      um({ usernameStatus: "claimed", usernameBase: "zoë", usernameClaimExpiresAt: "2026-01-01T00:00:00Z" }),
+      null,
+      1000,
+    ], // never announced -> true
+  ],
+  [11],
+]);
+
+// --- S12: GameModeSelector.ts + DesktopShell.ts gates -------------------------
+// Kind table (matches `game_mode_gate::run_op`): 0 multiplayerAllowedFor-
+// Backend batch (outage); 1 multiplayerAllowed batch (codec update); 2
+// multiplayerAllowedForSession batch; 3 shouldBlockMultiplayerAction batch
+// (update|null, session|null, outage); 4 lobbyFeedSuspended batch; 5
+// shouldBlockSocketSourcedAction batch; 6 joinIsGateable batch (codec
+// lobby); 7 shouldBlockJoin batch (lobby, update|null, session|null); 8
+// failedAllowsMultiplayer batch (codec kind|null|undefined).
+const gmsScenarios = [];
+let gmsIdx = 0;
+function runGMS(name, ops) {
+  const played = [];
+  for (const [k, ...a] of ops) {
+    let args;
+    let res;
+    if (k === 0) {
+      args = [a.length, ...a.map((v) => (v ? 1 : 0))];
+      res = [a.length, ...a.map((v) => (GMS.multiplayerAllowedForBackend(v) ? 1 : 0))];
+    } else if (k === 1) {
+      args = [a.length, ...a.flatMap((u) => encVal(u))];
+      res = [a.length, ...a.map((u) => (DS.multiplayerAllowed(u) ? 1 : 0))];
+    } else if (k === 2) {
+      args = [a.length, ...a.flatMap((s) => encVal(s))];
+      res = [a.length, ...a.map((s) => (DS.multiplayerAllowedForSession(s) ? 1 : 0))];
+    } else if (k === 3) {
+      args = [a.length, ...a.flatMap(([u, s, o]) => [...encVal(u), ...encVal(s), o ? 1 : 0])];
+      res = [a.length, ...a.map(([u, s, o]) => (GMS.shouldBlockMultiplayerAction(u, s, o) ? 1 : 0))];
+    } else if (k === 4) {
+      args = [a.length, ...a.flatMap((s) => encVal(s))];
+      res = [a.length, ...a.map((s) => (GMS.lobbyFeedSuspended(s) ? 1 : 0))];
+    } else if (k === 5) {
+      args = [a.length, ...a.flatMap(([u, s]) => [...encVal(u), ...encVal(s)])];
+      res = [a.length, ...a.map(([u, s]) => (GMS.shouldBlockSocketSourcedAction(u, s) ? 1 : 0))];
+    } else if (k === 6) {
+      args = [a.length, ...a.flatMap((l) => encVal(l))];
+      res = [a.length, ...a.map((l) => (GMS.joinIsGateable(l) ? 1 : 0))];
+    } else if (k === 7) {
+      args = [a.length, ...a.flatMap(([l, u, s]) => [...encVal(l), ...encVal(u), ...encVal(s)])];
+      res = [a.length, ...a.map(([l, u, s]) => (GMS.shouldBlockJoin(l, u, s) ? 1 : 0))];
+    } else if (k === 8) {
+      args = [a.length, ...a.flatMap((kd) => encVal(kd))];
+      res = [a.length, ...a.map((kd) => (DS.failedAllowsMultiplayer(kd) ? 1 : 0))];
+    } else throw new Error("gms: bad op kind " + k);
+    played.push({ kind: k, args: args.flat().map(uenc), res: res.flat().map(uenc) });
+  }
+  gmsScenarios.push({ name: `${name}_${gmsIdx++}`, ops: played });
+}
+runGMS("gms_update", [
+  [0, [false, true]],
+  [
+    1,
+    { status: "current" },
+    { status: "checking" },
+    { status: "blocked" },
+    { status: "downloading" },
+    { status: "staged" },
+    { status: "failed" }, // error absent -> kind undefined -> allowed
+    { status: "failed", error: { kind: "refused" } },
+    { status: "failed", error: { kind: "parse" } },
+    { status: "failed", error: { kind: "network" } },
+    { status: "failed", error: { kind: "verify" } },
+    { status: "failed", error: { kind: "future-kind" } },
+    { status: "failed", error: {} },
+    { status: "failed", error: null },
+    { status: "failed", error: { kind: null } },
+    { status: "failed", error: { kind: undefined } },
+    { status: "failed", error: "string-err" },
+    { status: "unknown-status" },
+    { status: "" },
+    { status: undefined },
+    {},
+  ],
+  [
+    8,
+    undefined,
+    "refused",
+    "parse",
+    "network",
+    "verify",
+    "future-kind",
+    null,
+    "",
+    0,
+    { nested: 1 },
+  ],
+]);
+runGMS("gms_session_blocks", [
+  [2, null, { status: "unknown" }, { status: "signed-in" }, { status: "retrying" }, { status: "signed-out" }, { status: "bogus" }, {}],
+  [4, null, { status: "unknown" }, { status: "signed-in" }, { status: "retrying" }, { status: "signed-out" }, {}],
+  [
+    3,
+    [null, null, false],
+    [null, null, true],
+    [{ status: "failed", error: { kind: "network" } }, null, false],
+    [null, { status: "signed-out" }, false],
+    [{ status: "downloading" }, { status: "unknown" }, false],
+    [{ status: "current" }, { status: "unknown" }, false],
+    [{ status: "current" }, { status: "unknown" }, true],
+    [{ status: "failed" }, { status: "signed-in" }, false], // failed+no kind -> allowed
+    [null, { status: "retrying" }, true],
+  ],
+  [
+    5,
+    [null, null],
+    [{ status: "downloading" }, null],
+    [null, { status: "signed-out" }],
+    [{ status: "current" }, { status: "signed-in" }],
+    [{ status: "current" }, { status: "signed-in" }],
+    [{ status: "failed", error: { kind: "verify" } }, { status: "unknown" }],
+  ],
+]);
+runGMS("gms_join", [
+  [
+    6,
+    {}, // no gameStartInfo -> undefined !== Singleplayer -> gateable
+    { gameStartInfo: { config: { gameType: GAME.GameType.Singleplayer } } },
+    { gameStartInfo: { config: { gameType: GAME.GameType.Ranked } } },
+    // NOTE: `{ gameStartInfo: {} }` (config absent) throws in TS — the `?.`
+    // guards only gameStartInfo. Outside the PublicGameInfo domain, so it is
+    // not captured.
+    { gameStartInfo: { config: {} } },
+    { gameStartInfo: { config: { gameType: undefined } } },
+    { gameRecord: undefined }, // present-undefined === undefined -> gateable
+    { gameRecord: { id: "g" } }, // -> not gateable
+    { gameStartInfo: { config: { gameType: GAME.GameType.Ranked } }, gameRecord: null }, // null !== undefined -> gateable
+    { gameStartInfo: { config: { gameType: "Singleplayer" } }, gameRecord: { id: "g" } },
+  ],
+  [
+    7,
+    [{ gameStartInfo: { config: { gameType: GAME.GameType.Singleplayer } } }, { status: "downloading" }, { status: "signed-out" }], // not gateable -> false
+    [{ gameStartInfo: { config: { gameType: GAME.GameType.Ranked } } }, { status: "downloading" }, null],
+    [{ gameStartInfo: { config: { gameType: GAME.GameType.Ranked } } }, null, { status: "signed-out" }],
+    [{}, null, null], // gateable, all clear -> false
+    [{ gameRecord: { id: "g" } }, { status: "failed", error: { kind: "network" } }, null], // replay -> false
+  ],
+]);
+
 const structures = {
   votetally: vtScenarios,
   rankedcheckin: rgScenarios,
@@ -16671,6 +17584,16 @@ const structures = {
   affiliationpalette: afpScenarios,
   utilsformat: ufScenarios,
   utilsnav: unScenarios,
+  accountidentity: aiScenarios,
+  versionedreplay: vrScenarios,
+  gameversion: gvScenarios,
+  bootinterrupts: biScenarios,
+  maplayersettings: mlsScenarios,
+  fxsettings: fxsScenarios,
+  atlasdata: atdScenarios,
+  effecteditorstate: eesScenarios,
+  playername: pnScenarios,
+  gamemodegate: gmsScenarios,
 };
 
 // ================================================================ JSON
@@ -19862,6 +20785,92 @@ opStream(
     "/// explicit-undefined consume the scripted now, 1 explicit number\n" +
     "/// never does; res[0] echoes the cumulative consumption), 5\n" +
     "/// apexPathFor, 6 getDiscordAvatarUrl. Strings ride the js_json codec.",
+);
+
+// ---- S12 client identity / name / gate / editor emitters ---------------------
+opStream(
+  "accountidentity",
+  "Ai",
+  "/// One `client/AccountIdentity.ts` op (see `account_identity::run_op`\n" +
+    "/// docs). kind 0 isSteamPrimaryUser, 1 hasLinkedIdentity, 2\n" +
+    "/// responseHasLinkedIdentity - each a codec-value batch -> 0|1.",
+);
+opStream(
+  "versionedreplay",
+  "Vr",
+  "/// One `client/VersionedReplay.ts` op (see `versioned_replay::run_op`\n" +
+    "/// docs). kind 0 versionedReplayUrl single (codec audience, gameID) ->\n" +
+    "/// codec url|null, 1 isReplayShellHost batch.",
+);
+opStream(
+  "gameversion",
+  "Gv",
+  "/// One `client/GameVersion.ts` op (see `game_version::run_op` docs). kind 0\n" +
+    "/// composeGameVersion single (raw UTF-16 unit strings), 1\n" +
+    "/// taggedGameVersion batch.",
+);
+opStream(
+  "bootinterrupts",
+  "Bi",
+  "/// One `client/BootInterrupts.ts` op (see `boot_interrupts::run_op` docs).\n" +
+    "/// kind 0 isCleanHomepage, 1 bootInterruptsAllowed, 2\n" +
+    "/// joinOwnsInFlightFlag, 3 nextBootInterrupt (codec status/username/\n" +
+    "/// base), 4 parseClaimPromptStore (codec str|null -> codec maps), 5\n" +
+    "/// claimPromptDue (map, now, pubId), 6 claimPromptShown (codec maps -\n" +
+    "/// pins the Array#sort prune-and-rebuild order), 7 claimPromptStringsReady\n" +
+    "/// (translate stub outcomes), 8 constants dump.",
+);
+opStream(
+  "maplayersettings",
+  "Mls",
+  "/// One `client/MapLayerSettings.ts` op (see `map_layer_settings::run_op`\n" +
+    "/// docs). kind 0 isLayerVisible (codec overrides, layerId), 1 layerAlpha\n" +
+    "/// (+ codec manifestDefault; an omitted argument rides [1] undefined).",
+);
+opStream(
+  "fxsettings",
+  "Fxs",
+  "/// One `client/render/gl/passes/fx-pass/FxSettings.ts` op (see\n" +
+    "/// `fx_settings::run_op` docs). kind 0 nukeExplosionRadius (codec fx,\n" +
+    "/// codec unitType) -> codec value.",
+);
+opStream(
+  "atlasdata",
+  "Atd",
+  "/// One `client/render/gl/passes/name-pass/AtlasData.ts` op (see\n" +
+    "/// `atlas_data::run_op` docs). kind 0 buildGlyphTables batch -> the FULL\n" +
+    "/// 3x384 Float32Array contents, 1 buildKernTable batch -> sparse nonzero\n" +
+    "/// dump (Int8Array wrap), 2 CHAR_RANGE.",
+);
+opStream(
+  "effecteditorstate",
+  "Ees",
+  "/// One `client/render/gl/debug/EffectEditorState.ts` op (see\n" +
+    "/// `effect_editor_state::run_op` docs). kind 0 maxColorsFor, 1\n" +
+    "/// EFFECT_EDITOR_TYPES dump, 2 defaultSlotState (a bogus slot throws in\n" +
+    "/// TS -> [1] undefined), 3 fieldsForType, 4 EFFECT_EDITOR_MAX_COLORS.",
+);
+opStream(
+  "playername",
+  "Pn",
+  "/// One `client/PlayerName.ts` op (see `player_name::run_op` docs). kind 0\n" +
+    "/// clampUsername, 1 accountVerifiedName, 2 accountNameHeld, 3\n" +
+    "/// verifiedNameOptIn, 4 verifiedClaimGrace (now_ms explicit; res codec\n" +
+    "/// null|{name, expiresAt, atRisk}), 5 lapseNoticeMarker, 6\n" +
+    "/// looksGenerated, 7 resolvePlayerName, 8 sanitizePersona, 9\n" +
+    "/// new Date(iso).getTime() golden (V8 Date.parse domain incl. the\n" +
+    "/// accepted forms iso_to_epoch_ms models), 10 lapseNoticeDue, 11\n" +
+    "/// constants.",
+);
+opStream(
+  "gamemodegate",
+  "Gms",
+  "/// One `client/GameModeSelector.ts` + `DesktopShell.ts` gate op (see\n" +
+    "/// `game_mode_gate::run_op` docs). kind 0 multiplayerAllowedForBackend,\n" +
+    "/// 1 multiplayerAllowed (codec update), 2 multiplayerAllowedForSession,\n" +
+    "/// 3 shouldBlockMultiplayerAction, 4 lobbyFeedSuspended, 5\n" +
+    "/// shouldBlockSocketSourcedAction, 6 joinIsGateable, 7 shouldBlockJoin, 8\n" +
+    "/// failedAllowsMultiplayer (codec kind|null|undefined).",
 );
 
 const dataDir = join(root, "crates", "core", "tests", "data");

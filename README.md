@@ -1807,9 +1807,83 @@ WebSockets — stays excluded, mirroring the `src/core` exclusions).
     `showToast`/`showToastAfterReload`/`flushReloadToast`, `reloadForUpdate`,
     `homeHref`, `isInIframe`, `getGamesPlayed`/`incrementGamesPlayed`,
     `getModifierKey`/`getAltKey` — DOM/window/`Platform`/`sessionStorage`
-    touches with no pure residue). With this the client's portable surface is
-    exhausted. 50 scenarios (`su_` 3, `cam_` 9, `txl_` 4, `cu_` 6, `cvs_` 4,
-    `afp_` 6, `uf_` 7, `un_` 11).
+    touches with no pure residue). 50 scenarios (`su_` 3, `cam_` 9, `txl_` 4,
+    `cu_` 6, `cvs_` 4, `afp_` 6, `uf_` 7, `un_` 11). (The "exhausted" claim
+    made here was premature — the S12 survey below found ten further pure
+    client modules.)
+
+69. **`client/AccountIdentity.ts` + `client/VersionedReplay.ts` +
+    `client/GameVersion.ts` + `client/BootInterrupts.ts` +
+    `client/MapLayerSettings.ts` +
+    `client/render/gl/passes/fx-pass/FxSettings.ts` +
+    `client/render/gl/passes/name-pass/AtlasData.ts` +
+    `client/render/gl/debug/EffectEditorState.ts` + `client/PlayerName.ts` +
+    the pure gates of `client/GameModeSelector.ts` /
+    `client/DesktopShell.ts`**
+    (`account_identity`, `versioned_replay`, `game_version`,
+    `boot_interrupts`, `map_layer_settings`, `fx_settings`, `atlas_data`,
+    `effect_editor_state`, `player_name`, `game_mode_gate`) — the S12 client
+    batch: ten more pure modules, all stateless `run_op` runners.
+    `AccountIdentity` — `isSteamPrimaryUser` guards `user?.steam` then TRUTHY
+    on the rest, while `hasLinkedIdentity` uses `!== undefined` PRESENCE
+    checks (a present `null` discord counts as linked!) and
+    `(email ?? "") !== ""`; `responseHasLinkedIdentity` gates `!== false`
+    STRICTLY. `VersionedReplay` — strict `audience === "" || === "localhost"`
+    dev gate then template-concat, case-sensitive `startsWith("replay.")`.
+    `GameVersion` — the UNANCHORED `/^v?\d+\.\d+\.\d+/` tail and the
+    lowercase-only `startsWith("v")` prefix gate (`"V1.2.3"` fails the regex
+    and gets a `v` PREPENDED → `"vV1.2.3"`); the env/DOM readers
+    (`currentGameVersion`/`renderNavVersion`/`currentGitCommit`) stay in TS.
+    `BootInterrupts` — the `nextBootInterrupt` gate-order contract (clean
+    homepage, entitled+TEMPORARY base, entitled+`!username` TRUTHY + due +
+    strings-ready, lapse, `rewardCount > 0`), the STRICT `lobbyHandle ===
+    null` gate (`undefined` does NOT pass), `joinOwnsInFlightFlag` `===` on
+    numbers (`NaN === NaN` false), and the claim-prompt decay store: the
+    strict-JSON parser models the `JSON.parse` throw, entries rebuild through
+    `map_set_v8` (canonical decimal integer keys sort NUMERICALLY FIRST), and
+    `claimPromptShown`'s subtraction-comparator sort + `slice(0, 7)` prune +
+    rebuild order is PINNED by the golden (scripted ties, a future-timestamp
+    pin, an absent-field NaN comparator — Rust's stable `sort_by` matches
+    V8's stable `Array#sort`). `MapLayerSettings` — the `?.`/`??` chains
+    return the RAW codec value (a non-boolean passes `??` untouched; an
+    omitted `manifestDefault` argument rides `[1]` undefined). `FxSettings` —
+    the `===` unit-type switch (`Atom Bomb`/`Hydrogen Bomb`/`MIRV Warhead`),
+    anything else `undefined`; a null `fx` throws in TS (outside the typed
+    domain, not captured). `AtlasData` — the two CPU table builders: the
+    `ch.id < CHAR_RANGE` gate lets negatives through (the typed-array element
+    write at a negative/fractional index is a silently DROPPED non-index key),
+    Float32 writes through `to_float32`, `Int8Array` amount writes through the
+    new `to_int8` (trunc-then-mod-256, signed reinterpret), the kern dump
+    SPARSE (nonzero cells only) plus the table length. `EffectEditorState` —
+    strict-`===` `maxColorsFor`, the 7-key `EFFECT_EDITOR_TYPES` insertion-
+    order dump, `defaultSlotState` crossing as a BARE map (the `push_map`
+    convention: the capture records `encMap`, not `encVal`), `fieldsForType`
+    as an insertion-order Set (re-add keeps the FIRST position); a bogus slot
+    throws in TS → `[1]` undefined is the runner's `undefined` return.
+    `PlayerName` — UTF-16-unit `clampUsername`/`truncateToCap` (a cut can
+    SPLIT a surrogate pair), `Array.from` CODE-POINT iteration in
+    `sanitizePersona` (one space per pair, never two), the JS `\s` set (U+0085
+    NOT whitespace, U+FEFF IS), `looksGenerated`'s greedy-`[A-Za-z]+`
+    backtracking (`AnonCat12` no, `AnonCat1` yes); the two `Date`-dependent
+    functions (`verifiedClaimGrace`, `lapseNoticeDue`) take the `now`
+    EXPLICITLY in the runner (JS default arguments fire only on `undefined`)
+    and `new Date(iso).getTime()` is modelled by `iso_to_epoch_ms` over the
+    V8 `Date.parse` domain — pinned by a 23-string kind-9 golden (date-only
+    and `…Z`/`…z` are UTC, `±hhmm` without the colon is ACCEPTED, `Zjunk` is
+    NaN, `+5:30` is NaN, day overflow is tolerated `2026-02-30` → Mar 2,
+    fractional seconds keep the first three digits); the crypto
+    (`genAnonUsername`/`fallbackPlayerName`) and NFKD
+    (`sanitizeAccountPersona`) functions stay in TS; a `{}` `userMe` throws a
+    TypeError in TS (outside the `UserMeResponse` domain, not captured).
+    `GameModeGate` — the status/session/outage allow-list tables
+    (`failedAllowsMultiplayer`'s `default` → false), `joinIsGateable`'s
+    optional chain where an absent `gameStartInfo` makes `undefined !==
+    "Singleplayer"` TRUE (the gate PASSES), and the ordered short-circuit
+    block helpers; the lit component, the refusal feedback and the effectful
+    ServerList reads stay in TS, and a `{ gameStartInfo: {} }` lobby throws
+    (`?.` guards only `gameStartInfo`, not `config.gameType`) — not captured.
+    31 scenarios (`ai_` 2, `vr_` 2, `gv_` 2, `bi_` 7, `mls_` 2, `fxs_` 1,
+    `atd_` 3, `ees_` 3, `pn_` 6, `gms_` 3).
 
 Regenerate whenever a ported source changes:
 
@@ -1843,7 +1917,7 @@ node rust/tools/run_wasm_parity.mjs
 
 `wasm-probe` exposes the ported functions through `extern "C"` scalar
 entrypoints (`src/wasm_probe.rs`); the runner imports `data/vectors.json` and
-compares every value. Last run: **301,530 comparisons, all bit-identical**.
+compares every value. Last run: **307,077 comparisons, all bit-identical**.
 
 ### Windows: the linker environment
 

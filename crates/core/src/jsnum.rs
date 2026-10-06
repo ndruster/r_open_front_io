@@ -54,6 +54,14 @@ pub fn to_uint8(v: f64) -> u8 {
     n.rem_euclid(256.0) as u8
 }
 
+/// `ToInt8`: typed-array write into an `Int8Array` — the same
+/// trunc-then-modulo contract as [`to_uint8`] reinterpreted as signed
+/// (`-3` stores `253`, `256` stores `0`, `NaN` stores `0`).
+#[inline]
+pub fn to_int8(v: f64) -> i8 {
+    to_uint8(v) as i8
+}
+
 /// JS `Math.round`: round half **up** (toward +Infinity), so `round(-0.5)`
 /// is `-0` and `round(-1.5)` is `-1` — unlike Rust's `f64::round` which
 /// rounds half away from zero. Implemented as `floor(x) + (x - floor(x) >=

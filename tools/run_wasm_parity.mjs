@@ -161,6 +161,16 @@ for (const name of [
   "probe_afp_reset", "probe_afp_arg", "probe_afp_op", "probe_afp_out_at",
   "probe_uf_reset", "probe_uf_arg", "probe_uf_op", "probe_uf_out_at",
   "probe_un_reset", "probe_un_arg", "probe_un_op", "probe_un_out_at",
+  "probe_ai_reset", "probe_ai_arg", "probe_ai_op", "probe_ai_out_at",
+  "probe_vr_reset", "probe_vr_arg", "probe_vr_op", "probe_vr_out_at",
+  "probe_gv_reset", "probe_gv_arg", "probe_gv_op", "probe_gv_out_at",
+  "probe_bi_reset", "probe_bi_arg", "probe_bi_op", "probe_bi_out_at",
+  "probe_mls_reset", "probe_mls_arg", "probe_mls_op", "probe_mls_out_at",
+  "probe_fxs_reset", "probe_fxs_arg", "probe_fxs_op", "probe_fxs_out_at",
+  "probe_atd_reset", "probe_atd_arg", "probe_atd_op", "probe_atd_out_at",
+  "probe_ees_reset", "probe_ees_arg", "probe_ees_op", "probe_ees_out_at",
+  "probe_pn_reset", "probe_pn_arg", "probe_pn_op", "probe_pn_out_at",
+  "probe_gms_reset", "probe_gms_arg", "probe_gms_op", "probe_gms_out_at",
 ]) {
   if (typeof ex[name] !== "function") {
     console.error(`missing wasm export ${name} - rebuild with --features wasm-probe`);
@@ -2553,6 +2563,38 @@ for (const [key, reset, arg, op, outAt] of [
   ["affiliationpalette", "probe_afp_reset", "probe_afp_arg", "probe_afp_op", "probe_afp_out_at"],
   ["utilsformat", "probe_uf_reset", "probe_uf_arg", "probe_uf_op", "probe_uf_out_at"],
   ["utilsnav", "probe_un_reset", "probe_un_arg", "probe_un_op", "probe_un_out_at"],
+]) {
+  for (const s of S[key]) {
+    ex[reset]();
+    for (const o of s.ops) {
+      for (const a of o.args) ex[arg](numTok(a));
+      const len = Number(ex[op](o.kind));
+      if (len !== o.res.length) {
+        fail(`${s.name} op${o.kind} res len`, 0, len, o.res.length);
+        continue;
+      }
+      for (let i = 0; i < len; i++) {
+        checks++;
+        const g = ex[outAt](i);
+        const w = numTok(o.res[i]);
+        if (!Object.is(g, w)) fail(`${s.name} op${o.kind} res[${i}]`, 0, g, w);
+      }
+    }
+  }
+}
+
+// --- S12: client identity / name / gate / editor modules ---------------------
+for (const [key, reset, arg, op, outAt] of [
+  ["accountidentity", "probe_ai_reset", "probe_ai_arg", "probe_ai_op", "probe_ai_out_at"],
+  ["versionedreplay", "probe_vr_reset", "probe_vr_arg", "probe_vr_op", "probe_vr_out_at"],
+  ["gameversion", "probe_gv_reset", "probe_gv_arg", "probe_gv_op", "probe_gv_out_at"],
+  ["bootinterrupts", "probe_bi_reset", "probe_bi_arg", "probe_bi_op", "probe_bi_out_at"],
+  ["maplayersettings", "probe_mls_reset", "probe_mls_arg", "probe_mls_op", "probe_mls_out_at"],
+  ["fxsettings", "probe_fxs_reset", "probe_fxs_arg", "probe_fxs_op", "probe_fxs_out_at"],
+  ["atlasdata", "probe_atd_reset", "probe_atd_arg", "probe_atd_op", "probe_atd_out_at"],
+  ["effecteditorstate", "probe_ees_reset", "probe_ees_arg", "probe_ees_op", "probe_ees_out_at"],
+  ["playername", "probe_pn_reset", "probe_pn_arg", "probe_pn_op", "probe_pn_out_at"],
+  ["gamemodegate", "probe_gms_reset", "probe_gms_arg", "probe_gms_op", "probe_gms_out_at"],
 ]) {
   for (const s of S[key]) {
     ex[reset]();

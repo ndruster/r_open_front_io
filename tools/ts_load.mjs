@@ -3863,6 +3863,253 @@ function prepare(rel) {
     );
   }
 
+  // ============================ S12 ============================
+
+  if (rel.endsWith("core/validations/username.ts")) {
+    // S12: PlayerName's constants / charset regexes live here. zod gets the
+    // same inert-Proxy shim as core/ApiSchemas (the AccountUsernameSchema
+    // chain is never parsed by the capture); translateText only runs inside
+    // the unported validators -> redirect to the prepared Utils copy; the
+    // Schemas value import redirects to the prepared Schemas copy.
+    out = must(
+      out,
+      'import { z } from "zod";\n',
+      "const z = new Proxy(function () {}, {\n" +
+        "  get: (_t, k) => {\n" +
+        "    if (k === \"enum\") {\n" +
+        "      return (a) => {\n" +
+        "        const base = {\n" +
+        "          options: a,\n" +
+        "          exclude: (b) => ({ options: a.filter((o) => !b.includes(o)) }),\n" +
+        "        };\n" +
+        "        return new Proxy(base, { get: (t, kk) => (kk in t ? t[kk] : z), apply: () => z });\n" +
+        "      };\n" +
+        "    }\n" +
+        "    return z;\n" +
+        "  },\n" +
+        "  apply: () => z,\n" +
+        "});\n",
+      "validations/username zod import",
+    );
+    const vuUtilsRel = "src/client/Utils.ts";
+    if (!prepared.has(vuUtilsRel)) prepare(vuUtilsRel);
+    out = must(
+      out,
+      'import { translateText } from "../../client/Utils";\n',
+      `import { translateText } from "./${prepared.get(vuUtilsRel)}";\n`,
+      "validations/username Utils import",
+    );
+    const vuSchemasRel = "src/core/Schemas.ts";
+    if (!prepared.has(vuSchemasRel)) prepare(vuSchemasRel);
+    out = must(
+      out,
+      'import {\n' +
+        "  ClanTagSchema,\n" +
+        "  RENDERABLE_NAME_CHARS,\n" +
+        "  UsernameSchema,\n" +
+        '} from "../Schemas";\n',
+      `import {\n  ClanTagSchema,\n  RENDERABLE_NAME_CHARS,\n  UsernameSchema,\n} from "./${prepared.get(vuSchemasRel)}";\n`,
+      "validations/username Schemas import",
+    );
+  }
+
+  if (rel.endsWith("client/DesktopShell.ts")) {
+    // S12: failedAllowsMultiplayer is module-private, but the gms_ kind-8
+    // batch pins its switch directly -> exported for the capture
+    // (precedent: NukeTelegraphs classifyOwner). No imports; the window
+    // accesses all live inside function bodies the capture never calls.
+    out = must(
+      out,
+      "function failedAllowsMultiplayer(",
+      "export function failedAllowsMultiplayer(",
+      "DesktopShell failedAllowsMultiplayer export",
+    );
+  }
+
+  if (rel.endsWith("client/VersionedReplay.ts")) {
+    // S12: GameID is a branded type alias -> dropped (strip mode cannot see
+    // it is type-only and the Schemas graph is not needed here).
+    out = must(
+      out,
+      'import { GameID } from "../core/Schemas";\n',
+      "",
+      "VersionedReplay GameID import",
+    );
+  }
+
+  if (rel.endsWith("client/GameVersion.ts")) {
+    // S12: only composeGameVersion / taggedGameVersion are ported. The
+    // ?raw version.txt import and the ClientEnv import are dropped;
+    // currentGameVersion / renderNavVersion / currentGitCommit keep their
+    // unresolved identifiers (version / ClientEnv / document) - they are
+    // never invoked by the capture (Utils precedent).
+    out = must(
+      out,
+      'import version from "resources/version.txt?raw";\n' +
+        'import { ClientEnv } from "./ClientEnv";\n',
+      "",
+      "GameVersion imports",
+    );
+  }
+
+  if (rel.endsWith("client/PlayerName.ts")) {
+    // S12: the four value imports ride prepared copies. ANON_WORDS is the
+    // word bank for looksGenerated (anonWordName only appears in the
+    // unported genAnonUsername dead body); isTemporaryUsername gates the
+    // verified / grace branches; the two renderable regexes come from
+    // core/Schemas; the username constants come from the prepared
+    // validations/username copy. UserMeResponse is an explicit type
+    // specifier -> erased.
+    const pnAnonRel = "src/core/AnonNames.ts";
+    if (!prepared.has(pnAnonRel)) prepare(pnAnonRel);
+    const pnApiRel = "src/core/ApiSchemas.ts";
+    if (!prepared.has(pnApiRel)) prepare(pnApiRel);
+    const pnSchRel = "src/core/Schemas.ts";
+    if (!prepared.has(pnSchRel)) prepare(pnSchRel);
+    const pnVuRel = "src/core/validations/username.ts";
+    if (!prepared.has(pnVuRel)) prepare(pnVuRel);
+    out = must(
+      out,
+      'import { ANON_WORDS, anonWordName } from "../core/AnonNames";\n' +
+        'import { isTemporaryUsername, type UserMeResponse } from "../core/ApiSchemas";\n',
+      `import { ANON_WORDS, anonWordName } from "./${prepared.get(pnAnonRel)}";\n` +
+        `import { isTemporaryUsername } from "./${prepared.get(pnApiRel)}";\n`,
+      "PlayerName AnonNames/ApiSchemas imports",
+    );
+    out = must(
+      out,
+      'import {\n' +
+        "  RENDERABLE_NAME_CHAR_RE,\n" +
+        "  RENDERABLE_NAME_HAS_ALNUM_RE,\n" +
+        '} from "../core/Schemas";\n',
+      `import {\n  RENDERABLE_NAME_CHAR_RE,\n  RENDERABLE_NAME_HAS_ALNUM_RE,\n} from "./${prepared.get(pnSchRel)}";\n`,
+      "PlayerName Schemas import",
+    );
+    out = must(
+      out,
+      'import {\n' +
+        "  ACCOUNT_NAME_CHAR_RE,\n" +
+        "  MAX_ACCOUNT_USERNAME_LENGTH,\n" +
+        "  MAX_USERNAME_LENGTH,\n" +
+        "  MIN_ACCOUNT_USERNAME_LENGTH,\n" +
+        "  MIN_USERNAME_LENGTH,\n" +
+        "  validateAccountUsername,\n" +
+        '} from "../core/validations/username";\n',
+      `import {\n  ACCOUNT_NAME_CHAR_RE,\n  MAX_ACCOUNT_USERNAME_LENGTH,\n  MAX_USERNAME_LENGTH,\n  MIN_ACCOUNT_USERNAME_LENGTH,\n  MIN_USERNAME_LENGTH,\n  validateAccountUsername,\n} from "./${prepared.get(pnVuRel)}";\n`,
+      "PlayerName validations import",
+    );
+  }
+
+  if (rel.endsWith("client/BootInterrupts.ts")) {
+    // S12: isTemporaryUsername rides the prepared ApiSchemas copy,
+    // lapseNoticeDue the prepared PlayerName copy (the ranking rule consumes
+    // it as a plain input, but the module graph must load). UserMeResponse
+    // is an explicit type specifier -> erased.
+    const biApiRel = "src/core/ApiSchemas.ts";
+    if (!prepared.has(biApiRel)) prepare(biApiRel);
+    const biPnRel = "src/client/PlayerName.ts";
+    if (!prepared.has(biPnRel)) prepare(biPnRel);
+    out = must(
+      out,
+      'import { isTemporaryUsername, type UserMeResponse } from "../core/ApiSchemas";\n' +
+        'import { lapseNoticeDue } from "./PlayerName";\n',
+      `import { isTemporaryUsername } from "./${prepared.get(biApiRel)}";\n` +
+        `import { lapseNoticeDue } from "./${prepared.get(biPnRel)}";\n`,
+      "BootInterrupts imports",
+    );
+  }
+
+  if (rel.endsWith("fx-pass/FxSettings.ts")) {
+    // S12: the three UT_* constants value-import from the render types
+    // barrel -> redirect to the prepared UnitType.ts copy (S8 precedent);
+    // the RenderSettings import is an explicit `import type` -> erased.
+    out = must(
+      out,
+      'import {\n' +
+        "  UT_ATOM_BOMB,\n" +
+        "  UT_HYDROGEN_BOMB,\n" +
+        "  UT_MIRV_WARHEAD,\n" +
+        '} from "../../../types";\n',
+      `import {\n  UT_ATOM_BOMB,\n  UT_HYDROGEN_BOMB,\n  UT_MIRV_WARHEAD,\n} from "${utImport}";\n`,
+      "FxSettings types import",
+    );
+  }
+
+  if (rel.endsWith("name-pass/AtlasData.ts")) {
+    // S12: the emoji-atlas JSON and the assetUrl imports are dropped -
+    // buildEmojiLookup / preloadAtlasData / parseAtlasData stay in the file
+    // as never-invoked dead bodies with unresolved identifiers (Utils
+    // precedent). CHAR_RANGE is inlined (TextLayout precedent); the BMChar
+    // / BMKerning / ParsedAtlas import is an explicit `import type` ->
+    // erased.
+    out = must(
+      out,
+      'import emojiAtlasMeta from "resources/atlases/emoji-atlas-meta.json";\n' +
+        'import { assetUrl } from "src/core/AssetUrls";\n',
+      "",
+      "AtlasData resource imports",
+    );
+    out = must(
+      out,
+      'import { CHAR_RANGE } from "./Types";\n',
+      "const CHAR_RANGE = 384;\n",
+      "AtlasData Types import",
+    );
+  }
+
+  if (rel.endsWith("gl/debug/EffectEditorState.ts")) {
+    // S12: the CosmeticSchemas value import (NUKE_EXPLOSION_TYPES /
+    // TRAIL_EFFECT_TYPES and the three schemas, the last two only used by
+    // the unported slotAttributes) rides the prepared copy whose zod / jose
+    // graph is already shimmed; MAX_NUKE_EXPLOSION_COLORS comes from the
+    // render types barrel -> redirect to the prepared Renderer.ts copy.
+    const eesCosRel = "src/core/CosmeticSchemas.ts";
+    if (!prepared.has(eesCosRel)) prepare(eesCosRel);
+    out = must(
+      out,
+      '} from "../../../../core/CosmeticSchemas";\n',
+      `} from "./${prepared.get(eesCosRel)}";\n`,
+      "EffectEditorState CosmeticSchemas import",
+    );
+    const eesRenRel = "src/client/render/types/Renderer.ts";
+    if (!prepared.has(eesRenRel)) prepare(eesRenRel);
+    out = must(
+      out,
+      'import { MAX_NUKE_EXPLOSION_COLORS } from "../../types";\n',
+      `import { MAX_NUKE_EXPLOSION_COLORS } from "./${prepared.get(eesRenRel)}";\n`,
+      "EffectEditorState types import",
+    );
+  }
+
+  if (rel.endsWith("client/GameModeSelector.ts")) {
+    // S12: only the pure gate functions are ported. The whole import block
+    // (up to the first module-scope const) is replaced: GameType rides the
+    // prepared Game.ts copy (joinIsGateable compares the string enum
+    // value), multiplayerAllowed / multiplayerAllowedForSession ride the
+    // prepared DesktopShell.ts copy. Every other imported name is only
+    // referenced from the deleted class body or the never-invoked
+    // reportMultiplayerRefusal - unresolved identifiers there are harmless
+    // (Utils precedent). The @customElement class and everything after it
+    // are sliced off (GraphicsPresets precedent).
+    const gmsGameRel = "src/core/game/Game.ts";
+    if (!prepared.has(gmsGameRel)) prepare(gmsGameRel);
+    const gmsDsRel = "src/client/DesktopShell.ts";
+    if (!prepared.has(gmsDsRel)) prepare(gmsDsRel);
+    const head = out.indexOf("const PRIMARY_ACTION");
+    if (head === -1) {
+      throw new Error("ts_load: GameModeSelector PRIMARY_ACTION not found");
+    }
+    out =
+      `import { GameType } from "./${prepared.get(gmsGameRel)}";\n` +
+      `import {\n  multiplayerAllowed,\n  multiplayerAllowedForSession,\n} from "./${prepared.get(gmsDsRel)}";\n\n` +
+      out.slice(head);
+    const cls = out.indexOf('@customElement("game-mode-selector")');
+    if (cls === -1) {
+      throw new Error("ts_load: GameModeSelector class anchor not found");
+    }
+    out = out.slice(0, cls);
+  }
+
   mkdirSync(cacheDir, { recursive: true });
   const hash = createHash("sha1").update(out).digest("hex").slice(0, 10);
   const base = `${basename(rel, ".ts")}-${hash}.ts`;

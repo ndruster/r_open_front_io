@@ -148,6 +148,11 @@ for (const name of [
   "probe_pst_reset", "probe_pst_arg", "probe_pst_op", "probe_pst_out_at",
   "probe_rmx_reset", "probe_rmx_arg", "probe_rmx_op", "probe_rmx_out_at",
   "probe_trs_reset", "probe_trs_arg", "probe_trs_op", "probe_trs_out_at",
+  "probe_nt_reset", "probe_nt_arg", "probe_nt_op", "probe_nt_out_at",
+  "probe_pg_reset", "probe_pg_arg", "probe_pg_op", "probe_pg_out_at",
+  "probe_sst_reset", "probe_sst_arg", "probe_sst_op", "probe_sst_out_at",
+  "probe_nb_reset", "probe_nb_arg", "probe_nb_op", "probe_nb_out_at",
+  "probe_gch_reset", "probe_gch_arg", "probe_gch_op", "probe_gch_out_at",
 ]) {
   if (typeof ex[name] !== "function") {
     console.error(`missing wasm export ${name} - rebuild with --features wasm-probe`);
@@ -2483,6 +2488,33 @@ for (const [key, reset, arg, op, outAt] of [
   ["playerprofileurl", "probe_ppu_reset", "probe_ppu_arg", "probe_ppu_op", "probe_ppu_out_at"],
   ["pagepin", "probe_ppn_reset", "probe_ppn_arg", "probe_ppn_op", "probe_ppn_out_at"],
   ["creatorcode", "probe_ccc_reset", "probe_ccc_arg", "probe_ccc_op", "probe_ccc_out_at"],
+]) {
+  for (const s of S[key]) {
+    ex[reset]();
+    for (const o of s.ops) {
+      for (const a of o.args) ex[arg](numTok(a));
+      const len = Number(ex[op](o.kind));
+      if (len !== o.res.length) {
+        fail(`${s.name} op${o.kind} res len`, 0, len, o.res.length);
+        continue;
+      }
+      for (let i = 0; i < len; i++) {
+        checks++;
+        const g = ex[outAt](i);
+        const w = numTok(o.res[i]);
+        if (!Object.is(g, w)) fail(`${s.name} op${o.kind} res[${i}]`, 0, g, w);
+      }
+    }
+  }
+}
+
+// --- S10: client trajectory/presets/config modules --------------------------
+for (const [key, reset, arg, op, outAt] of [
+  ["nuketrajectory", "probe_nt_reset", "probe_nt_arg", "probe_nt_op", "probe_nt_out_at"],
+  ["presencegroup", "probe_pg_reset", "probe_pg_arg", "probe_pg_op", "probe_pg_out_at"],
+  ["stablestringify", "probe_sst_reset", "probe_sst_arg", "probe_sst_op", "probe_sst_out_at"],
+  ["nameboxcalculator", "probe_nb_reset", "probe_nb_arg", "probe_nb_op", "probe_nb_out_at"],
+  ["gameconfighelpers", "probe_gch_reset", "probe_gch_arg", "probe_gch_op", "probe_gch_out_at"],
 ]) {
   for (const s of S[key]) {
     ex[reset]();

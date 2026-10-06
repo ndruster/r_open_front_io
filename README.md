@@ -1633,6 +1633,73 @@ WebSockets — stays excluded, mirroring the `src/core` exclusions).
     layers, and everything else host-bound (all host touches ride the traced
     facades). 46 scenarios (`stp_` 7, `tlm_` 6, `rlc_` 5, `ppu_` 4, `ppn_` 6,
     `ccc_` 18).
+67. **`client/render/gl/utils/NukeTrajectory.ts` + `client/PresenceGroup.ts`
+    + `client/GraphicsPresets.ts` (stableStringify subset)
+    + `client/hud/NameBoxCalculator.ts` (pure-geometry subset)
+    + `client/utilities/GameConfigHelpers.ts` (non-DOM subset)**
+    (`nuke_trajectory`, `presence_group`, `stable_stringify`,
+    `name_box_calculator`, `game_config_helpers`) — the S10 client cluster:
+    pure trajectory math, presence-token rules, the preset serializer subset,
+    the name-box geometry and the config helpers. `NukeTrajectory` is all-f64:
+    `samRange(-5)` divides by zero → `-Infinity` (JS never throws), the `clamp`
+    ternary chain passes NaN through, `computeNukeControlPoints` uses a plain
+    `sqrt` (NOT `Math.hypot` — the last bits differ) with `js_max(dist/3, 50)`
+    and the `js_max/js_min` NaN propagation, `refineCrossing` runs the Horner
+    `(((A*t+B)*t+C)*t+D+0.5)|0` evaluation (ToInt32 truncation toward zero)
+    through 10 bisection steps with the false-alarm `return 1.0` fallback,
+    `hasUntargetable` gates on the STRICT `distSq > 4*RANGE_SQ` (the exact
+    boundary is targetable — `nt_thresholds_plain` pins 0→300), the SAM block
+    walks `l2/invL2` with `maxDist = sqrt(l2)+150+0.75`, the three-way `dot`
+    branch, the `(r+0.75)²` candidate gate and the `intercept < 1.0` adoption,
+    and `buildNukeTrajectory` seeds `prevX/Y` from `(p0x+0.5)|0`, rounds the
+    target with `js_round` and pins the `{...cpRender, ...th}` 11-key order
+    through an `Object.keys` join capture (kind 5). The capture's arg slice
+    `12 + 1 + (a[12]|0)*3` truncates the 15-token zero-radius SAM scenario so
+    TS reads `a[15]` as `undefined`→NaN — the Rust `run_op` models
+    past-the-end reads as NaN to match bit-for-bit. `PresenceGroup` ports the
+    token rules: `groupTokenOf` gates STRICT on `"lobby_info"`/`"start"`,
+    `loggableStartMessage` is a spread copy with `groupToken` deleted IN PLACE,
+    `accept` compares with STRICT `===` (undefined onto fresh → `false`),
+    `presenceLobbyId` gates `config === undefined` STRICT so a present-but-NULL
+    config THROWS a TypeError upstream reading `.gameType` — the capture
+    records the throw as the `[99]` sentinel and the port models it with
+    `Option::None` (a non-object config boxes and reads `undefined`, passing
+    through to the gameID), and `withGroupToken` returns the SAME payload
+    reference for an undefined token (pinned by a `sameRef` flag; the spread
+    overwrite of an existing key keeps its FIRST position). `stableStringify`
+    is the preset-equality serializer: non-objects go through `JSON.stringify`
+    (a top-level `undefined` returns `undefined`, not a string), arrays go
+    through `map().join(",")` where an `undefined` ELEMENT renders as the
+    EMPTY string (`[1,undefined]` → `"[1,]"`, unlike `JSON.stringify`'s
+    `"[1,null]"`), object entries filter STRICT `v !== undefined` and sort
+    with `a < b ? -1 : 1` — a UTF-16 code-unit compare, NOT `localeCompare`
+    (`"Z" < "a"`) — while V8's integer-key-first own-key order rides in
+    through the capture codec (`{10:_,2:_}` iterates `2,10`).
+    `NameBoxCalculator` runs over a closed-form terrain facade (`ref =
+    x*1000+y`, `cat = (ref*31+7)%11`) with SIX predicate call counters that
+    pin the `||` short-circuit gate order of `createGrid` token-for-token;
+    the grid is column-major, `findLargestInscribedRectangle` transposes
+    (`rows = grid[0].length; cols = grid.length`), keeps the FIRST rectangle
+    on an area tie (STRICT `>`) and emits `y: row - height + 1`;
+    `largestRectangleInHistogram` is the monotone stack with the `h=0`
+    sentinel column and the STRICT `<` that does NOT pop equal heights;
+    `calculateFontSize` divides by the UTF-16 CODE-UNIT length (astral
+    characters count 2) and clamps through `js_min`. `GameConfigHelpers`
+    covers the slider tri-state (`-0 === 0` → `"disabled"`, NaN passes
+    through), `toOptionalNumber`'s full JS `Number()` coercion table (`" 12abc"`
+    → NaN → undefined, `"0x10"` → 16, `"0b101"` → 5, `"Infinity"` → undefined,
+    NBSP/BOM trimmed but U+0085 NOT), the compact adjusters' `Math.max(0,
+    Math.floor(default*0.25))` four-gate chain (a NaN default yields a NaN
+    `compactCount` that compares `=== false` against everything, so only the
+    nations value ever passes through), `getRandomMapType` over the 127
+    `GameMapType` declaration-order names with `Math.random()` scripted through
+    the `__GCH_RAND` FIFO facade (the draw echoes first in the res stream,
+    out-of-domain indices read `undefined` like a JS array hole) and
+    `getUpdatedDisabledUnits` which ALWAYS builds a new array. Excluded:
+    `parseGraphicsOverridesJson`/`BUILTIN_PRESETS`/the migration (zod and
+    `UserSettings` never enter the graph), `placeSpawnName`/`placeName` (the
+    `NameMap` HUD), and the three DOM input helpers. 26 scenarios (`nt_` 5,
+    `pg_` 5, `sst_` 6, `nb_` 4, `gch_` 6).
 
 Regenerate whenever a ported source changes:
 
@@ -1666,7 +1733,7 @@ node rust/tools/run_wasm_parity.mjs
 
 `wasm-probe` exposes the ported functions through `extern "C"` scalar
 entrypoints (`src/wasm_probe.rs`); the runner imports `data/vectors.json` and
-compares every value. Last run: **294,908 comparisons, all bit-identical**.
+compares every value. Last run: **296,230 comparisons, all bit-identical**.
 
 ### Windows: the linker environment
 

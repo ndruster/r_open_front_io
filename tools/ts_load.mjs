@@ -3548,6 +3548,157 @@ function prepare(rel) {
     );
   }
 
+  // ================== S10: client pure-math / host-adjacent modules ==========
+
+  if (rel.endsWith("render/gl/utils/NukeTrajectory.ts")) {
+    // S10: the `import type { NukeTrajectoryData }` barrel line is dropped
+    // explicitly (S8 precedent — strip-mode erasure must not be depended on);
+    // the module body is pure math with no other host touch.
+    out = must(
+      out,
+      'import type { NukeTrajectoryData } from "../../types";\n',
+      "",
+      "NukeTrajectory types import",
+    );
+  }
+
+  if (rel.endsWith("client/PresenceGroup.ts")) {
+    // S10: the Schemas / DesktopPresence imports are type-only -> dropped;
+    // the GameMode / GameType VALUE import rides on the prepared Game.ts
+    // copy (precedent L1376).
+    out = must(
+      out,
+      'import type {\n  GameConfig,\n  ServerMessage,\n  ServerStartGameMessage,\n} from "../core/Schemas";\n',
+      "",
+      "PresenceGroup Schemas import",
+    );
+    out = must(
+      out,
+      'import type { PresencePayload } from "./DesktopPresence";\n',
+      "",
+      "PresenceGroup DesktopPresence import",
+    );
+    if (!prepared.has("src/core/game/Game.ts")) prepare("src/core/game/Game.ts");
+    out = must(
+      out,
+      'import { GameMode, GameType } from "../core/game/Game";\n',
+      `import { GameMode, GameType } from "./${prepared.get("src/core/game/Game.ts")}";\n`,
+      "PresenceGroup Game import",
+    );
+  }
+
+  if (rel.endsWith("client/GraphicsPresets.ts")) {
+    // S10: only stableStringify is ported. The zod / JSON-import / Utils /
+    // UserSettings imports, the top-level BUILTIN_PRESETS evaluation and the
+    // two host-bound functions (parseGraphicsOverridesJson,
+    // migrateLegacyGraphicsSettings) are all deleted — the preset map would
+    // throw at module load without the schema graph.
+    out = must(
+      out,
+      'import { UserSettings } from "../core/game/UserSettings";\n' +
+        'import { GraphicsOverridesSchema, type GraphicsOverrides } from "./render/gl";\n' +
+        'import builtinPresets from "./render/gl/graphics-presets.json";\n' +
+        'import { translateText } from "./Utils";\n',
+      "",
+      "GraphicsPresets imports",
+    );
+    out = must(
+      out,
+      "// Built-in presets, defined in graphics-presets.json \u2014 each entry's overrides\n" +
+        "// are schema-parsed at load (JSON imports can't carry the palette enum's\n" +
+        "// literal types). Overrides are applied wholesale. Night's ambient 0.36 is\n" +
+        "// the graphics modal slider's level 8.\n" +
+        "export const BUILTIN_PRESETS: ReadonlyArray<{\n" +
+        "  nameKey: string;\n" +
+        "  descKey: string;\n" +
+        "  overrides: GraphicsOverrides;\n" +
+        "}> = builtinPresets.map((preset) => ({\n" +
+        "  nameKey: preset.nameKey,\n" +
+        "  descKey: preset.descKey,\n" +
+        "  overrides: GraphicsOverridesSchema.parse(preset.overrides),\n" +
+        "}));\n",
+      "",
+      "GraphicsPresets BUILTIN_PRESETS",
+    );
+    out = must(
+      out,
+      "/**\n" +
+        " * Parse player-pasted settings JSON. Returns null unless the text is valid\n" +
+        " * JSON the schema recognizes in full. The schema strips unknown keys (needed\n" +
+        " * to read legacy stored data), which would let a mistyped paste apply as an\n" +
+        " * empty or partial config \u2014 so anything the parse dropped rejects the import\n" +
+        " * instead.\n" +
+        " */\n" +
+        "export function parseGraphicsOverridesJson(\n" +
+        "  text: string,\n" +
+        "): GraphicsOverrides | null {\n" +
+        "  let raw: unknown;\n" +
+        "  try {\n" +
+        "    raw = JSON.parse(text);\n" +
+        "  } catch {\n" +
+        "    return null;\n" +
+        "  }\n" +
+        "  const parsed = GraphicsOverridesSchema.safeParse(raw);\n" +
+        "  if (!parsed.success) return null;\n" +
+        "  if (stableStringify(parsed.data) !== stableStringify(raw)) return null;\n" +
+        "  return parsed.data;\n" +
+        "}\n",
+      "",
+      "GraphicsPresets parseGraphicsOverridesJson",
+    );
+    const migIdx = out.indexOf("/**\n * One-time migration");
+    if (migIdx === -1) {
+      throw new Error("ts_load: GraphicsPresets migration block not found");
+    }
+    out = out.slice(0, migIdx);
+  }
+
+  if (rel.endsWith("hud/NameBoxCalculator.ts")) {
+    // S10: the pure subset keeps only Cell (used at runtime by createGrid);
+    // Game / NameViewData / Player are type-only names and ride on the
+    // prepared Game.ts copy anyway (Cell is a class there). The Util import
+    // (calculateBoundingBox) is only used by the out-of-scope placeName.
+    if (!prepared.has("src/core/game/Game.ts")) prepare("src/core/game/Game.ts");
+    out = must(
+      out,
+      'import { Cell, Game, NameViewData, Player } from "../../core/game/Game";\n',
+      `import { Cell } from "./${prepared.get("src/core/game/Game.ts")}";\n`,
+      "NameBoxCalculator Game import",
+    );
+    out = must(
+      out,
+      'import { calculateBoundingBox } from "../../core/Util";\n',
+      "",
+      "NameBoxCalculator Util import",
+    );
+  }
+
+  if (rel.endsWith("utilities/GameConfigHelpers.ts")) {
+    // S10: GameMapType is a runtime value (Object.values in getRandomMapType)
+    // and UnitType a type-only name; both ride on the prepared Game.ts copy.
+    // The Schemas import is type-only -> dropped. Math.random() becomes the
+    // scripted globalThis.__GCH_RAND() facade (precedent __MP_RAND).
+    if (!prepared.has("src/core/game/Game.ts")) prepare("src/core/game/Game.ts");
+    out = must(
+      out,
+      'import { GameMapType, UnitType } from "../../core/game/Game";\n',
+      `import { GameMapType, UnitType } from "./${prepared.get("src/core/game/Game.ts")}";\n`,
+      "GameConfigHelpers Game import",
+    );
+    out = must(
+      out,
+      'import { GameConfig } from "../../core/Schemas";\n',
+      "",
+      "GameConfigHelpers Schemas import",
+    );
+    out = must(
+      out,
+      "const randIdx = Math.floor(Math.random() * maps.length);",
+      "const randIdx = Math.floor(globalThis.__GCH_RAND() * maps.length);",
+      "GameConfigHelpers Math.random",
+    );
+  }
+
   mkdirSync(cacheDir, { recursive: true });
   const hash = createHash("sha1").update(out).digest("hex").slice(0, 10);
   const base = `${basename(rel, ".ts")}-${hash}.ts`;

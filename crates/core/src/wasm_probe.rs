@@ -5184,3 +5184,26 @@ s8_harness_probe!(
     probe_ccc_reset, probe_ccc_arg, probe_ccc_op, probe_ccc_out_at,
     CCC_HARNESS, CCC_ARGS, CCC_OUT, crate::creator_code::RigHarness
 );
+
+// =============== S10: client trajectory/presets/config modules ================
+
+s8_stateless_probe!(
+    probe_nt_reset, probe_nt_arg, probe_nt_op, probe_nt_out_at,
+    NT_ARGS, NT_OUT, crate::nuke_trajectory::run_op
+);
+s8_harness_probe!(
+    probe_pg_reset, probe_pg_arg, probe_pg_op, probe_pg_out_at,
+    PG_HARNESS, PG_ARGS, PG_OUT, crate::presence_group::RigHarness
+);
+s8_stateless_probe!(
+    probe_sst_reset, probe_sst_arg, probe_sst_op, probe_sst_out_at,
+    SST_ARGS, SST_OUT, crate::stable_stringify::run_op
+);
+s8_stateless_probe!(
+    probe_nb_reset, probe_nb_arg, probe_nb_op, probe_nb_out_at,
+    NB_ARGS, NB_OUT, crate::name_box_calculator::run_op
+);
+s8_stateless_probe!(
+    probe_gch_reset, probe_gch_arg, probe_gch_op, probe_gch_out_at,
+    GCH_ARGS, GCH_OUT, crate::game_config_helpers::run_op
+);

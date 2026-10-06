@@ -458,6 +458,24 @@ globalThis.__CCC_HISTORY = {
   },
 };
 const CCC = await loadTs("src/client/CreatorCode.ts");
+
+// S10: GameConfigHelpers.ts — Math.random() is scripted through
+// globalThis.__GCH_RAND() (FIFO queue + consumption log, precedent
+// __MP_RAND); the gch_ kind-5 res echoes the consumed draw first.
+let gchRands = [];
+let gchRandLog = [];
+globalThis.__GCH_RAND = () => {
+  if (!gchRands.length) throw new Error("gch capture: unscripted Math.random()");
+  const v = gchRands.shift();
+  gchRandLog.push(v);
+  return v;
+};
+const NT = await loadTs("src/client/render/gl/utils/NukeTrajectory.ts");
+const PG = await loadTs("src/client/PresenceGroup.ts");
+const GP = await loadTs("src/client/GraphicsPresets.ts");
+const NBC = await loadTs("src/client/hud/NameBoxCalculator.ts");
+const GCH = await loadTs("src/client/utilities/GameConfigHelpers.ts");
+
 const PF = await loadTs("src/core/pathfinding/PathFinder.ts");
 const { AStar } = await loadTs("src/core/pathfinding/algorithms/AStar.ts");
 const { AStarRail } = await loadTs("src/core/pathfinding/algorithms/AStar.Rail.ts");
@@ -15001,6 +15019,447 @@ runCCC("ccc_resume_miss", [
   [6], // getItem null -> false, trace [74, 2]
 ]);
 
+// ---- S10: NukeTrajectory.ts (nt_) ---------------------------------------------
+// Kind table (matches `nuke_trajectory::run_op`): 0 samRange [level] -> [r];
+// 1 clamp [v, lo, hi] -> [r] (module-private, exported by the capture rig
+// through the control-point NaN paths instead — see nt_clamp scenarios);
+// 2 computeNukeControlPoints [srcX, srcY, dstX, dstY, mapH, dirUp] -> [8];
+// 3 computeTrajectoryThresholds [8 cp..., srcX, srcY, dstX, dstY, n,
+//   (x, y, r)*n] -> [3]; 4 buildNukeTrajectory [srcX, srcY, dstX, dstY, mapH,
+//   dirUp, n, (x,y,r)*n] -> [11]; 5 buildKeyOrder (same args) -> codec of the
+//   joined Object.keys (pins the {...cpRender, ...th} 11-key order).
+const ntScenarios = [];
+let ntIdx = 0;
+const ntCP = (a, i) => ({
+  p0x: a[i], p0y: a[i + 1], p1x: a[i + 2], p1y: a[i + 3],
+  p2x: a[i + 4], p2y: a[i + 5], p3x: a[i + 6], p3y: a[i + 7],
+});
+const ntCPArr = (o) => [o.p0x, o.p0y, o.p1x, o.p1y, o.p2x, o.p2y, o.p3x, o.p3y];
+function runNT(name, ops) {
+  const played = [];
+  for (const [k, ...a] of ops) {
+    let args;
+    let res;
+    if (k === 0) {
+      args = [a[0]];
+      res = [NT.samRange(a[0])];
+    } else if (k === 2) {
+      args = a.slice(0, 6);
+      res = ntCPArr(NT.computeNukeControlPoints(...args));
+    } else if (k === 3) {
+      args = a.slice(0, 12 + 1 + (a[12] | 0) * 3);
+      const sams = [];
+      for (let s = 0; s < a[12]; s++) sams.push({ x: a[13 + s * 3], y: a[14 + s * 3], r: a[15 + s * 3] });
+      const th = NT.computeTrajectoryThresholds(ntCP(a, 0), a[8], a[9], a[10], a[11], sams);
+      res = [th.tUntargetableStart, th.tUntargetableEnd, th.tSamIntercept];
+    } else if (k === 4 || k === 5) {
+      args = a.slice(0, 6 + 1 + (a[6] | 0) * 3);
+      const sams = [];
+      for (let s = 0; s < a[6]; s++) sams.push({ x: a[7 + s * 3], y: a[8 + s * 3], r: a[9 + s * 3] });
+      const full = NT.buildNukeTrajectory(a[0], a[1], a[2], a[3], a[4], a[5], sams);
+      if (k === 4) {
+        res = [
+          full.p0x, full.p0y, full.p1x, full.p1y, full.p2x, full.p2y,
+          full.p3x, full.p3y, full.tUntargetableStart, full.tUntargetableEnd,
+          full.tSamIntercept,
+        ];
+      } else {
+        res = encS(Object.keys(full).join(","));
+      }
+    } else throw new Error("nt: bad op kind " + k);
+    played.push({ kind: k, args: args.flat().map(uenc), res: res.flat().map(uenc) });
+  }
+  ntScenarios.push({ name: `${name}_${ntIdx++}`, ops: played });
+}
+runNT("nt_sam_range", [
+  [0, 0], [0, 1], [0, 5], [0, -5], // -Infinity (divide by zero, never throws)
+  [0, -6], [0, -4.5], [0, Number.NaN], [0, Number.POSITIVE_INFINITY],
+]);
+runNT("nt_control_points", [
+  [2, 0, 0, 600, 0, 400, 0], // dist 600 -> maxHeight 200, bows down
+  [2, 0, 300, 600, 300, 400, 1], // directionUp: hm -1, bow up to 100
+  [2, 100, 100, 200, 100, 400, 0], // dist 100 -> maxHeight floor 50
+  [2, 0, 0, 600, 0, 150, 0], // p1y/p2y 200 clamped to mapH-1 = 149
+  [2, 0, 0, 600, 0, 400, 1], // up-bow p1y = -200 clamped to 0
+  [2, Number.NaN, 0, 600, 0, 400, 0], // NaN dist -> NaN maxHeight -> clamp passthrough
+  [2, 0, 0, 0.4, 0, 400, 0], // tiny dist, fractional dst
+]);
+runNT("nt_thresholds_plain", [
+  // cp from (0,0)->(600,0) mapH 400 dirUp 0, rounded target
+  [3, 0, 0, 150, 200, 450, 200, 600, 0, 0, 600, 0, 0],
+  // short hop: hasUntargetable false -> both -1, intercept 1
+  [3, 0, 0, 25, 50, 75, 50, 100, 0, 0, 100, 0, 0],
+  // exact 2*RANGE boundary: distSq === 4*22500 -> hasUntargetable FALSE (strict >)
+  [3, 0, 0, 75, 100, 225, 100, 300, 0, 0, 300, 0, 0],
+]);
+runNT("nt_thresholds_sam", [
+  // SAM right on the arc apex (300, 150) r 100 -> intercept
+  [3, 0, 0, 150, 200, 450, 200, 600, 0, 0, 600, 0, 1, 300, 150, 100],
+  // SAM near the target-range entry boundary
+  [3, 0, 0, 150, 200, 450, 200, 600, 0, 0, 600, 0, 1, 500, 60, 80],
+  // SAM far away -> no intercept
+  [3, 0, 0, 150, 200, 450, 200, 600, 0, 0, 600, 0, 1, 300, -400, 50],
+  // two SAMs, the second one catches
+  [3, 0, 0, 150, 200, 450, 200, 600, 0, 0, 600, 0, 2, 100, 400, 10, 300, 150, 60],
+  // zero-length segment SAM (r 0) at the source -> candidate gate math
+  [3, 0, 0, 150, 200, 450, 200, 600, 0, 0, 600, 0, 1, 0, 0, 0],
+]);
+runNT("nt_build", [
+  [4, 0, 0, 600, 0, 400, 0, 0],
+  [4, 0, 0, 600.4, 0.5, 400, 0, 0], // fractional dst -> Math.round target
+  [4, 0, 0, 600, -0.5, 400, 1, 1, 300, 150, 100], // dirUp + SAM on the up-bow apex
+  [4, 100, 100, 200, 100, 400, 0, 0], // short hop, no untargetable
+  [5, 0, 0, 600, 0, 400, 0, 0], // key-order pin
+]);
+
+// ---- S10: PresenceGroup.ts (pg_) ----------------------------------------------
+// Kind table (matches `presence_group::RigHarness::run_op`): 0 groupTokenOf,
+// 1 loggableStartMessage, 2 tracker.accept, 3 tracker.current, 4
+// tracker.clear, 5 presenceLobbyId, 6 withGroupToken (res = [sameRef, codec]).
+const pgScenarios = [];
+let pgIdx = 0;
+function runPG(name, ops) {
+  const played = [];
+  const tracker = new PG.GroupTokenTracker();
+  for (const [k, ...a] of ops) {
+    let args;
+    let res;
+    if (k === 0) {
+      args = encVal(a[0]);
+      res = encVal(PG.groupTokenOf(a[0]));
+    } else if (k === 1) {
+      args = encVal(a[0]);
+      res = encVal(PG.loggableStartMessage(a[0]));
+    } else if (k === 2) {
+      args = encVal(a[0]);
+      res = [tracker.accept(a[0]) ? 1 : 0];
+    } else if (k === 3) {
+      args = [];
+      res = encVal(tracker.current());
+    } else if (k === 4) {
+      args = [];
+      tracker.clear();
+      res = [0];
+    } else if (k === 5) {
+      args = [...encVal(a[0]), ...encVal(a[1])];
+      try {
+        res = encVal(PG.presenceLobbyId(a[0], a[1]));
+      } catch {
+        res = [99]; // TypeError: config.gameType on null (the STRICT gate only stops undefined)
+      }
+    } else if (k === 6) {
+      args = [...encVal(a[0]), ...encVal(a[1])];
+      const r = PG.withGroupToken(a[0], a[1]);
+      res = [r === a[0] ? 1 : 0, ...encVal(r)];
+    } else throw new Error("pg: bad op kind " + k);
+    played.push({ kind: k, args: args.flat().map(uenc), res: res.flat().map(uenc) });
+  }
+  pgScenarios.push({ name: `${name}_${pgIdx++}`, ops: played });
+}
+runPG("pg_token_of", [
+  [0, { type: "lobby_info", groupToken: "tok1" }],
+  [0, { type: "start", groupToken: "tok2" }],
+  [0, { type: "start" }], // no key -> undefined
+  [0, { type: "chat", groupToken: "tok3" }], // other type -> undefined
+  [0, { groupToken: "tok4" }], // no type
+  [0, { type: 5, groupToken: "tok5" }], // numeric type fails both === gates
+  [0, { type: "lobby_info", groupToken: undefined }],
+]);
+runPG("pg_loggable", [
+  [1, { a: 1, groupToken: "t", b: [1, 2] }], // middle key removed in place
+  [1, { groupToken: "t" }], // only the token -> {}
+  [1, { x: 1 }], // no token -> copy with same keys
+  [1, { groupToken: undefined, y: 2 }], // key present-but-undefined is still deleted
+]);
+runPG("pg_tracker", [
+  [3], // current on fresh tracker -> undefined
+  [2, "tok"], // accept -> true
+  [2, "tok"], // duplicate -> false
+  [3],
+  [2, "other"], // change -> true
+  [3],
+  [4], // clear
+  [3],
+  [2, undefined], // undefined onto fresh -> false (undefined === undefined)
+  [3],
+]);
+runPG("pg_lobby_id", [
+  [5, undefined, "g1"], // config undefined -> undefined
+  [5, null, "g1"], // null falls through the STRICT gate, enum reads fail -> g1
+  [5, { gameType: "Public", gameMode: "Free For All" }, "g1"], // withheld
+  [5, { gameType: "Public", gameMode: "Team" }, "g1"], // joinable
+  [5, { gameType: "Private", gameMode: "Free For All" }, "g1"],
+  [5, { gameType: "Singleplayer", gameMode: "Free For All" }, "g1"],
+  [5, { gameMode: "Team" }, "g1"], // missing gameType
+  [5, { gameType: "Public", gameMode: "Team" }, ""], // empty gameID passes through
+]);
+runPG("pg_with_token", [
+  [6, { state: "in-game" }, undefined], // same reference, key omitted
+  [6, { state: "in-game" }, "tok"], // appended LAST
+  [6, {}, "tok"], // empty payload
+  [6, { groupToken: "old" }, "new"], // spread overwrite keeps FIRST position
+  [6, { state: "menu" }, null], // null is not undefined -> appended
+]);
+
+// ---- S10: GraphicsPresets.ts stableStringify (sst_) ----------------------------
+// Kind 0: stableStringify [...codec(value)] -> [...codec(string|undefined)].
+const sstScenarios = [];
+let sstIdx = 0;
+function runSST(name, vals) {
+  const played = [];
+  for (const v of vals) {
+    const args = encVal(v);
+    const res = encVal(GP.stableStringify(v));
+    played.push({ kind: 0, args: args.flat().map(uenc), res: res.flat().map(uenc) });
+  }
+  sstScenarios.push({ name: `${name}_${sstIdx++}`, ops: played });
+}
+runSST("sst_scalars", [
+  undefined, null, 0, -0, 2.5, "s", true, false, Number.NaN, Number.POSITIVE_INFINITY,
+]);
+runSST("sst_key_order", [
+  { b: 1, a: 2 },
+  { Z: 1, a: 2 }, // UTF-16 order, NOT localeCompare
+  { b: { y: 1, x: 2 }, a: [3, 1] },
+  {},
+  [],
+]);
+runSST("sst_undefined_filter", [
+  { a: undefined, b: 1 },
+  { a: undefined },
+  { a: null, b: undefined },
+]);
+runSST("sst_arrays", [
+  [1, undefined, 3], // join renders undefined as the EMPTY STRING
+  [undefined],
+  [[1, 2], [3]],
+  [{ b: 1, a: 2 }],
+  [],
+]);
+runSST("sst_int_keys", [
+  { 10: "a", 2: "b" }, // V8 own-key order 2,10; string sort "10" < "2"
+  { 0: "z", "-1": "y", 1.5: "x" }, // "-1"/"1.5" are NOT integer-index keys
+  { 2: { 10: 1, 2: 2 }, 1: [true] },
+]);
+runSST("sst_escapes", [
+  { 'a"b': 1, "c\\d": 2 },
+  { "\n": "nl", "\t": "tab" },
+  { "é": 1, "Z": 2 }, // non-ASCII key
+  ["s\"t"],
+]);
+
+// ---- S10: NameBoxCalculator.ts (nb_) -------------------------------------------
+// Kind table (matches `name_box_calculator::run_op`): 0 createGrid
+// [minX, minY, maxX, maxY, sf, mapW, mapH] -> [w, h, (bool)*, 6 counters];
+// 1 findLargestInscribedRectangle [w, h, (bool)*w*h] -> [x, y, w, h];
+// 2 largestRectangleInHistogram [n, (widths)*n] -> [x, y, w, h];
+// 3 calculateFontSize [rectW, rectH, n, (units)*n] -> [f64].
+// The closed-form terrain facade: ref = x*1000 + y, cat = (ref*31+7)%11 with
+// 0 shore, 1 ocean mag 5, 2 ocean mag 15, 3 player-owned, 4 fallout, else
+// plain land — the SAME formula the Rust port runs.
+const nbScenarios = [];
+let nbIdx = 0;
+const NB_PLAYER = { name: "player" };
+function nbGame(mapW, mapH) {
+  const calls = { onMap: 0, shore: 0, ocean: 0, magnitude: 0, owner: 0, fallout: 0 };
+  const cat = (tile) => (tile * 31 + 7) % 11;
+  return {
+    _calls: calls,
+    isOnMap(cell) {
+      calls.onMap++;
+      return cell.x >= 0 && cell.y >= 0 && cell.x < mapW && cell.y < mapH;
+    },
+    ref(x, y) {
+      return x * 1000 + y;
+    },
+    isShore(tile) {
+      calls.shore++;
+      return cat(tile) === 0;
+    },
+    isOcean(tile) {
+      calls.ocean++;
+      return cat(tile) === 1 || cat(tile) === 2;
+    },
+    magnitude(tile) {
+      calls.magnitude++;
+      return cat(tile) === 1 ? 5 : 15;
+    },
+    owner(tile) {
+      calls.owner++;
+      return cat(tile) === 3 ? NB_PLAYER : null;
+    },
+    hasFallout(tile) {
+      calls.fallout++;
+      return cat(tile) === 4;
+    },
+  };
+}
+function runNB(name, ops) {
+  const played = [];
+  for (const [k, ...a] of ops) {
+    let args;
+    let res;
+    if (k === 0) {
+      args = a.slice(0, 7);
+      const game = nbGame(a[5], a[6]);
+      const grid = NBC.createGrid(
+        game, NB_PLAYER,
+        { min: { x: a[0], y: a[1] }, max: { x: a[2], y: a[3] } },
+        a[4],
+      );
+      const w = grid.length;
+      const h = grid[0].length;
+      const cells = [];
+      for (let c = 0; c < w; c++) for (let r = 0; r < h; r++) cells.push(grid[c][r] ? 1 : 0);
+      res = [
+        w, h, ...cells,
+        game._calls.onMap, game._calls.shore, game._calls.ocean,
+        game._calls.magnitude, game._calls.owner, game._calls.fallout,
+      ];
+    } else if (k === 1) {
+      args = a.slice(0, 2 + a[0] * a[1]);
+      const w = a[0], h = a[1];
+      const grid = Array.from({ length: w }, (_, c) =>
+        Array.from({ length: h }, (_, r) => a[2 + c * h + r] !== 0),
+      );
+      const r = NBC.findLargestInscribedRectangle(grid);
+      res = [r.x, r.y, r.width, r.height];
+    } else if (k === 2) {
+      args = a.slice(0, 1 + a[0]);
+      const r = NBC.largestRectangleInHistogram(a.slice(1, 1 + a[0]));
+      res = [r.x, r.y, r.width, r.height];
+    } else if (k === 3) {
+      args = a.slice(0, 3 + a[2]);
+      const name = String.fromCharCode(...a.slice(3, 3 + a[2]));
+      res = [NBC.calculateFontSize({ x: 0, y: 0, width: a[0], height: a[1] }, name)];
+    } else throw new Error("nb: bad op kind " + k);
+    played.push({ kind: k, args: args.flat().map(uenc), res: res.flat().map(uenc) });
+  }
+  nbScenarios.push({ name: `${name}_${nbIdx++}`, ops: played });
+}
+runNB("nb_histogram", [
+  [2, 3, 2, 1, 2], // classic tie: first width-2 bar wins
+  [2, 2, 2, 2], // equal heights: STRICT < never pops early, sentinel resolves
+  [2, 3, 3, 2, 1], // descending
+  [2, 3, 1, 2, 3], // ascending
+  [2, 1, 5], // single bar
+  [2, 0], // empty
+  [2, 2, 0, 0], // zeros -> area gate never passes, zero rect
+  [2, 4, 2, 4, 2, 4],
+]);
+runNB("nb_inscribed", [
+  // 3x3 all true (column-major dump)
+  [1, 3, 3, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+  // 2x5 transpose asymmetry: cols=2, rows=5
+  [1, 2, 5, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+  // checkerboard 3x3
+  [1, 3, 3, 1, 0, 1, 0, 1, 0, 1, 0, 1],
+  // single true cell at (col 1, row 2)
+  [1, 3, 3, 0, 0, 0, 0, 0, 1, 0, 0, 0],
+  // all false 2x2
+  [1, 2, 2, 0, 0, 0, 0],
+]);
+runNB("nb_grid", [
+  // small on-map box, sf 1: exercises every category + the counter order
+  [0, 0, 0, 10, 10, 1, 20, 20],
+  // sf 2 scaling, floor of the corners
+  [0, 0, 0, 9, 9, 2, 20, 20],
+  // negative min corner: Math.floor(-3/2) = -2 (NOT trunc -1), off-map cells
+  [0, -3, -3, 5, 5, 2, 10, 10],
+  // box running off the map edge: isOnMap gate stops the predicate calls
+  [0, 15, 15, 25, 25, 1, 20, 20],
+]);
+runNB("nb_font", [
+  [3, 30, 9, 3, 0x41, 0x42, 0x43], // "ABC": (30/3)*2=20 vs 9/3=3 -> 3
+  [3, 30, 30, 2, 0xd83d, 0xde00], // astral emoji = 2 UTF-16 units -> 30
+  [3, 100, 12, 1, 0x41], // width-constrained: 200 vs 4 -> 4
+  [3, Number.NaN, 9, 1, 0x41], // NaN propagates through Math.min
+  [3, 30, 9, 0], // empty name: 30/0 = Infinity -> min -> 3
+]);
+
+// ---- S10: GameConfigHelpers.ts (gch_) ------------------------------------------
+// Kind table (matches `game_config_helpers::run_op`): 0 sliderToNationsConfig
+// [slider, default]; 1 nationsConfigToSlider [...codec(nations), default];
+// 2 toOptionalNumber [...codec(value)]; 3 getBotsForCompactMap [bots,
+// compact]; 4 getNationsForCompactMap [nations, default, compact];
+// 5 getRandomMapType [rand] -> [rand_consumed, ...codec(map)];
+// 6 getUpdatedDisabledUnits [...codec(arr), ...codec(unit), checked].
+const gchScenarios = [];
+let gchIdx = 0;
+function runGCH(name, ops) {
+  const played = [];
+  for (const [k, ...a] of ops) {
+    let args;
+    let res;
+    if (k === 0) {
+      args = [a[0], a[1]];
+      res = encVal(GCH.sliderToNationsConfig(a[0], a[1]));
+    } else if (k === 1) {
+      args = [...encVal(a[0]), a[1]];
+      res = encVal(GCH.nationsConfigToSlider(a[0], a[1]));
+    } else if (k === 2) {
+      args = encVal(a[0]);
+      res = encVal(GCH.toOptionalNumber(a[0]));
+    } else if (k === 3) {
+      args = [a[0], a[1] ? 1 : 0];
+      res = [GCH.getBotsForCompactMap(a[0], a[1])];
+    } else if (k === 4) {
+      args = [a[0], a[1], a[2] ? 1 : 0];
+      res = [GCH.getNationsForCompactMap(a[0], a[1], a[2])];
+    } else if (k === 5) {
+      args = [a[0]];
+      gchRands = [a[0]];
+      gchRandLog = [];
+      const m = GCH.getRandomMapType();
+      res = [gchRandLog[0], ...encVal(m)];
+    } else if (k === 6) {
+      args = [...encVal(a[0]), ...encVal(a[1]), a[2] ? 1 : 0];
+      res = encVal(GCH.getUpdatedDisabledUnits(a[0], a[1], a[2]));
+    } else throw new Error("gch: bad op kind " + k);
+    played.push({ kind: k, args: args.flat().map(uenc), res: res.flat().map(uenc) });
+  }
+  gchScenarios.push({ name: `${name}_${gchIdx++}`, ops: played });
+}
+runGCH("gch_slider", [
+  [0, 0, 25], [0, -0, 25], [0, 25, 25], [0, 137, 25],
+  [0, Number.NaN, 25], [0, -5, 25],
+  [1, "disabled", 25], [1, "default", 25], [1, 137, 25],
+  [1, "other", 25], [1, undefined, 25], [1, null, 25], [1, -0, 25],
+]);
+runGCH("gch_optnum", [
+  [2, 5], [2, Number.NaN], [2, Number.POSITIVE_INFINITY], [2, -0],
+  [2, "0x10"], [2, "1e3"], [2, " 12abc"], [2, "Infinity"], [2, "  "],
+  [2, "\u00a0"], // NBSP IS JS whitespace -> empty -> undefined
+  [2, "\u0085"], // NEL is NOT -> Number("\u0085") NaN -> undefined
+  [2, "\ufeff12"], // BOM IS trimmed -> 12
+  [2, "12.5"], [2, "-0"], [2, "1e999"], [2, "+7"], [2, "0b101"],
+  [2, undefined], [2, null], [2, true], [2, {}],
+]);
+runGCH("gch_bots", [
+  [3, 400, true], [3, 400, false], [3, 100, true], [3, 100, false],
+  [3, 250, true], [3, Number.NaN, true], [3, 0, false],
+]);
+runGCH("gch_nations", [
+  [4, 25, 25, true], // at full default -> compact 6 (floor(25*0.25)=6)
+  [4, 6, 25, false], // at compact default -> restore 25
+  [4, 10, 25, true], [4, 10, 25, false],
+  [4, 24, 24, true], // floor(6) === nations? 24 !== 6 -> pass through
+  [4, 0, -1.5, false], // negative default: floor(-0.375) = -1 -> max 0; nations 0 === 0 -> -1.5
+  [4, 5, Number.NaN, true], // NaN default: NaN === anything false -> pass through
+  [4, Number.NaN, 25, true], // NaN nations -> passes through
+]);
+runGCH("gch_random_map", [
+  [5, 0], [5, 0.5], [5, 0.9999999], [5, Number.NaN], [5, -0.5], [5, 1],
+]);
+runGCH("gch_disabled_units", [
+  [6, [], "City", true], // spread append
+  [6, ["City"], "City", true], // dup appended (no dedup)
+  [6, ["City", "Port"], "City", false], // filter removes
+  [6, ["City", "City"], "City", false], // removes ALL equal entries
+  [6, [], "City", false], // filter on empty -> new empty array
+  [6, ["City", "Port"], "Warship", false], // removes nothing, still a new array
+]);
+
 const structures = {
   votetally: vtScenarios,
   rankedcheckin: rgScenarios,
@@ -15100,6 +15559,11 @@ const structures = {
   playerprofileurl: ppuScenarios,
   pagepin: ppnScenarios,
   creatorcode: cccScenarios,
+  nuketrajectory: ntScenarios,
+  presencegroup: pgScenarios,
+  stablestringify: sstScenarios,
+  nameboxcalculator: nbScenarios,
+  gameconfighelpers: gchScenarios,
 };
 
 // ================================================================ JSON
@@ -18181,6 +18645,46 @@ opStream(
     "/// resume, 7 constants, 8 dumpStorage. Facade events ride the res\n" +
     "/// trace: 74 getItem, 75 setItem, 76 removeItem, 77 replaceState, 78\n" +
     "/// pathname, 79 search, 80 hash, 81 Date.now, 82 open callback.",
+);
+
+// ---- S10 client pure-math / host-adjacent emitters ----------------------------
+opStream(
+  "nuketrajectory",
+  "Nt",
+  "/// One `client/render/gl/utils/NukeTrajectory.ts` op (see\n" +
+    "/// `nuke_trajectory::run_op` docs). kind 0 samRange, 2 control points,\n" +
+    "/// 3 thresholds, 4 build (11 values), 5 build key-order pin.",
+);
+opStream(
+  "presencegroup",
+  "Pg",
+  "/// One `client/PresenceGroup.ts` op (see `presence_group::RigHarness::run_op`\n" +
+    "/// docs). kind 0 groupTokenOf, 1 loggableStartMessage, 2 accept, 3\n" +
+    "/// current, 4 clear, 5 presenceLobbyId, 6 withGroupToken (res leads the\n" +
+    "/// sameRef flag). Values ride the js_json codec.",
+);
+opStream(
+  "stablestringify",
+  "Sst",
+  "/// One `client/GraphicsPresets.ts` stableStringify op (see\n" +
+    "/// `stable_stringify::run_op` docs). kind 0: codec value -> codec\n" +
+    "/// string|undefined.",
+);
+opStream(
+  "nameboxcalculator",
+  "Nb",
+  "/// One `client/hud/NameBoxCalculator.ts` op (see `name_box_calculator::run_op`\n" +
+    "/// docs). kind 0 createGrid (terrain facade = the closed-form cat\n" +
+    "/// formula, res carries the six predicate call counters), 1 inscribed\n" +
+    "/// rectangle, 2 histogram, 3 font size (UTF-16 units).",
+);
+opStream(
+  "gameconfighelpers",
+  "Gch",
+  "/// One `client/utilities/GameConfigHelpers.ts` op (see\n" +
+    "/// `game_config_helpers::run_op` docs). kind 0/1 slider mappers, 2\n" +
+    "/// toOptionalNumber, 3/4 compact adjusters, 5 getRandomMapType (res\n" +
+    "/// leads the scripted __GCH_RAND draw), 6 getUpdatedDisabledUnits.",
 );
 
 const dataDir = join(root, "crates", "core", "tests", "data");

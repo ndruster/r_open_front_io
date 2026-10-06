@@ -3874,3 +3874,132 @@ fn replay_creatorcode_scenarios() {
         }
     }
 }
+
+// client/render/gl/utils/NukeTrajectory.ts: the samRange level -5 divide-by-
+// zero -> -Infinity, the clamp ternary chain NaN pass-through, the sqrt (not
+// hypot) control-point bow, the Horner `|0` refineCrossing bisection with the
+// false-alarm return 1.0 fallback, the two-phase untargetable gates and the
+// SAM segment-distance intercept block, plus the buildNukeTrajectory 11-key
+// spread order pin.
+#[test]
+fn replay_nuketrajectory_scenarios() {
+    for s in vectors::NT_SCENARIOS {
+        for op in s.ops {
+            let got = openfront_core::nuke_trajectory::run_op(op.kind, op.args);
+            assert_eq!(
+                got.len(),
+                op.res.len(),
+                "{} op[{:?}] res len: got {got:?} want {:?}",
+                s.name,
+                op.kind,
+                op.res
+            );
+            for (j, (g, w)) in got.iter().zip(op.res.iter()).enumerate() {
+                assert!(obj_is(*g, *w), "{} op[{:?}] res[{j}]: got {g} want {w}", s.name, op.kind);
+            }
+        }
+    }
+}
+
+// client/PresenceGroup.ts: the groupTokenOf STRICT type gates, the
+// spread-then-delete loggable key order, the tracker `===` accept semantics
+// (undefined === undefined), the presenceLobbyId STRICT undefined gate with
+// the NULL-config TypeError -> [99] sentinel and the Public-non-Team withhold,
+// and the withGroupToken same-reference pin for an undefined token.
+#[test]
+fn replay_presencegroup_scenarios() {
+    use openfront_core::presence_group::RigHarness;
+    for s in vectors::PG_SCENARIOS {
+        let mut rig = RigHarness::new();
+        for op in s.ops {
+            let got = rig.run_op(op.kind, op.args);
+            assert_eq!(
+                got.len(),
+                op.res.len(),
+                "{} op[{:?}] res len: got {got:?} want {:?}",
+                s.name,
+                op.kind,
+                op.res
+            );
+            for (j, (g, w)) in got.iter().zip(op.res.iter()).enumerate() {
+                assert!(obj_is(*g, *w), "{} op[{:?}] res[{j}]: got {g} want {w}", s.name, op.kind);
+            }
+        }
+    }
+}
+
+// client/GraphicsPresets.ts stableStringify: the non-object JSON.stringify
+// pass-through (undefined -> undefined), the array join(",") with
+// undefined-elements-as-empty-strings, the STRICT `v !== undefined` entry
+// filter, the UTF-16 code-unit `a < b` key sort and the V8 integer-key-first
+// own-property order carried by the codec.
+#[test]
+fn replay_stablestringify_scenarios() {
+    for s in vectors::SST_SCENARIOS {
+        for op in s.ops {
+            let got = openfront_core::stable_stringify::run_op(op.kind, op.args);
+            assert_eq!(
+                got.len(),
+                op.res.len(),
+                "{} op[{:?}] res len: got {got:?} want {:?}",
+                s.name,
+                op.kind,
+                op.res
+            );
+            for (j, (g, w)) in got.iter().zip(op.res.iter()).enumerate() {
+                assert!(obj_is(*g, *w), "{} op[{:?}] res[{j}]: got {g} want {w}", s.name, op.kind);
+            }
+        }
+    }
+}
+
+// client/hud/NameBoxCalculator.ts: the closed-form terrain facade with the
+// six predicate call counters pinning the `||` short-circuit gate order, the
+// column-major grid, the transposed rows/cols inscribed-rectangle scan with
+// the STRICT `>` area tie-break, the monotone-stack histogram with the h=0
+// sentinel and the non-popping equal-height STRICT `<`, and the UTF-16-length
+// font sizing.
+#[test]
+fn replay_nameboxcalculator_scenarios() {
+    for s in vectors::NB_SCENARIOS {
+        for op in s.ops {
+            let got = openfront_core::name_box_calculator::run_op(op.kind, op.args);
+            assert_eq!(
+                got.len(),
+                op.res.len(),
+                "{} op[{:?}] res len: got {got:?} want {:?}",
+                s.name,
+                op.kind,
+                op.res
+            );
+            for (j, (g, w)) in got.iter().zip(op.res.iter()).enumerate() {
+                assert!(obj_is(*g, *w), "{} op[{:?}] res[{j}]: got {g} want {w}", s.name, op.kind);
+            }
+        }
+    }
+}
+
+// client/utilities/GameConfigHelpers.ts: the slider tri-state with the `-0
+// === 0` gate, the JS Number() coercion table (" 12abc" -> NaN, "0x10" -> 16,
+// "Infinity" -> undefined), the compact four-gate floor(max(0,·)) math with
+// the NaN-count pass-through, the scripted __GCH_RAND floor over the 127
+// GameMapType declaration order and the fresh-array disabled-units union.
+#[test]
+fn replay_gameconfighelpers_scenarios() {
+    for s in vectors::GCH_SCENARIOS {
+        for op in s.ops {
+            let got = openfront_core::game_config_helpers::run_op(op.kind, op.args);
+            assert_eq!(
+                got.len(),
+                op.res.len(),
+                "{} op[{:?}] res len: got {got:?} want {:?}",
+                s.name,
+                op.kind,
+                op.res
+            );
+            for (j, (g, w)) in got.iter().zip(op.res.iter()).enumerate() {
+                assert!(obj_is(*g, *w), "{} op[{:?}] res[{j}]: got {g} want {w}", s.name, op.kind);
+            }
+        }
+    }
+}

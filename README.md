@@ -2006,6 +2006,31 @@ WebSockets — stays excluded, mirroring the `src/core` exclusions).
     WITH a mode is still a Team game) and `cardClass` (default parameter
     fires only on `undefined`; the template's double space survives).
     21 scenarios (`sac_` 4, `ufr_` 8, `lg_` 3, `snd_` 3, `mpp_` 3).
+73. **`client/render/gl/debug/Folder.ts` + `debug/props/Toggle.ts` +
+    `Slider.ts` + `Select.ts` + `Color.ts` + `debug/Layout.ts` +
+    `name-pass/Types.ts`** (`debug_gui`) — the S15 batch-A debug-GUI cluster.
+    `folder()` — default parameter fires only on an absent / `undefined` opts
+    (`{}` → `closed === true` survives via `??`), an explicit `null` opts
+    throws reading `.closed` → status 1, and a non-object opts boxes so the
+    `closed` read yields `undefined` → `true`. The four prop factories share
+    one lifecycle dump: nullish `defaults` or a non-object `target` throw on
+    the strict-mode write-back → status 1 (the `5` / `"x"` / `true` wrappers
+    box for the READ but the reset WRITE is what traps); otherwise
+    `[0, tag, name-truthy, isModified, per-mutation isModified…, post-reset
+    target[key], factory literals]` — `slider` appends `[min, max, step]`
+    from the `folder.add` rest args, `select` appends `[count, options…]`,
+    `toggle` appends nothing. `color` is its own op: the `{r,g,b}` proxy
+    snapshot at draw, the three-way strict `!==` OR of `isModified`, then
+    `resetToDefault` writes the defaults, replaces `proxy.color` and calls
+    `ctrl?.load("#" + round(v*255).toString(16).padStart(2,"0") × 3)` — the
+    hex string is dumped through the `load` trace (negative / ±0 / NaN /
+    Infinity / >2^53 spellings all pinned via `to_hex_string`), followed by
+    the post-reset proxy and target. `buildTree(s, d)` transcribes the
+    ~850-line literal tree (253 nodes: 40 folders + 213 prop leaves) reading
+    the ported `RenderSettings` sub-objects; every leaf is walked with the
+    same mock-gui draw→isModified→reset dump, and the mutated variant applies
+    `path[key] = value` writes BEFORE building. `LINES_PER_PLAYER` is the
+    `2` constant. 10 scenarios (`dbg_` 10).
 
 Regenerate whenever a ported source changes:
 
@@ -2039,7 +2064,7 @@ node rust/tools/run_wasm_parity.mjs
 
 `wasm-probe` exposes the ported functions through `extern "C"` scalar
 entrypoints (`src/wasm_probe.rs`); the runner imports `data/vectors.json` and
-compares every value. Last run: **800,103 comparisons, all bit-identical**.
+compares every value. Last run: **809,746 comparisons, all bit-identical**.
 
 ### Windows: the linker environment
 

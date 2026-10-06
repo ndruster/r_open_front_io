@@ -4458,3 +4458,11 @@ replay_s12!(
     MPP_SCENARIOS,
     openfront_core::misc_pure::run_op
 );
+// S15: the debug GUI cluster - the folder default-parameter / nullish gates,
+// the prop-factory strict-!== lifecycles, the color hex quirk dump and the
+// full buildTree walk over the real render settings.
+replay_s12!(
+    replay_debuggui_scenarios,
+    DBG_SCENARIOS,
+    openfront_core::debug_gui::run_op
+);

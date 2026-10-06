@@ -527,6 +527,14 @@ const LC = await loadTs("src/client/components/LobbyCard.ts");
 const SND = await loadTs("src/client/sound/Sounds.ts");
 const GTL = await loadTs("src/client/components/baseComponents/stats/GameTypeLabels.ts");
 const ICS = await loadTs("src/client/components/InputCardStyles.ts");
+// S15: the debug GUI cluster (DBG* - Layout / folder / the four prop
+// factories). Loading Layout prepares the four value-imported copies.
+const DBGL = await loadTs("src/client/render/gl/debug/Layout.ts");
+const DBGF = await loadTs("src/client/render/gl/debug/Folder.ts");
+const DBGTT = await loadTs("src/client/render/gl/debug/props/Toggle.ts");
+const DBGSV = await loadTs("src/client/render/gl/debug/props/Slider.ts");
+const DBGSL = await loadTs("src/client/render/gl/debug/props/Select.ts");
+const DBGCR = await loadTs("src/client/render/gl/debug/props/Color.ts");
 
 const PF = await loadTs("src/core/pathfinding/PathFinder.ts");
 const { AStar } = await loadTs("src/core/pathfinding/algorithms/AStar.ts");
@@ -18194,6 +18202,354 @@ runMPP("mpp_card_class", [
 ]);
 runMPP("mpp_consts", [[2]]);
 
+// --- S15: debug GUI cluster ---------------------------------------------------
+// Kind table (matches `debug_gui::run_op`): 0 folder factory batch; 1 toggle /
+// 2 slider / 3 select single-key lifecycle; 4 color lifecycle; 5 buildTree dump
+// walk; 6 constants. The capture drives the real factories through a mock
+// lil-gui facade that records the draw-time add / addColor / name / load
+// events; the live target / proxy references ride back through the trace.
+// Slider args carry [min, max, step] BEFORE the target (raw f64, not encVal);
+// select args carry [n_options, (encS)*n] before the target.
+const dbgScenarios = [];
+let dbgIdx = 0;
+function dbgGuiMock(trace) {
+  const ctrl = {
+    onChange: () => ctrl,
+    name: (l) => {
+      trace.push(["name", l]);
+      return ctrl;
+    },
+    updateDisplay: () => {
+      trace.push(["ud"]);
+      return ctrl;
+    },
+    load: (h) => {
+      trace.push(["load", h]);
+      return ctrl;
+    },
+  };
+  return {
+    add: (target, key, ...rest) => {
+      trace.push(["add", target, key, ...rest]);
+      return ctrl;
+    },
+    addColor: (proxy, key) => {
+      trace.push(["addColor", proxy, key]);
+      return ctrl;
+    },
+  };
+}
+function dbgWalk(node, out, gui, trace) {
+  if (node.kind === "folder") {
+    out.push(0, ...encS(node.label), ...encVal(node.closed), node.children.length);
+    for (const c of node.children) dbgWalk(c, out, gui, trace);
+    return;
+  }
+  trace.length = 0;
+  node.draw(gui);
+  const addEv = trace.find((e) => e[0] === "add" || e[0] === "addColor");
+  const nameEv = trace.find((e) => e[0] === "name");
+  const isColor = addEv[0] === "addColor";
+  const kind = isColor ? 4 : Array.isArray(addEv[3]) ? 3 : addEv.length >= 6 ? 2 : 1;
+  out.push(kind);
+  out.push(...(nameEv ? encVal(nameEv[1]) : [0]));
+  const proxy = isColor ? addEv[1] : null;
+  const target = isColor ? null : addEv[1];
+  const key = isColor ? null : addEv[2];
+  if (isColor) {
+    out.push(...encVal(proxy.color.r), ...encVal(proxy.color.g), ...encVal(proxy.color.b));
+  }
+  out.push(node.isModified() ? 1 : 0);
+  trace.length = 0;
+  node.resetToDefault();
+  if (isColor) {
+    const loadEv = trace.find((e) => e[0] === "load");
+    out.push(...encS(loadEv[1]));
+    out.push(...encVal(proxy.color.r), ...encVal(proxy.color.g), ...encVal(proxy.color.b));
+  } else {
+    out.push(...encVal(target[key]));
+    if (kind === 2) out.push(addEv[3], addEv[4], addEv[5]);
+    if (kind === 3) {
+      out.push(addEv[3].length);
+      for (const o of addEv[3]) out.push(...encS(o));
+    }
+  }
+}
+function runDBG(name, ops) {
+  const played = [];
+  for (const [k, ...a] of ops) {
+    let args = [];
+    let res = [];
+    if (k === 0) {
+      const items = a[0]; // [label, opts, children[]]*
+      args = [items.length];
+      for (const [label, opts, children] of items) {
+        args.push(...encS(label), ...encVal(opts), children.length);
+        for (const c of children) args.push(...encVal(c));
+      }
+      for (const [label, opts, children] of items) {
+        try {
+          const node = DBGF.folder(label, children, opts);
+          res.push(0, ...encS(node.label), ...encVal(node.closed), node.children.length);
+          for (const c of node.children) res.push(...encVal(c));
+        } catch (e) {
+          res.push(1);
+        }
+      }
+    } else if (k === 1) {
+      const [target, key, defaults, label, muts] = a;
+      args = [...encVal(target), ...encVal(key), ...encVal(defaults), ...encVal(label), muts.length];
+      for (const m of muts) args.push(...encVal(m));
+      const trace = [];
+      const gui = dbgGuiMock(trace);
+      try {
+        const p = DBGTT.toggle(target, key, defaults, label);
+        trace.length = 0;
+        p.draw(gui);
+        const nameEv = trace.find((e) => e[0] === "name");
+        res = [0, 1];
+        res.push(...(nameEv ? encVal(nameEv[1]) : [0]));
+        res.push(p.isModified() ? 1 : 0);
+        for (const m of muts) {
+          target[key] = m;
+          res.push(p.isModified() ? 1 : 0);
+        }
+        p.resetToDefault();
+        res.push(...encVal(target[key]));
+        res.push(...encVal(target));
+      } catch (e) {
+        res = [1];
+      }
+    } else if (k === 2) {
+      const [min, max, step, target, key, defaults, label, muts] = a;
+      args = [
+        min, max, step,
+        ...encVal(target), ...encVal(key), ...encVal(defaults), ...encVal(label), muts.length,
+      ];
+      for (const m of muts) args.push(...encVal(m));
+      const trace = [];
+      const gui = dbgGuiMock(trace);
+      try {
+        const p = DBGSV.slider(target, key, defaults, min, max, step, label);
+        trace.length = 0;
+        p.draw(gui);
+        const nameEv = trace.find((e) => e[0] === "name");
+        res = [0, 2];
+        res.push(...(nameEv ? encVal(nameEv[1]) : [0]));
+        res.push(p.isModified() ? 1 : 0);
+        for (const m of muts) {
+          target[key] = m;
+          res.push(p.isModified() ? 1 : 0);
+        }
+        p.resetToDefault();
+        res.push(...encVal(target[key]));
+        res.push(min, max, step);
+        res.push(...encVal(target));
+      } catch (e) {
+        res = [1];
+      }
+    } else if (k === 3) {
+      const [options, target, key, defaults, label, muts] = a;
+      args = [
+        options.length, ...options.flatMap(encS),
+        ...encVal(target), ...encVal(key), ...encVal(defaults), ...encVal(label), muts.length,
+      ];
+      for (const m of muts) args.push(...encVal(m));
+      const trace = [];
+      const gui = dbgGuiMock(trace);
+      try {
+        const p = DBGSL.select(target, key, defaults, options, label);
+        trace.length = 0;
+        p.draw(gui);
+        const nameEv = trace.find((e) => e[0] === "name");
+        res = [0, 3];
+        res.push(...(nameEv ? encVal(nameEv[1]) : [0]));
+        res.push(p.isModified() ? 1 : 0);
+        for (const m of muts) {
+          target[key] = m;
+          res.push(p.isModified() ? 1 : 0);
+        }
+        p.resetToDefault();
+        res.push(...encVal(target[key]));
+        res.push(options.length);
+        for (const o of options) res.push(...encS(o));
+        res.push(...encVal(target));
+      } catch (e) {
+        res = [1];
+      }
+    } else if (k === 4) {
+      const [target, rKey, gKey, bKey, defaults, label, muts] = a;
+      args = [
+        ...encVal(target), ...encVal(rKey), ...encVal(gKey), ...encVal(bKey),
+        ...encVal(defaults), ...encVal(label), muts.length,
+      ];
+      for (const [r, g, b] of muts) args.push(...encVal(r), ...encVal(g), ...encVal(b));
+      const trace = [];
+      const gui = dbgGuiMock(trace);
+      try {
+        const p = DBGCR.color(target, rKey, gKey, bKey, defaults, label);
+        trace.length = 0;
+        p.draw(gui);
+        const acEv = trace.find((e) => e[0] === "addColor");
+        const nameEv = trace.find((e) => e[0] === "name");
+        const proxy = acEv[1];
+        res = [0, 4];
+        res.push(...(nameEv ? encVal(nameEv[1]) : [0]));
+        res.push(...encVal(proxy.color.r), ...encVal(proxy.color.g), ...encVal(proxy.color.b));
+        res.push(p.isModified() ? 1 : 0);
+        for (const [r, g, b] of muts) {
+          target[rKey] = r;
+          target[gKey] = g;
+          target[bKey] = b;
+          res.push(p.isModified() ? 1 : 0);
+        }
+        p.resetToDefault();
+        const loadEv = trace.find((e) => e[0] === "load");
+        res.push(...encS(loadEv[1]));
+        res.push(...encVal(proxy.color.r), ...encVal(proxy.color.g), ...encVal(proxy.color.b));
+        res.push(...encVal(target));
+      } catch (e) {
+        res = [1];
+      }
+    } else if (k === 5) {
+      const [s, d, muts] = a;
+      args = [...encVal(s), ...encVal(d), muts.length];
+      for (const [path, key, value] of muts) {
+        args.push(path.length, ...path.flatMap(encS), ...encS(key), ...encVal(value));
+      }
+      for (const [path, key, value] of muts) {
+        let cur = s;
+        for (const seg of path) cur = cur[seg];
+        cur[key] = value;
+      }
+      const tree = DBGL.buildTree(s, d);
+      const trace = [];
+      const gui = dbgGuiMock(trace);
+      res = [tree.length];
+      for (const n of tree) dbgWalk(n, res, gui, trace);
+    } else if (k === 6) {
+      args = [];
+      res = [ATY.LINES_PER_PLAYER];
+    }
+    played.push({ kind: k, args: args.flat().map(uenc), res: res.flat().map(uenc) });
+  }
+  dbgScenarios.push({ name: `${name}_${dbgIdx++}`, ops: played });
+}
+runDBG("dbg_folder", [
+  [
+    0,
+    [
+      ["A", undefined, ["c1"]], // default parameter
+      ["B", { closed: false }, []], // ?? survives false
+      ["C", { closed: 0 }, ["x", 1, null]], // raw 0 survives (dumped as a number)
+      ["D", { closed: "" }, []], // raw "" survives
+      ["E", { closed: null }, []], // nullish -> true
+      ["F", { closed: undefined }, []], // present undefined -> true
+      ["G", {}, []], // missing key -> true
+      ["H", { closed: NaN }, []], // NaN is NOT nullish -> raw
+      ["I", null, []], // TypeError reading .closed off null
+      ["J", 5, []], // wrapper read -> undefined -> true
+      ["K", "x", []],
+      ["L", true, []],
+      ["M", [1], []], // array: no .closed key -> true
+      ["N", { closed: true }, ["dup", "dup"]],
+    ],
+  ],
+]);
+runDBG("dbg_toggle", [
+  // clean match, truthy label, one mutation back to the default.
+  [1, { v: true }, "v", { v: true }, "L", [false]],
+  // NaN !== NaN reports modified even when both sides are NaN.
+  [1, { v: NaN }, "v", { v: NaN }, undefined, []],
+  // -0 === 0: NOT modified.
+  [1, { v: -0 }, "v", { v: 0 }, undefined, []],
+  // missing key on both sides: undefined === undefined -> clean; the reset
+  // APPENDS the key (the final target dump pins the insertion order).
+  [1, {}, "k", {}, undefined, []],
+  // bool vs number is type-strict.
+  [1, { v: true }, "v", { v: 1 }, "", [false, 0]],
+  // falsy labels never reach ctrl.name.
+  [1, { v: 2 }, "v", { v: 2 }, NaN, []],
+  [1, { v: 2 }, "v", { v: 2 }, 0, []],
+  // truthy non-string label rides the name trace as its own value.
+  [1, { v: 2 }, "v", { v: 2 }, 42, []],
+  // present undefined vs missing key: undefined === undefined, clean.
+  [1, { v: undefined }, "v", {}, undefined, []],
+]);
+runDBG("dbg_slider", [
+  [2, 0.5, 2, 0.05, { v: 1 }, "v", { v: 1 }, "Frame Scale", [-0]],
+  // NaN default vs NaN target: modified; the reset writes NaN back.
+  [2, 0, 10, 0.1, { v: NaN }, "v", { v: NaN }, undefined, []],
+  // missing key: clean (undefined === undefined), reset appends.
+  [2, 1, 60, 1, {}, "radius", {}, undefined, []],
+  // -0 target vs 0 default: NOT modified (IEEE ===).
+  [2, 0, 1, 0.01, { v: -0 }, "v", { v: 0 }, undefined, []],
+]);
+runDBG("dbg_select", [
+  [3, ["a", "b"], { v: "a" }, "v", { v: "a" }, "Mode", ["b", "a"]],
+  [3, ["x"], { v: "c" }, "v", { v: "a" }, undefined, []],
+  // empty options list still rides the dump.
+  [3, [], { v: "z" }, "v", { v: "z" }, "E", []],
+  // missing key: clean, reset appends undefined.
+  [3, ["a", "b"], {}, "k", {}, undefined, []],
+]);
+runDBG("dbg_color", [
+  // Math.round half-UP after *255: 0.5*255 = 127.5 -> 128 -> "80".
+  [4, { r: 0.5, g: 0.5, b: 0.5 }, "r", "g", "b", { r: 0.5, g: 0.5, b: 0.5 }, "C", []],
+  // -0.5*255 = -127.5 -> -127 (half-up toward +Inf) -> "-7f", padStart no-op.
+  [4, { r: -0.5, g: -0.5, b: -0.5 }, "r", "g", "b", { r: -0.5, g: -0.5, b: -0.5 }, undefined, []],
+  // 2.5*255 = 637.5 -> 638 -> "27e" (3 chars, unpadded).
+  [4, { r: 2.5, g: 1, b: 0 }, "r", "g", "b", { r: 2.5, g: 1, b: 0 }, undefined, []],
+  // -0 and 0 both spell "0"; the third channel is 255 -> "ff".
+  [4, { r: -0, g: 0, b: 1 }, "r", "g", "b", { r: -0, g: 0, b: 1 }, undefined, []],
+  // NaN / Infinity spell their names; padStart leaves them alone.
+  [4, { r: NaN, g: Infinity, b: 1 }, "r", "g", "b", { r: NaN, g: Infinity, b: 1 }, undefined, []],
+  // undefined -> NaN, null -> 0, true -> 1 through ToNumber.
+  [4, { r: undefined, g: null, b: true }, "r", "g", "b", { r: undefined, g: null, b: true }, undefined, []],
+  // "0.5" -> 0.5 -> 128 -> "80"; "abc" -> NaN.
+  [4, { r: "0.5", g: "abc", b: "" }, "r", "g", "b", { r: "0.5", g: "abc", b: "" }, undefined, []],
+  // >= 2^53: V8's exact big-int hex path (2^53 * 255 = 2^61 * ... -> "1fe0...").
+  [4, { r: 2 ** 53, g: 1e21, b: -1e21 }, "r", "g", "b", { r: 2 ** 53, g: 1e21, b: -1e21 }, undefined, []],
+  // three-way OR: only the middle channel differs.
+  [4, { r: 0.1, g: 0.2, b: 0.3 }, "r", "g", "b", { r: 0.1, g: 0.9, b: 0.3 }, undefined, []],
+  // -0 === 0 on the third channel keeps it clean; a mutation flips it.
+  [4, { r: 0.5, g: 0.5, b: -0 }, "r", "g", "b", { r: 0.5, g: 0.5, b: 0 }, undefined, [[0.5, 0.5, 0.25]]],
+  // missing g/b keys: proxy reads undefined, isModified true, reset appends.
+  [4, { r: 1 }, "r", "g", "b", { r: 1, g: 0, b: 0 }, undefined, []],
+]);
+runDBG("dbg_color_typeerror", [
+  [4, null, "r", "g", "b", { r: 1, g: 0, b: 0 }, undefined, []],
+  [4, { r: 1 }, "r", "g", "b", null, undefined, []],
+  // non-object target: the strict-mode write-back in resetToDefault throws.
+  [4, 42, "r", "g", "b", { r: 1, g: 0, b: 0 }, undefined, []],
+  [4, "s", "r", "g", "b", { r: 1, g: 0, b: 0 }, undefined, []],
+]);
+runDBG("dbg_toggle_typeerror", [
+  [1, null, "v", { v: true }, undefined, []],
+  [1, { v: true }, "v", null, undefined, []],
+  [1, 42, "v", { v: true }, undefined, []],
+  [1, undefined, "v", { v: true }, undefined, []],
+]);
+runDBG("dbg_tree", [
+  [5, RSET.createRenderSettings(), RSET.createRenderSettings(), []],
+]);
+runDBG("dbg_tree_mutated", [
+  [
+    5,
+    RSET.createRenderSettings(),
+    RSET.createRenderSettings(),
+    [
+      [["passEnabled"], "nameDebug", NaN], // toggle modified (NaN !== false)
+      [["structure", "shapes", "City"], "scale", -0], // slider modified (-0 !== 1)
+      [["lightConfigs", "City"], "intensity", Infinity], // slider modified
+      [["bar"], "colorRedR", 2.5], // color modified; hex stays from defaults
+      [["falloutBloom"], "bloomR", "x"], // string -> ToNumber NaN, modified
+      [["name"], "outlineUsePlayerColor", true], // toggle flipped
+    ],
+  ],
+]);
+runDBG("dbg_constants", [[6]]);
+
 // --- S12: AtlasData.ts --------------------------------------------------------
 // Kind table (matches `atlas_data::run_op`): 0 buildGlyphTables batch ->
 // the FULL 3x384 Float32Array contents; 1 buildKernTable batch -> sparse
@@ -18780,6 +19136,7 @@ const structures = {
   lobbycard: lgScenarios,
   soundscat: sndScenarios,
   miscpure: mppScenarios,
+  debuggui: dbgScenarios,
 };
 
 // ================================================================ JSON
@@ -22137,6 +22494,16 @@ opStream(
   "/// One `GameTypeLabels.isFfa` + `InputCardStyles.cardClass` op (see\n" +
     "/// `misc_pure::run_op` docs). kind 0 isFfa batch, 1 cardClass batch\n" +
     "/// (extraTag 0 = default parameter), 2 the constants dump.",
+);
+opStream(
+  "debuggui",
+  "Dbg",
+  "/// One `client/render/gl/debug/` cluster op (see `debug_gui::run_op`\n" +
+    "/// docs). kind 0 folder factory batch, 1 toggle / 2 slider / 3 select\n" +
+    "/// single-key lifecycle (slider args lead with raw min/max/step, select\n" +
+    "/// args with the options list), 4 color lifecycle (the mock-facade\n" +
+    "/// draw / isModified / resetToDefault trace + the hex quirk dump), 5\n" +
+    "/// buildTree dump walk, 6 the LINES_PER_PLAYER constant.",
 );
 
 const dataDir = join(root, "crates", "core", "tests", "data");

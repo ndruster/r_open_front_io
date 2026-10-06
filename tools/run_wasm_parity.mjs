@@ -179,6 +179,7 @@ for (const name of [
   "probe_lg_reset", "probe_lg_arg", "probe_lg_op", "probe_lg_out_at",
   "probe_snd_reset", "probe_snd_arg", "probe_snd_op", "probe_snd_out_at",
   "probe_mpp_reset", "probe_mpp_arg", "probe_mpp_op", "probe_mpp_out_at",
+  "probe_dbg_reset", "probe_dbg_arg", "probe_dbg_op", "probe_dbg_out_at",
 ]) {
   if (typeof ex[name] !== "function") {
     console.error(`missing wasm export ${name} - rebuild with --features wasm-probe`);
@@ -2613,6 +2614,7 @@ for (const [key, reset, arg, op, outAt] of [
   ["lobbycard", "probe_lg_reset", "probe_lg_arg", "probe_lg_op", "probe_lg_out_at"],
   ["soundscat", "probe_snd_reset", "probe_snd_arg", "probe_snd_op", "probe_snd_out_at"],
   ["miscpure", "probe_mpp_reset", "probe_mpp_arg", "probe_mpp_op", "probe_mpp_out_at"],
+  ["debuggui", "probe_dbg_reset", "probe_dbg_arg", "probe_dbg_op", "probe_dbg_out_at"],
 ]) {
   for (const s of S[key]) {
     ex[reset]();

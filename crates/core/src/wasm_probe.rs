@@ -5362,3 +5362,8 @@ s8_stateless_probe!(
     probe_mpp_reset, probe_mpp_arg, probe_mpp_op, probe_mpp_out_at,
     MPP_ARGS, MPP_OUT, crate::misc_pure::run_op
 );
+// S15: the debug GUI cluster. `probe_dbg_` is unused (the rail grid is `rsg_`).
+s8_stateless_probe!(
+    probe_dbg_reset, probe_dbg_arg, probe_dbg_op, probe_dbg_out_at,
+    DBG_ARGS, DBG_OUT, crate::debug_gui::run_op
+);

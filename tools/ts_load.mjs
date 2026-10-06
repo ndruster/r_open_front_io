@@ -4133,6 +4133,45 @@ function prepare(rel) {
     );
   }
 
+  if (rel.endsWith("gl/debug/Layout.ts")) {
+    // S15: the four value imports are relative and extensionless - strip
+    // mode cannot resolve them; redirect to prepared copies (AStar.Rail
+    // precedent). The `import type` lines (RenderSettings / DebugNode) are
+    // erased by Node; Folder / props/* have only `import type` of their
+    // own, so they prepare clean.
+    const dbgFolderRel = "src/client/render/gl/debug/Folder.ts";
+    const dbgColorRel = "src/client/render/gl/debug/props/Color.ts";
+    const dbgSliderRel = "src/client/render/gl/debug/props/Slider.ts";
+    const dbgToggleRel = "src/client/render/gl/debug/props/Toggle.ts";
+    for (const r of [dbgFolderRel, dbgColorRel, dbgSliderRel, dbgToggleRel]) {
+      if (!prepared.has(r)) prepare(r);
+    }
+    out = must(
+      out,
+      'import { folder } from "./Folder";',
+      `import { folder } from "./${prepared.get(dbgFolderRel)}";`,
+      "Layout Folder import",
+    );
+    out = must(
+      out,
+      'import { color } from "./props/Color";',
+      `import { color } from "./${prepared.get(dbgColorRel)}";`,
+      "Layout Color import",
+    );
+    out = must(
+      out,
+      'import { slider } from "./props/Slider";',
+      `import { slider } from "./${prepared.get(dbgSliderRel)}";`,
+      "Layout Slider import",
+    );
+    out = must(
+      out,
+      'import { toggle } from "./props/Toggle";',
+      `import { toggle } from "./${prepared.get(dbgToggleRel)}";`,
+      "Layout Toggle import",
+    );
+  }
+
   if (rel.endsWith("client/GameModeSelector.ts")) {
     // S12: only the pure gate functions are ported. The whole import block
     // (up to the first module-scope const) is replaced: GameType rides the

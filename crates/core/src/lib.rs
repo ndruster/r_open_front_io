@@ -348,6 +348,13 @@
 //!   `formatGameType` is intl-bound and out of scope) and `cardClass` from
 //!   `InputCardStyles.ts` (the undefined-only default parameter and the
 //!   verbatim template spacing)
+//! * [`debug_gui`] — the `src/client/render/gl/debug/` GUI cluster: the
+//!   `folder` factory (undefined-only default parameter, nullish-only
+//!   `closed ?? true` fallback), the `toggle` / `slider` / `select` / `color`
+//!   prop-factory lifecycles (strict-`!==` `isModified`, the captured-default
+//!   `resetToDefault` write-back, the `Math.round(v*255).toString(16)
+//!   .padStart(2,"0")` hex quirk surface) and `buildTree`'s pure literal
+//!   debug tree; plus `LINES_PER_PLAYER` from `name-pass/Types.ts`
 //!
 //! Two rules govern every future port into this crate:
 //!
@@ -382,6 +389,7 @@ pub mod consensus;
 pub mod cosmetic_schemas;
 pub mod cosmetic_visibility;
 pub mod creator_code;
+pub mod debug_gui;
 pub mod desync_detector;
 pub mod detmath;
 pub mod doomsday_clock;

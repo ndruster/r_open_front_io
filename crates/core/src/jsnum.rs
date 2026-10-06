@@ -41,6 +41,19 @@ pub fn to_uint16(v: f64) -> u16 {
     n.rem_euclid(65_536.0) as u16
 }
 
+/// `ToUint8`: typed-array write into a `Uint8Array`. Same trunc-then-modulo
+/// contract as [`to_uint16`] reduced into `[0, 256)`.
+pub fn to_uint8(v: f64) -> u8 {
+    if !v.is_finite() {
+        return 0;
+    }
+    let n = v.trunc();
+    if n.abs() < 9_007_199_254_740_992.0 {
+        return (n as i64).rem_euclid(256) as u8;
+    }
+    n.rem_euclid(256.0) as u8
+}
+
 /// JS `Math.round`: round half **up** (toward +Infinity), so `round(-0.5)`
 /// is `-0` and `round(-1.5)` is `-1` — unlike Rust's `f64::round` which
 /// rounds half away from zero. Implemented as `floor(x) + (x - floor(x) >=

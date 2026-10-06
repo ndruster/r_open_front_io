@@ -153,6 +153,14 @@ for (const name of [
   "probe_sst_reset", "probe_sst_arg", "probe_sst_op", "probe_sst_out_at",
   "probe_nb_reset", "probe_nb_arg", "probe_nb_op", "probe_nb_out_at",
   "probe_gch_reset", "probe_gch_arg", "probe_gch_op", "probe_gch_out_at",
+  "probe_su_reset", "probe_su_arg", "probe_su_op", "probe_su_out_at",
+  "probe_cam_reset", "probe_cam_arg", "probe_cam_op", "probe_cam_out_at",
+  "probe_txl_reset", "probe_txl_arg", "probe_txl_op", "probe_txl_out_at",
+  "probe_cu_reset", "probe_cu_arg", "probe_cu_op", "probe_cu_out_at",
+  "probe_cvs_reset", "probe_cvs_arg", "probe_cvs_op", "probe_cvs_out_at",
+  "probe_afp_reset", "probe_afp_arg", "probe_afp_op", "probe_afp_out_at",
+  "probe_uf_reset", "probe_uf_arg", "probe_uf_op", "probe_uf_out_at",
+  "probe_un_reset", "probe_un_arg", "probe_un_op", "probe_un_out_at",
 ]) {
   if (typeof ex[name] !== "function") {
     console.error(`missing wasm export ${name} - rebuild with --features wasm-probe`);
@@ -2515,6 +2523,36 @@ for (const [key, reset, arg, op, outAt] of [
   ["stablestringify", "probe_sst_reset", "probe_sst_arg", "probe_sst_op", "probe_sst_out_at"],
   ["nameboxcalculator", "probe_nb_reset", "probe_nb_arg", "probe_nb_op", "probe_nb_out_at"],
   ["gameconfighelpers", "probe_gch_reset", "probe_gch_arg", "probe_gch_op", "probe_gch_out_at"],
+]) {
+  for (const s of S[key]) {
+    ex[reset]();
+    for (const o of s.ops) {
+      for (const a of o.args) ex[arg](numTok(a));
+      const len = Number(ex[op](o.kind));
+      if (len !== o.res.length) {
+        fail(`${s.name} op${o.kind} res len`, 0, len, o.res.length);
+        continue;
+      }
+      for (let i = 0; i < len; i++) {
+        checks++;
+        const g = ex[outAt](i);
+        const w = numTok(o.res[i]);
+        if (!Object.is(g, w)) fail(`${s.name} op${o.kind} res[${i}]`, 0, g, w);
+      }
+    }
+  }
+}
+
+// --- S11: client render/gl + view + Utils modules ---------------------------
+for (const [key, reset, arg, op, outAt] of [
+  ["settingsutils", "probe_su_reset", "probe_su_arg", "probe_su_op", "probe_su_out_at"],
+  ["camera", "probe_cam_reset", "probe_cam_arg", "probe_cam_op", "probe_cam_out_at"],
+  ["textlayout", "probe_txl_reset", "probe_txl_arg", "probe_txl_op", "probe_txl_out_at"],
+  ["colorutils", "probe_cu_reset", "probe_cu_arg", "probe_cu_op", "probe_cu_out_at"],
+  ["cosmeticvisibility", "probe_cvs_reset", "probe_cvs_arg", "probe_cvs_op", "probe_cvs_out_at"],
+  ["affiliationpalette", "probe_afp_reset", "probe_afp_arg", "probe_afp_op", "probe_afp_out_at"],
+  ["utilsformat", "probe_uf_reset", "probe_uf_arg", "probe_uf_op", "probe_uf_out_at"],
+  ["utilsnav", "probe_un_reset", "probe_un_arg", "probe_un_op", "probe_un_out_at"],
 ]) {
   for (const s of S[key]) {
     ex[reset]();

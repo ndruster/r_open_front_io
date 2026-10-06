@@ -5207,3 +5207,38 @@ s8_stateless_probe!(
     probe_gch_reset, probe_gch_arg, probe_gch_op, probe_gch_out_at,
     GCH_ARGS, GCH_OUT, crate::game_config_helpers::run_op
 );
+
+// =============== S11: client render/gl + view + Utils modules ================
+
+s8_stateless_probe!(
+    probe_su_reset, probe_su_arg, probe_su_op, probe_su_out_at,
+    SU_ARGS, SU_OUT, crate::settings_utils::run_op
+);
+s8_harness_probe!(
+    probe_cam_reset, probe_cam_arg, probe_cam_op, probe_cam_out_at,
+    CAM_HARNESS, CAM_ARGS, CAM_OUT, crate::camera::RigHarness
+);
+s8_harness_probe!(
+    probe_txl_reset, probe_txl_arg, probe_txl_op, probe_txl_out_at,
+    TXL_HARNESS, TXL_ARGS, TXL_OUT, crate::text_layout::RigHarness
+);
+s8_stateless_probe!(
+    probe_cu_reset, probe_cu_arg, probe_cu_op, probe_cu_out_at,
+    CU_ARGS, CU_OUT, crate::color_utils::run_op
+);
+s8_stateless_probe!(
+    probe_cvs_reset, probe_cvs_arg, probe_cvs_op, probe_cvs_out_at,
+    CVS_ARGS, CVS_OUT, crate::cosmetic_visibility::run_op
+);
+s8_harness_probe!(
+    probe_afp_reset, probe_afp_arg, probe_afp_op, probe_afp_out_at,
+    AFP_HARNESS, AFP_ARGS, AFP_OUT, crate::affiliation_palette::RigHarness
+);
+s8_stateless_probe!(
+    probe_uf_reset, probe_uf_arg, probe_uf_op, probe_uf_out_at,
+    UF_ARGS, UF_OUT, crate::utils_format::run_op
+);
+s8_harness_probe!(
+    probe_un_reset, probe_un_arg, probe_un_op, probe_un_out_at,
+    UN_HARNESS, UN_ARGS, UN_OUT, crate::utils_nav::RigHarness
+);

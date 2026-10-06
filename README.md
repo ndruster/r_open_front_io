@@ -1701,6 +1701,116 @@ WebSockets — stays excluded, mirroring the `src/core` exclusions).
     `NameMap` HUD), and the three DOM input helpers. 26 scenarios (`nt_` 5,
     `pg_` 5, `sst_` 6, `nb_` 4, `gch_` 6).
 
+68. **`client/render/gl/SettingsUtils.ts` + `client/render/gl/Camera.ts`
+    + `client/render/gl/passes/name-pass/TextLayout.ts`
+    + `client/render/gl/utils/ColorUtils.ts`
+    + `client/view/CosmeticVisibility.ts`
+    + `client/render/gl/utils/Affiliation.ts` (CPU half)
+    + `client/Utils.ts` (pure formatting + nav/time/avatar subsets)**
+    (`settings_utils`, `camera`, `text_layout`, `color_utils`,
+    `cosmetic_visibility`, `affiliation_palette`, `utils_format`,
+    `utils_nav`) — the S11 client cluster: the whole remaining pure/stubbable
+    client surface.
+    `SettingsUtils` ports `deepAssign`/`deepDiff` over the codec: every
+    `deepAssign` write gates on `key in target` (the prototype chain — a
+    `valueOf` source key onto an empty target DOES land as a new own
+    property, pinned), arrays clone wholesale (`structuredClone`), the
+    recursion needs BOTH sides `typeof object && !== null`, `deepDiff` is
+    driven by `Object.keys(defaults)` (arrays recurse with index-string keys:
+    `deepDiff([1,2],[1,3])` → `{"1":3}`), `dv !== cv` is STRICT (`NaN !==
+    NaN` records a diff, `-0 !== 0` does not) and a no-difference result is
+    the JS `undefined` return. `Camera` is the stateful pan/zoom mat3 rig:
+    `renderDpr()` is scripted through `__CAM_DPR` (the RAW dpr is the first
+    arg of every dpr-consuming op; `|| 2` falsy gate then `Math.min(…, 2)`),
+    `resize` fits ONLY while `needsInitialFit` survives (`setCameraState`
+    clears it), `getMatrix` leads the PRE-CALL `dirty` flag and stores every
+    entry through `Float32Array` (`m[6] = -offsetX * sx` keeps `-0`,
+    Object.is-compared), NaN zoom poisons BOTH offsets through the
+    NaN-propagating `js_max`/`js_min` in `clampOffset`, and a zero canvas
+    width makes `sx` 0 / `tx` `-0`. `TextLayout` shapes over scripted glyph
+    tables: `charCodes[i] = charCodeAt(i)` writes through a `Uint8Array`
+    (surrogates truncate — `Ā` → 0, `😀`'s high unit → 61), `cursors` is a
+    `Float32Array` (every write `to_float32`, the centring subtraction can
+    produce `-0`), an out-of-range `Int8Array` kern read is `undefined` →
+    NaN poisons every later cursor, and the empty string still runs the
+    visual-bounds block reading `charCodes[-1]` → NaN. `ColorUtils` is the
+    terrain RGBA encoder: `hexToRgb` trims with the JS set (U+0085 NOT
+    trimmed, U+FEFF IS) before the single-`#` anchored gate, `encodeTerrainTile`
+    coerces `tb` through ToInt32 (NaN → deep-water base, `-1` → peak gate
+    wins), the plains branch has NO clamp (the `Uint8Array` write wraps mod
+    256), overrides ride `??` (an EMPTY array does NOT fall back — missing
+    channels index to NaN → 0) and `buildTerrainRGBA` allocates
+    `new Uint8Array(w*h*4)` (ToIndex truncates) but loops `i < w*h` (rounds
+    UP) — a fractional `w` leaves the last pixel's tail bytes AND its alpha
+    unwritten. `CosmeticVisibility.visibleCosmetics` short-circuits on
+    `owner === "self"` BEFORE reading `visibility`, gates `showFrom ??
+    "everyone"` STRICT, returns the ONE-key `{ verified }` object (present-
+    even-undefined) when hidden, deletes categories on STRICT `=== false`,
+    and re-filters `effects` through the ported `cosmetic_schemas::
+    effect_type_for_slot` (stale bare `"nukeExplosion"` kept) with the
+    Arr/Str → `Object.fromEntries` → Obj transition and the in-place key
+    position surviving. `Affiliation` ports the CPU palette half (GL stubbed:
+    `createTexture2D` becomes `() => ({})`): `Math.round(v*255)` channel
+    expansion with the Uint8Array wrap/zero specials, the
+    `rel && lp > 0 && owner > 0 && owner < rs && lp < rs` gate (an EMPTY
+    `Uint8Array` is truthy — every read OOB), fractional indices read
+    `undefined` → neutral, the STRICT-`===` `setLocalPlayer` early return
+    leaves `dirty` untouched, and the two-row owner loop (row 0 four-state,
+    row 1 folds neutral into enemy). `Utils` contributes the pure formatting
+    subset (`renderNumber`/`renderTroops`/`formatPercentage`/`normaliseMapKey`/
+    `presenceMapKey`/`formatKeyForDisplay`/`formatDebugTranslation`): the
+    NaN-propagating `Math.max(num, 0)` clamp lets `"NaN"` through the else
+    branch while `Infinity` renders `"InfinityB"`, `fixedPoints ?? d` is a
+    NULLISH gate (explicit `0` honoured half-up, `NaN` → digits 0, fractions
+    truncate; digits outside `0..=100` throw RangeError — out of domain),
+    the `>= 1e5` branch has NO `toFixed` (explicit fp IGNORED there),
+    `formatPercentage` gates STRICT `Number.isNaN` (`-0` → unsigned
+    `"0.0%"`), `normaliseMapKey` looks the display name up in the ported
+    `maps_gen::MAPS` table BEFORE lowercasing (tourney ids win) and strips
+    `/[\s.]+/g` (final-sigma included, U+0085 kept, U+FEFF stripped),
+    `formatKeyForDisplay` recurses on `Shift+` and its fallback grows `"ß"`
+    to `"SS"`, and `formatDebugTranslation` serialises `Object.entries` in
+    V8 own-key order with `String(value)` over `Number::toString`. The
+    follow-up `utils_nav` subset adds `apexPathFor` (the `stripVersionPrefix`
+    path then the LEADING-only `/^\/w\d+\//` replace — `/v/c1/w2/w3/x` →
+    `/w3/x`, ASCII `\d`, no Perl trailing-newline leniency), `currentPagePath`
+    (the lazy `pagePin()` latch through the ported `PagePinState` — the
+    facade-read counter pins one read per scenario, the `commit === null`
+    gate is STRICT and an empty path still yields the bare `/v/<commit>`),
+    the three `Date.now()` default-parameter time functions
+    (`calculateServerTimeOffset`/`getServerNow`/
+    `getSecondsUntilServerTimestamp` — the scripted `__UN_NOW` FIFO with the
+    cumulative consumption counter in every res: an omitted argument and an
+    explicit `undefined` BOTH consume, an explicit number NEVER does, and the
+    seconds chain passes its evaluated `localNowMs` into `getServerNow` so
+    the whole chain consumes exactly once; `Math.max(0, floor(NaN))`
+    penetrates NaN through `js_max`), and `getDiscordAvatarUrl` (TRUTHY
+    `avatar` gate, the ASCII `/^\d+$/` + lowercase-hex + `a_`-prefix regexes,
+    `a_` → `gif`, `encodeURIComponent` reusing `asset_urls`, the STRICT
+    `!== undefined` discriminator gate — `null` PASSES (`Number(null)` → 0)
+    — and `Number(discriminator) % 5` over the ported `js_number` coercion
+    table: `"0x10"` → 1, `"-7"` → −2 keeping the JS remainder sign, `NaN % 5`
+    → `"embed/avatars/NaN.png"`). Excluded, with reasons: the
+    `translateText`/`intl-messageformat` cluster (`translateText` itself,
+    `getMapName`, `getGameModeLabel`, `getActiveModifiers`,
+    `getModifierLabels`, `renderDuration`, `getTranslatedPlayerTeamLabel`,
+    `isRTL`, `textDirection` — all bottom out in `translateText`, which needs
+    the un-installed `intl-messageformat`, the DOM `lang-selector` and the
+    language JSON files); `resolveTeamClanTag` + its private `getTopClans`
+    (a `clanTag` may be a CALLABLE read through `typeof p.clanTag ===
+    "function" ? p.clanTag() : p.clanTag`, and `getTopClans` ranks over a
+    JS `Map` — a callable/black-box harness for one HUD helper, not a pure
+    port); `getMessageTypeClasses` + `severityColors` (the `MessageType`
+    string enum from the Game graph plus a `console.warn` side effect on the
+    default branch); and every host-bound function (`copyToClipboard`,
+    `createCanvas`, `generateCryptoRandomUUID`, `getSvgAspectRatio`,
+    `showToast`/`showToastAfterReload`/`flushReloadToast`, `reloadForUpdate`,
+    `homeHref`, `isInIframe`, `getGamesPlayed`/`incrementGamesPlayed`,
+    `getModifierKey`/`getAltKey` — DOM/window/`Platform`/`sessionStorage`
+    touches with no pure residue). With this the client's portable surface is
+    exhausted. 50 scenarios (`su_` 3, `cam_` 9, `txl_` 4, `cu_` 6, `cvs_` 4,
+    `afp_` 6, `uf_` 7, `un_` 11).
+
 Regenerate whenever a ported source changes:
 
 ```
@@ -1733,7 +1843,7 @@ node rust/tools/run_wasm_parity.mjs
 
 `wasm-probe` exposes the ported functions through `extern "C"` scalar
 entrypoints (`src/wasm_probe.rs`); the runner imports `data/vectors.json` and
-compares every value. Last run: **296,230 comparisons, all bit-identical**.
+compares every value. Last run: **301,530 comparisons, all bit-identical**.
 
 ### Windows: the linker environment
 

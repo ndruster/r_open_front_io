@@ -24,6 +24,22 @@ pub struct PagePinState {
 }
 
 impl PagePinState {
+    /// A state with the scripted facade value (`None` = the read THROWS),
+    /// latch un-captured and the call counter zeroed. Used by the
+    /// `utils_nav` harness, whose `currentPagePath` calls `pagePin()`.
+    pub(crate) fn scripted(path: Option<String>) -> PagePinState {
+        PagePinState {
+            captured: None,
+            path,
+            facade_calls: 0,
+        }
+    }
+
+    /// The number of `__PPN_PATH` facade reads so far (pins the lazy latch).
+    pub(crate) fn facade_calls(&self) -> usize {
+        self.facade_calls
+    }
+
     /// `pagePin()`.
     pub fn page_pin(&mut self) -> Option<String> {
         if self.captured.is_none() {

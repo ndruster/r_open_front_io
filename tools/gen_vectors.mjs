@@ -475,6 +475,27 @@ const PG = await loadTs("src/client/PresenceGroup.ts");
 const GP = await loadTs("src/client/GraphicsPresets.ts");
 const NBC = await loadTs("src/client/hud/NameBoxCalculator.ts");
 const GCH = await loadTs("src/client/utilities/GameConfigHelpers.ts");
+const SU = await loadTs("src/client/render/gl/SettingsUtils.ts");
+const CAM = await loadTs("src/client/render/gl/Camera.ts");
+const TXL = await loadTs("src/client/render/gl/passes/name-pass/TextLayout.ts");
+const CU = await loadTs("src/client/render/gl/utils/ColorUtils.ts");
+const CVS = await loadTs("src/client/view/CosmeticVisibility.ts");
+const AFP = await loadTs("src/client/render/gl/utils/Affiliation.ts");
+// S11b: Utils.ts nav/time subset — the three `Date.now()` default parameters
+// become globalThis.__UN_NOW() (FIFO, precedent __CCC_NOW / __GCH_RAND). The
+// un_ time ops echo the cumulative consumption counter in res[0], pinning
+// that an omitted / explicit-undefined argument consumes the now while an
+// explicit number never does, and that getSecondsUntilServerTimestamp's
+// inner getServerNow call (explicit localNowMs) does NOT consume again.
+let unNows = [];
+let unConsumed = 0;
+globalThis.__UN_NOW = () => {
+  if (!unNows.length) throw new Error("un capture: unscripted Date.now()");
+  const v = unNows.shift();
+  unConsumed += 1;
+  return v;
+};
+const UF = await loadTs("src/client/Utils.ts");
 
 const PF = await loadTs("src/core/pathfinding/PathFinder.ts");
 const { AStar } = await loadTs("src/core/pathfinding/algorithms/AStar.ts");
@@ -15460,6 +15481,1084 @@ runGCH("gch_disabled_units", [
   [6, ["City", "Port"], "Warship", false], // removes nothing, still a new array
 ]);
 
+// ============ S11: client render/gl + view + Utils pure/isolated modules ======
+
+// --- SettingsUtils.ts deepAssign / deepDiff -----------------------------------
+// Kind table (matches `settings_utils::run_op`): 0 deepAssign
+// [...codec(target), ...codec(source)] -> [...codec(target after)];
+// 1 deepDiff [...codec(defaults), ...codec(current)] ->
+// [...codec(result|undefined)].
+const suScenarios = [];
+let suIdx = 0;
+function runSU(name, ops) {
+  const played = [];
+  for (const [k, ...a] of ops) {
+    let args;
+    let res;
+    if (k === 0) {
+      const t = structuredClone(a[0]);
+      args = [...encVal(a[0]), ...encVal(a[1])];
+      SU.deepAssign(t, a[1]);
+      res = encVal(t);
+    } else if (k === 1) {
+      args = [...encVal(a[0]), ...encVal(a[1])];
+      res = encVal(SU.deepDiff(a[0], a[1]));
+    } else throw new Error("su: bad op kind " + k);
+    played.push({ kind: k, args: args.flat().map(uenc), res: res.flat().map(uenc) });
+  }
+  suScenarios.push({ name: `${name}_${suIdx++}`, ops: played });
+}
+runSU("su_assign", [
+  // flat scalars: present keys overwrite, absent source keys survive,
+  // source keys the target lacks are dropped (never grows the target).
+  [0, { a: 1, b: 2, c: 3 }, { a: 9, c: undefined, d: 4 }],
+  // null source value falls through the object test into plain assign.
+  [0, { a: 1, b: 2 }, { a: null }],
+  // null target value: recursion gate fails, plain assign takes over.
+  [0, { a: null }, { a: { x: 1 } }],
+  // nested recursion: only keys already in the nested target land.
+  [0, { a: { x: 1, y: 2 }, b: 3 }, { a: { x: 9, z: 0 }, b: { p: 1 } }],
+  // deep nesting through two levels.
+  [0, { w: { a: { x: 1 }, b: 2 } }, { w: { a: { x: 5, q: 7 }, b: 8, c: 9 } }],
+  // array leaf replaced wholesale; array source onto scalar target still
+  // replaces (Array.isArray branch first, gated on `in`).
+  [0, { arr: [1, 2, 3], s: 7 }, { arr: [9], s: [4, 5] }],
+  // array shorter than target -> wholesale clone (stale entries gone).
+  [0, { arr: [1, 2, 3] }, { arr: [7] }],
+  // empty source: target untouched.
+  [0, { a: 1 }, {}],
+  // key overwrite keeps its insertion position; no new keys can appear.
+  [0, { m: 1, n: 2 }, { m: 3 }],
+  // undefined target value + object source value: typeof undefined is not
+  // object -> plain assign (source object lands by reference).
+  [0, { a: undefined }, { a: { x: 1 } }],
+]);
+runSU("su_assign_proto", [
+  // `key in target` walks the PROTOTYPE chain: a plain {} still has
+  // toString/valueOf/constructor, so these source keys DO get assigned as
+  // own properties (never grows? it DOES grow here - the gate passed).
+  [0, {}, { valueOf: 7, toString: 3 }],
+  [0, { toString: 1 }, { toString: 2, hasOwnProperty: 5 }],
+]);
+runSU("su_diff", [
+  // identical -> undefined (the JS undefined return).
+  [1, { a: 1, b: "x" }, { a: 1, b: "x" }],
+  // scalar diff records the CURRENT value; equal-strict scalars skip.
+  [1, { a: 1, b: 2, c: 3 }, { a: 9, b: 2, c: undefined }],
+  // NaN !== NaN records; -0 === 0 does not.
+  [1, { a: NaN, b: -0 }, { a: NaN, b: 0 }],
+  // NaN vs number records NaN.
+  [1, { a: NaN }, { a: 5 }],
+  // missing current key reads undefined -> recorded as undefined.
+  [1, { a: 1 }, {}],
+  // extra current key is NOT walked (defaults drive the key set).
+  [1, { a: 1 }, { a: 1, z: 9 }],
+  // nested object both-objects recurses; sub with no diff omits the key.
+  [1, { w: { x: 1, y: 2 } }, { w: { x: 1, y: 2 } }],
+  [1, { w: { x: 1, y: 2 }, k: 3 }, { w: { x: 5, y: 2 }, k: 3 }],
+  // object vs null on the current side: strict !== records null.
+  [1, { w: { x: 1 } }, { w: null }],
+  // null vs object records the object (cv survives as the current value).
+  [1, { w: null }, { w: { x: 1 } }],
+  // arrays recurse as key lists: index 1 differs -> {"1":3} plain object.
+  [1, { arr: [1, 2] }, { arr: [1, 3] }],
+  // array vs array fully equal -> no diff at all -> undefined.
+  [1, { arr: [1, 2] }, { arr: [1, 2] }],
+  // array length mismatch: extra current index not walked (defaults drive),
+  // missing current index reads undefined -> recorded.
+  [1, { arr: [1, 2, 3] }, { arr: [1] }],
+  // undefined vs null: strict !== records null.
+  [1, { a: undefined }, { a: null }],
+  // string identity by value: same string content is === in JS.
+  [1, { a: "abc" }, { a: "abc" }],
+  // result key order = defaults key order of the DIFFERING keys.
+  [1, { z: 1, m: 2, a: 3 }, { z: 9, m: 2, a: 8 }],
+]);
+
+// --- Camera.ts (stateful, scripted __CAM_DPR) ---------------------------------
+// Kind table (matches `camera::RigHarness::run_op`): 0 construct [mapW,mapH];
+// 1 resize [dprRaw,cssW,cssH]; 2 fitMap; 3 focusBBox [minX,minY,maxX,maxY,
+// padding] (padding recorded even when TS defaults it); 4 panTo; 5 panBy;
+// 6 setCameraState; 7 zoomBy; 8 zoomTo; 9 zoomAtScreen [dprRaw,f,sx,sy];
+// 10 getMatrix -> [dirtyBefore, m0..m8]; 11 screenToWorld [dprRaw,sx,sy];
+// 12 worldToScreen [dprRaw,wx,wy]; 13 dump. dump = [offsetX,offsetY,zoom,
+// mapW,mapH,canvasW,canvasH,dirty,needsInitialFit].
+const camScenarios = [];
+let camIdx = 0;
+function runCAM(name, ops) {
+  const played = [];
+  let cam = null;
+  for (const [k, ...a] of ops) {
+    let args;
+    let res;
+    if (k === 0) {
+      args = [a[0], a[1]];
+      cam = new CAM.Camera(a[0], a[1]);
+      res = camDump(cam);
+    } else if (k === 1) {
+      args = [a[0], a[1], a[2]];
+      globalThis.__CAM_DPR = a[0];
+      cam.resize(a[1], a[2]);
+      res = camDump(cam);
+    } else if (k === 2) {
+      args = [];
+      cam.fitMap();
+      res = camDump(cam);
+    } else if (k === 3) {
+      // a[4] === undefined means "call with the TS default" (record 1.4).
+      const pad = a[4] === undefined ? 1.4 : a[4];
+      args = [a[0], a[1], a[2], a[3], pad];
+      cam.focusBBox(a[0], a[1], a[2], a[3], ...(a[4] === undefined ? [] : [a[4]]));
+      res = camDump(cam);
+    } else if (k === 4) {
+      args = [a[0], a[1]];
+      cam.panTo(a[0], a[1]);
+      res = camDump(cam);
+    } else if (k === 5) {
+      args = [a[0], a[1]];
+      cam.panBy(a[0], a[1]);
+      res = camDump(cam);
+    } else if (k === 6) {
+      args = [a[0], a[1], a[2]];
+      cam.setCameraState(a[0], a[1], a[2]);
+      res = camDump(cam);
+    } else if (k === 7) {
+      args = [a[0]];
+      cam.zoomBy(a[0]);
+      res = camDump(cam);
+    } else if (k === 8) {
+      args = [a[0]];
+      cam.zoomTo(a[0]);
+      res = camDump(cam);
+    } else if (k === 9) {
+      args = [a[0], a[1], a[2], a[3]];
+      globalThis.__CAM_DPR = a[0];
+      cam.zoomAtScreen(a[1], a[2], a[3]);
+      res = camDump(cam);
+    } else if (k === 10) {
+      args = [];
+      const before = cam.dirty ? 1 : 0;
+      const m = cam.getMatrix();
+      res = [before, ...m];
+    } else if (k === 11) {
+      args = [a[0], a[1], a[2]];
+      globalThis.__CAM_DPR = a[0];
+      const w = cam.screenToWorld(a[1], a[2]);
+      res = [w.x, w.y];
+    } else if (k === 12) {
+      args = [a[0], a[1], a[2]];
+      globalThis.__CAM_DPR = a[0];
+      const s = cam.worldToScreen(a[1], a[2]);
+      res = [s.x, s.y];
+    } else if (k === 13) {
+      args = [];
+      res = camDump(cam);
+    } else throw new Error("cam: bad op kind " + k);
+    played.push({ kind: k, args: args.flat().map(uenc), res: res.flat().map(uenc) });
+  }
+  camScenarios.push({ name: `${name}_${camIdx++}`, ops: played });
+}
+const camDump = (c) => [
+  c.offsetX, c.offsetY, c.zoom, c.mapW, c.mapH,
+  c.canvasW, c.canvasH, c.dirty ? 1 : 0, c.needsInitialFit ? 1 : 0,
+];
+runCAM("cam_init", [
+  [0, 300, 200],
+  // getMatrix before any resize: dirty true -> recompute with canvas 1x1.
+  [10],
+  [10], // second call: dirty false, stored matrix returned as-is.
+]);
+runCAM("cam_resize_fit", [
+  [0, 300, 200],
+  // dpr 1.5: canvas = round(800*1.5), round(600*1.5); initial fit fires.
+  [1, 1.5, 800, 600],
+  [10],
+  [10],
+  // second resize: needsInitialFit already false -> no re-fit.
+  [1, 2, 400, 300],
+  [13],
+  // dpr 0 is falsy -> || 2 -> min(2,2)=2.
+  [1, 0, 100, 50],
+  [13],
+  // dpr NaN falsy -> 2; dpr -1 truthy -> min(-1,2) = -1 (round(-800)).
+  [1, NaN, 100, 50],
+  [1, -1, 800, 600],
+  [13],
+]);
+runCAM("cam_pans", [
+  [0, 300, 200],
+  [1, 2, 800, 600],
+  // panTo inside the clamped range.
+  [4, 100, 100],
+  // panTo beyond the right edge: clamp to mapW + halfVpW.
+  [4, 1000, 100],
+  // panTo beyond the left edge: clamp to -halfVpW.
+  [4, -1000, 100],
+  // panBy accumulates then clamps.
+  [5, 10, 10],
+  [5, 1e9, 1e9],
+  [13],
+]);
+runCAM("cam_zooms", [
+  [0, 300, 200],
+  [1, 2, 800, 600],
+  [7, 2], // zoom up
+  [7, 20], // clamps to MAX_ZOOM 20
+  [8, 0.01], // clamps to MIN_ZOOM 0.2
+  [8, 25], // clamps to 20
+  [7, NaN], // NaN poisons zoom, clampOffset poisons BOTH offsets
+  [13],
+  [8, 5], // recovery: zoom set again, offsets still NaN (max/min of NaN)
+  [13],
+]);
+runCAM("cam_focus", [
+  [0, 300, 200],
+  [1, 2, 800, 600],
+  // default padding 1.4 (TS called with four args).
+  [3, 10, 20, 50, 80],
+  // explicit padding 1.
+  [3, 10, 20, 50, 80, 1],
+  // padding 0 -> division by zero -> Infinity -> min(3, Inf)=3, max(0.7,3)=3.
+  [3, 0, 0, 10, 10, 0],
+  // zero-size bbox with negative padding -> negative zoom -> clamp gates.
+  [3, 5, 5, 5, 5, -1.4],
+  [13],
+]);
+runCAM("cam_screen", [
+  [0, 300, 200],
+  [1, 2, 800, 600],
+  // screenToWorld at the canvas center (dpr-scaled): world == offset.
+  [11, 2, 200, 150],
+  [11, 2, 0, 0],
+  [11, 1, 400, 300],
+  // worldToScreen round-trips.
+  [12, 2, 150, 100],
+  [12, 2, 0, 0],
+  // zoomAtScreen pins the world point under the cursor.
+  [9, 2, 1.5, 200, 150],
+  [13],
+  [9, 2, 0.5, 100, 75],
+  // zoomAtScreen with dpr 0 (falsy -> 2 on both sides).
+  [9, 0, 2, 50, 50],
+  [13],
+]);
+runCAM("cam_state", [
+  [0, 300, 200],
+  // setCameraState skips the initial fit: a later resize must NOT re-fit.
+  [6, 42, 43, 4],
+  [1, 2, 800, 600],
+  [13],
+  // fitMap called explicitly re-centers and re-fits.
+  [2],
+  [10],
+]);
+runCAM("cam_zero_canvas", [
+  [0, 0, 0],
+  // mapW 0: fitMap sx = canvas/0 = Infinity; zoom = min(Inf, NaN) * 0.9.
+  [1, 2, 0, 0],
+  [13],
+  [10],
+  // zoom NaN poisons everything downstream.
+  [4, 1, 1],
+  [13],
+]);
+runCAM("cam_matrix_negative_zero", [
+  [0, 300, 200],
+  [1, 2, 800, 600],
+  // offsetX 0 -> tx = -0 * sx = -0 (Float32Array keeps the sign).
+  [6, 0, 0, 1],
+  [10],
+  // negative offset -> positive tx.
+  [6, -100, -50, 2],
+  [10],
+]);
+
+// --- TextLayout.ts layoutString (scripted glyph tables) -----------------------
+// Kind table (matches `text_layout::RigHarness::run_op`): 0 setup
+// [adv*384, xoff*384, visw*384, klen, (kidx,kval)*klen] -> [1]; 1 layout
+// [tlen,(units)*tlen] -> [halfWidth, charCodes*32, cursors*32].
+const txlScenarios = [];
+let txlIdx = 0;
+function txlTables(advFn, xoffFn, viswFn, kernPairs, klen) {
+  const adv = new Float32Array(384);
+  const xoff = new Float32Array(384);
+  const visw = new Float32Array(384);
+  for (let c = 0; c < 384; c++) {
+    adv[c] = advFn(c);
+    xoff[c] = xoffFn(c);
+    visw[c] = viswFn(c);
+  }
+  const kern = new Int8Array(klen);
+  for (const [idx, v] of kernPairs) kern[idx] = v;
+  return { adv, xoff, visw, kern };
+}
+function runTXL(name, tables, texts) {
+  const played = [];
+  const nz = [];
+  for (let idx = 0; idx < tables.kern.length; idx++) {
+    const v = tables.kern[idx];
+    if (v !== 0) nz.push(idx, v);
+  }
+  const setupArgs = [
+    ...tables.adv, ...tables.xoff, ...tables.visw,
+    tables.kern.length,
+    ...nz,
+  ];
+  played.push({
+    kind: 0,
+    args: setupArgs.map(uenc),
+    res: [1],
+  });
+  for (const t of texts) {
+    const units = [];
+    for (let i = 0; i < t.length; i++) units.push(t.charCodeAt(i));
+    const charCodes = new Uint8Array(32);
+    const cursors = new Float32Array(32);
+    const hw = TXL.layoutString(t, { advance: tables.adv, xOffset: tables.xoff, visW: tables.visw }, tables.kern, charCodes, cursors);
+    played.push({
+      kind: 1,
+      args: [units.length, ...units].map(uenc),
+      res: [hw, ...charCodes, ...cursors].map(uenc),
+    });
+  }
+  txlScenarios.push({ name: `${name}_${txlIdx++}`, ops: played });
+}
+{
+  // Deterministic tables: advance = 5 + (c % 7), xOffset = (c % 5) - 2,
+  // visW = 4 + (c % 6). Kern table covers the pairs the ASCII texts hit.
+  const t1 = txlTables(
+    (c) => 5 + (c % 7),
+    (c) => (c % 5) - 2,
+    (c) => 4 + (c % 6),
+    [
+      [65 * 384 + 66, 3], // "AB" kern
+      [97 * 384 + 98, -2], // "ab" kern
+      [84 * 384 + 104, -5], // "Th" kern
+    ],
+    200000,
+  );
+  runTXL("txl_basic", t1, [
+    "", // len 0: charCodes[0] reads fill, last reads undefined -> NaN hw
+    "A", // single glyph: cursors[0] = 0, centered on its own visual bounds
+    "AB", // kern hit at 65*384+66
+    "ab", // negative kern
+    "Th", // negative kern
+    "BA", // kern miss -> 0 (in-range Int8Array read of 0, NOT undefined)
+    "Hello World", // 11 chars, mixed spaces
+    "01234567890123456789012345678901234567890123456789", // > MAX_CHARS: len 32
+  ]);
+  // Astral pair: both surrogates truncate through Uint8Array (0xD83D -> 61,
+  // 0xDE00 -> 0), and 0x100 (Ā) lands as 0.
+  runTXL("txl_trunc", t1, ["\u{1F600}", "Āx", "\uD83D\uDE00"]);
+}
+{
+  // Kern table SHORTER than the pair index: kern[prev*384+code] reads
+  // undefined -> adv NaN -> every later cursor NaN -> hw NaN.
+  const t2 = txlTables(
+    (c) => 6,
+    (c) => 1,
+    (c) => 5,
+    [[0, 2]],
+    100, // only indices 0..99 exist; 65*384+66 = 25026 is out of range
+  );
+  runTXL("txl_kern_nan", t2, ["AB", "A", "BA"]);
+}
+{
+  // Fractional f32 tables: cursor writes round through Float32Array, the
+  // centering subtraction can produce -0 and f32 quantisation.
+  const t3 = txlTables(
+    (c) => 0.1 + c * 0.001,
+    (c) => -0.3 + c * 0.002,
+    (c) => 0.7 + c * 0.003,
+    [],
+    1,
+  );
+  runTXL("txl_frac", t3, ["abc", "zz", "a"]);
+}
+
+// --- ColorUtils.ts (stateless terrain encoder) --------------------------------
+// Kind table (matches `color_utils::run_op`): 0 constants -> [paletteSize,
+// MAX_TRAIL_COLORS, EFFECT_PALETTE_BLOCKS, STRUCTURES, WARSHIP, TRAIN,
+// RAILROAD block indices]; 1 hexToRgb [...codec(str)] -> [...codec(tuple|null)];
+// 2 encodeTerrainTile [tb, outLen, offset, ...codec(colors?)] -> [...out];
+// 3 buildTerrainRGBA [...codec(bytes), w, h, ...codec(colors?)] -> [...pixels].
+// Terrain bytes cross PRE-COERCED (the capture builds a real Uint8Array and
+// re-reads it) so both sides see identical 0-255 element values.
+const cuScenarios = [];
+let cuIdx = 0;
+function runCU(name, ops) {
+  const played = [];
+  for (const [k, ...a] of ops) {
+    let args;
+    let res;
+    if (k === 0) {
+      args = [];
+      res = [
+        CU.getPaletteSize(),
+        CU.MAX_TRAIL_COLORS,
+        CU.EFFECT_PALETTE_BLOCKS,
+        CU.STRUCTURES_EFFECT_BLOCK,
+        CU.WARSHIP_EFFECT_BLOCK,
+        CU.TRAIN_EFFECT_BLOCK,
+        CU.RAILROAD_EFFECT_BLOCK,
+      ];
+    } else if (k === 1) {
+      args = [...encVal(a[0])];
+      res = encVal(CU.hexToRgb(a[0]));
+    } else if (k === 2) {
+      const [tb, outLen, offset, colors] = a;
+      args = [uenc(tb), outLen, uenc(offset), ...encVal(colors)];
+      const out = new Uint8Array(outLen);
+      CU.encodeTerrainTile(tb, out, offset, colors);
+      res = [...out];
+    } else if (k === 3) {
+      const [bytes, w, h, colors] = a;
+      const arr = new Uint8Array(bytes);
+      args = [...encVal([...arr]), uenc(w), uenc(h), ...encVal(colors)];
+      res = [...CU.buildTerrainRGBA(arr, w, h, colors)];
+    } else throw new Error("cu: bad op kind " + k);
+    played.push({ kind: k, args: args.flat().map(uenc), res: res.flat().map(uenc) });
+  }
+  cuScenarios.push({ name: `${name}_${cuIdx++}`, ops: played });
+}
+runCU("cu_constants", [[0]]);
+runCU("cu_hex", [
+  [1, "#aabbcc"], [1, "aabbcc"], [1, "#AABBCC"], [1, " #aabbcc "],
+  [1, "##aabbcc"], [1, "aab"], [1, "#12345g"], [1, ""], [1, "#ABCDEF"],
+  // U+0085 is NOT in the JS trim set; U+FEFF IS.
+  [1, "\u0085#aabbcc"], [1, "\u{feff}#aabbcc\u{feff}"],
+  [1, "#aabbccd"], [1, "#aabbcd"], [1, "\t#aabbcc\n"],
+]);
+runCU("cu_gates", [
+  // peak (impassable) / peak beats shoreline / sand / plains 0-9
+  [2, 0x9f, 4, 0, undefined], [2, 0xdf, 4, 0, undefined],
+  [2, 0xc0, 4, 0, undefined], [2, 0x80, 4, 0, undefined],
+  [2, 0x85, 4, 0, undefined], [2, 0x89, 4, 0, undefined],
+  // highland 10 / 19 (2*m adds), mountain 20 / 21 (floor(mag/2)) / 30
+  [2, 0x8a, 4, 0, undefined], [2, 0x93, 4, 0, undefined],
+  [2, 0x94, 4, 0, undefined], [2, 0x95, 4, 0, undefined],
+  [2, 0x9e, 4, 0, undefined],
+  // shoreline water (0.7*base+76.5, Math.round half-up) / deep water 0/5/10/15/31
+  [2, 0x40, 4, 0, undefined], [2, 0x00, 4, 0, undefined],
+  [2, 0x05, 4, 0, undefined], [2, 0x0a, 4, 0, undefined],
+  [2, 0x0f, 4, 0, undefined], [2, 0x1f, 4, 0, undefined],
+  // NaN tb -> ToInt32 0 -> deep water at the ocean base; -1 -> all bits ->
+  // peak gate wins over shoreline; 397 keeps bit7 set through ToInt32.
+  [2, Number.NaN, 4, 0, undefined], [2, -1, 4, 0, undefined],
+  [2, 397, 4, 0, undefined],
+]);
+runCU("cu_offsets", [
+  // fractional offset: no canonical index -> NO write at all
+  [2, 0x85, 8, 1.5, undefined],
+  // -1: the offset+0 write is dropped, offset+1..+3 land at 0..2
+  [2, 0x85, 8, -1, undefined],
+  // tail: only r,g fit in an 8-byte out
+  [2, 0x85, 8, 6, undefined],
+  // fully out of range
+  [2, 0x85, 8, 100, undefined],
+  // NaN offset -> no write
+  [2, 0x85, 8, Number.NaN, undefined],
+]);
+runCU("cu_overrides", [
+  // plains unclamped g wraps mod 256 at the Uint8Array write
+  [2, 0x89, 4, 0, { plainsColor: [0, 0, 0] }],
+  // empty / short override arrays: missing channels read undefined -> NaN -> 0
+  [2, 0xc0, 4, 0, { sandColor: [] }],
+  [2, 0xc0, 4, 0, { sandColor: [1, 2] }],
+  // null / undefined fields fall back through ??
+  [2, 0xc0, 4, 0, { sandColor: null }],
+  [2, 0xc0, 4, 0, { sandColor: undefined }],
+  // shoreline water from an ocean override
+  [2, 0x40, 4, 0, { oceanColor: [10, 20, 30] }],
+  // Infinity channels: js_max(0, Inf)=Inf -> Uint8Array stores 0
+  [2, 0x05, 4, 0, { oceanColor: [Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY, 5] }],
+  // highland clamp at 255 via an override base
+  [2, 0x93, 4, 0, { highlandColor: [250, 250, 250] }],
+  // peak override
+  [2, 0x9f, 4, 0, { backgroundColor: [7, 8, 9] }],
+  // mountain NaN channel -> js_min(255, NaN) = NaN -> 0
+  [2, 0x94, 4, 0, { mountainColor: [NaN, 1, 2] }],
+]);
+runCU("cu_build", [
+  [3, [0x85, 0x40, 0x00, 0x9f], 2, 2, undefined],
+  // short bytes: the OOB read is undefined -> NaN -> deep water base
+  [3, [0x85], 2, 1, undefined],
+  // fractional w: allocation truncates (6 bytes) but the loop rounds UP
+  // (2 iterations) -> the last pixel's tail (and its alpha!) stays 0
+  [3, [0x85, 0x85], 1.5, 1, undefined],
+  // zero size: empty output
+  [3, [0x85], 0, 3, undefined],
+  // pre-existing coercion: -1/300/256/NaN ride the Uint8Array first
+  [3, [-1, 300, 256, NaN], 2, 2, undefined],
+  // overrides flow through buildTerrainRGBA
+  [3, [0x89, 0xc0], 2, 1, { plainsColor: [0, 0, 0], sandColor: [9, 9, 9] }],
+]);
+
+// --- CosmeticVisibility.ts (stateless, codec domain) --------------------------
+// Kind table (matches `cosmetic_visibility::run_op`): 0 visibleCosmetics
+// [...codec(cosmetics), ...codec(visibility), ...codec(owner)]
+// -> [...codec(result)].
+const cvsScenarios = [];
+let cvsIdx = 0;
+function runCVS(name, ops) {
+  const played = [];
+  for (const [k, ...a] of ops) {
+    if (k !== 0) throw new Error("cvs: bad op kind " + k);
+    const [cosmetics, visibility, owner] = a;
+    const args = [...encVal(cosmetics), ...encVal(visibility), ...encVal(owner)];
+    const res = encVal(CVS.visibleCosmetics(cosmetics, visibility, owner));
+    played.push({ kind: k, args: args.flat().map(uenc), res: res.flat().map(uenc) });
+  }
+  cvsScenarios.push({ name: `${name}_${cvsIdx++}`, ops: played });
+}
+runCVS("cvs_self", [
+  // owner === "self" short-circuits BEFORE any visibility read: even a
+  // visibility that would hide everything is never consulted.
+  [0, { flag: "f", crown: "c", pattern: "p", skin: "s" },
+   { showFrom: "self", flags: false, crowns: false, territorySkins: false }, "self"],
+  // verified rides along untouched for self.
+  [0, { verified: true, flag: "f" }, { showFrom: "self" }, "self"],
+]);
+runCVS("cvs_hide", [
+  // showFrom "self" -> the one-key { verified } object.
+  [0, { verified: true, flag: "f", effects: { warship: "w" } }, { showFrom: "self" }, "other"],
+  [0, { verified: true, flag: "f" }, { showFrom: "self" }, "teammate"],
+  // verified absent -> the key is PRESENT-undefined in the result.
+  [0, { flag: "f" }, { showFrom: "self" }, "other"],
+  // verified explicitly undefined -> same shape, value undefined.
+  [0, { verified: undefined, flag: "f" }, { showFrom: "self" }, "other"],
+  // showFrom "teammates": owner "other" hides, owner "teammate" passes.
+  [0, { flag: "f" }, { showFrom: "teammates" }, "other"],
+  [0, { flag: "f", effects: { warship: "w" } }, { showFrom: "teammates" }, "teammate"],
+  // ?? default: null / undefined / absent showFrom -> "everyone" -> full path.
+  [0, { flag: "f" }, { showFrom: null }, "other"],
+  [0, { flag: "f" }, { showFrom: undefined }, "other"],
+  [0, { flag: "f" }, {}, "other"],
+  // unknown showFrom string fails both gates -> full path.
+  [0, { flag: "f" }, { showFrom: "friends" }, "other"],
+  // non-string showFrom (strict === misses) -> full path.
+  [0, { flag: "f" }, { showFrom: 0 }, "other"],
+]);
+runCVS("cvs_categories", [
+  // territorySkins false removes pattern AND skin (only when present);
+  // key order of the survivors is preserved.
+  [0, { flag: "f", pattern: "p", skin: "s", crown: "c" }, { territorySkins: false }, "other"],
+  [0, { flag: "f" }, { territorySkins: false }, "other"],
+  // flags / crowns gates.
+  [0, { flag: "f", crown: "c" }, { flags: false }, "other"],
+  [0, { flag: "f", crown: "c" }, { crowns: false }, "other"],
+  [0, { flag: "f", crown: "c" }, { flags: false, crowns: false }, "other"],
+  // STRICT === false: falsy non-booleans keep the category.
+  [0, { flag: "f", crown: "c" }, { flags: 0, crowns: "" }, "other"],
+  [0, { flag: "f" }, { flags: null }, "other"],
+  [0, { flag: "f" }, { flags: "false" }, "other"],
+  [0, { flag: "f" }, { flags: undefined }, "other"],
+  // true keeps.
+  [0, { flag: "f" }, { flags: true }, "other"],
+]);
+runCVS("cvs_effects", [
+  // slot resolution: "atom" -> nukeExplosion gate, "warship" -> warship gate,
+  // stale bare "nukeExplosion" and unknown slots are KEPT unconditionally.
+  [0, { effects: { atom: "a", warship: "w", nukeExplosion: "n", bogus: "b" } },
+   { warship: false }, "other"],
+  [0, { effects: { atom: "a", hydro: "h", mirvWarhead: "m" } },
+   { nukeExplosion: false }, "other"],
+  [0, { effects: { transportShipTrail: "t", nukeTrail: "u", structures: "s",
+                   train: "r", railroad: "d", warship: "w" } },
+   { nukeTrail: false, railroad: false }, "other"],
+  // no effectType gate false -> everything kept, effects replaced in place
+  // (its position among the spread keys survives).
+  [0, { flag: "f", effects: { atom: "a" }, crown: "c" }, {}, "other"],
+  // effects present but empty -> Object.fromEntries of nothing -> {}.
+  [0, { effects: {} }, { warship: false }, "other"],
+  // effects as an ARRAY: Object.entries gives index keys, fromEntries
+  // rebuilds a plain OBJECT (the Arr -> Obj transition is observable).
+  [0, { effects: ["a", "b"] }, {}, "other"],
+  // effects value that is neither object nor array (a string): the gate
+  // passes (!== undefined), Object.entries of a string yields its index
+  // keys -> fromEntries rebuilds { "0": "x", ... }.
+  [0, { effects: "xy" }, {}, "other"],
+  // effects + category gates together: deletions run first, then the
+  // effects re-filter.
+  [0, { flag: "f", pattern: "p", effects: { warship: "w" } },
+   { flags: false, warship: false }, "other"],
+]);
+
+// --- Affiliation.ts (stateful CPU palette; GL plumbing stubbed) ---------------
+// Kind table (matches `affiliation_palette::RigHarness::run_op`): 0 construct
+// [selfR..enemyB (12)] -> dumpState; 1 setLocalPlayer [id] -> [dirty];
+// 2 updateRelations [n, size, (data)*n] -> [dirty] (n < 0 models a null
+// data); 3 flush -> [dirtyBefore]; 4 dumpSlice [start, len] -> [bytes] (OOB
+// reads -> NaN); 5 dumpState -> [localPlayerID, relationSize, hasData,
+// dataLen, dirty]. The TS `private` fields are plain runtime properties, so
+// the capture reads cpuData / dirty / relationData directly.
+const afpScenarios = [];
+let afpIdx = 0;
+const afpGl = () => ({
+  TEXTURE_2D: 0x0600, RGBA8: 0x8058, RGBA: 0x1908, UNSIGNED_BYTE: 0x1401,
+  NEAREST: 0x2600, bindTexture() {}, texSubImage2D() {},
+});
+function afpState(pal) {
+  return [
+    uenc(pal.localPlayerID), uenc(pal.relationSize),
+    pal.relationData ? 1 : 0, pal.relationData ? pal.relationData.length : -1,
+    pal.dirty ? 1 : 0,
+  ];
+}
+function runAFP(name, ops) {
+  const played = [];
+  let pal = null;
+  for (const [k, ...a] of ops) {
+    let args;
+    let res;
+    if (k === 0) {
+      args = a[0];
+      pal = new AFP.AffiliationPalette(afpGl(), { affiliation: {
+        selfR: a[0][0], selfG: a[0][1], selfB: a[0][2],
+        allyR: a[0][3], allyG: a[0][4], allyB: a[0][5],
+        neutralR: a[0][6], neutralG: a[0][7], neutralB: a[0][8],
+        enemyR: a[0][9], enemyG: a[0][10], enemyB: a[0][11],
+      }});
+      res = afpState(pal);
+    } else if (k === 1) {
+      args = [uenc(a[0])];
+      pal.setLocalPlayer(a[0]);
+      res = [pal.dirty ? 1 : 0];
+    } else if (k === 2) {
+      const [n, size, data] = a;
+      args = [n, uenc(size), ...(data ?? [])];
+      pal.updateRelations(n < 0 ? null : new Uint8Array(data), size);
+      res = [pal.dirty ? 1 : 0];
+    } else if (k === 3) {
+      args = [];
+      res = [pal.dirty ? 1 : 0];
+      pal.flush();
+    } else if (k === 4) {
+      const [start, len] = a;
+      args = [start, len];
+      res = [];
+      for (let i = 0; i < len; i++) {
+        const v = pal.cpuData[start + i];
+        res.push(v === undefined ? NaN : v);
+      }
+    } else if (k === 5) {
+      args = [];
+      res = afpState(pal);
+    } else throw new Error("afp: bad op kind " + k);
+    played.push({ kind: k, args: args.flat().map(uenc), res: res.flat().map(uenc) });
+  }
+  afpScenarios.push({ name: `${name}_${afpIdx++}`, ops: played });
+}
+const AFP_DEFAULTS = [0, 1, 0, 1, 1, 0, 0.502, 0.502, 0.502, 1, 0, 0];
+runAFP("afp_default", [
+  [0, AFP_DEFAULTS],
+  // owner 0 transparent on both rows; owner 1 neutral border (128,128,128)
+  [4, 0, 8],
+  // row 1 starts at 4096*4 = 16384: owner 1 unit colour is ENEMY (no neutral)
+  [4, 16384, 8],
+  // OOB read -> undefined -> NaN
+  [4, 32766, 4],
+  [5],
+]);
+runAFP("afp_self", [
+  [0, AFP_DEFAULTS],
+  [1, 3],
+  // owner 3 border: self green (0,255,0,255)
+  [4, 12, 4],
+  // owner 3 unit row: also self
+  [4, 16384 + 12, 4],
+  // owner 4 stays neutral border / enemy unit
+  [4, 16, 4],
+  [3], // flush -> dirtyBefore 1
+  [3], // flush -> dirtyBefore 0
+  [1, 3], // strict === early return: dirty stays 0
+  [5],
+  // -0 === 0 is TRUE but lp is 3 here -> rebuild; localPlayerID -0 never
+  // matches owner > 0 (isSelf false everywhere)
+  [1, -0],
+  [5],
+  // NaN id: NaN !== anything -> rebuild; no owner is self
+  [1, Number.NaN],
+  [5],
+]);
+runAFP("afp_relations", [
+  [0, AFP_DEFAULTS],
+  // rs=4, lp=2: owner 1 -> rel[9]=1 friendly (ally border+unit),
+  // owner 3 -> rel[11]=2 embargo (enemy border, enemy unit),
+  // owner 4 -> owner<rs fails -> neutral border / enemy unit,
+  // owner 2 is self (isSelf precedes the relation gates).
+  [1, 2],
+  [2, 16, 4, [0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 2, 0, 0, 0, 0]],
+  [4, 4, 20], // owners 1..4 row 0
+  [4, 16384 + 4, 20], // row 1
+  [5],
+  // null data: falsy gate -> everything neutral/enemy again
+  [2, -1, 3],
+  [4, 8, 4],
+  [5],
+  // EMPTY Uint8Array is truthy: the gate runs but every read is OOB
+  // undefined -> neutral border, enemy unit.
+  [2, 0, 4],
+  [4, 4, 4],
+  [5],
+]);
+runAFP("afp_fractional", [
+  [0, AFP_DEFAULTS],
+  // lp=1.5: owner loop never equals it (isSelf false); the relation index
+  // 1.5*3.5+owner is fractional -> non-canonical read -> undefined -> neutral.
+  [1, 1.5],
+  [2, 9, 3.5, [0, 0, 0, 0, 1, 1, 1, 1, 1]],
+  [4, 4, 12],
+  [5], // localPlayerID 1.5, relationSize 3.5
+]);
+runAFP("afp_channels", [
+  // to255 = Math.round(v*255): NaN -> Uint8Array 0; Infinity -> 0; 2 -> 510
+  // wraps 254; -0.5 -> Math.round(-127.5) = -127 -> wraps 129; 0.502 -> 128.
+  [0, [NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY,
+       2, -0.5, 0.502, 0, 0, 0, 1, 1, 1]],
+  [1, 1],
+  // owner 1 self: (NaN->0, Inf->0, -Inf->0, 255)
+  [4, 4, 4],
+  // owner 2 unit row: enemy (255,255,255,255)
+  [4, 16384 + 8, 4],
+  // ally channels (2,-0.5,0.502) -> (254,129,128) via a friendly relation:
+  // lp=1 (strict-equal early return here: id unchanged), rs=4, owner 2 ->
+  // rel[1*4+2]=rel[6]=1. owner 2 is NOT self (lp=1), so the ally gates run.
+  [1, 1],
+  [2, 16, 4, [0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0]],
+  [4, 8, 4],
+  [4, 16384 + 8, 4],
+]);
+runAFP("afp_data_wrap", [
+  [0, AFP_DEFAULTS],
+  // rs=2, lp=1 -> only idx 3 is read (owner 1). The Uint8Array construction
+  // wraps each element: 2.5 -> 2 (embargo), -1 -> 255 (neutral), 257 -> 1
+  // (friendly!), 300 -> 44 (neutral).
+  [1, 1],
+  [2, 4, 2, [0, 0, 0, 2.5]],
+  [4, 4, 4], // owner 1 border: enemy (255,0,0,255)
+  [4, 16384 + 4, 4], // unit row: enemy too
+  [2, 4, 2, [0, 0, 0, -1]],
+  [4, 4, 4], // neutral border (128,128,128,255)
+  [2, 4, 2, [0, 0, 0, 257]],
+  [4, 4, 4], // ally (255,255,0,255)
+  [2, 4, 2, [0, 0, 0, 300]],
+  [4, 4, 4], // neutral again
+  // rs=1: lp<rs fails for lp=1 -> the gate never reads -> neutral
+  [2, 4, 1, [1, 1, 1, 1]],
+  [4, 4, 4],
+  [5],
+]);
+
+// --- Utils.ts pure formatting subset (stateless, codec domain) ----------------
+// Kind table (matches `utils_format::run_op`): 0 renderNumber
+// [num, fpFlag, fp] -> [...codec(str)]; fpFlag 0 models the parameter being
+// ABSENT/nullish (the branch default applies), nonzero uses the explicit fp
+// through the toFixed digits coercion. bigint inputs are out of the captured
+// domain (Number(num) is exact for doubles). 1 renderTroops [troops] ->
+// [...codec(str)]; 2 formatPercentage [value] -> [...codec(str)]; 3
+// normaliseMapKey [...codec(str)] -> [...codec(str)]; 4 presenceMapKey
+// [...codec(str|undef)] -> [...codec(str|undef)]; 5 formatKeyForDisplay
+// [...codec(str)] -> [...codec(str)]; 6 formatDebugTranslation
+// [...codec(key), ...codec(params)] -> [...codec(str)].
+const ufScenarios = [];
+let ufIdx = 0;
+function runUF(name, ops) {
+  const played = [];
+  for (const [k, ...a] of ops) {
+    let args;
+    let res;
+    if (k === 0) {
+      const [num, fpFlag, fp] = a;
+      args = [uenc(num), fpFlag, uenc(fp)];
+      res = encVal(fpFlag ? UF.renderNumber(num, fp) : UF.renderNumber(num));
+    } else if (k === 1) {
+      args = [uenc(a[0])];
+      res = encVal(UF.renderTroops(a[0]));
+    } else if (k === 2) {
+      args = [uenc(a[0])];
+      res = encVal(UF.formatPercentage(a[0]));
+    } else if (k === 3) {
+      args = [...encVal(a[0])];
+      res = encVal(UF.normaliseMapKey(a[0]));
+    } else if (k === 4) {
+      args = [...encVal(a[0])];
+      res = encVal(UF.presenceMapKey(a[0]));
+    } else if (k === 5) {
+      args = [...encVal(a[0])];
+      res = encVal(UF.formatKeyForDisplay(a[0]));
+    } else if (k === 6) {
+      const [key, params] = a;
+      args = [...encVal(key), ...encVal(params)];
+      res = encVal(UF.formatDebugTranslation(key, params));
+    } else throw new Error("uf: bad op kind " + k);
+    played.push({ kind: k, args: args.flat().map(uenc), res: res.flat().map(uenc) });
+  }
+  ufScenarios.push({ name: `${name}_${ufIdx++}`, ops: played });
+}
+runUF("uf_number", [
+  // every threshold boundary, both sides, default fixedPoints
+  [0, 0, 0, 0], [0, 999, 0, 0], [0, 999.9, 0, 0],
+  [0, 1000, 0, 0], [0, 9999, 0, 0], [0, 9999.9, 0, 0],
+  [0, 10000, 0, 0], [0, 99999, 0, 0], [0, 100000, 0, 0],
+  [0, 999999, 0, 0], [0, 1e6, 0, 0], [0, 9999999, 0, 0],
+  [0, 1e7, 0, 0], [0, 999999999, 0, 0], [0, 1e9, 0, 0],
+  [0, 9999999999, 0, 0], [0, 1e10, 0, 0], [0, 1e11, 0, 0],
+  [0, 1e12, 0, 0],
+  // negatives clamp through Math.max(num, 0); -0 clamps to +0 -> "0"
+  [0, -5, 0, 0], [0, -0, 0, 0],
+  // NaN survives the NaN-propagating clamp, fails every >= gate -> "NaN";
+  // Infinity passes the first gate -> toFixed renders "InfinityB"
+  [0, Number.NaN, 0, 0], [0, Number.POSITIVE_INFINITY, 0, 0],
+  [0, Number.NEGATIVE_INFINITY, 0, 0],
+  // toFixed's >= 1e21 ToString fallback IS reachable from the B branch
+  // (value = num/1e9 >= 1e21 once num >= 1e30)
+  [0, 1e21, 0, 0], [0, 1.5e21, 0, 0], [0, 1e30, 0, 0],
+  // the >= 1e5 branch has NO toFixed: explicit fp is IGNORED there
+  [0, 123456, 1, 5], [0, 123456, 0, 0],
+  // explicit fp: 0 honoured (half-up: 1.5 -> "2"), NaN -> digits 0,
+  // fractional digits truncate toward zero. Negative / >100 digits THROW
+  // RangeError in JS (toFixed's domain gate) - never captured.
+  [0, 1234, 1, 0], [0, 1500, 1, 0], [0, 1234, 1, Number.NaN],
+  [0, 1234, 1, 2.7],
+  // defaults per branch: 2 for high B/M/K, 1 for low
+  [0, 1.5e9, 0, 0], [0, 2e10, 0, 0], [0, 1.25e9, 0, 0],
+  [0, 1.125e9, 0, 0], [0, 9999999.999, 0, 0], [0, 1e7, 1, 3],
+  // half-up at 1 digit on the M branch
+  [0, 1.05e7, 0, 0], [0, 1.15e7, 0, 0],
+]);
+runUF("uf_troops", [
+  [1, 0], [1, 12345], [1, 1e6], [1, 999.5], [1, -5],
+  [1, Number.NaN], [1, Number.POSITIVE_INFINITY],
+]);
+runUF("uf_percent", [
+  [2, 0.5], [2, 0], [2, -0], [2, Number.NaN],
+  [2, Number.POSITIVE_INFINITY], [2, Number.NEGATIVE_INFINITY],
+  // 0.1 * 100 = 10.000000000000002 -> "10.0%"; 0.9999 -> "100.0%" (half-up)
+  [2, 0.1], [2, 0.9999], [2, 1 / 3], [2, 1e19], [2, 1e20],
+]);
+runUF("uf_mapkey", [
+  // tourney maps: the id wins over the display name (folder mismatch)
+  [3, "Tourney 2 Teams"], [3, "Tourney 3 Teams"], [3, "Tourney 4 Teams"],
+  [3, "Tourney 8 Teams"], [3, "Amazon River"], [3, "Rio de Janeiro"],
+  // strict === on the display name: lowercase / spaced variants miss
+  [3, "achiran"], [3, "  Tourney  3. Teams "], [3, "AFRICA"],
+  // dots and whitespace runs stripped AFTER lowercasing
+  [3, "Africa."], [3, "a. b\tc"], [3, "  "], [3, ""],
+  // U+0085 is NOT JS whitespace; U+FEFF IS
+  [3, "\u0085Africa"], [3, "\u{feff}Africa"],
+  // final-sigma: JS and Rust both apply the Unicode Default context rule
+  [3, "ΑΣ"], [3, "ΣΣΣ"],
+]);
+runUF("uf_presence", [
+  [4, undefined], [4, "Tourney 2 Teams"], [4, ""], [4, "Amazon River"],
+]);
+runUF("uf_keys", [
+  [5, ""], [5, "Shift+KeyA"], [5, "Shift+ "], [5, "Shift+Shift+Digit3"],
+  [5, "Shift+"], [5, "Shift+Shift+"],
+  [5, " "], [5, "Space"], [5, "Digit1"], [5, "Digit0"], [5, "Digit9"],
+  [5, "Digit10"], [5, "digit1"], [5, "KeyA"], [5, "KeyZ"], [5, "Keya"],
+  [5, "KeyAB"], [5, "arrowUp"], [5, "a"], [5, "1"],
+  // ß -> "SS": the fallback grows the string (UTF-16 unit quirk)
+  [5, "ß"], [5, "ßx"], [5, "\u{03a3}"],
+]);
+runUF("uf_debug", [
+  // empty params -> the bare key
+  [6, "k", {}],
+  [6, "k", { num: 5 }], [6, "k", { a: "x", b: 1 }],
+  // String(value) follows Number::toString
+  [6, "k", { v: Number.NaN }], [6, "k", { v: -0 }], [6, "k", { v: 1e21 }],
+  [6, "k", { v: 0.5 }],
+  // out-of-signature values ride the template literal's String():
+  [6, "k", { v: true }], [6, "k", { v: null }], [6, "k", { v: undefined }],
+  [6, "k", { o: {} }], [6, "k", { a: [1, 2] }], [6, "k", { a: [undefined, 1] }],
+  // V8 own-key order: integer-like keys sort first, ascending
+  [6, "k", { 2: "b", 1: "a", z: 0 }],
+  // string params: Object.entries yields index keys
+  [6, "k", "xy"],
+  [6, "", { x: 1 }], [6, "a::b", { x: 1 }],
+]);
+
+// S11b: Utils.ts nav/time/avatar subset (un_). kind 0 setup scripts the
+// __PPN_PATH facade (mode 1 THROWS) and resets the pin latch, the facade
+// counter and the __UN_NOW FIFO + consumption counter; kind 1 currentPagePath
+// (res = [ppnCalls, ...codec]); kinds 2/3/4 the three time functions with
+// mode 0 = argument omitted, 1 = explicit number, 2 = explicit undefined
+// (0 and 2 consume the scripted now, 1 never does; res[0] echoes the
+// cumulative consumption, pinning that getSecondsUntilServerTimestamp's inner
+// getServerNow call does NOT consume a second time); kind 5 apexPathFor;
+// kind 6 getDiscordAvatarUrl over the codec.
+const unScenarios = [];
+let unIdx = 0;
+function runUN(name, ops) {
+  const played = [];
+  for (const [k, ...a] of ops) {
+    let args;
+    let res;
+    if (k === 0) {
+      const [mode, path] = a;
+      args = [mode, ...encS(path)];
+      ppnMode = mode;
+      ppnPath = path;
+      ppnCalls = 0;
+      PPN.resetPagePinForTests();
+      unNows = [];
+      unConsumed = 0;
+      res = [0];
+    } else if (k === 1) {
+      const [path] = a;
+      args = [...encS(path)];
+      const r = UF.currentPagePath(path);
+      res = [ppnCalls, ...encVal(r)];
+    } else if (k === 2) {
+      const [serverTimeMs, mode, nowVal] = a;
+      args = [uenc(serverTimeMs), mode, uenc(nowVal)];
+      unNows = mode === 1 ? [] : [nowVal];
+      const r =
+        mode === 2
+          ? UF.calculateServerTimeOffset(serverTimeMs, undefined)
+          : mode === 0
+            ? UF.calculateServerTimeOffset(serverTimeMs)
+            : UF.calculateServerTimeOffset(serverTimeMs, nowVal);
+      res = [unConsumed, uenc(r)];
+    } else if (k === 3) {
+      const [offset, mode, nowVal] = a;
+      args = [uenc(offset), mode, uenc(nowVal)];
+      unNows = mode === 1 ? [] : [nowVal];
+      const r =
+        mode === 2
+          ? UF.getServerNow(offset, undefined)
+          : mode === 0
+            ? UF.getServerNow(offset)
+            : UF.getServerNow(offset, nowVal);
+      res = [unConsumed, uenc(r)];
+    } else if (k === 4) {
+      const [target, offset, mode, nowVal] = a;
+      args = [uenc(target), uenc(offset), mode, uenc(nowVal)];
+      unNows = mode === 1 ? [] : [nowVal];
+      const r =
+        mode === 2
+          ? UF.getSecondsUntilServerTimestamp(target, offset, undefined)
+          : mode === 0
+            ? UF.getSecondsUntilServerTimestamp(target, offset)
+            : UF.getSecondsUntilServerTimestamp(target, offset, nowVal);
+      res = [unConsumed, uenc(r)];
+    } else if (k === 5) {
+      const [pathname] = a;
+      args = [...encS(pathname)];
+      res = encVal(UF.apexPathFor(pathname));
+    } else if (k === 6) {
+      const [user] = a;
+      args = [...encVal(user)];
+      res = encVal(UF.getDiscordAvatarUrl(user));
+    } else throw new Error("un: bad op kind " + k);
+    played.push({ kind: k, args: args.flat().map(uenc), res: res.flat().map(uenc) });
+  }
+  unScenarios.push({ name: `${name}_${unIdx++}`, ops: played });
+}
+runUN("un_apex", [
+  [5, "/v/abc1234/game/1"], // version strip only
+  [5, "/game/1"], // no prefix
+  [5, "/w3/game/1"], // worker only
+  [5, "/v/abc/w12/game/1"], // version + multi-digit worker
+  [5, "/w1/game/1"],
+  [5, "/v/x/w1/game/1"], // double prefix, in order
+  [5, "/w/game/1"], // \d+ needs at least one digit
+  [5, "/w1x/game/1"], // no slash after the digit run
+  [5, "/w1/"], // -> "/"
+  [5, "/v/abc/"], // -> "/"
+  [5, "/v/abc"], // no trailing slash -> "/"
+  [5, "/v//w1/x"], // end==0 keeps the original, ^/w never matches
+  [5, "/w01/x"], // leading-zero digits still match
+  [5, "/w1/w2/x"], // LEADING-only single replace -> "/w2/x"
+  [5, "/V/ABC/x"], // case-sensitive
+  [5, ""], // empty
+  [5, "/w12345678901234567890/x"], // long digit run
+]);
+runUN("un_page_pinned", [
+  [0, 0, "/v/abc1234/game/1"],
+  [1, "/game/2"], // [1, "/v/abc1234/game/2"] - one facade read
+  [1, "/game/2"], // latch: no second read, calls stay 1
+  [1, ""], // empty path still concatenates -> "/v/abc1234"
+]);
+runUN("un_page_unpinned", [
+  [0, 0, "/game/1"],
+  [1, "/x"], // commit null -> path unchanged
+  [1, ""], // -> ""
+]);
+runUN("un_page_throws", [
+  [0, 1, "/v/whatever"], // facade THROWS (no window)
+  [1, "/y"], // latch null via the catch -> "/y"
+]);
+runUN("un_time_offset", [
+  [0, 0, "/"],
+  [2, 1000, 0, 500], // omitted -> consumes -> [1, 500]
+  [2, 1000, 1, 500], // explicit number -> NO consume -> [1, 500]
+  [2, 1000, 2, 700], // explicit undefined -> consumes -> [2, 300]
+  [2, Number.NaN, 1, 500], // NaN - 500
+  [2, 1000, 1, Number.NaN], // 1000 - NaN
+  [2, Number.POSITIVE_INFINITY, 1, 500],
+  [2, 1000, 1, Number.POSITIVE_INFINITY], // -> -Infinity
+]);
+runUN("un_time_now", [
+  [0, 0, "/"],
+  [3, 200, 0, 1000], // consumes -> [1, 1200]
+  [3, 200, 1, 1000], // explicit -> [1, 1200]
+  [3, 200, 2, 1000], // explicit undefined consumes -> [2, 1200]
+  [3, Number.NaN, 1, 1000],
+  [3, -0, 1, 0], // 0 + -0 -> +0
+  [3, -0, 1, -0], // -0 + -0 -> -0
+]);
+runUN("un_time_seconds", [
+  [0, 0, "/"],
+  [4, 105500, 200, 0, 1000], // serverNow 1200, 104.3 -> 104, one consume
+  [4, 1200, 200, 1, 1000], // exactly 0
+  [4, 1199, 200, 1, 1000], // -0.001 -> floor -1 -> max(0, -1) -> 0
+  [4, Number.NaN, 200, 1, 1000], // NaN PENETRATES Math.max(0, NaN)
+  [4, 105500, 200, 2, 1000], // explicit undefined -> consumes (cumulative 2)
+  [4, Number.POSITIVE_INFINITY, 200, 1, 1000], // floor(Inf) -> max(0, Inf)
+]);
+runUN("un_avatar_static", [
+  [0, 0, "/"],
+  [6, { id: "123456789012345678", avatar: "834883c1059c8abc0a50a36ec1cba154" }],
+  [6, { id: "1", avatar: "0" }],
+  [6, { id: "12", avatar: "abcdef0123" }],
+  [6, { id: "12", avatar: "ab", discriminator: "3" }], // valid wins, disc ignored
+  [6, { id: 12345, avatar: "ab" }], // numeric id coerces to "12345"
+]);
+runUN("un_avatar_animated", [
+  [0, 0, "/"],
+  [6, { id: "123", avatar: "a_1af38fb0ff25002a68bd88a4a2f65946" }], // gif
+  [6, { id: "123", avatar: "a_" }], // no hex after the prefix -> disc undef -> null
+  [6, { id: "123", avatar: "a_A" }], // uppercase fails
+  [6, { id: "123", avatar: "a__1" }], // second underscore fails
+]);
+runUN("un_avatar_discriminator", [
+  [0, 0, "/"],
+  [6, { id: "1", avatar: null, discriminator: "1234" }], // embed/4
+  [6, { id: "1", avatar: null, discriminator: null }], // null PASSES the gate -> 0
+  [6, { id: "1", avatar: null }], // absent -> null
+  [6, { id: "1", avatar: null, discriminator: undefined }], // explicit undef -> null
+  [6, { id: "1", avatar: null, discriminator: "0x10" }], // 16 % 5 -> 1
+  [6, { id: "1", avatar: null, discriminator: "abc" }], // NaN -> "embed/NaN.png"
+  [6, { id: "1", avatar: null, discriminator: "-7" }], // -7 % 5 -> -2
+  [6, { id: "1", avatar: null, discriminator: "  7  " }], // trim -> 2
+  [6, { id: "1", avatar: null, discriminator: "1e1" }], // 10 % 5 -> 0
+  [6, { id: "1", avatar: null, discriminator: "" }], // 0
+  [6, { id: "1", avatar: null, discriminator: Number.NaN }],
+  [6, { id: "1", avatar: null, discriminator: Number.POSITIVE_INFINITY }], // NaN
+  [6, { id: "1", avatar: null, discriminator: 5 }], // number 5 -> 0
+]);
+runUN("un_avatar_edges", [
+  [0, 0, "/"],
+  [6, { id: "abc", avatar: "deadbeef", discriminator: "3" }], // id invalid -> embed/3
+  [6, { id: "12", avatar: "XYZ", discriminator: undefined }], // both fail -> null
+  [6, { id: "12", avatar: "", discriminator: "3" }], // falsy avatar -> embed/3
+  [6, { id: "12", avatar: "DEADBEEF", discriminator: "3" }], // uppercase fails
+  [6, {}], // no fields -> null
+  [6, { id: "1e1", avatar: "ab" }], // "1e1" is not /^\d+$/ -> disc absent -> null
+]);
+
 const structures = {
   votetally: vtScenarios,
   rankedcheckin: rgScenarios,
@@ -15564,6 +16663,14 @@ const structures = {
   stablestringify: sstScenarios,
   nameboxcalculator: nbScenarios,
   gameconfighelpers: gchScenarios,
+  settingsutils: suScenarios,
+  camera: camScenarios,
+  textlayout: txlScenarios,
+  colorutils: cuScenarios,
+  cosmeticvisibility: cvsScenarios,
+  affiliationpalette: afpScenarios,
+  utilsformat: ufScenarios,
+  utilsnav: unScenarios,
 };
 
 // ================================================================ JSON
@@ -18685,6 +19792,76 @@ opStream(
     "/// `game_config_helpers::run_op` docs). kind 0/1 slider mappers, 2\n" +
     "/// toOptionalNumber, 3/4 compact adjusters, 5 getRandomMapType (res\n" +
     "/// leads the scripted __GCH_RAND draw), 6 getUpdatedDisabledUnits.",
+);
+opStream(
+  "settingsutils",
+  "Su",
+  "/// One `client/render/gl/SettingsUtils.ts` op (see `settings_utils::run_op`\n" +
+  "/// docs). kind 0 deepAssign (res is the mutated target), 1 deepDiff\n" +
+  "/// (res undefined when nothing differs). Values ride the js_json codec.",
+);
+opStream(
+  "camera",
+  "Cam",
+  "/// One `client/render/gl/Camera.ts` op (see `camera::RigHarness::run_op`\n" +
+  "/// docs). kind 0 construct, 1-9 mutators, 10 getMatrix (res leads the\n" +
+  "/// pre-call dirty flag), 11/12 screen<->world, 13 dump. The RAW dpr is\n" +
+  "/// the first arg of every dpr-consuming op; the capture scripts\n" +
+  "/// `globalThis.__CAM_DPR` right before the TS call.",
+);
+opStream(
+  "textlayout",
+  "Txl",
+  "/// One `client/render/gl/passes/name-pass/TextLayout.ts` op (see\n" +
+  "/// `text_layout::RigHarness::run_op` docs). kind 0 setup (glyph tables +\n" +
+  "/// nonzero kern pairs), 1 layout (res = halfWidth, charCodes*32,\n" +
+  "/// cursors*32).",
+);
+opStream(
+  "colorutils",
+  "Cu",
+  "/// One `client/render/gl/utils/ColorUtils.ts` op (see `color_utils::run_op`\n" +
+  "/// docs). kind 0 constants, 1 hexToRgb, 2 encodeTerrainTile (res is the\n" +
+  "/// whole out buffer), 3 buildTerrainRGBA (res is the whole pixel buffer).",
+);
+opStream(
+  "cosmeticvisibility",
+  "Cvs",
+  "/// One `client/view/CosmeticVisibility.ts` op (see\n" +
+  "/// `cosmetic_visibility::run_op` docs). kind 0 visibleCosmetics over the\n" +
+  "/// js_json codec (cosmetics, visibility, owner).",
+);
+opStream(
+  "affiliationpalette",
+  "Afp",
+  "/// One `client/render/gl/utils/Affiliation.ts` op (see\n" +
+  "/// `affiliation_palette::RigHarness::run_op` docs). kind 0 construct\n" +
+  "/// (12 affiliation channels, res = dumpState), 1 setLocalPlayer, 2\n" +
+  "/// updateRelations (n < 0 models null data), 3 flush (res = dirtyBefore),\n" +
+  "/// 4 dumpSlice, 5 dumpState. The GL plumbing is stubbed; only the CPU\n" +
+    "/// palette, the dirty latch and the input caches are ported.",
+);
+opStream(
+  "utilsformat",
+  "Uf",
+  "/// One `client/Utils.ts` formatting op (see `utils_format::run_op`\n" +
+    "/// docs). kind 0 renderNumber (fpFlag 0 = parameter absent), 1\n" +
+    "/// renderTroops, 2 formatPercentage, 3 normaliseMapKey, 4\n" +
+    "/// presenceMapKey, 5 formatKeyForDisplay, 6 formatDebugTranslation.\n" +
+    "/// String values ride the js_json codec.",
+);
+opStream(
+  "utilsnav",
+  "Un",
+  "/// One `client/Utils.ts` nav/time/avatar op (see\n" +
+    "/// `utils_nav::RigHarness::run_op` docs). kind 0 setup (scripts the\n" +
+    "/// __PPN_PATH facade, mode 1 THROWS, resets the pin latch and the\n" +
+    "/// __UN_NOW counters), 1 currentPagePath (res = [ppnCalls, ...codec]),\n" +
+    "/// 2 calculateServerTimeOffset, 3 getServerNow, 4\n" +
+    "/// getSecondsUntilServerTimestamp (time ops: mode 0 omitted / 2\n" +
+    "/// explicit-undefined consume the scripted now, 1 explicit number\n" +
+    "/// never does; res[0] echoes the cumulative consumption), 5\n" +
+    "/// apexPathFor, 6 getDiscordAvatarUrl. Strings ride the js_json codec.",
 );
 
 const dataDir = join(root, "crates", "core", "tests", "data");

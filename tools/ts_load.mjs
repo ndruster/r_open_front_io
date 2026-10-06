@@ -3653,6 +3653,101 @@ function prepare(rel) {
     out = out.slice(0, migIdx);
   }
 
+  if (rel.endsWith("render/gl/Camera.ts")) {
+    // S11: renderDpr reads window.devicePixelRatio; the capture scripts the
+    // RAW dpr per op through globalThis.__CAM_DPR and the rewrite keeps the
+    // `|| 2` falsy gate and the cap of 2 (the Rust twin re-applies the same
+    // two steps from the op's first argument).
+    out = must(
+      out,
+      'import { renderDpr } from "./utils/Dpr";\n',
+      "const renderDpr = () => Math.min(globalThis.__CAM_DPR || 2, 2);\n",
+      "Camera Dpr import",
+    );
+  }
+
+  if (rel.endsWith("name-pass/TextLayout.ts")) {
+    // S11: the GlyphTables import is type-only -> dropped; the Types value
+    // import is inlined (the two constants are plain numbers, the rest of
+    // Types.ts is interfaces).
+    out = must(
+      out,
+      'import type { GlyphTables } from "./AtlasData";\n',
+      "",
+      "TextLayout AtlasData import",
+    );
+    out = must(
+      out,
+      'import { CHAR_RANGE, MAX_CHARS } from "./Types";\n',
+      "const CHAR_RANGE = 384;\nconst MAX_CHARS = 32;\n",
+      "TextLayout Types import",
+    );
+  }
+
+  if (rel.endsWith("render/gl/utils/ColorUtils.ts")) {
+    // S11: the render-settings.json default import needs an absolute URL +
+    // the JSON module attribute (QuickChat / TribeNames precedent).
+    out = must(
+      out,
+      'import renderDefaults from "../render-settings.json";\n',
+      `import renderDefaults from "${TS_URL}src/client/render/gl/render-settings.json" with { type: "json" };\n`,
+      "ColorUtils JSON import",
+    );
+  }
+
+  if (rel.endsWith("view/CosmeticVisibility.ts")) {
+    // S11: effectTypeForSlot is a *value* import -> redirect to the prepared
+    // CosmeticSchemas copy (its zod / jose graph is already shimmed away).
+    // The PlayerCosmetics / GraphicsOverrides imports are `import type` and
+    // ride strip mode untouched.
+    const cvsCosRel = "src/core/CosmeticSchemas.ts";
+    if (!prepared.has(cvsCosRel)) prepare(cvsCosRel);
+    out = must(
+      out,
+      'import { effectTypeForSlot } from "../../core/CosmeticSchemas";\n',
+      `import { effectTypeForSlot } from "./${prepared.get(cvsCosRel)}";\n`,
+      "CosmeticVisibility CosmeticSchemas import",
+    );
+  }
+
+  if (rel.endsWith("render/gl/utils/Affiliation.ts")) {
+    // S11: getPaletteSize is a *value* import -> redirect to the prepared
+    // ColorUtils copy (its JSON import is already rewritten). createTexture2D
+    // is pure GL plumbing -> stub (the capture never observes the texture).
+    // The RenderSettings import is `import type` (erased). The ctor's
+    // `private settings` parameter property is expanded (strip mode).
+    const afpCuRel = "src/client/render/gl/utils/ColorUtils.ts";
+    if (!prepared.has(afpCuRel)) prepare(afpCuRel);
+    out = must(
+      out,
+      'import { getPaletteSize } from "./ColorUtils";\n',
+      `import { getPaletteSize } from "./${prepared.get(afpCuRel)}";\n`,
+      "Affiliation ColorUtils import",
+    );
+    out = must(
+      out,
+      'import { createTexture2D } from "./GlUtils";\n',
+      "const createTexture2D = () => ({});\n",
+      "Affiliation GlUtils import",
+    );
+    out = must(
+      out,
+      "  constructor(\n" +
+        "    gl: WebGL2RenderingContext,\n" +
+        "    private settings: RenderSettings,\n" +
+        "  ) {\n" +
+        "    this.gl = gl;",
+      "  private settings: RenderSettings;\n\n" +
+        "  constructor(\n" +
+        "    gl: WebGL2RenderingContext,\n" +
+        "    settings: RenderSettings,\n" +
+        "  ) {\n" +
+        "    this.settings = settings;\n" +
+        "    this.gl = gl;",
+      "Affiliation ctor",
+    );
+  }
+
   if (rel.endsWith("hud/NameBoxCalculator.ts")) {
     // S10: the pure subset keeps only Cell (used at runtime by createGrid);
     // Game / NameViewData / Player are type-only names and ride on the
@@ -3696,6 +3791,75 @@ function prepare(rel) {
       "const randIdx = Math.floor(Math.random() * maps.length);",
       "const randIdx = Math.floor(globalThis.__GCH_RAND() * maps.length);",
       "GameConfigHelpers Math.random",
+    );
+  }
+
+  if (rel.endsWith("client/Utils.ts")) {
+    // S11: the pure formatting subset (renderNumber / renderTroops /
+    // formatPercentage / normaliseMapKey / presenceMapKey /
+    // formatKeyForDisplay / formatDebugTranslation). The whole import block
+    // is rewritten: intl-messageformat (not installed for the loader)
+    // becomes a throw stub (translateText is never invoked by the capture);
+    // the *value* names the captured functions actually touch (maps) plus
+    // the dead-body value names (Duos / GameMode / HumansVsNations /
+    // MessageType / Quads / Trios) ride the prepared Game.ts copy;
+    // stripVersionPrefix rides the prepared ServerList.ts copy. The
+    // type-only names (DoomsdayClockSpeed / GameConfig / PublicGameModifiers
+    // / Team / LangSelector) are erased by strip mode, and the host-bound
+    // value imports (ClientEnv / Platform) are only referenced inside dead
+    // bodies - unresolved identifiers there are harmless. S11b: pagePin is
+    // LIVE (currentPagePath) and rides the prepared PagePin.ts copy; the
+    // three Date.now() default parameters become globalThis.__UN_NOW()
+    // (FIFO facade, precedent __CCC_NOW / __GCH_RAND).
+    if (!prepared.has("src/core/game/Game.ts")) prepare("src/core/game/Game.ts");
+    const ufSlRel = "src/core/ServerList.ts";
+    if (!prepared.has(ufSlRel)) prepare(ufSlRel);
+    const ufPpnRel = "src/client/PagePin.ts";
+    if (!prepared.has(ufPpnRel)) prepare(ufPpnRel);
+    out = must(
+      out,
+      'import IntlMessageFormat from "intl-messageformat";\n' +
+        'import { DoomsdayClockSpeed } from "../core/game/DoomsdayClock";\n' +
+        "import {\n" +
+        "  Duos,\n" +
+        "  GameMode,\n" +
+        "  HumansVsNations,\n" +
+        "  maps,\n" +
+        "  MessageType,\n" +
+        "  PublicGameModifiers,\n" +
+        "  Quads,\n" +
+        "  Team,\n" +
+        '  Trios,\n' +
+        '} from "../core/game/Game";\n' +
+        'import { GameConfig } from "../core/Schemas";\n' +
+        'import { stripVersionPrefix } from "../core/ServerList";\n' +
+        'import { ClientEnv } from "./ClientEnv";\n' +
+        'import type { LangSelector } from "./LangSelector";\n' +
+        'import { pagePin } from "./PagePin";\n' +
+        'import { Platform } from "./Platform";\n',
+      "const IntlMessageFormat = class {\n" +
+        "  constructor() {\n" +
+        '    throw new Error("intl-messageformat stub");\n' +
+        "  }\n" +
+        "};\n" +
+        "import {\n" +
+        "  Duos,\n" +
+        "  GameMode,\n" +
+        "  HumansVsNations,\n" +
+        "  maps,\n" +
+        "  MessageType,\n" +
+        "  Quads,\n" +
+        "  Trios,\n" +
+        `} from "./${prepared.get("src/core/game/Game.ts")}";\n` +
+        `import { stripVersionPrefix } from "./${prepared.get(ufSlRel)}";\n` +
+        `import { pagePin } from "./${prepared.get(ufPpnRel)}";\n`,
+      "Utils imports",
+    );
+    out = must(
+      out,
+      "localNowMs: number = Date.now(),",
+      "localNowMs: number = globalThis.__UN_NOW(),",
+      "Utils Date.now defaults",
     );
   }
 

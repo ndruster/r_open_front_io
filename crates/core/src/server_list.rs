@@ -215,7 +215,7 @@ pub fn short_commit(commit: &str) -> String {
 }
 
 /// `path.replace(/^\/w\d+\//, "/")` — drop a worker prefix.
-fn strip_worker_prefix(path: &str) -> String {
+pub(crate) fn strip_worker_prefix(path: &str) -> String {
     if let Some(rest) = path.strip_prefix("/w") {
         let b = rest.as_bytes();
         let mut i = 0;

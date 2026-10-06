@@ -4003,3 +4003,231 @@ fn replay_gameconfighelpers_scenarios() {
         }
     }
 }
+
+// =============== S11: client render/gl + view + Utils modules ================
+
+// client/render/gl/SettingsUtils.ts: deepAssign's `key in target` gate that
+// never grows the target (except through the Object.prototype chain the
+// proto scenario pins), the array-first wholesale clone, the both-non-null-
+// object recursion and null falling through to plain assign; deepDiff's
+// defaults-driven key walk, the lazy `result ??= {}`, the array-as-key-list
+// recursion yielding index-string keys, the STRICT `!==` (NaN records, -0
+// does not) and the undefined return when nothing differs.
+#[test]
+fn replay_settingsutils_scenarios() {
+    for s in vectors::SU_SCENARIOS {
+        for op in s.ops {
+            let got = openfront_core::settings_utils::run_op(op.kind, op.args);
+            assert_eq!(
+                got.len(),
+                op.res.len(),
+                "{} op[{:?}] res len: got {got:?} want {:?}",
+                s.name,
+                op.kind,
+                op.res
+            );
+            for (j, (g, w)) in got.iter().zip(op.res.iter()).enumerate() {
+                assert!(obj_is(*g, *w), "{} op[{:?}] res[{j}]: got {g} want {w}", s.name, op.kind);
+            }
+        }
+    }
+}
+
+// client/render/gl/Camera.ts: the scripted __CAM_DPR with the `|| 2` falsy
+// gate and cap, resize's initial-fit-once latch, the dirty-flag recompute
+// gate observed through getMatrix (res leads the PRE-call flag), the
+// Float32Array-stored matrix with its -0 tx, the NaN-poisoning js_max /
+// js_min clamp cascade and the screen<->world round trips.
+#[test]
+fn replay_camera_scenarios() {
+    use openfront_core::camera::RigHarness;
+    for s in vectors::CAM_SCENARIOS {
+        let mut rig = RigHarness::new();
+        for op in s.ops {
+            let got = rig.run_op(op.kind, op.args);
+            assert_eq!(
+                got.len(),
+                op.res.len(),
+                "{} op[{:?}] res len: got {got:?} want {:?}",
+                s.name,
+                op.kind,
+                op.res
+            );
+            for (j, (g, w)) in got.iter().zip(op.res.iter()).enumerate() {
+                assert!(obj_is(*g, *w), "{} op[{:?}] res[{j}]: got {g} want {w}", s.name, op.kind);
+            }
+        }
+    }
+}
+
+// client/render/gl/passes/name-pass/TextLayout.ts: the Uint8Array charCodes
+// truncation of every UTF-16 unit (astral surrogates included), the
+// Float32Array cursor round-trips with the centering subtraction, the
+// Int8Array kern in-range miss reading 0 vs the out-of-range read yielding
+// undefined -> NaN poisoning, and the empty-string lastCode[-1] NaN return.
+#[test]
+fn replay_textlayout_scenarios() {
+    use openfront_core::text_layout::RigHarness;
+    for s in vectors::TXL_SCENARIOS {
+        let mut rig = RigHarness::new();
+        for op in s.ops {
+            let got = rig.run_op(op.kind, op.args);
+            assert_eq!(
+                got.len(),
+                op.res.len(),
+                "{} op[{:?}] res len: got {got:?} want {:?}",
+                s.name,
+                op.kind,
+                op.res
+            );
+            for (j, (g, w)) in got.iter().zip(op.res.iter()).enumerate() {
+                assert!(obj_is(*g, *w), "{} op[{:?}] res[{j}]: got {g} want {w}", s.name, op.kind);
+            }
+        }
+    }
+}
+
+// client/render/gl/utils/ColorUtils.ts: the hexToRgb trim + anchored regex
+// gate, the peak/sand/plains (unclamped, mod-256 wrap)/highland/mountain
+// (js_min)/shoreline (js_round half-up)/deepwater (js_max) gate cascade,
+// the ?? override fallback chain with NaN-poisoned short arrays, the
+// fractional / negative offset write-drop semantics, and the
+// buildTerrainRGBA allocate-truncate vs loop-round-up asymmetry.
+#[test]
+fn replay_colorutils_scenarios() {
+    for s in vectors::CU_SCENARIOS {
+        for op in s.ops {
+            let got = openfront_core::color_utils::run_op(op.kind, op.args);
+            assert_eq!(
+                got.len(),
+                op.res.len(),
+                "{} op[{:?}] res len: got {got:?} want {:?}",
+                s.name,
+                op.kind,
+                op.res
+            );
+            for (j, (g, w)) in got.iter().zip(op.res.iter()).enumerate() {
+                assert!(obj_is(*g, *w), "{} op[{:?}] res[{j}]: got {g} want {w}", s.name, op.kind);
+            }
+        }
+    }
+}
+
+// client/view/CosmeticVisibility.ts: the self short-circuit ahead of the
+// showFrom read, the ?? "everyone" default, the one-key { verified } hidden
+// branch (present-even-undefined), the strict === false category gates, the
+// delete-on-absent no-ops with key-order survival, and the effects
+// re-filter's slot resolution (stale bare "nukeExplosion" kept), the
+// Arr/Str -> Obj fromEntries transition and the in-place effects overwrite.
+#[test]
+fn replay_cosmeticvisibility_scenarios() {
+    for s in vectors::CVS_SCENARIOS {
+        for op in s.ops {
+            let got = openfront_core::cosmetic_visibility::run_op(op.kind, op.args);
+            assert_eq!(
+                got.len(),
+                op.res.len(),
+                "{} op[{:?}] res len: got {got:?} want {:?}",
+                s.name,
+                op.kind,
+                op.res
+            );
+            for (j, (g, w)) in got.iter().zip(op.res.iter()).enumerate() {
+                assert!(obj_is(*g, *w), "{} op[{:?}] res[{j}]: got {g} want {w}", s.name, op.kind);
+            }
+        }
+    }
+}
+
+// client/render/gl/utils/Affiliation.ts (CPU half): the Math.round(v*255)
+// channel expansion with its Uint8Array wrap / zero specials, the
+// `rel && lp > 0 && owner > 0 && owner < rs && lp < rs` gate (empty array
+// truthy, null falsy), the fractional-index undefined read behaving like
+// neutral, the strict-=== setLocalPlayer early return leaving dirty
+// untouched, the flush dirty-before latch and the two-row owner loop
+// (row 0 four-state, row 1 three-state with neutral folded into enemy).
+#[test]
+fn replay_affiliationpalette_scenarios() {
+    use openfront_core::affiliation_palette::RigHarness;
+    for s in vectors::AFP_SCENARIOS {
+        let mut rig = RigHarness::new();
+        for op in s.ops {
+            let got = rig.run_op(op.kind, op.args);
+            assert_eq!(
+                got.len(),
+                op.res.len(),
+                "{} op[{:?}] res len: got {got:?} want {:?}",
+                s.name,
+                op.kind,
+                op.res
+            );
+            for (j, (g, w)) in got.iter().zip(op.res.iter()).enumerate() {
+                assert!(obj_is(*g, *w), "{} op[{:?}] res[{j}]: got {g} want {w}", s.name, op.kind);
+            }
+        }
+    }
+}
+
+// client/Utils.ts formatting subset: the NaN-propagating Math.max clamp
+// letting "NaN" through the else branch, the InfinityB / 1e+21B toFixed
+// fallbacks, the nullish fixedPoints gate (explicit 0 honoured, NaN -> 0
+// digits, fractions truncated), the toFixed-less 1e5 branch ignoring fp,
+// the strict Number.isNaN percentage gate, the maps-table id lookup ahead
+// of lowercase + /[\s.]+/g strip (U+0085 kept, U+FEFF stripped, final-sigma),
+// the Shift+ recursion and the ß -> "SS" fallback growth, and the
+// Object.entries / String(value) debug serialisation.
+// client/Utils.ts nav/time/avatar subset: apexPathFor's leading-only worker
+// strip over the version-stripped path, currentPagePath's lazy pin latch
+// (facade-read counter, strict null gate, bare /v/<commit> on an empty path),
+// the Date.now() default-parameter consumption counter (omitted and explicit
+// undefined consume, an explicit number never does, and the seconds chain
+// consumes exactly once), the NaN penetration through Math.max(0, floor(..)),
+// and getDiscordAvatarUrl's truthy avatar gate, ASCII regexes, a_ gif branch,
+// strict !== undefined discriminator gate (null passes) and the Number() % 5
+// coercion table (0x10 -> 1, "-7" -> -2, NaN -> "NaN" in the URL).
+#[test]
+fn replay_utilsnav_scenarios() {
+    use openfront_core::utils_nav::RigHarness;
+    for s in vectors::UN_SCENARIOS {
+        let mut rig = RigHarness::new();
+        for op in s.ops {
+            let got = rig.run_op(op.kind, op.args);
+            assert_eq!(
+                got.len(),
+                op.res.len(),
+                "{} op[{:?}] res len: got {got:?} want {:?}",
+                s.name,
+                op.kind,
+                op.res
+            );
+            for (j, (g, w)) in got.iter().zip(op.res.iter()).enumerate() {
+                assert!(
+                    obj_is(*g, *w),
+                    "{} op[{:?}] res[{j}]: got {g} want {w}",
+                    s.name,
+                    op.kind
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn replay_utilsformat_scenarios() {
+    for s in vectors::UF_SCENARIOS {
+        for op in s.ops {
+            let got = openfront_core::utils_format::run_op(op.kind, op.args);
+            assert_eq!(
+                got.len(),
+                op.res.len(),
+                "{} op[{:?}] res len: got {got:?} want {:?}",
+                s.name,
+                op.kind,
+                op.res
+            );
+            for (j, (g, w)) in got.iter().zip(op.res.iter()).enumerate() {
+                assert!(obj_is(*g, *w), "{} op[{:?}] res[{j}]: got {g} want {w}", s.name, op.kind);
+            }
+        }
+    }
+}

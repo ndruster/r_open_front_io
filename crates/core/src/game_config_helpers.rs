@@ -73,7 +73,7 @@ fn js_trim(s: &str) -> &str {
 /// parser accepts `inf` / `NaN` / `1e999` spellings JS reads differently, so
 /// the character gate runs first and the JS-trim (not Rust-trim) is what
 /// strips the literal.
-fn js_number(s: &str) -> f64 {
+pub(crate) fn js_number(s: &str) -> f64 {
     let t = js_trim(s);
     if t.is_empty() {
         return 0.0;

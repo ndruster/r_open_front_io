@@ -4162,6 +4162,130 @@ function prepare(rel) {
     out = out.slice(0, cls);
   }
 
+  if (rel.endsWith("ranking/GameInfoRanking.ts")) {
+    // S14: Node's strip-only loader rejects `export enum`; RankType is a
+    // string enum whose values equal the member names, and the gir_ ops
+    // dump both the member table and RANK_TYPE_LABEL_KEYS key order, so the
+    // plain-object inline keeps the forward members in declaration order
+    // (precedent: RailroadCache RailType). The Schemas import names only
+    // type positions (PlayerRecord / AnalyticsRecord annotations) ->
+    // dropped; the StatsSchemas block is a *value* import of the eight index
+    // constants but rides on the prepared StatsSchemas.ts copy (precedent:
+    // StatsImpl).
+    out = must(
+      out,
+      "export enum RankType {\n" +
+        '  ConquestHumans = "ConquestHumans",\n' +
+        '  ConquestNations = "ConquestNations",\n' +
+        '  ConquestBots = "ConquestBots",\n' +
+        '  Atoms = "Atoms",\n' +
+        '  Hydros = "Hydros",\n' +
+        '  MIRV = "MIRV",\n' +
+        '  TotalGold = "TotalGold",\n' +
+        '  StolenGold = "StolenGold",\n' +
+        '  NavalTrade = "NavalTrade",\n' +
+        '  TrainTrade = "TrainTrade",\n' +
+        '  ConqueredGold = "ConqueredGold",\n' +
+        '  Lifetime = "Lifetime",\n' +
+        "}",
+      "export const RankType = {\n" +
+        '  ConquestHumans: "ConquestHumans",\n' +
+        '  ConquestNations: "ConquestNations",\n' +
+        '  ConquestBots: "ConquestBots",\n' +
+        '  Atoms: "Atoms",\n' +
+        '  Hydros: "Hydros",\n' +
+        '  MIRV: "MIRV",\n' +
+        '  TotalGold: "TotalGold",\n' +
+        '  StolenGold: "StolenGold",\n' +
+        '  NavalTrade: "NavalTrade",\n' +
+        '  TrainTrade: "TrainTrade",\n' +
+        '  ConqueredGold: "ConqueredGold",\n' +
+        '  Lifetime: "Lifetime",\n' +
+        "};",
+      "GameInfoRanking RankType enum",
+    );
+    out = must(
+      out,
+      'import { AnalyticsRecord, PlayerRecord } from "../../../../core/Schemas";\n',
+      "",
+      "GameInfoRanking Schemas import",
+    );
+    const girStatsRel = "src/core/StatsSchemas.ts";
+    if (!prepared.has(girStatsRel)) prepare(girStatsRel);
+    out = must(
+      out,
+      '} from "../../../../core/StatsSchemas";\n',
+      '} from "./' + prepared.get(girStatsRel) + '";\n',
+      "GameInfoRanking StatsSchemas import",
+    );
+  }
+
+  if (rel.endsWith("hud/Tutorial.ts")) {
+    // S14: the GameEvent import backs only the erased `implements` clause
+    // of TutorialHighlightEvent -> dropped; UnitType is a *value* use (the
+    // step `unit` fields) and rides on the prepared Game.ts copy (enums
+    // inlined as plain objects).
+    out = must(
+      out,
+      'import { GameEvent } from "../../core/EventBus";\n',
+      "",
+      "Tutorial GameEvent import",
+    );
+    // Node's strip-only loader rejects the parameter-property constructor of
+    // TutorialHighlightEvent (out of scope anyway); desugar it in place.
+    out = must(
+      out,
+      "export class TutorialHighlightEvent implements GameEvent {\n" +
+        "  constructor(public readonly target: TutorialHighlight | null) {}\n" +
+        "}",
+      "export class TutorialHighlightEvent {\n" +
+        "  constructor(target) {\n    this.target = target;\n  }\n" +
+        "}",
+      "Tutorial HighlightEvent ctor",
+    );
+    // TutorialProgress also uses a parameter property for the step table;
+    // desugar it (the capture only ever builds the default-table cursor).
+    out = must(
+      out,
+      "  constructor(\n" +
+        "    private readonly steps: readonly TutorialStep[] = TUTORIAL_STEPS,\n" +
+        "  ) {}",
+      "  constructor(steps = TUTORIAL_STEPS) {\n    this.steps = steps;\n  }",
+      "Tutorial Progress ctor",
+    );
+    const tpGameRel = "src/core/game/Game.ts";
+    if (!prepared.has(tpGameRel)) prepare(tpGameRel);
+    out = must(
+      out,
+      'import { UnitType } from "../../core/game/Game";\n',
+      `import { UnitType } from "./${prepared.get(tpGameRel)}";\n`,
+      "Tutorial UnitType import",
+    );
+    // The capture replays a whole scripted op chain per op; the Rust side
+    // builds one fresh TutorialProgress per run_op call. The TS progress is
+    // instantiated by the scenario itself, so no module singleton reset is
+    // needed here (unlike PreviewMap's railLoop).
+  }
+
+  if (rel.endsWith("preview/PreviewMap.ts")) {
+    // S14: computeRailTiles is a *value* import and rides on the prepared
+    // RailroadCache.ts copy (RailType inlined there). The module-level
+    // `let railLoop` singleton gets a capture-only reset shim so a pm_
+    // scenario can pin the built-vs-cached latch (the Rust thread_local
+    // latch is cleared by the harness reset).
+    const pmRcRel = "src/client/render/frame/RailroadCache.ts";
+    if (!prepared.has(pmRcRel)) prepare(pmRcRel);
+    out = must(
+      out,
+      'import { computeRailTiles } from "../frame/RailroadCache";\n',
+      `import { computeRailTiles } from "./${prepared.get(pmRcRel)}";\n`,
+      "PreviewMap RailroadCache import",
+    );
+    out +=
+      "\n/** Capture-only: clear the railLoop singleton latch (pm_ reset). */\n" +
+      "export function __pmResetRailLoop() {\n  railLoop = undefined;\n}\n";
+  }
+
   mkdirSync(cacheDir, { recursive: true });
   const hash = createHash("sha1").update(out).digest("hex").slice(0, 10);
   const base = `${basename(rel, ".ts")}-${hash}.ts`;

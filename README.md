@@ -1926,6 +1926,50 @@ WebSockets — stays excluded, mirroring the `src/core` exclusions).
     survives). A nullish `overrides` throws on the first `?.` read before any
     mutation. 19 scenarios (`rs_` 4, `ro_` 15).
 
+71. **`client/components/baseComponents/ranking/GameInfoRanking.ts` +
+    `client/hud/Tutorial.ts` + `client/render/preview/PreviewMap.ts`**
+    (`game_info_ranking`, `tutorial`, `preview_map`) — the S14 batch-1 trio.
+    `GameInfoRanking` — the `Ranking` over an `AnalyticsRecord`: `hasPlayed`
+    (stats gate AND the units/killedAt/conquests three-way OR, a
+    present-`undefined` arm failing), the `Record` summariser keyed by
+    `clientID` in **V8 own-key order** (canonical integer keys ascending
+    ahead of insertion-ordered string keys — pinned by a `"5"`-before-`"a"`
+    scenario; a repeat id overwrites in place), `BigInt(v ?? 0)` element
+    coercion (nullish → `0n`, a non-integral finite NUMBER throws
+    `RangeError` → status 1, bigints ride as `i64` in the ≤ 2^53 wire
+    domain), the `killedAt === undefined || === null` double gate,
+    `Number(bombs?.X?.[0]) || 0` (a non-array `bombs.abomb` reads `undefined`
+    → NaN → 0), the winner-block pass (`"player"` marks index 1 through the
+    truthy `players[id]` gate with `ToPropertyKey` on non-string ids,
+    `"team"` marks 2.., anything else inert), the twelve-branch `getScore`
+    with NO `default` (out-of-domain → `undefined`, `None` here) and the
+    subtraction-comparator `sortedBy` (descending, stable — a NaN comparator
+    result is V8 `+0`, pinned by the out-of-domain and NaN-killedAt
+    scenarios; winner bonus `+0.1`). `RankType` is a string enum inlined as
+    a plain object in the loader; `RANK_TYPE_LABEL_KEYS` dumps with
+    `Lifetime` first (computed-key insertion order).
+    `Tutorial` — the pure cursor: the 22-step `TUTORIAL_STEPS` table with
+    every `applies`/`isDone` closure transcribed verbatim (including the
+    `cityCost !== null && gold >= cityCost` bigint gate), and
+    `TutorialProgress` — the `countCtx` latch on the FIRST `hasSpawned`
+    context (never re-snapshotted; `position`/`total` count over
+    `countCtx ?? ctx`), `doneTicks++` BEFORE the `< 15` linger return, the
+    skip-`while` + `step?.isDone?.(ctx)` re-arm order inside `update`, the
+    `step?.manual && doneTicks === null` acknowledge gate and the
+    finished-guarded `skip`. The capture reads only the public surface
+    (current id / finished / stepDone / position / total) — the scripted op
+    chain pins the hidden trajectory.
+    `PreviewMap` — `buildPreviewMap` (length `!== mapW * mapH` throw with
+    the exact template message, undefined-only default params, `& 0x80`
+    land bit, `Uint16Array` `tileState`), `previewTileRef`, and the
+    module-singleton `getPreviewRailLoop`: the closed four-edge 180-tile
+    rectangle fed through the now-`pub(crate)` `computeRailTiles`
+    (`[path[n-1], ...path, path[0]]` wrap + `.slice(1, n+1)`),
+    `railroadState[ref] = type + 1` dumped sparsely; the TS-side capture
+    shim `__pmResetRailLoop` mirrors the Rust `thread_local` latch reset so
+    the built-vs-cached identity is pinned. 22 scenarios (`gir_` 10, `tp_`
+    7, `pm_` 5).
+
 Regenerate whenever a ported source changes:
 
 ```
@@ -1958,7 +2002,7 @@ node rust/tools/run_wasm_parity.mjs
 
 `wasm-probe` exposes the ported functions through `extern "C"` scalar
 entrypoints (`src/wasm_probe.rs`); the runner imports `data/vectors.json` and
-compares every value. Last run: **790,209 comparisons, all bit-identical**.
+compares every value. Last run: **797,721 comparisons, all bit-identical**.
 
 ### Windows: the linker environment
 

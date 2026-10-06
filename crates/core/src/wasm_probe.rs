@@ -5296,3 +5296,45 @@ s8_stateless_probe!(
     probe_ro_reset, probe_ro_arg, probe_ro_op, probe_ro_out_at,
     RO_ARGS, RO_OUT, crate::render_overrides::run_op
 );
+
+// =============== S14: client ranking / tutorial / preview map ===============
+
+s8_stateless_probe!(
+    probe_gir_reset, probe_gir_arg, probe_gir_op, probe_gir_out_at,
+    GIR_ARGS, GIR_OUT, crate::game_info_ranking::run_op
+);
+s8_stateless_probe!(
+    probe_tp_reset, probe_tp_arg, probe_tp_op, probe_tp_out_at,
+    TP_ARGS, TP_OUT, crate::tutorial::run_op
+);
+
+// `preview_map` keeps a module singleton latch; the reset clears it so each
+// scenario starts with `railLoop === undefined`.
+thread_local! {
+    static PM_ARGS: std::cell::RefCell<Vec<f64>> = const { std::cell::RefCell::new(Vec::new()) };
+    static PM_OUT: std::cell::RefCell<Vec<f64>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
+#[no_mangle]
+pub extern "C" fn probe_pm_reset() {
+    crate::preview_map::reset_preview_rail_loop();
+}
+
+#[no_mangle]
+pub extern "C" fn probe_pm_arg(v: f64) {
+    PM_ARGS.with(|t| t.borrow_mut().push(v));
+}
+
+#[no_mangle]
+pub extern "C" fn probe_pm_op(kind: u32) -> usize {
+    let a = PM_ARGS.with(|t| std::mem::take(&mut *t.borrow_mut()));
+    let res = crate::preview_map::run_op(kind as u8, &a);
+    let len = res.len();
+    PM_OUT.with(|o| *o.borrow_mut() = res);
+    len
+}
+
+#[no_mangle]
+pub extern "C" fn probe_pm_out_at(i: usize) -> f64 {
+    PM_OUT.with(|o| o.borrow()[i])
+}

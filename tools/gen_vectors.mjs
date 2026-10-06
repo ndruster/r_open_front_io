@@ -514,6 +514,10 @@ const PN = await loadTs("src/client/PlayerName.ts");
 const VU = await loadTs("src/core/validations/username.ts");
 const GMS = await loadTs("src/client/GameModeSelector.ts");
 const DS = await loadTs("src/client/DesktopShell.ts");
+// S14: the ranking / tutorial / preview-map trio (GIR / TP / PM).
+const GIR = await loadTs("src/client/components/baseComponents/ranking/GameInfoRanking.ts");
+const TP = await loadTs("src/client/hud/Tutorial.ts");
+const PM = await loadTs("src/client/render/preview/PreviewMap.ts");
 
 const PF = await loadTs("src/core/pathfinding/PathFinder.ts");
 const { AStar } = await loadTs("src/core/pathfinding/algorithms/AStar.ts");
@@ -17199,6 +17203,588 @@ runRO("ro_combined", [
   ],
 ]);
 
+// --- S14: GameInfoRanking.ts --------------------------------------------------
+// Kind table (matches `game_info_ranking::run_op`): 0 construct + allPlayers
+// dump -> [status, n, (player)*n]; 1 sortedBy (session, type-str) -> same
+// shape; 2 score per player (session, type-str) -> [status, n, (0|1,val?)*n];
+// 3 enum + label-table dump. status 1 models the BigInt RangeError throw.
+// Session wire: duration, encVal(winner), n, per player present, clientID,
+// username, encVal(clanTag), stats, units, encVal(killedAt), conquests, gold
+// (elem tag 0=null 1=undefined 2=bigint 3=number), encVal(cosmetics),
+// encVal(bombs).
+const girScenarios = [];
+let girIdx = 0;
+const girEncBi = (arr) =>
+  arr === undefined
+    ? [0]
+    : [1, arr.length, ...arr.flatMap((v) => {
+        if (v === null) return [0, 0];
+        if (v === undefined) return [1, 0];
+        if (typeof v === "bigint") return [2, uenc(Number(v))];
+        return [3, uenc(v)];
+      })];
+function girArg(p) {
+  const stats = p.stats;
+  return [
+    p.present === false ? 0 : 1,
+    ...encS(p.clientID),
+    ...encS(p.username),
+    ...encVal(p.clanTag),
+    stats === undefined ? 0 : 1,
+    stats?.units === undefined ? 0 : 1,
+    ...encVal(stats?.killedAt),
+    ...girEncBi(stats?.conquests),
+    ...girEncBi(stats?.gold),
+    ...encVal(p.cosmetics),
+    ...encVal(stats?.bombs),
+  ];
+}
+function girJs(p) {
+  if (p.present === false) return undefined;
+  const o = { clientID: p.clientID, username: p.username, clanTag: p.clanTag };
+  if (p.stats !== undefined) {
+    const s = {};
+    if ("units" in p.stats) s.units = p.stats.units;
+    if ("killedAt" in p.stats) s.killedAt = p.stats.killedAt;
+    if ("conquests" in p.stats) s.conquests = p.stats.conquests;
+    if ("gold" in p.stats) s.gold = p.stats.gold;
+    if ("bombs" in p.stats) s.bombs = p.stats.bombs;
+    o.stats = s;
+  }
+  if (p.cosmetics !== undefined) o.cosmetics = p.cosmetics;
+  return o;
+}
+const girDumpPlayer = (p) => [
+  ...encS(p.id),
+  ...encS(p.username),
+  ...encVal(p.clanTag),
+  ...(p.killedAt === undefined ? [0] : [1, uenc(p.killedAt)]),
+  p.gold.length,
+  ...p.gold.map((g) => uenc(Number(g))),
+  p.conquests.length,
+  ...p.conquests.map((c) => uenc(Number(c))),
+  ...encVal(p.flag),
+  p.winner ? 1 : 0,
+  uenc(p.atoms),
+  uenc(p.hydros),
+  uenc(p.mirv),
+];
+function runGIR(name, ops) {
+  const played = [];
+  for (const [k, a] of ops) {
+    let args, res;
+    if (k === 3) {
+      args = [];
+      const vals = Object.values(GIR.RankType);
+      const entries = Object.entries(GIR.RANK_TYPE_LABEL_KEYS);
+      res = [
+        vals.length,
+        ...vals.flatMap((v) => encS(String(v))),
+        entries.length,
+        ...entries.flatMap(([kk, vv]) => [...encS(kk), ...encS(vv)]),
+      ];
+    } else {
+      const [duration, winner, players, type] = a;
+      args = [
+        uenc(duration),
+        ...encVal(winner),
+        players.length,
+        ...players.flatMap(girArg),
+      ];
+      if (k === 1 || k === 2) args.push(...encS(type));
+      const session = {
+        info: { duration, winner, players: players.map(girJs) },
+      };
+      try {
+        const r = new GIR.Ranking(session);
+        if (k === 0) {
+          const ps = r.allPlayers;
+          res = [0, ps.length, ...ps.flatMap(girDumpPlayer)];
+        } else if (k === 1) {
+          const ps = r.sortedBy(type);
+          res = [0, ps.length, ...ps.flatMap(girDumpPlayer)];
+        } else {
+          res = [0, r.allPlayers.length];
+          for (const p of r.allPlayers) {
+            const s = r.score(p, type);
+            res.push(...(s === undefined ? [1] : [0, uenc(s)]));
+          }
+        }
+      } catch (e) {
+        if (!(e instanceof RangeError)) throw e;
+        res = [1];
+      }
+    }
+    played.push({ kind: k, args: args.flat().map(uenc), res: res.flat().map(uenc) });
+  }
+  girScenarios.push({ name: `${name}_${girIdx++}`, ops: played });
+}
+const GIP = (id, stats, extra = {}) => ({ clientID: id, username: `${id}U`, clanTag: null, stats, ...extra });
+runGIR("gir_tables", [[3, null]]);
+runGIR("gir_has_played", [
+  [
+    0,
+    [
+      100,
+      undefined,
+      [
+        GIP("a", undefined), // no stats -> skipped
+        GIP("b", {}), // stats present, none of the three -> skipped
+        GIP("c", { units: undefined }), // present-undefined units -> skipped
+        GIP("d", { units: [] }), // units -> kept
+        GIP("e", { killedAt: 5 }), // killedAt -> kept
+        GIP("f", { conquests: [] }), // conquests -> kept
+        { present: false, clientID: "g", username: "gU", clanTag: null }, // undefined slot
+      ],
+    ],
+  ],
+]);
+runGIR("gir_insertion_dup", [
+  [
+    0,
+    [
+      100,
+      undefined,
+      [
+        GIP("a", { units: [], gold: [1n] }, { username: "first" }),
+        GIP("b", { units: [] }),
+        GIP("a", { units: [], gold: [2n] }, { username: "second" }),
+      ],
+    ],
+  ],
+]);
+runGIR("gir_bigint_elems", [
+  [
+    0,
+    [
+      100,
+      undefined,
+      [
+        GIP("a", {
+          units: [],
+          gold: [null, undefined, 7n, 3],
+          conquests: [0n, 2n, 4n],
+        }),
+      ],
+    ],
+  ],
+]);
+runGIR("gir_bigint_throw", [
+  [0, [100, undefined, [GIP("a", { units: [], gold: [1.5] })]]],
+  [0, [100, undefined, [GIP("a", { units: [], conquests: [NaN] })]]],
+  [0, [100, undefined, [GIP("a", { units: [], gold: [Infinity] })]]],
+]);
+runGIR("gir_killedat_bombs", [
+  [
+    0,
+    [
+      100,
+      undefined,
+      [
+        GIP("a", { units: [], killedAt: null }),
+        GIP("b", { units: [], killedAt: undefined }),
+        GIP("c", { units: [], killedAt: "5" }),
+        GIP("d", { units: [], killedAt: "zz" }),
+        GIP("e", { units: [], killedAt: true, bombs: { abomb: ["3"], hbomb: [null], mirv: [] } }),
+        GIP("f", { units: [], bombs: { abomb: [0], hbomb: [-0], mirv: [2.5] } }),
+        GIP("g", { units: [], bombs: { abomb: 5 } }),
+        GIP("h", { units: [] }, { cosmetics: { flag: "red" } }),
+        GIP("i", { units: [] }, { cosmetics: { flag: null } }),
+        GIP("j", { units: [] }, { cosmetics: null }),
+      ],
+    ],
+  ],
+]);
+runGIR("gir_winner_blocks", [
+  [0, [100, ["player", "b"], [GIP("a", { units: [] }), GIP("b", { units: [] })]]],
+  [0, [100, ["player", undefined], [GIP("a", { units: [] })]]],
+  [0, [100, ["player", 5], [GIP("a", { units: [] }), GIP("5", { units: [] })]]],
+  [
+    0,
+    [
+      100,
+      ["team", "red", "a", 99, "b", "zz"],
+      [GIP("a", { units: [] }), GIP("b", { units: [] }), GIP("99", { units: [] })],
+    ],
+  ],
+  [0, [100, ["solo", "a"], [GIP("a", { units: [] })]]],
+  [0, [100, [], [GIP("a", { units: [] })]]],
+  [0, [100, "player", [GIP("a", { units: [] })]]], // not an array
+  [0, [100, null, [GIP("a", { units: [] })]]],
+]);
+runGIR("gir_scores", [
+  [
+    2,
+    [
+      100,
+      undefined,
+      [
+        GIP("a", {
+          units: [],
+          killedAt: 50,
+          gold: [10n, 20n, 30n, 40n, 5n, 6n],
+          conquests: [1n, 2n],
+          bombs: { abomb: [7] },
+        }),
+      ],
+      "Lifetime",
+    ],
+  ],
+  ...["ConquestHumans", "ConquestNations", "ConquestBots", "Atoms", "Hydros", "MIRV",
+      "TotalGold", "StolenGold", "NavalTrade", "TrainTrade", "ConqueredGold"].map((t) => [
+    2,
+    [
+      100,
+      undefined,
+      [
+        GIP("a", {
+          units: [],
+          killedAt: 50,
+          gold: [10n, 20n, 30n, 40n, 5n, 6n],
+          conquests: [1n, 2n],
+          bombs: { abomb: [7] },
+        }),
+      ],
+      t,
+    ],
+  ]),
+  [2, [100, undefined, [GIP("a", { units: [] })], "Bogus"]],
+]);
+runGIR("gir_lifetime_edges", [
+  [0, [0, undefined, [GIP("a", { units: [], killedAt: 10 })]]], // duration 0 -> max(0,1)
+  [2, [0, undefined, [GIP("a", { units: [], killedAt: 10 })], "Lifetime"]],
+  [2, [100, undefined, [GIP("a", { units: [], killedAt: "zz" })], "Lifetime"]], // NaN
+  [2, [100, undefined, [GIP("a", { units: [] })], "Lifetime"]], // survivor 100
+  [2, [-1, undefined, [GIP("a", { units: [], killedAt: 10 })], "Lifetime"]], // max(-1,1)=1
+]);
+runGIR("gir_sorted", [
+  [
+    1,
+    [
+      100,
+      undefined,
+      [
+        GIP("a", { units: [], bombs: { abomb: [1] } }),
+        GIP("b", { units: [], bombs: { abomb: [3] } }),
+        GIP("c", { units: [], bombs: { abomb: [1] } }),
+      ],
+      "Atoms",
+    ],
+  ],
+  [
+    1,
+    [
+      100,
+      ["player", "c"],
+      [
+        GIP("a", { units: [], bombs: { abomb: [1] } }),
+        GIP("b", { units: [], bombs: { abomb: [3] } }),
+        GIP("c", { units: [], bombs: { abomb: [1] } }),
+      ],
+      "Atoms",
+    ],
+  ],
+  [
+    1,
+    [
+      100,
+      ["player", "c"],
+      [
+        GIP("a", { units: [], bombs: { abomb: [1] } }),
+        GIP("b", { units: [], bombs: { abomb: [3] } }),
+        GIP("c", { units: [], bombs: { abomb: [1] } }),
+      ],
+      "Nope",
+    ],
+  ],
+  [
+    1,
+    [
+      100,
+      undefined,
+      [GIP("a", { units: [], killedAt: "zz" }), GIP("b", { units: [], killedAt: 5 })],
+      "Lifetime",
+    ],
+  ],
+]);
+
+// --- S14: Tutorial.ts ---------------------------------------------------------
+// Kind table (matches `tutorial::run_op`): 0 [n, (scriptOp, ctx)*n] ->
+// [n, (dump)*n] with scriptOp 1 update / 2 acknowledge / 3 skip and dump
+// [currentTag 0|1 + id-str, finished, stepDone, position, total] over the
+// op's ctx; 5 -> the step-table dump.
+const tpScenarios = [];
+let tpIdx = 0;
+const tpCtx = (o = {}) => [
+  o.hasSpawned ? 1 : 0,
+  o.inSpawnPhase ? 1 : 0,
+  o.attacking ? 1 : 0,
+  o.attackRatioMoved ? 1 : 0,
+  o.boatsDisabled ? 1 : 0,
+  o.boatSent ? 1 : 0,
+  o.botsExist ? 1 : 0,
+  o.nationsExist ? 1 : 0,
+  o.alliancesDisabled ? 1 : 0,
+  o.allied ? 1 : 0,
+  uenc(o.gold ?? 0),
+  ...(o.cityCost == null ? [0] : [1, uenc(o.cityCost)]),
+  o.cityDisabled ? 1 : 0,
+  uenc(o.cities ?? 0),
+  o.portDisabled ? 1 : 0,
+  uenc(o.ports ?? 0),
+  o.defensePostDisabled ? 1 : 0,
+  uenc(o.defensePosts ?? 0),
+  o.factoryDisabled ? 1 : 0,
+  uenc(o.factories ?? 0),
+  o.warshipDisabled ? 1 : 0,
+  uenc(o.warships ?? 0),
+  o.siloDisabled ? 1 : 0,
+  uenc(o.silos ?? 0),
+  o.atomDisabled ? 1 : 0,
+  o.siloReady ? 1 : 0,
+  o.atomLaunched ? 1 : 0,
+  o.hydrogenDisabled ? 1 : 0,
+  o.mirvDisabled ? 1 : 0,
+  o.samDisabled ? 1 : 0,
+];
+const tpCtxJs = (o = {}) => ({
+  hasSpawned: !!o.hasSpawned,
+  inSpawnPhase: !!o.inSpawnPhase,
+  attacking: !!o.attacking,
+  attackRatioMoved: !!o.attackRatioMoved,
+  boatsDisabled: !!o.boatsDisabled,
+  boatSent: !!o.boatSent,
+  botsExist: !!o.botsExist,
+  nationsExist: !!o.nationsExist,
+  alliancesDisabled: !!o.alliancesDisabled,
+  allied: !!o.allied,
+  gold: o.gold ?? 0,
+  cityCost: o.cityCost ?? null,
+  cityDisabled: !!o.cityDisabled,
+  cities: o.cities ?? 0,
+  portDisabled: !!o.portDisabled,
+  ports: o.ports ?? 0,
+  defensePostDisabled: !!o.defensePostDisabled,
+  defensePosts: o.defensePosts ?? 0,
+  factoryDisabled: !!o.factoryDisabled,
+  factories: o.factories ?? 0,
+  warshipDisabled: !!o.warshipDisabled,
+  warships: o.warships ?? 0,
+  siloDisabled: !!o.siloDisabled,
+  silos: o.silos ?? 0,
+  atomDisabled: !!o.atomDisabled,
+  siloReady: !!o.siloReady,
+  atomLaunched: !!o.atomLaunched,
+  hydrogenDisabled: !!o.hydrogenDisabled,
+  mirvDisabled: !!o.mirvDisabled,
+  samDisabled: !!o.samDisabled,
+});
+const tpDump = (p, ctx) => {
+  const cur = p.current();
+  return [
+    ...(cur ? [1, ...encS(cur.id)] : [0]),
+    p.finished() ? 1 : 0,
+    p.stepDone() ? 1 : 0,
+    uenc(p.position(ctx)),
+    uenc(p.total(ctx)),
+  ];
+};
+function runTP(name, script) {
+  const p = new TP.TutorialProgress();
+  const args = [script.length];
+  const res = [];
+  for (const [op, spec] of script) {
+    args.push(op, ...tpCtx(spec));
+    if (op === 1) p.update(tpCtxJs(spec));
+    else if (op === 2) p.acknowledge();
+    else p.skip();
+    res.push(...tpDump(p, tpCtxJs(spec)));
+  }
+  tpScenarios.push({
+    name: `${name}_${tpIdx++}`,
+    ops: [{ kind: 0, args: args.flat().map(uenc), res: res.flat().map(uenc) }],
+  });
+}
+function runTPTable() {
+  const res = [
+    TP.TUTORIAL_STEPS.length,
+    ...TP.TUTORIAL_STEPS.flatMap((s) => [
+      ...encS(s.id),
+      ...(s.highlight ? [1, ...encS(s.highlight)] : [0]),
+      s.manual ? 1 : 0,
+      ...(s.unit ? [1, ...encS(s.unit)] : [0]),
+      ...(s.hotkey ? [1, ...encS(s.hotkey)] : [0]),
+      ...(s.bullets ? [s.bullets.length, ...s.bullets.flatMap(encS)] : [0]),
+    ]),
+    uenc(TP.STEP_DONE_LINGER_TICKS),
+  ];
+  tpScenarios.push({
+    name: `tp_table_${tpIdx++}`,
+    ops: [{ kind: 5, args: [], res: res.flat().map(uenc) }],
+  });
+}
+runTPTable();
+const ALL_OFF = {
+  boatsDisabled: true, nationsExist: false, botsExist: false, cityDisabled: true,
+  portDisabled: true, defensePostDisabled: true, factoryDisabled: true,
+  warshipDisabled: true, siloDisabled: true, atomDisabled: true,
+  hydrogenDisabled: true, mirvDisabled: true, samDisabled: true,
+  alliancesDisabled: true,
+};
+runTP("tp_manual_linger", [
+  [1, {}], // parked on spawn (not done)
+  [2, {}], // acknowledge inert (spawn not manual)
+  [3, {}], [3, {}], // -> troops
+  [1, {}], // troops pending
+  [2, {}], // manual -> doneTicks 0
+  [2, {}], // already done -> inert
+  ...Array.from({ length: 14 }, () => [1, {}]), // linger 1..14
+  [1, {}], // the 15th -> advance to troop_rate
+  [3, {}], // -> attack_ratio
+]);
+runTP("tp_count_ctx_latch", [
+  [1, { botsExist: false, nationsExist: false, cityDisabled: true }], // pre-spawn: no latch
+  [1, { hasSpawned: true, botsExist: false, nationsExist: false, cityDisabled: true }], // latch
+  [1, { hasSpawned: true, botsExist: true, nationsExist: true, cityDisabled: false }], // live revive, latch holds
+  [1, { hasSpawned: true, botsExist: true, nationsExist: true, cityDisabled: false }],
+]);
+runTP("tp_all_inert", [
+  [1, { ...ALL_OFF, hasSpawned: true, attacking: true, attackRatioMoved: true }],
+  ...Array.from({ length: 60 }, () => [1, { ...ALL_OFF, hasSpawned: true, attacking: true, attackRatioMoved: true }]),
+]);
+runTP("tp_capture_cost", (() => {
+  const C = { hasSpawned: true, attacking: true, attackRatioMoved: true, botsExist: true };
+  const rep = (n) => Array.from({ length: n }, () => [1, C]);
+  return [
+    [1, C], // spawn done
+    ...rep(15), // linger -> attack_wilderness (done at once)
+    ...rep(15), // linger -> troops (manual, pending)
+    [2, C], // ack troops
+    ...rep(15), // linger -> troop_rate
+    [2, C], // ack
+    ...rep(15), // linger -> attack_ratio (done at once)
+    ...rep(15), // linger -> capture_tribes (pending: no cities, null cost)
+    [1, { ...C, cityCost: 100, gold: 99 }], // cost gate false
+    [1, { ...C, cityCost: 100, gold: 100 }], // gold >= cost -> done
+    ...rep(15), // linger -> buy_city
+  ];
+})());
+runTP("tp_finish", Array.from({ length: 25 }, () => [3, {}]));
+runTP("tp_skip_past_end", [
+  ...Array.from({ length: 22 }, () => [3, {}]),
+  [3, {}],
+  [1, {}],
+]);
+
+// --- S14: PreviewMap.ts -------------------------------------------------------
+// Kind table (matches `preview_map::run_op`): 0 buildPreviewMap [n,(terrain)*n,
+// mapW tag 0|1[?], mapH tag 0|1[?]] -> [0, mapW, mapH, terrainLen,(byte)*,
+// tileLen,(state)*] | [1, msgLen,(code)*]; 1 previewTileRef [x,y] -> [ref];
+// 2 getPreviewRailLoop -> [cached 0|1, pathLen,(ref)*, stateLen, pairCount,
+// (idx,val)*]; 3 reset the module latch -> []; 4 constants + RailType names.
+const pmScenarios = [];
+let pmIdx = 0;
+let pmLast = null;
+function runPM(name, ops) {
+  const played = [];
+  for (const [k, a] of ops) {
+    let args, res;
+    if (k === 0) {
+      const [terrain, mapW, mapH] = a;
+      args = [
+        terrain.length,
+        ...terrain.map(uenc),
+        ...(mapW === undefined ? [0] : [1, uenc(mapW)]),
+        ...(mapH === undefined ? [0] : [1, uenc(mapH)]),
+      ];
+      try {
+        const d = PM.buildPreviewMap(new Uint8Array(terrain), mapW, mapH);
+        res = [
+          0,
+          uenc(d.mapW),
+          uenc(d.mapH),
+          d.terrainBytes.length,
+          ...Array.from(d.terrainBytes).map(uenc),
+          d.tileState.length,
+          ...Array.from(d.tileState).map(uenc),
+        ];
+      } catch (e) {
+        res = [1, ...encS(e.message)];
+      }
+    } else if (k === 1) {
+      args = [uenc(a[0]), uenc(a[1])];
+      res = [uenc(PM.previewTileRef(a[0], a[1]))];
+    } else if (k === 2) {
+      args = [];
+      const l = PM.getPreviewRailLoop();
+      const cached = l === pmLast ? 1 : 0;
+      pmLast = l;
+      const pairs = [];
+      for (let i = 0; i < l.railroadState.length; i++) {
+        if (l.railroadState[i] !== 0) pairs.push(i, l.railroadState[i]);
+      }
+      res = [
+        cached,
+        l.path.length,
+        ...l.path.map(uenc),
+        l.railroadState.length,
+        pairs.length / 2,
+        ...pairs.map(uenc),
+      ];
+    } else if (k === 3) {
+      args = [];
+      PM.__pmResetRailLoop();
+      pmLast = null;
+      res = [];
+    } else {
+      args = [];
+      res = [
+        uenc(PM.PREVIEW_MAP_W),
+        uenc(PM.PREVIEW_MAP_H),
+        uenc(PM.PREVIEW_SCENE.land.x),
+        uenc(PM.PREVIEW_SCENE.land.y),
+        uenc(PM.PREVIEW_SCENE.ocean.x),
+        uenc(PM.PREVIEW_SCENE.ocean.y),
+        uenc(PM.PREVIEW_SCENE.coast.x),
+        uenc(PM.PREVIEW_SCENE.coast.y),
+        uenc(PM.PREVIEW_RAIL_STATIONS.city.x),
+        uenc(PM.PREVIEW_RAIL_STATIONS.city.y),
+        uenc(PM.PREVIEW_RAIL_STATIONS.factory.x),
+        uenc(PM.PREVIEW_RAIL_STATIONS.factory.y),
+        Object.keys(RLC.RailType).length,
+        ...Object.keys(RLC.RailType).flatMap((n) => encS(n)),
+      ];
+    }
+    played.push({ kind: k, args: args.flat().map(uenc), res: res.flat().map(uenc) });
+  }
+  pmScenarios.push({ name: `${name}_${pmIdx++}`, ops: played });
+}
+runPM("pm_constants", [[4, null]]);
+runPM("pm_build_throw", [
+  [0, [[0, 0, 0, 0, 0], undefined, undefined]], // default 1000x750
+  [0, [[0, 0], 3, 2]],
+  [0, [[0, 0, 0], NaN, 2]],
+  [0, [[0, 0, 0], 3, undefined]], // mapH defaults to 750
+]);
+runPM("pm_build_small", [
+  [0, [[128, 0, 64, 129, 32, 255], 3, 2]],
+  [0, [[300, -1, NaN], 3, 1]],
+  [0, [[], 0, 0]],
+]);
+runPM("pm_tile_ref", [
+  [1, [520, 380]],
+  [1, [0.5, 1.5]],
+  [1, [-1, 2]],
+  [1, [NaN, 3]],
+]);
+runPM("pm_loop_latch", [
+  [3, null],
+  [2, null],
+  [2, null],
+  [3, null],
+  [2, null],
+]);
+
 // --- S12: AtlasData.ts --------------------------------------------------------
 // Kind table (matches `atlas_data::run_op`): 0 buildGlyphTables batch ->
 // the FULL 3x384 Float32Array contents; 1 buildKernTable batch -> sparse
@@ -17777,6 +18363,9 @@ const structures = {
   gamemodegate: gmsScenarios,
   rendersettings: rs13Scenarios,
   renderoverrides: roScenarios,
+  gameranking: girScenarios,
+  tutorialprogress: tpScenarios,
+  previewmap: pmScenarios,
 };
 
 // ================================================================ JSON
@@ -21072,6 +21661,31 @@ opStream(
     "/// settings, codec overrides) -> [status, codec settings-after]; status\n" +
     "/// 0 ok, 1 TypeError (nullish overrides / non-string hex), 2 SyntaxError\n" +
     "/// (out-of-domain palette). The dump always follows.",
+);
+opStream(
+  "gameranking",
+  "Gir",
+  "/// One `client/components/baseComponents/ranking/GameInfoRanking.ts` op\n" +
+    "/// (see `game_info_ranking::run_op` docs). kind 0 construct + allPlayers\n" +
+    "/// dump, 1 sortedBy (session, type-str), 2 score per player, 3 enum +\n" +
+    "/// label-table dump; status 1 models the BigInt RangeError throw.",
+);
+opStream(
+  "tutorialprogress",
+  "Tp",
+  "/// One `client/hud/Tutorial.ts` op (see `tutorial::run_op` docs). kind 0\n" +
+    "/// scripted op chain (update / acknowledge / skip) over one fresh\n" +
+    "/// TutorialProgress -> the observable dump per op; kind 5 the step-table\n" +
+    "/// dump.",
+);
+opStream(
+  "previewmap",
+  "Pm",
+  "/// One `client/render/preview/PreviewMap.ts` op (see `preview_map::run_op`\n" +
+    "/// docs). kind 0 buildPreviewMap (terrain tokens, mapW/mapH undefined\n" +
+    "/// tags) -> dump | [1, msg], 1 previewTileRef, 2 getPreviewRailLoop\n" +
+    "/// (sparse state dump, cached flag), 3 reset the module latch, 4 the\n" +
+    "/// constants + RailType names table.",
 );
 
 const dataDir = join(root, "crates", "core", "tests", "data");

@@ -301,6 +301,26 @@
 //!   `teamIndex`, `startInfoFor`'s same-object non-anon return and
 //!   index-aligned `real.players[i].clanTag` read, and `lobbyClients`'
 //!   anon-vs-real key sets with the `|| undefined` spectator quirk)
+//! * [`game_info_ranking`] — `src/client/components/baseComponents/ranking/`
+//!   `GameInfoRanking.ts` (the `Ranking` over an `AnalyticsRecord`: the
+//!   `hasPlayed` gate, the insertion-ordered `Record` summariser with the
+//!   winner-block pass and the `BigInt(v ?? 0)` element coercion (a
+//!   non-integral number throws — modelled as the harness error status), the
+//!   twelve-branch `getScore` switch with no `default` and the
+//!   subtraction-comparator `sortedBy` (NaN comparator → `+0`, stable))
+//! * [`tutorial`] — the pure logic of `src/client/hud/Tutorial.ts` (the
+//!   22-step `TUTORIAL_STEPS` predicate table as `fn(&TutorialContext)`
+//!   closures and the `TutorialProgress` cursor: the first-post-spawn
+//!   `countCtx` latch, the `doneTicks++` before the `< 15` linger return,
+//!   the manual `acknowledge` gate and the applicable-step `position` /
+//!   `total` counts; `TutorialHighlightEvent` is out of scope)
+//! * [`preview_map`] — `src/client/render/preview/PreviewMap.ts` (the
+//!   preview-map wrapper over the 1000x750 Australia terrain: the
+//!   `!== mapW * mapH` throw with the exact template message, the
+//!   undefined-only default parameters, the `& 0x80` land bit, the closed
+//!   180-tile rail rectangle through the reused
+//!   [`railroad_cache::compute_rail_tiles`] and the module-singleton
+//!   `getPreviewRailLoop` latch (sparse `railroadState` dump))
 //!
 //! Two rules govern every future port into this crate:
 //!
@@ -345,6 +365,7 @@ pub mod execution_manager;
 pub mod fx_settings;
 pub mod game_api_cors;
 pub mod game_config_helpers;
+pub mod game_info_ranking;
 pub mod game_map;
 pub mod game_mode_gate;
 pub mod game_ts;
@@ -378,6 +399,7 @@ pub mod player_name;
 pub mod player_profile_url;
 pub mod player_status;
 pub mod presence_group;
+pub mod preview_map;
 pub mod privilege;
 pub mod pseudo_random;
 pub mod rail_network;
@@ -414,6 +436,7 @@ pub mod tile_traversal_scratch;
 pub mod trail_manager;
 pub mod train_station;
 pub mod tribe_names;
+pub mod tutorial;
 pub mod unit_grid;
 pub mod unit_types;
 pub mod util;

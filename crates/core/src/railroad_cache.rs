@@ -45,16 +45,16 @@ pub enum RailType {
 }
 
 impl RailType {
-    fn value(self) -> f64 {
+    pub(crate) fn value(self) -> f64 {
         self as i32 as f64
     }
 }
 
 /// `RailTile`.
 #[derive(Debug, Clone, Copy)]
-struct RailTile {
-    ref_tile: f64,
-    rtype: RailType,
+pub(crate) struct RailTile {
+    pub(crate) ref_tile: f64,
+    pub(crate) rtype: RailType,
 }
 
 /// `RailroadAnim`.
@@ -130,7 +130,7 @@ fn rail_direction(prev: f64, cur: f64, next: f64, w: f64) -> RailType {
 }
 
 /// `computeRailTiles(tileRefs, w)`.
-fn compute_rail_tiles(tile_refs: &[f64], w: f64) -> Vec<RailTile> {
+pub(crate) fn compute_rail_tiles(tile_refs: &[f64], w: f64) -> Vec<RailTile> {
     if tile_refs.is_empty() {
         return Vec::new();
     }

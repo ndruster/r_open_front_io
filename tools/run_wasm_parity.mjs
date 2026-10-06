@@ -171,6 +171,9 @@ for (const name of [
   "probe_ees_reset", "probe_ees_arg", "probe_ees_op", "probe_ees_out_at",
   "probe_pn_reset", "probe_pn_arg", "probe_pn_op", "probe_pn_out_at",
   "probe_gms_reset", "probe_gms_arg", "probe_gms_op", "probe_gms_out_at",
+  "probe_gir_reset", "probe_gir_arg", "probe_gir_op", "probe_gir_out_at",
+  "probe_tp_reset", "probe_tp_arg", "probe_tp_op", "probe_tp_out_at",
+  "probe_pm_reset", "probe_pm_arg", "probe_pm_op", "probe_pm_out_at",
 ]) {
   if (typeof ex[name] !== "function") {
     console.error(`missing wasm export ${name} - rebuild with --features wasm-probe`);
@@ -2597,6 +2600,9 @@ for (const [key, reset, arg, op, outAt] of [
   ["gamemodegate", "probe_gms_reset", "probe_gms_arg", "probe_gms_op", "probe_gms_out_at"],
   ["rendersettings", "probe_rset_reset", "probe_rset_arg", "probe_rset_op", "probe_rset_out_at"],
   ["renderoverrides", "probe_ro_reset", "probe_ro_arg", "probe_ro_op", "probe_ro_out_at"],
+  ["gameranking", "probe_gir_reset", "probe_gir_arg", "probe_gir_op", "probe_gir_out_at"],
+  ["tutorialprogress", "probe_tp_reset", "probe_tp_arg", "probe_tp_op", "probe_tp_out_at"],
+  ["previewmap", "probe_pm_reset", "probe_pm_arg", "probe_pm_op", "probe_pm_out_at"],
 ]) {
   for (const s of S[key]) {
     ex[reset]();

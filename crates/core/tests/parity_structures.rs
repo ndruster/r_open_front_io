@@ -4366,3 +4366,56 @@ replay_s12!(
     RO_SCENARIOS,
     openfront_core::render_overrides::run_op
 );
+
+// ---- S14: client ranking / tutorial / preview map ----------------------------
+
+// client/components/baseComponents/ranking/GameInfoRanking.ts: the
+// hasPlayed gate, the insertion-ordered summariser with the winner blocks,
+// the BigInt RangeError throw status, the twelve-branch getScore switch (the
+// out-of-domain undefined fall-through) and the subtraction-comparator
+// sortedBy over the Object.values order.
+replay_s12!(
+    replay_gameranking_scenarios,
+    GIR_SCENARIOS,
+    openfront_core::game_info_ranking::run_op
+);
+// client/hud/Tutorial.ts: the 22-step table dump and the scripted
+// TutorialProgress chains (update / acknowledge / skip) over one fresh
+// instance per op — the observable current / finished / stepDone / position
+// / total trajectory (the countCtx latch, the 15-tick linger and the
+// capture_tribes cost gate included).
+replay_s12!(
+    replay_tutorialprogress_scenarios,
+    TP_SCENARIOS,
+    openfront_core::tutorial::run_op
+);
+// client/render/preview/PreviewMap.ts: buildPreviewMap (default-parameter
+// tags, the TypeError throw path), previewTileRef, the getPreviewRailLoop
+// singleton latch (the cached flag over the cross-op module state) and the
+// constants + RailType name table. The scenarios share one process-global
+// latch on both sides (the TS capture never resets it), so the replay runs
+// them in recording order.
+#[test]
+fn replay_previewmap_scenarios() {
+    for s in vectors::PM_SCENARIOS {
+        for op in s.ops {
+            let got = openfront_core::preview_map::run_op(op.kind, op.args);
+            assert_eq!(
+                got.len(),
+                op.res.len(),
+                "{} op[{:?}] res len: got {got:?} want {:?}",
+                s.name,
+                op.kind,
+                op.res
+            );
+            for (j, (g, w)) in got.iter().zip(op.res.iter()).enumerate() {
+                assert!(
+                    obj_is(*g, *w),
+                    "{} op[{:?}] res[{j}]: got {g} want {w}",
+                    s.name,
+                    op.kind
+                );
+            }
+        }
+    }
+}

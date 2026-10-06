@@ -2475,6 +2475,34 @@ for (const [key, reset, arg, op, outAt] of [
   }
 }
 
+// --- S9: client render/frame + host-facade modules --------------------------
+for (const [key, reset, arg, op, outAt] of [
+  ["spiraltrails", "probe_stp_reset", "probe_stp_arg", "probe_stp_op", "probe_stp_out_at"],
+  ["trailmanager", "probe_tlm_reset", "probe_tlm_arg", "probe_tlm_op", "probe_tlm_out_at"],
+  ["railroadcache", "probe_rlc_reset", "probe_rlc_arg", "probe_rlc_op", "probe_rlc_out_at"],
+  ["playerprofileurl", "probe_ppu_reset", "probe_ppu_arg", "probe_ppu_op", "probe_ppu_out_at"],
+  ["pagepin", "probe_ppn_reset", "probe_ppn_arg", "probe_ppn_op", "probe_ppn_out_at"],
+  ["creatorcode", "probe_ccc_reset", "probe_ccc_arg", "probe_ccc_op", "probe_ccc_out_at"],
+]) {
+  for (const s of S[key]) {
+    ex[reset]();
+    for (const o of s.ops) {
+      for (const a of o.args) ex[arg](numTok(a));
+      const len = Number(ex[op](o.kind));
+      if (len !== o.res.length) {
+        fail(`${s.name} op${o.kind} res len`, 0, len, o.res.length);
+        continue;
+      }
+      for (let i = 0; i < len; i++) {
+        checks++;
+        const g = ex[outAt](i);
+        const w = numTok(o.res[i]);
+        if (!Object.is(g, w)) fail(`${s.name} op${o.kind} res[${i}]`, 0, g, w);
+      }
+    }
+  }
+}
+
 console.log(`${checks} vector comparisons executed against wasm build`);
 if (failures.length) {
   console.error(`FAIL (${failures.length}+ mismatches, first 20):`);

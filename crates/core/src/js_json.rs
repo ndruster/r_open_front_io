@@ -182,8 +182,10 @@ fn ser_units(units: &[u16], out: &mut String) {
 /// dump needs (both serialise identically under `JSON.stringify`, but a
 /// present-`undefined` key shows up in `Object.keys` while an absent one
 /// does not).
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub enum JsVal {
+    /// `Absent` is the natural empty for harness fields (a not-yet-scripted read).
+    #[default]
     Absent,
     Undef,
     Null,

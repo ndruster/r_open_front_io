@@ -5157,3 +5157,30 @@ s8_stateless_probe!(
     probe_trs_reset, probe_trs_arg, probe_trs_op, probe_trs_out_at,
     TRS_ARGS, TRS_OUT, crate::terrain_row_spans::run_op
 );
+
+// =============== S9: client render/frame + host-facade modules ================
+
+s8_harness_probe!(
+    probe_stp_reset, probe_stp_arg, probe_stp_op, probe_stp_out_at,
+    STP_HARNESS, STP_ARGS, STP_OUT, crate::spiral_trails::RigHarness
+);
+s8_harness_probe!(
+    probe_tlm_reset, probe_tlm_arg, probe_tlm_op, probe_tlm_out_at,
+    TLM_HARNESS, TLM_ARGS, TLM_OUT, crate::trail_manager::RigHarness
+);
+s8_harness_probe!(
+    probe_rlc_reset, probe_rlc_arg, probe_rlc_op, probe_rlc_out_at,
+    RLC_HARNESS, RLC_ARGS, RLC_OUT, crate::railroad_cache::RigHarness
+);
+s8_stateless_probe!(
+    probe_ppu_reset, probe_ppu_arg, probe_ppu_op, probe_ppu_out_at,
+    PPU_ARGS, PPU_OUT, crate::player_profile_url::run_op
+);
+s8_harness_probe!(
+    probe_ppn_reset, probe_ppn_arg, probe_ppn_op, probe_ppn_out_at,
+    PPN_HARNESS, PPN_ARGS, PPN_OUT, crate::page_pin::RigHarness
+);
+s8_harness_probe!(
+    probe_ccc_reset, probe_ccc_arg, probe_ccc_op, probe_ccc_out_at,
+    CCC_HARNESS, CCC_ARGS, CCC_OUT, crate::creator_code::RigHarness
+);

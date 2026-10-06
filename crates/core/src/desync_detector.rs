@@ -44,9 +44,16 @@ pub(crate) fn svz_key(v: f64) -> u64 {
 /// A JS `Map<number, V>` preserving key insertion order (`set` on an
 /// existing key overwrites in place, a new key appends). Shared with
 /// `match_telemetry` (the `tickCounts` map).
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Clone)]
 pub(crate) struct NumMap<V> {
     entries: Vec<(f64, V)>,
+}
+
+// Manual `Default` (not derived): an empty map needs no `V: Default` bound.
+impl<V> Default for NumMap<V> {
+    fn default() -> Self {
+        Self { entries: Vec::new() }
+    }
 }
 
 impl<V> NumMap<V> {
@@ -69,6 +76,10 @@ impl<V> NumMap<V> {
             self.entries.push((k, V::default()));
         }
         &mut self.entries.iter_mut().find(|(x, _)| svz_key(*x) == kk).unwrap().1
+    }
+    pub(crate) fn get_mut(&mut self, k: f64) -> Option<&mut V> {
+        let kk = svz_key(k);
+        self.entries.iter_mut().find(|(x, _)| svz_key(*x) == kk).map(|(_, v)| v)
     }
     pub(crate) fn set(&mut self, k: f64, v: V) {
         let kk = svz_key(k);
@@ -99,6 +110,33 @@ impl<V> NumMap<V> {
     }
     pub(crate) fn clear(&mut self) {
         self.entries.clear();
+    }
+}
+
+/// A JS `Set<number>` preserving insertion order (SameValueZero keys,
+/// `add` of a present member is a no-op that does not move it). Shared with
+/// `trail_manager` (the per-trail tile sets).
+#[derive(Debug, Default, Clone)]
+pub(crate) struct NumSet {
+    vals: Vec<f64>,
+    idx: std::collections::HashSet<u64>,
+}
+
+impl NumSet {
+    pub(crate) fn add(&mut self, v: f64) {
+        if self.idx.insert(svz_key(v)) {
+            self.vals.push(v);
+        }
+    }
+    pub(crate) fn has(&self, v: f64) -> bool {
+        self.idx.contains(&svz_key(v))
+    }
+    pub(crate) fn len(&self) -> usize {
+        self.vals.len()
+    }
+    /// JS `Set` iteration in insertion order.
+    pub(crate) fn iter(&self) -> impl Iterator<Item = f64> + '_ {
+        self.vals.iter().copied()
     }
 }
 

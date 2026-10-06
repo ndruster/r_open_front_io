@@ -3396,6 +3396,158 @@ function prepare(rel) {
     );
   }
 
+  // ================= S9: render/frame stateful classes + client facades ======
+
+  if (rel.endsWith("render/frame/SpiralTrails.ts")) {
+    // S9: the `import type { UnitState }` line is dropped explicitly; the
+    // value import (SMOOTHED_NUKE_TYPES / UT_MIRV_WARHEAD) redirects to the
+    // prepared UnitType.ts copy (S8 precedent). TS-PRIVATE fields are
+    // runtime-visible after strip (the stp_ dumps read params / ribbonsById /
+    // ribbonList directly), no visibility rewrite needed.
+    out = must(
+      out,
+      'import type { UnitState } from "../types";\n' +
+        'import { SMOOTHED_NUKE_TYPES, UT_MIRV_WARHEAD } from "../types";\n',
+      `import { SMOOTHED_NUKE_TYPES, UT_MIRV_WARHEAD } from "${utImport}";\n`,
+      "SpiralTrails types imports",
+    );
+  }
+
+  if (rel.endsWith("render/frame/TrailManager.ts")) {
+    // S9: same barrel redirect as SpiralTrails; the private trailState /
+    // trailCounts / unitTrails / _dirtyRowMin/_dirtyRowMax fields are read
+    // by the tlm_ dumps at runtime (strip erases the modifiers).
+    out = must(
+      out,
+      'import type { UnitState } from "../types";\n' +
+        "import { SMOOTHED_NUKE_TYPES } from \"../types\";\n",
+      `import { SMOOTHED_NUKE_TYPES } from "${utImport}";\n`,
+      "TrailManager types imports",
+    );
+  }
+
+  if (rel.endsWith("render/frame/RailroadCache.ts")) {
+    // S9: Node's strip-only loader rejects `export enum`; RailType is a
+    // regular enum whose forward members are the only thing the rlc_ ops
+    // read (no key-order dump), so the plain-object inline suffices. The
+    // GameUpdates import keeps the VALUE (GameUpdateType, prepared copy)
+    // and drops the four type-only names.
+    out = must(
+      out,
+      "export enum RailType {\n" +
+        "  VERTICAL,\n" +
+        "  HORIZONTAL,\n" +
+        "  TOP_LEFT,\n" +
+        "  TOP_RIGHT,\n" +
+        "  BOTTOM_LEFT,\n" +
+        "  BOTTOM_RIGHT,\n" +
+        "}",
+      "export const RailType = {\n" +
+        "  VERTICAL: 0,\n" +
+        "  HORIZONTAL: 1,\n" +
+        "  TOP_LEFT: 2,\n" +
+        "  TOP_RIGHT: 3,\n" +
+        "  BOTTOM_LEFT: 4,\n" +
+        "  BOTTOM_RIGHT: 5,\n" +
+        "};",
+      "RailroadCache RailType enum",
+    );
+    const rcGuRel = "src/core/game/GameUpdates.ts";
+    if (!prepared.has(rcGuRel)) prepare(rcGuRel);
+    out = must(
+      out,
+      "import {\n" +
+        "  GameUpdateType,\n" +
+        "  GameUpdateViewData,\n" +
+        "  RailroadConstructionUpdate,\n" +
+        "  RailroadDestructionUpdate,\n" +
+        "  RailroadSnapUpdate,\n" +
+        '} from "../../../core/game/GameUpdates";\n',
+      `import { GameUpdateType } from "./${prepared.get(rcGuRel)}";\n`,
+      "RailroadCache GameUpdates import",
+    );
+  }
+
+  if (rel.endsWith("utilities/PlayerProfileUrl.ts")) {
+    // S9: ClientEnv.shareBase() reads window.location on the real host; the
+    // capture scripts the base through globalThis.__PPU_BASE (a string set
+    // per ppu_ op — precedent: __CK_ENV).
+    out = must(
+      out,
+      'import { ClientEnv } from "../ClientEnv";\n',
+      "const ClientEnv = { shareBase: () => globalThis.__PPU_BASE };\n",
+      "PlayerProfileUrl ClientEnv import",
+    );
+  }
+
+  if (rel.endsWith("client/PagePin.ts")) {
+    // S9: stripVersionPrefix redirects to the prepared ServerList.ts copy
+    // (precedent: RankedCheckinGate); window.location.pathname becomes
+    // globalThis.__PPN_PATH() — a scripted function that RETURNS the path or
+    // THROWS (the non-browser host), and counts its own invocations so the
+    // ppn_ facadeCalls op pins the lazy-latch read count.
+    const ppnSlRel = "src/core/ServerList.ts";
+    if (!prepared.has(ppnSlRel)) prepare(ppnSlRel);
+    out = must(
+      out,
+      'import { stripVersionPrefix } from "../core/ServerList";\n',
+      `import { stripVersionPrefix } from "./${prepared.get(ppnSlRel)}";\n`,
+      "PagePin ServerList import",
+    );
+    out = must(
+      out,
+      "captured = stripVersionPrefix(window.location.pathname).commit;",
+      "captured = stripVersionPrefix(globalThis.__PPN_PATH()).commit;",
+      "PagePin location read",
+    );
+  }
+
+  if (rel.endsWith("client/CreatorCode.ts")) {
+    // S9: no imports; every host touch becomes a traced facade global.
+    // localStorage -> __CCC_LS (getItem/setItem/removeItem push the 74/75/76
+    // events), Date.now() -> __CCC_NOW() (FIFO + 81 event), window.location
+    // -> __CCC_LOC (pathname/search/hash getters push 78/79/80), history ->
+    // __CCC_HISTORY (replaceState pushes 77). The capture reads the trace
+    // buffer alongside the return value, mirroring the Rust res prefix.
+    out = must(
+      out,
+      "const PENDING_CREATOR_CODE_TTL_MS = 7 * 24 * 60 * 60 * 1000;",
+      "export const PENDING_CREATOR_CODE_TTL_MS = 7 * 24 * 60 * 60 * 1000;",
+      "CreatorCode TTL export",
+    );
+    out = must(
+      out,
+      "localStorage.setItem(",
+      "globalThis.__CCC_LS.setItem(",
+      "CCC setItem",
+    );
+    out = must(
+      out,
+      "localStorage.getItem(",
+      "globalThis.__CCC_LS.getItem(",
+      "CCC getItem",
+    );
+    out = must(
+      out,
+      "localStorage.removeItem(",
+      "globalThis.__CCC_LS.removeItem(",
+      "CCC removeItem",
+    );
+    out = must(out, "Date.now()", "globalThis.__CCC_NOW()", "CCC Date.now");
+    out = must(
+      out,
+      "parseCreatorCodePath(window.location.pathname)",
+      "parseCreatorCodePath(globalThis.__CCC_LOC.pathname)",
+      "CCC pathname",
+    );
+    out = must(
+      out,
+      "history.replaceState(\n    null,\n    \"\",\n    \"/\" + window.location.search + window.location.hash,\n  );",
+      "globalThis.__CCC_HISTORY.replaceState(\n    null,\n    \"\",\n    \"/\" + globalThis.__CCC_LOC.search + globalThis.__CCC_LOC.hash,\n  );",
+      "CCC replaceState",
+    );
+  }
+
   mkdirSync(cacheDir, { recursive: true });
   const hash = createHash("sha1").update(out).digest("hex").slice(0, 10);
   const base = `${basename(rel, ".ts")}-${hash}.ts`;

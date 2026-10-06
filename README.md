@@ -1567,6 +1567,73 @@ WebSockets — stays excluded, mirroring the `src/core` exclusions).
     `spp_` 1, `stc_` 1, `rps_` 1, `grt_` 6, `ac_` 3, `arr_` 1, `nkt_` 4,
     `pst_` 6, `rmx_` 6, `trs_` 6).
 
+66. **`client/render/frame/SpiralTrails.ts` + `client/render/frame/TrailManager.ts`
+    + `client/render/frame/RailroadCache.ts` + `client/utilities/PlayerProfileUrl.ts`
+    + `client/PagePin.ts` + `client/CreatorCode.ts`**
+    (`spiral_trails`, `trail_manager`, `railroad_cache`, `player_profile_url`,
+    `page_pin`, `creator_code`) — the S9 client cluster: three stateful
+    render/frame classes and three host-bound pure-logic modules.
+    `SpiralTrails` ports the ribbon/strand geometry: `setParams` clamps strands
+    through `js_min(js_max(js_round(n), 1), 8)` — the JS `Math.max/min` NaN
+    propagation (Rust `f64::max` would SWALLOW a NaN strand count; `js_max`/
+    `js_min` in `jsnum` match V8, pinned by `stp_clamp` feeding NaN/0.4/2.5/
+    7.5/9/-3/Infinity) — `update` deletes dead ribbons WHILE iterating the JS
+    `Map` key snapshot and rebuilds `ribbonList` ONLY when something changed,
+    and `advance` is all-f64 with `js_mod` phase and `js_hypot` radius. The
+    `Math.hypot` parity is the V8 SCALED form `m*(1+t*t).sqrt()` (a naive
+    `sqrt(a*a+b*b)` differs in the last bit on a large fraction of the domain,
+    e.g. `hypot(7,33)`); verified over 5.59M points, 0 mismatches. `pushSample`
+    grows the `Float32Array` by DOUBLING (`new Float32Array(old.length*2)` +
+    copy) — `stp_growth` walks ref 0→13000 on a 100-wide map to force 261
+    samples and several regrowths. `TrailManager` is the per-tile 16-bit owner
+    stamp: `trailState`/`trailCounts` are `Uint16Array` so every write wraps
+    through `to_uint16` (NaN/±Infinity→0) and an out-of-range or fractional
+    index write is silently DROPPED while a read is `undefined`→NaN (`tlm_oob_refs`
+    pins Infinity/0.5 head writes and a -1 sentinel re-entry). The killer quirk
+    is `--trailCounts[ref] === 0`: the prefix-decrement EXPRESSION value is the
+    ARITHMETIC `old-1` (so `0-1 === -1`, never `65535`), only the STORE wraps —
+    exactly a count of `1` reaches `=== 0` and calls `stamp(ref, 0)`
+    (`tlm_overlap_keeps_value` proves a shared tile survives at count 2).
+    `bresenham` is pure integer f64 with the double-`if` (NOT else-if) on
+    `e2 >= dy`/`e2 <= dx`, and `NUKE_TRAIL_BIT = 1<<12` ORs into the ToInt32
+    owner value only for `SMOOTHED_NUKE_TYPES`. `RailroadCache` ports the
+    6-variant `RailType` (inlined as a plain object; the capture never dumps
+    key order) and `computeRailTiles` orientation via `railExtremity`; `apply`
+    runs the GameUpdateType 16/17/18 event order Construction→Snap→Destruction
+    then `tickAnimations` (two-sided head/tail advance, `RAIL_INCREMENT = 3`,
+    `railroadState` is a `Uint8Array` so writes wrap, `tileRefCount` is a
+    NumMap with the ASYMMETRIC `??0` increment / `??1` release (a missing
+    count releases to `0` and CLEARS the tile rather than wrapping to -1).
+    `removeRailroad` sets `railroadDirty` whenever it actually removes an anim
+    — even when every tile survives on a shared reference and nothing visible
+    changes — but an UNKNOWN id early-returns WITHOUT touching the flag;
+    `rlc_snap_and_shared` clears the flag first to prove the unknown-destruct
+    does not re-dirty it. `PlayerProfileUrl`
+    is stateless: `ClientEnv.shareBase()` behind the `__PPU_BASE` facade +
+    `encodeURIComponent` (reused from `asset_urls`), `ppu_reserved`/`ppu_unicode`
+    pin the percent-encoding. `PagePin` latches the commit slug ONCE into a
+    three-state `Option<Option<String>>` (unset / pinned / pinned-None); the
+    `__PPN_PATH()` facade counts calls so `ppn_pinned_lazy` proves the host is
+    read exactly once across repeated `pagePin()` calls, and a THROWING
+    host latches `null` through the catch (the same one-shot latch —
+    `ppn_throwing_host`). `CreatorCode` is
+    the localStorage/Date.now/history-bound stash: `normalizeCreatorCodeInput`
+    is trim→toUpperCase→`/^[A-Z0-9_-]{3,22}$/` (length-changing uppercases run
+    on the ALREADY-uppercased candidate: `"ß"` → `"SS"` FAILS the 3-char floor,
+    `"ﬅx"` → `"STX"` passes), `parseCreatorCodePath` decode-URI-
+    component with a try/catch fallback to the raw segment, and `stash`/`take`/
+    `consume`/`resume` thread a traced host-call log (event codes 74 getItem /
+    75 setItem / 76 removeItem / 77 replaceState / 78 pathname / 79 search /
+    80 hash / 81 Date.now / 82 open-callback) that the Rust replay re-emits
+    token-for-token. `take` removes BEFORE parsing (consume-style), a non-
+    numeric `stashedAt` short-circuits the `||` gate BEFORE any Date.now (no
+    81 event — `ccc_take_nonnumeric_stashedat`), and the TTL is STRICT `>` so
+    a sample exactly at `PENDING_CREATOR_CODE_TTL_MS` (604800000) survives
+    (`ccc_take_expired_and_exact_ttl`). Excluded: the WebGL/GL upload calls, the React HUD
+    layers, and everything else host-bound (all host touches ride the traced
+    facades). 46 scenarios (`stp_` 7, `tlm_` 6, `rlc_` 5, `ppu_` 4, `ppn_` 6,
+    `ccc_` 18).
+
 Regenerate whenever a ported source changes:
 
 ```
@@ -1599,7 +1666,7 @@ node rust/tools/run_wasm_parity.mjs
 
 `wasm-probe` exposes the ported functions through `extern "C"` scalar
 entrypoints (`src/wasm_probe.rs`); the runner imports `data/vectors.json` and
-compares every value. Last run: **290,556 comparisons, all bit-identical**.
+compares every value. Last run: **294,908 comparisons, all bit-identical**.
 
 ### Windows: the linker environment
 

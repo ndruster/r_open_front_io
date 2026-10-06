@@ -3716,3 +3716,161 @@ fn replay_terrainrowspans_scenarios() {
         }
     }
 }
+
+// client/render/frame/SpiralTrails.ts: the strands clamp through Math.round /
+// Math.max / Math.min with NaN propagation, the changed-only ribbonList
+// rebuild, the MIRV-warhead and no-params skips, the js_hypot segment math,
+// the 180-degree dirAt fallback, the lastPos!== gate and the Float32Array
+// doubling at 256 samples.
+#[test]
+fn replay_spiraltrails_scenarios() {
+    use openfront_core::spiral_trails::RigHarness;
+    for s in vectors::STP_SCENARIOS {
+        let mut rig = RigHarness::new();
+        for op in s.ops {
+            let got = rig.run_op(op.kind, op.args);
+            assert_eq!(
+                got.len(),
+                op.res.len(),
+                "{} op[{:?}] res len: got {got:?} want {:?}",
+                s.name,
+                op.kind,
+                op.res
+            );
+            for (j, (g, w)) in got.iter().zip(op.res.iter()).enumerate() {
+                assert!(obj_is(*g, *w), "{} op[{:?}] res[{j}]: got {g} want {w}", s.name, op.kind);
+            }
+        }
+    }
+}
+
+// client/render/frame/TrailManager.ts: the nuke-head lastPos vs boat-head pos
+// choice, the bresenham double-if walk, the `--trailCounts[ref] === 0`
+// prefix-decrement expression semantics (only old === 1 stamps 0), the
+// Uint16Array OOB write drops / NaN reads, the dirty-row Infinity/-1 seeding
+// and the reset re-seed.
+#[test]
+fn replay_trailmanager_scenarios() {
+    use openfront_core::trail_manager::RigHarness;
+    for s in vectors::TLM_SCENARIOS {
+        let mut rig = RigHarness::new();
+        for op in s.ops {
+            let got = rig.run_op(op.kind, op.args);
+            assert_eq!(
+                got.len(),
+                op.res.len(),
+                "{} op[{:?}] res len: got {got:?} want {:?}",
+                s.name,
+                op.kind,
+                op.res
+            );
+            for (j, (g, w)) in got.iter().zip(op.res.iter()).enumerate() {
+                assert!(obj_is(*g, *w), "{} op[{:?}] res[{j}]: got {g} want {w}", s.name, op.kind);
+            }
+        }
+    }
+}
+
+// client/render/frame/RailroadCache.ts: the Construction -> Snap ->
+// Destruction event order, the snap remove-then-two-complete-adds sequence,
+// the unconditional removeRailroad dirty set vs the unknown-id early return,
+// the shared-tile refcount `?? 0` / `?? 1` asymmetry, the two-sided
+// RAIL_INCREMENT animation and the <= 2*increment fast close, plus the
+// orientation fallbacks (diagonal -> VERTICAL).
+#[test]
+fn replay_railroadcache_scenarios() {
+    use openfront_core::railroad_cache::RigHarness;
+    for s in vectors::RLC_SCENARIOS {
+        let mut rig = RigHarness::new();
+        for op in s.ops {
+            let got = rig.run_op(op.kind, op.args);
+            assert_eq!(
+                got.len(),
+                op.res.len(),
+                "{} op[{:?}] res len: got {got:?} want {:?}",
+                s.name,
+                op.kind,
+                op.res
+            );
+            for (j, (g, w)) in got.iter().zip(op.res.iter()).enumerate() {
+                assert!(obj_is(*g, *w), "{} op[{:?}] res[{j}]: got {g} want {w}", s.name, op.kind);
+            }
+        }
+    }
+}
+
+// client/utilities/PlayerProfileUrl.ts: the shareBase() facade join and the
+// encodeURIComponent reserved-set / UTF-8 percent escapes.
+#[test]
+fn replay_playerprofileurl_scenarios() {
+    for s in vectors::PPU_SCENARIOS {
+        for op in s.ops {
+            let got = openfront_core::player_profile_url::run_op(op.kind, op.args);
+            assert_eq!(
+                got.len(),
+                op.res.len(),
+                "{} op[{:?}] res len: got {got:?} want {:?}",
+                s.name,
+                op.kind,
+                op.res
+            );
+            for (j, (g, w)) in got.iter().zip(op.res.iter()).enumerate() {
+                assert!(obj_is(*g, *w), "{} op[{:?}] res[{j}]: got {g} want {w}", s.name, op.kind);
+            }
+        }
+    }
+}
+
+// client/PagePin.ts: the three-state lazy latch (facadeCalls pins that a
+// second pagePin never re-reads window.location), the throw -> null catch for
+// a non-browser host, and the capture / reset re-read paths.
+#[test]
+fn replay_pagepin_scenarios() {
+    use openfront_core::page_pin::RigHarness;
+    for s in vectors::PPN_SCENARIOS {
+        let mut rig = RigHarness::new();
+        for op in s.ops {
+            let got = rig.run_op(op.kind, op.args);
+            assert_eq!(
+                got.len(),
+                op.res.len(),
+                "{} op[{:?}] res len: got {got:?} want {:?}",
+                s.name,
+                op.kind,
+                op.res
+            );
+            for (j, (g, w)) in got.iter().zip(op.res.iter()).enumerate() {
+                assert!(obj_is(*g, *w), "{} op[{:?}] res[{j}]: got {g} want {w}", s.name, op.kind);
+            }
+        }
+    }
+}
+
+// client/CreatorCode.ts: the JS trim set (NEL kept, BOM trimmed), the
+// length-changing toUpperCase, the decodeURIComponent throw -> raw fallback,
+// the consume-style removeItem-before-parse order, the non-numeric stashedAt
+// `||` short-circuit BEFORE Date.now (no 81 event), the STRICT `>` TTL gate
+// (exactly-TTL survives), the typeof-object gate letting arrays through, the
+// duplicate-key last-wins parse and the traced open() callback — every facade
+// touch rides the 74-82 trace prefix.
+#[test]
+fn replay_creatorcode_scenarios() {
+    use openfront_core::creator_code::RigHarness;
+    for s in vectors::CCC_SCENARIOS {
+        let mut rig = RigHarness::new();
+        for op in s.ops {
+            let got = rig.run_op(op.kind, op.args);
+            assert_eq!(
+                got.len(),
+                op.res.len(),
+                "{} op[{:?}] res len: got {got:?} want {:?}",
+                s.name,
+                op.kind,
+                op.res
+            );
+            for (j, (g, w)) in got.iter().zip(op.res.iter()).enumerate() {
+                assert!(obj_is(*g, *w), "{} op[{:?}] res[{j}]: got {g} want {w}", s.name, op.kind);
+            }
+        }
+    }
+}

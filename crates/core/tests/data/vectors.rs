@@ -45234,3 +45234,751 @@ pub const TRS_SCENARIOS: &[TrsScenario] = &[
     TRS_CONSTANTS_5,
 ];
 
+/// One `client/render/frame/SpiralTrails.ts` op (see
+/// `spiral_trails::RigHarness::run_op` docs). kind 0 construct [mapW],
+/// 1 setParams (strands clamp via Math.round/max/min, NaN propagates),
+/// 2 clearParams, 3 update (units + trackedIds), 4 dumpRibbons (samples
+/// f32-widened), 5 dumpParams, 6 constants.
+pub struct StpOp {
+    pub kind: u8,
+    pub args: &'static [f64],
+    pub res: &'static [f64],
+}
+pub struct StpScenario {
+    pub name: &'static str,
+    pub ops: &'static [StpOp],
+}
+
+const STP_CONSTANTS_0_OPS: &[StpOp] = &[
+    StpOp { kind: 6, args: &[], res: &[8f64, 5f64] },
+];
+pub const STP_CONSTANTS_0: StpScenario = StpScenario {
+    name: "stp_constants_0",
+    ops: STP_CONSTANTS_0_OPS,
+};
+
+const STP_CLAMP_1_OPS: &[StpOp] = &[
+    StpOp { kind: 0, args: &[10f64], res: &[0f64] },
+    StpOp { kind: 1, args: &[1f64, 2f64, f64::NAN, 0f64, 0f64], res: &[0f64] },
+    StpOp { kind: 1, args: &[2f64, 2f64, 0.4f64, 0f64, 0f64], res: &[0f64] },
+    StpOp { kind: 1, args: &[3f64, 2f64, 2.5f64, 0f64, 0f64], res: &[0f64] },
+    StpOp { kind: 1, args: &[4f64, 2f64, 7.5f64, 0f64, 0f64], res: &[0f64] },
+    StpOp { kind: 1, args: &[5f64, 2f64, 9f64, 0f64, 0f64], res: &[0f64] },
+    StpOp { kind: 1, args: &[6f64, 2f64, -3f64, 0f64, 0f64], res: &[0f64] },
+    StpOp { kind: 1, args: &[7f64, 2f64, f64::INFINITY, 0f64, 0f64], res: &[0f64] },
+    StpOp { kind: 1, args: &[8f64, f64::NAN, 3f64, 0f64, 1f64, f64::NAN, 1f64, 0f64], res: &[0f64] },
+    StpOp { kind: 5, args: &[], res: &[8f64, 1f64, 2f64, f64::NAN, 0f64, 0f64, 2f64, 2f64, 1f64, 0f64, 0f64, 3f64, 2f64, 3f64, 0f64, 0f64, 4f64, 2f64, 8f64, 0f64, 0f64, 5f64, 2f64, 8f64, 0f64, 0f64, 6f64, 2f64, 1f64, 0f64, 0f64, 7f64, 2f64, 8f64, 0f64, 0f64, 8f64, f64::NAN, 3f64, 0f64, 1f64, f64::NAN, 1f64, 0f64] },
+];
+pub const STP_CLAMP_1: StpScenario = StpScenario {
+    name: "stp_clamp_1",
+    ops: STP_CLAMP_1_OPS,
+};
+
+const STP_RIBBON_LIFECYCLE_2_OPS: &[StpOp] = &[
+    StpOp { kind: 0, args: &[10f64], res: &[0f64] },
+    StpOp { kind: 1, args: &[7f64, 2f64, 3f64, 1.5f64, 1f64, 1f64, 0.5f64, 0f64], res: &[0f64] },
+    StpOp { kind: 3, args: &[1f64, 1f64, 9f64, 65f64, 116f64, 111f64, 109f64, 32f64, 66f64, 111f64, 109f64, 98f64, 7f64, 55f64, 55f64, 1f64, 1f64], res: &[0f64] },
+    StpOp { kind: 4, args: &[], res: &[1f64, 1f64, 2f64, 3f64, 0.7853981633974483f64, 1.5f64, 1f64, 1f64, 0.5f64, 0f64, 0f64, 0f64, 1280f64, 55f64, 0f64, 0f64, 0f64] },
+    StpOp { kind: 3, args: &[1f64, 1f64, 9f64, 65f64, 116f64, 111f64, 109f64, 32f64, 66f64, 111f64, 109f64, 98f64, 7f64, 65f64, 65f64, 1f64, 1f64], res: &[0f64] },
+    StpOp { kind: 4, args: &[], res: &[1f64, 1f64, 2f64, 3f64, 0.7853981633974483f64, 1.5f64, 1f64, 1f64, 0.5f64, 0f64, 1f64, 3f64, 1280f64, 5f64, 5f64, -1f64, 0f64, 0f64, 5f64, 5.5f64, -1f64, 0f64, 0.5f64, 5f64, 6f64, -1f64, 0f64, 1f64, 65f64, 0f64, 1f64, 1f64] },
+    StpOp { kind: 3, args: &[0f64, 0f64], res: &[0f64] },
+    StpOp { kind: 4, args: &[], res: &[0f64] },
+];
+pub const STP_RIBBON_LIFECYCLE_2: StpScenario = StpScenario {
+    name: "stp_ribbon_lifecycle_2",
+    ops: STP_RIBBON_LIFECYCLE_2_OPS,
+};
+
+const STP_SKIPS_3_OPS: &[StpOp] = &[
+    StpOp { kind: 0, args: &[10f64], res: &[0f64] },
+    StpOp { kind: 1, args: &[7f64, 1f64, 2f64, 0f64, 0f64], res: &[0f64] },
+    StpOp { kind: 3, args: &[4f64, 1f64, 12f64, 77f64, 73f64, 82f64, 86f64, 32f64, 87f64, 97f64, 114f64, 104f64, 101f64, 97f64, 100f64, 7f64, 5f64, 5f64, 2f64, 7f64, 87f64, 97f64, 114f64, 115f64, 104f64, 105f64, 112f64, 7f64, 6f64, 6f64, 3f64, 9f64, 65f64, 116f64, 111f64, 109f64, 32f64, 66f64, 111f64, 109f64, 98f64, 99f64, 7f64, 7f64, 4f64, 9f64, 65f64, 116f64, 111f64, 109f64, 32f64, 66f64, 111f64, 109f64, 98f64, 7f64, 8f64, 8f64, 3f64, 1f64, 2f64, 3f64], res: &[0f64] },
+    StpOp { kind: 4, args: &[], res: &[0f64] },
+    StpOp { kind: 3, args: &[1f64, 4f64, 9f64, 65f64, 116f64, 111f64, 109f64, 32f64, 66f64, 111f64, 109f64, 98f64, 7f64, 8f64, 8f64, 1f64, 4f64], res: &[0f64] },
+    StpOp { kind: 4, args: &[], res: &[1f64, 4f64, 1f64, 2f64, 0.7853981633974483f64, 0f64, 0f64, 0f64, 0f64, 1280f64, 8f64, 0f64, 0f64, 0f64] },
+];
+pub const STP_SKIPS_3: StpScenario = StpScenario {
+    name: "stp_skips_3",
+    ops: STP_SKIPS_3_OPS,
+};
+
+const STP_180_TURN_4_OPS: &[StpOp] = &[
+    StpOp { kind: 0, args: &[10f64], res: &[0f64] },
+    StpOp { kind: 1, args: &[1f64, 1f64, 2f64, 0f64, 0f64], res: &[0f64] },
+    StpOp { kind: 3, args: &[1f64, 2f64, 13f64, 72f64, 121f64, 100f64, 114f64, 111f64, 103f64, 101f64, 110f64, 32f64, 66f64, 111f64, 109f64, 98f64, 1f64, 50f64, 50f64, 1f64, 2f64], res: &[0f64] },
+    StpOp { kind: 3, args: &[1f64, 2f64, 13f64, 72f64, 121f64, 100f64, 114f64, 111f64, 103f64, 101f64, 110f64, 32f64, 66f64, 111f64, 109f64, 98f64, 1f64, 52f64, 52f64, 1f64, 2f64], res: &[0f64] },
+    StpOp { kind: 4, args: &[], res: &[1f64, 2f64, 1f64, 2f64, 0.7853981633974483f64, 0f64, 0f64, 2f64, 5f64, 1280f64, 0f64, 5f64, -0.0f64, 1f64, 0f64, 0.5f64, 5f64, -0.0f64, 1f64, 0.5f64, 1f64, 5f64, -0.0f64, 1f64, 1f64, 1.5f64, 5f64, -0.0f64, 1f64, 1.5f64, 2f64, 5f64, -0.0f64, 1f64, 2f64, 52f64, 1f64, 0f64, 1f64] },
+    StpOp { kind: 3, args: &[1f64, 2f64, 13f64, 72f64, 121f64, 100f64, 114f64, 111f64, 103f64, 101f64, 110f64, 32f64, 66f64, 111f64, 109f64, 98f64, 1f64, 50f64, 50f64, 1f64, 2f64], res: &[0f64] },
+    StpOp { kind: 4, args: &[], res: &[1f64, 2f64, 1f64, 2f64, 0.7853981633974483f64, 0f64, 0f64, 4f64, 9f64, 1280f64, 0f64, 5f64, -0.0f64, 1f64, 0f64, 0.5f64, 5f64, -0.0f64, 1f64, 0.5f64, 1f64, 5f64, -0.0f64, 1f64, 1f64, 1.5f64, 5f64, -0.0f64, 1f64, 1.5f64, 2f64, 5f64, -0.0f64, 1f64, 2f64, 1.5f64, 5f64, -0.0f64, 1f64, 2.5f64, 1f64, 5f64, -0.0f64, -1f64, 3f64, 0.5f64, 5f64, -0.0f64, -1f64, 3.5f64, 0f64, 5f64, -0.0f64, -1f64, 4f64, 50f64, -1f64, 0f64, 1f64] },
+    StpOp { kind: 3, args: &[1f64, 2f64, 13f64, 72f64, 121f64, 100f64, 114f64, 111f64, 103f64, 101f64, 110f64, 32f64, 66f64, 111f64, 109f64, 98f64, 1f64, 50f64, 50f64, 1f64, 2f64], res: &[0f64] },
+    StpOp { kind: 4, args: &[], res: &[1f64, 2f64, 1f64, 2f64, 0.7853981633974483f64, 0f64, 0f64, 4f64, 9f64, 1280f64, 0f64, 5f64, -0.0f64, 1f64, 0f64, 0.5f64, 5f64, -0.0f64, 1f64, 0.5f64, 1f64, 5f64, -0.0f64, 1f64, 1f64, 1.5f64, 5f64, -0.0f64, 1f64, 1.5f64, 2f64, 5f64, -0.0f64, 1f64, 2f64, 1.5f64, 5f64, -0.0f64, 1f64, 2.5f64, 1f64, 5f64, -0.0f64, -1f64, 3f64, 0.5f64, 5f64, -0.0f64, -1f64, 3.5f64, 0f64, 5f64, -0.0f64, -1f64, 4f64, 50f64, -1f64, 0f64, 1f64] },
+];
+pub const STP_180_TURN_4: StpScenario = StpScenario {
+    name: "stp_180_turn_4",
+    ops: STP_180_TURN_4_OPS,
+};
+
+const STP_GROWTH_5_OPS: &[StpOp] = &[
+    StpOp { kind: 0, args: &[100f64], res: &[0f64] },
+    StpOp { kind: 1, args: &[1f64, 0f64, 1f64, 0f64, 0f64], res: &[0f64] },
+    StpOp { kind: 3, args: &[1f64, 9f64, 4f64, 77f64, 73f64, 82f64, 86f64, 1f64, 0f64, 0f64, 1f64, 9f64], res: &[0f64] },
+    StpOp { kind: 3, args: &[1f64, 9f64, 4f64, 77f64, 73f64, 82f64, 86f64, 1f64, 13000f64, 13000f64, 1f64, 9f64], res: &[0f64] },
+    StpOp { kind: 4, args: &[], res: &[1f64, 9f64, 0f64, 1f64, 0.7853981633974483f64, 0f64, 0f64, 130f64, 261f64, 2560f64, 0f64, 0f64, -1f64, 0f64, 0f64, 0f64, 0.5f64, -1f64, 0f64, 0.5f64, 0f64, 1f64, -1f64, 0f64, 1f64, 0f64, 1.5f64, -1f64, 0f64, 1.5f64, 0f64, 2f64, -1f64, 0f64, 2f64, 0f64, 2.5f64, -1f64, 0f64, 2.5f64, 0f64, 3f64, -1f64, 0f64, 3f64, 0f64, 3.5f64, -1f64, 0f64, 3.5f64, 0f64, 4f64, -1f64, 0f64, 4f64, 0f64, 4.5f64, -1f64, 0f64, 4.5f64, 0f64, 5f64, -1f64, 0f64, 5f64, 0f64, 5.5f64, -1f64, 0f64, 5.5f64, 0f64, 6f64, -1f64, 0f64, 6f64, 0f64, 6.5f64, -1f64, 0f64, 6.5f64, 0f64, 7f64, -1f64, 0f64, 7f64, 0f64, 7.5f64, -1f64, 0f64, 7.5f64, 0f64, 8f64, -1f64, 0f64, 8f64, 0f64, 8.5f64, -1f64, 0f64, 8.5f64, 0f64, 9f64, -1f64, 0f64, 9f64, 0f64, 9.5f64, -1f64, 0f64, 9.5f64, 0f64, 10f64, -1f64, 0f64, 10f64, 0f64, 10.5f64, -1f64, 0f64, 10.5f64, 0f64, 11f64, -1f64, 0f64, 11f64, 0f64, 11.5f64, -1f64, 0f64, 11.5f64, 0f64, 12f64, -1f64, 0f64, 12f64, 0f64, 12.5f64, -1f64, 0f64, 12.5f64, 0f64, 13f64, -1f64, 0f64, 13f64, 0f64, 13.5f64, -1f64, 0f64, 13.5f64, 0f64, 14f64, -1f64, 0f64, 14f64, 0f64, 14.5f64, -1f64, 0f64, 14.5f64, 0f64, 15f64, -1f64, 0f64, 15f64, 0f64, 15.5f64, -1f64, 0f64, 15.5f64, 0f64, 16f64, -1f64, 0f64, 16f64, 0f64, 16.5f64, -1f64, 0f64, 16.5f64, 0f64, 17f64, -1f64, 0f64, 17f64, 0f64, 17.5f64, -1f64, 0f64, 17.5f64, 0f64, 18f64, -1f64, 0f64, 18f64, 0f64, 18.5f64, -1f64, 0f64, 18.5f64, 0f64, 19f64, -1f64, 0f64, 19f64, 0f64, 19.5f64, -1f64, 0f64, 19.5f64, 0f64, 20f64, -1f64, 0f64, 20f64, 0f64, 20.5f64, -1f64, 0f64, 20.5f64, 0f64, 21f64, -1f64, 0f64, 21f64, 0f64, 21.5f64, -1f64, 0f64, 21.5f64, 0f64, 22f64, -1f64, 0f64, 22f64, 0f64, 22.5f64, -1f64, 0f64, 22.5f64, 0f64, 23f64, -1f64, 0f64, 23f64, 0f64, 23.5f64, -1f64, 0f64, 23.5f64, 0f64, 24f64, -1f64, 0f64, 24f64, 0f64, 24.5f64, -1f64, 0f64, 24.5f64, 0f64, 25f64, -1f64, 0f64, 25f64, 0f64, 25.5f64, -1f64, 0f64, 25.5f64, 0f64, 26f64, -1f64, 0f64, 26f64, 0f64, 26.5f64, -1f64, 0f64, 26.5f64, 0f64, 27f64, -1f64, 0f64, 27f64, 0f64, 27.5f64, -1f64, 0f64, 27.5f64, 0f64, 28f64, -1f64, 0f64, 28f64, 0f64, 28.5f64, -1f64, 0f64, 28.5f64, 0f64, 29f64, -1f64, 0f64, 29f64, 0f64, 29.5f64, -1f64, 0f64, 29.5f64, 0f64, 30f64, -1f64, 0f64, 30f64, 0f64, 30.5f64, -1f64, 0f64, 30.5f64, 0f64, 31f64, -1f64, 0f64, 31f64, 0f64, 31.5f64, -1f64, 0f64, 31.5f64, 0f64, 32f64, -1f64, 0f64, 32f64, 0f64, 32.5f64, -1f64, 0f64, 32.5f64, 0f64, 33f64, -1f64, 0f64, 33f64, 0f64, 33.5f64, -1f64, 0f64, 33.5f64, 0f64, 34f64, -1f64, 0f64, 34f64, 0f64, 34.5f64, -1f64, 0f64, 34.5f64, 0f64, 35f64, -1f64, 0f64, 35f64, 0f64, 35.5f64, -1f64, 0f64, 35.5f64, 0f64, 36f64, -1f64, 0f64, 36f64, 0f64, 36.5f64, -1f64, 0f64, 36.5f64, 0f64, 37f64, -1f64, 0f64, 37f64, 0f64, 37.5f64, -1f64, 0f64, 37.5f64, 0f64, 38f64, -1f64, 0f64, 38f64, 0f64, 38.5f64, -1f64, 0f64, 38.5f64, 0f64, 39f64, -1f64, 0f64, 39f64, 0f64, 39.5f64, -1f64, 0f64, 39.5f64, 0f64, 40f64, -1f64, 0f64, 40f64, 0f64, 40.5f64, -1f64, 0f64, 40.5f64, 0f64, 41f64, -1f64, 0f64, 41f64, 0f64, 41.5f64, -1f64, 0f64, 41.5f64, 0f64, 42f64, -1f64, 0f64, 42f64, 0f64, 42.5f64, -1f64, 0f64, 42.5f64, 0f64, 43f64, -1f64, 0f64, 43f64, 0f64, 43.5f64, -1f64, 0f64, 43.5f64, 0f64, 44f64, -1f64, 0f64, 44f64, 0f64, 44.5f64, -1f64, 0f64, 44.5f64, 0f64, 45f64, -1f64, 0f64, 45f64, 0f64, 45.5f64, -1f64, 0f64, 45.5f64, 0f64, 46f64, -1f64, 0f64, 46f64, 0f64, 46.5f64, -1f64, 0f64, 46.5f64, 0f64, 47f64, -1f64, 0f64, 47f64, 0f64, 47.5f64, -1f64, 0f64, 47.5f64, 0f64, 48f64, -1f64, 0f64, 48f64, 0f64, 48.5f64, -1f64, 0f64, 48.5f64, 0f64, 49f64, -1f64, 0f64, 49f64, 0f64, 49.5f64, -1f64, 0f64, 49.5f64, 0f64, 50f64, -1f64, 0f64, 50f64, 0f64, 50.5f64, -1f64, 0f64, 50.5f64, 0f64, 51f64, -1f64, 0f64, 51f64, 0f64, 51.5f64, -1f64, 0f64, 51.5f64, 0f64, 52f64, -1f64, 0f64, 52f64, 0f64, 52.5f64, -1f64, 0f64, 52.5f64, 0f64, 53f64, -1f64, 0f64, 53f64, 0f64, 53.5f64, -1f64, 0f64, 53.5f64, 0f64, 54f64, -1f64, 0f64, 54f64, 0f64, 54.5f64, -1f64, 0f64, 54.5f64, 0f64, 55f64, -1f64, 0f64, 55f64, 0f64, 55.5f64, -1f64, 0f64, 55.5f64, 0f64, 56f64, -1f64, 0f64, 56f64, 0f64, 56.5f64, -1f64, 0f64, 56.5f64, 0f64, 57f64, -1f64, 0f64, 57f64, 0f64, 57.5f64, -1f64, 0f64, 57.5f64, 0f64, 58f64, -1f64, 0f64, 58f64, 0f64, 58.5f64, -1f64, 0f64, 58.5f64, 0f64, 59f64, -1f64, 0f64, 59f64, 0f64, 59.5f64, -1f64, 0f64, 59.5f64, 0f64, 60f64, -1f64, 0f64, 60f64, 0f64, 60.5f64, -1f64, 0f64, 60.5f64, 0f64, 61f64, -1f64, 0f64, 61f64, 0f64, 61.5f64, -1f64, 0f64, 61.5f64, 0f64, 62f64, -1f64, 0f64, 62f64, 0f64, 62.5f64, -1f64, 0f64, 62.5f64, 0f64, 63f64, -1f64, 0f64, 63f64, 0f64, 63.5f64, -1f64, 0f64, 63.5f64, 0f64, 64f64, -1f64, 0f64, 64f64, 0f64, 64.5f64, -1f64, 0f64, 64.5f64, 0f64, 65f64, -1f64, 0f64, 65f64, 0f64, 65.5f64, -1f64, 0f64, 65.5f64, 0f64, 66f64, -1f64, 0f64, 66f64, 0f64, 66.5f64, -1f64, 0f64, 66.5f64, 0f64, 67f64, -1f64, 0f64, 67f64, 0f64, 67.5f64, -1f64, 0f64, 67.5f64, 0f64, 68f64, -1f64, 0f64, 68f64, 0f64, 68.5f64, -1f64, 0f64, 68.5f64, 0f64, 69f64, -1f64, 0f64, 69f64, 0f64, 69.5f64, -1f64, 0f64, 69.5f64, 0f64, 70f64, -1f64, 0f64, 70f64, 0f64, 70.5f64, -1f64, 0f64, 70.5f64, 0f64, 71f64, -1f64, 0f64, 71f64, 0f64, 71.5f64, -1f64, 0f64, 71.5f64, 0f64, 72f64, -1f64, 0f64, 72f64, 0f64, 72.5f64, -1f64, 0f64, 72.5f64, 0f64, 73f64, -1f64, 0f64, 73f64, 0f64, 73.5f64, -1f64, 0f64, 73.5f64, 0f64, 74f64, -1f64, 0f64, 74f64, 0f64, 74.5f64, -1f64, 0f64, 74.5f64, 0f64, 75f64, -1f64, 0f64, 75f64, 0f64, 75.5f64, -1f64, 0f64, 75.5f64, 0f64, 76f64, -1f64, 0f64, 76f64, 0f64, 76.5f64, -1f64, 0f64, 76.5f64, 0f64, 77f64, -1f64, 0f64, 77f64, 0f64, 77.5f64, -1f64, 0f64, 77.5f64, 0f64, 78f64, -1f64, 0f64, 78f64, 0f64, 78.5f64, -1f64, 0f64, 78.5f64, 0f64, 79f64, -1f64, 0f64, 79f64, 0f64, 79.5f64, -1f64, 0f64, 79.5f64, 0f64, 80f64, -1f64, 0f64, 80f64, 0f64, 80.5f64, -1f64, 0f64, 80.5f64, 0f64, 81f64, -1f64, 0f64, 81f64, 0f64, 81.5f64, -1f64, 0f64, 81.5f64, 0f64, 82f64, -1f64, 0f64, 82f64, 0f64, 82.5f64, -1f64, 0f64, 82.5f64, 0f64, 83f64, -1f64, 0f64, 83f64, 0f64, 83.5f64, -1f64, 0f64, 83.5f64, 0f64, 84f64, -1f64, 0f64, 84f64, 0f64, 84.5f64, -1f64, 0f64, 84.5f64, 0f64, 85f64, -1f64, 0f64, 85f64, 0f64, 85.5f64, -1f64, 0f64, 85.5f64, 0f64, 86f64, -1f64, 0f64, 86f64, 0f64, 86.5f64, -1f64, 0f64, 86.5f64, 0f64, 87f64, -1f64, 0f64, 87f64, 0f64, 87.5f64, -1f64, 0f64, 87.5f64, 0f64, 88f64, -1f64, 0f64, 88f64, 0f64, 88.5f64, -1f64, 0f64, 88.5f64, 0f64, 89f64, -1f64, 0f64, 89f64, 0f64, 89.5f64, -1f64, 0f64, 89.5f64, 0f64, 90f64, -1f64, 0f64, 90f64, 0f64, 90.5f64, -1f64, 0f64, 90.5f64, 0f64, 91f64, -1f64, 0f64, 91f64, 0f64, 91.5f64, -1f64, 0f64, 91.5f64, 0f64, 92f64, -1f64, 0f64, 92f64, 0f64, 92.5f64, -1f64, 0f64, 92.5f64, 0f64, 93f64, -1f64, 0f64, 93f64, 0f64, 93.5f64, -1f64, 0f64, 93.5f64, 0f64, 94f64, -1f64, 0f64, 94f64, 0f64, 94.5f64, -1f64, 0f64, 94.5f64, 0f64, 95f64, -1f64, 0f64, 95f64, 0f64, 95.5f64, -1f64, 0f64, 95.5f64, 0f64, 96f64, -1f64, 0f64, 96f64, 0f64, 96.5f64, -1f64, 0f64, 96.5f64, 0f64, 97f64, -1f64, 0f64, 97f64, 0f64, 97.5f64, -1f64, 0f64, 97.5f64, 0f64, 98f64, -1f64, 0f64, 98f64, 0f64, 98.5f64, -1f64, 0f64, 98.5f64, 0f64, 99f64, -1f64, 0f64, 99f64, 0f64, 99.5f64, -1f64, 0f64, 99.5f64, 0f64, 100f64, -1f64, 0f64, 100f64, 0f64, 100.5f64, -1f64, 0f64, 100.5f64, 0f64, 101f64, -1f64, 0f64, 101f64, 0f64, 101.5f64, -1f64, 0f64, 101.5f64, 0f64, 102f64, -1f64, 0f64, 102f64, 0f64, 102.5f64, -1f64, 0f64, 102.5f64, 0f64, 103f64, -1f64, 0f64, 103f64, 0f64, 103.5f64, -1f64, 0f64, 103.5f64, 0f64, 104f64, -1f64, 0f64, 104f64, 0f64, 104.5f64, -1f64, 0f64, 104.5f64, 0f64, 105f64, -1f64, 0f64, 105f64, 0f64, 105.5f64, -1f64, 0f64, 105.5f64, 0f64, 106f64, -1f64, 0f64, 106f64, 0f64, 106.5f64, -1f64, 0f64, 106.5f64, 0f64, 107f64, -1f64, 0f64, 107f64, 0f64, 107.5f64, -1f64, 0f64, 107.5f64, 0f64, 108f64, -1f64, 0f64, 108f64, 0f64, 108.5f64, -1f64, 0f64, 108.5f64, 0f64, 109f64, -1f64, 0f64, 109f64, 0f64, 109.5f64, -1f64, 0f64, 109.5f64, 0f64, 110f64, -1f64, 0f64, 110f64, 0f64, 110.5f64, -1f64, 0f64, 110.5f64, 0f64, 111f64, -1f64, 0f64, 111f64, 0f64, 111.5f64, -1f64, 0f64, 111.5f64, 0f64, 112f64, -1f64, 0f64, 112f64, 0f64, 112.5f64, -1f64, 0f64, 112.5f64, 0f64, 113f64, -1f64, 0f64, 113f64, 0f64, 113.5f64, -1f64, 0f64, 113.5f64, 0f64, 114f64, -1f64, 0f64, 114f64, 0f64, 114.5f64, -1f64, 0f64, 114.5f64, 0f64, 115f64, -1f64, 0f64, 115f64, 0f64, 115.5f64, -1f64, 0f64, 115.5f64, 0f64, 116f64, -1f64, 0f64, 116f64, 0f64, 116.5f64, -1f64, 0f64, 116.5f64, 0f64, 117f64, -1f64, 0f64, 117f64, 0f64, 117.5f64, -1f64, 0f64, 117.5f64, 0f64, 118f64, -1f64, 0f64, 118f64, 0f64, 118.5f64, -1f64, 0f64, 118.5f64, 0f64, 119f64, -1f64, 0f64, 119f64, 0f64, 119.5f64, -1f64, 0f64, 119.5f64, 0f64, 120f64, -1f64, 0f64, 120f64, 0f64, 120.5f64, -1f64, 0f64, 120.5f64, 0f64, 121f64, -1f64, 0f64, 121f64, 0f64, 121.5f64, -1f64, 0f64, 121.5f64, 0f64, 122f64, -1f64, 0f64, 122f64, 0f64, 122.5f64, -1f64, 0f64, 122.5f64, 0f64, 123f64, -1f64, 0f64, 123f64, 0f64, 123.5f64, -1f64, 0f64, 123.5f64, 0f64, 124f64, -1f64, 0f64, 124f64, 0f64, 124.5f64, -1f64, 0f64, 124.5f64, 0f64, 125f64, -1f64, 0f64, 125f64, 0f64, 125.5f64, -1f64, 0f64, 125.5f64, 0f64, 126f64, -1f64, 0f64, 126f64, 0f64, 126.5f64, -1f64, 0f64, 126.5f64, 0f64, 127f64, -1f64, 0f64, 127f64, 0f64, 127.5f64, -1f64, 0f64, 127.5f64, 0f64, 128f64, -1f64, 0f64, 128f64, 0f64, 128.5f64, -1f64, 0f64, 128.5f64, 0f64, 129f64, -1f64, 0f64, 129f64, 0f64, 129.5f64, -1f64, 0f64, 129.5f64, 0f64, 130f64, -1f64, 0f64, 130f64, 13000f64, 0f64, 1f64, 1f64] },
+];
+pub const STP_GROWTH_5: StpScenario = StpScenario {
+    name: "stp_growth_5",
+    ops: STP_GROWTH_5_OPS,
+};
+
+const STP_CLEAR_PARAMS_6_OPS: &[StpOp] = &[
+    StpOp { kind: 0, args: &[10f64], res: &[0f64] },
+    StpOp { kind: 1, args: &[3f64, 1f64, 1f64, 0f64, 0f64], res: &[0f64] },
+    StpOp { kind: 5, args: &[], res: &[1f64, 3f64, 1f64, 1f64, 0f64, 0f64] },
+    StpOp { kind: 2, args: &[3f64], res: &[0f64] },
+    StpOp { kind: 5, args: &[], res: &[0f64] },
+    StpOp { kind: 1, args: &[4f64, 1f64, 1f64, 0f64, 1f64, 0.25f64, 0.5f64, 0.75f64], res: &[0f64] },
+    StpOp { kind: 5, args: &[], res: &[1f64, 4f64, 1f64, 1f64, 0f64, 1f64, 0.25f64, 0.5f64, 0.75f64] },
+];
+pub const STP_CLEAR_PARAMS_6: StpScenario = StpScenario {
+    name: "stp_clear_params_6",
+    ops: STP_CLEAR_PARAMS_6_OPS,
+};
+
+pub const STP_SCENARIOS: &[StpScenario] = &[
+    STP_CONSTANTS_0,
+    STP_CLAMP_1,
+    STP_RIBBON_LIFECYCLE_2,
+    STP_SKIPS_3,
+    STP_180_TURN_4,
+    STP_GROWTH_5,
+    STP_CLEAR_PARAMS_6,
+];
+
+/// One `client/render/frame/TrailManager.ts` op (see
+/// `trail_manager::RigHarness::run_op` docs). kind 0 construct
+/// [mapW,mapH], 1 update, 2 clearDirtyRows, 3 reset, 4 dumpState
+/// (nonzero trailState + trailCounts pairs), 5 dumpTrails, 6 dumpDirty,
+/// 7 constants [NUKE_TRAIL_BIT].
+pub struct TlmOp {
+    pub kind: u8,
+    pub args: &'static [f64],
+    pub res: &'static [f64],
+}
+pub struct TlmScenario {
+    pub name: &'static str,
+    pub ops: &'static [TlmOp],
+}
+
+const TLM_CONSTANTS_0_OPS: &[TlmOp] = &[
+    TlmOp { kind: 7, args: &[], res: &[4096f64] },
+];
+pub const TLM_CONSTANTS_0: TlmScenario = TlmScenario {
+    name: "tlm_constants_0",
+    ops: TLM_CONSTANTS_0_OPS,
+};
+
+const TLM_STAMP_MOVE_DIE_1_OPS: &[TlmOp] = &[
+    TlmOp { kind: 0, args: &[10f64, 10f64], res: &[0f64] },
+    TlmOp { kind: 1, args: &[1f64, 1f64, 7f64, 87f64, 97f64, 114f64, 115f64, 104f64, 105f64, 112f64, 5f64, 55f64, 50f64, 1f64, 1f64], res: &[0f64] },
+    TlmOp { kind: 4, args: &[], res: &[1f64, 55f64, 5f64, 1f64, 55f64, 1f64] },
+    TlmOp { kind: 5, args: &[], res: &[1f64, 1f64, 5f64, 1f64, 55f64, 55f64] },
+    TlmOp { kind: 6, args: &[], res: &[5f64, 5f64] },
+    TlmOp { kind: 1, args: &[2f64, 1f64, 7f64, 87f64, 97f64, 114f64, 115f64, 104f64, 105f64, 112f64, 5f64, 55f64, 50f64, 2f64, 9f64, 65f64, 116f64, 111f64, 109f64, 32f64, 66f64, 111f64, 109f64, 98f64, 6f64, 66f64, 23f64, 2f64, 1f64, 2f64], res: &[0f64] },
+    TlmOp { kind: 4, args: &[], res: &[2f64, 23f64, 4102f64, 55f64, 5f64, 2f64, 23f64, 1f64, 55f64, 1f64] },
+    TlmOp { kind: 5, args: &[], res: &[2f64, 1f64, 5f64, 1f64, 55f64, 55f64, 2f64, 4102f64, 1f64, 23f64, 23f64] },
+    TlmOp { kind: 1, args: &[2f64, 1f64, 7f64, 87f64, 97f64, 114f64, 115f64, 104f64, 105f64, 112f64, 5f64, 58f64, 55f64, 2f64, 9f64, 65f64, 116f64, 111f64, 109f64, 32f64, 66f64, 111f64, 109f64, 98f64, 6f64, 66f64, 23f64, 2f64, 1f64, 2f64], res: &[0f64] },
+    TlmOp { kind: 4, args: &[], res: &[5f64, 23f64, 4102f64, 55f64, 5f64, 56f64, 5f64, 57f64, 5f64, 58f64, 5f64, 5f64, 23f64, 1f64, 55f64, 1f64, 56f64, 1f64, 57f64, 1f64, 58f64, 1f64] },
+    TlmOp { kind: 5, args: &[], res: &[2f64, 1f64, 5f64, 4f64, 55f64, 56f64, 57f64, 58f64, 58f64, 2f64, 4102f64, 1f64, 23f64, 23f64] },
+    TlmOp { kind: 6, args: &[], res: &[2f64, 5f64] },
+    TlmOp { kind: 1, args: &[1f64, 2f64, 9f64, 65f64, 116f64, 111f64, 109f64, 32f64, 66f64, 111f64, 109f64, 98f64, 6f64, 66f64, 23f64, 1f64, 2f64], res: &[0f64] },
+    TlmOp { kind: 4, args: &[], res: &[1f64, 23f64, 4102f64, 1f64, 23f64, 1f64] },
+    TlmOp { kind: 5, args: &[], res: &[1f64, 2f64, 4102f64, 1f64, 23f64, 23f64] },
+    TlmOp { kind: 6, args: &[], res: &[2f64, 5f64] },
+];
+pub const TLM_STAMP_MOVE_DIE_1: TlmScenario = TlmScenario {
+    name: "tlm_stamp_move_die_1",
+    ops: TLM_STAMP_MOVE_DIE_1_OPS,
+};
+
+const TLM_OVERLAP_KEEPS_VALUE_2_OPS: &[TlmOp] = &[
+    TlmOp { kind: 0, args: &[10f64, 10f64], res: &[0f64] },
+    TlmOp { kind: 1, args: &[1f64, 1f64, 7f64, 87f64, 97f64, 114f64, 115f64, 104f64, 105f64, 112f64, 3f64, 0f64, 0f64, 1f64, 1f64], res: &[0f64] },
+    TlmOp { kind: 1, args: &[2f64, 1f64, 7f64, 87f64, 97f64, 114f64, 115f64, 104f64, 105f64, 112f64, 3f64, 1f64, 0f64, 2f64, 7f64, 87f64, 97f64, 114f64, 115f64, 104f64, 105f64, 112f64, 4f64, 1f64, 1f64, 2f64, 1f64, 2f64], res: &[0f64] },
+    TlmOp { kind: 4, args: &[], res: &[2f64, 0f64, 3f64, 1f64, 4f64, 2f64, 0f64, 1f64, 1f64, 2f64] },
+    TlmOp { kind: 5, args: &[], res: &[2f64, 1f64, 3f64, 2f64, 0f64, 1f64, 1f64, 2f64, 4f64, 1f64, 1f64, 1f64] },
+    TlmOp { kind: 1, args: &[1f64, 1f64, 7f64, 87f64, 97f64, 114f64, 115f64, 104f64, 105f64, 112f64, 3f64, 1f64, 1f64, 1f64, 1f64], res: &[0f64] },
+    TlmOp { kind: 4, args: &[], res: &[2f64, 0f64, 3f64, 1f64, 4f64, 2f64, 0f64, 1f64, 1f64, 1f64] },
+    TlmOp { kind: 1, args: &[0f64, 0f64], res: &[0f64] },
+    TlmOp { kind: 4, args: &[], res: &[0f64, 0f64] },
+    TlmOp { kind: 5, args: &[], res: &[0f64] },
+];
+pub const TLM_OVERLAP_KEEPS_VALUE_2: TlmScenario = TlmScenario {
+    name: "tlm_overlap_keeps_value_2",
+    ops: TLM_OVERLAP_KEEPS_VALUE_2_OPS,
+};
+
+const TLM_OOB_REFS_3_OPS: &[TlmOp] = &[
+    TlmOp { kind: 0, args: &[10f64, 10f64], res: &[0f64] },
+    TlmOp { kind: 1, args: &[1f64, 1f64, 7f64, 87f64, 97f64, 114f64, 115f64, 104f64, 105f64, 112f64, 7f64, f64::INFINITY, 0f64, 1f64, 1f64], res: &[0f64] },
+    TlmOp { kind: 4, args: &[], res: &[0f64, 0f64] },
+    TlmOp { kind: 5, args: &[], res: &[1f64, 1f64, 7f64, 1f64, f64::INFINITY, f64::INFINITY] },
+    TlmOp { kind: 6, args: &[], res: &[0f64, 0f64] },
+    TlmOp { kind: 1, args: &[2f64, 1f64, 7f64, 87f64, 97f64, 114f64, 115f64, 104f64, 105f64, 112f64, 7f64, f64::INFINITY, 0f64, 2f64, 7f64, 87f64, 97f64, 114f64, 115f64, 104f64, 105f64, 112f64, 8f64, 0.5f64, 0.5f64, 2f64, 1f64, 2f64], res: &[0f64] },
+    TlmOp { kind: 4, args: &[], res: &[0f64, 0f64] },
+    TlmOp { kind: 5, args: &[], res: &[2f64, 1f64, 7f64, 1f64, f64::INFINITY, f64::INFINITY, 2f64, 8f64, 1f64, 0.5f64, 0.5f64] },
+    TlmOp { kind: 6, args: &[], res: &[0f64, 0f64] },
+    TlmOp { kind: 1, args: &[3f64, 1f64, 7f64, 87f64, 97f64, 114f64, 115f64, 104f64, 105f64, 112f64, 7f64, f64::INFINITY, 0f64, 2f64, 7f64, 87f64, 97f64, 114f64, 115f64, 104f64, 105f64, 112f64, 8f64, 0.5f64, 0.5f64, 3f64, 7f64, 87f64, 97f64, 114f64, 115f64, 104f64, 105f64, 112f64, 9f64, -1f64, -1f64, 3f64, 1f64, 2f64, 3f64], res: &[0f64] },
+    TlmOp { kind: 1, args: &[3f64, 1f64, 7f64, 87f64, 97f64, 114f64, 115f64, 104f64, 105f64, 112f64, 7f64, f64::INFINITY, 0f64, 2f64, 7f64, 87f64, 97f64, 114f64, 115f64, 104f64, 105f64, 112f64, 8f64, 0.5f64, 0.5f64, 3f64, 7f64, 87f64, 97f64, 114f64, 115f64, 104f64, 105f64, 112f64, 9f64, -1f64, -1f64, 3f64, 1f64, 2f64, 3f64], res: &[0f64] },
+    TlmOp { kind: 4, args: &[], res: &[0f64, 0f64] },
+    TlmOp { kind: 5, args: &[], res: &[3f64, 1f64, 7f64, 1f64, f64::INFINITY, f64::INFINITY, 2f64, 8f64, 1f64, 0.5f64, 0.5f64, 3f64, 9f64, 1f64, -1f64, -1f64] },
+    TlmOp { kind: 1, args: &[0f64, 0f64], res: &[0f64] },
+    TlmOp { kind: 4, args: &[], res: &[0f64, 0f64] },
+    TlmOp { kind: 6, args: &[], res: &[0f64, 0f64] },
+];
+pub const TLM_OOB_REFS_3: TlmScenario = TlmScenario {
+    name: "tlm_oob_refs_3",
+    ops: TLM_OOB_REFS_3_OPS,
+};
+
+const TLM_NUKE_FOLLOWS_LASTPOS_4_OPS: &[TlmOp] = &[
+    TlmOp { kind: 0, args: &[10f64, 10f64], res: &[0f64] },
+    TlmOp { kind: 1, args: &[1f64, 3f64, 13f64, 72f64, 121f64, 100f64, 114f64, 111f64, 103f64, 101f64, 110f64, 32f64, 66f64, 111f64, 109f64, 98f64, 9f64, 88f64, 21f64, 1f64, 3f64], res: &[0f64] },
+    TlmOp { kind: 4, args: &[], res: &[1f64, 21f64, 4105f64, 1f64, 21f64, 1f64] },
+    TlmOp { kind: 5, args: &[], res: &[1f64, 3f64, 4105f64, 1f64, 21f64, 21f64] },
+    TlmOp { kind: 1, args: &[1f64, 3f64, 13f64, 72f64, 121f64, 100f64, 114f64, 111f64, 103f64, 101f64, 110f64, 32f64, 66f64, 111f64, 109f64, 98f64, 9f64, 99f64, 31f64, 1f64, 3f64], res: &[0f64] },
+    TlmOp { kind: 4, args: &[], res: &[2f64, 21f64, 4105f64, 31f64, 4105f64, 2f64, 21f64, 1f64, 31f64, 1f64] },
+    TlmOp { kind: 5, args: &[], res: &[1f64, 3f64, 4105f64, 2f64, 21f64, 31f64, 31f64] },
+    TlmOp { kind: 6, args: &[], res: &[2f64, 3f64] },
+];
+pub const TLM_NUKE_FOLLOWS_LASTPOS_4: TlmScenario = TlmScenario {
+    name: "tlm_nuke_follows_lastpos_4",
+    ops: TLM_NUKE_FOLLOWS_LASTPOS_4_OPS,
+};
+
+const TLM_CLEAR_DIRTY_RESET_5_OPS: &[TlmOp] = &[
+    TlmOp { kind: 0, args: &[10f64, 10f64], res: &[0f64] },
+    TlmOp { kind: 6, args: &[], res: &[f64::INFINITY, -1f64] },
+    TlmOp { kind: 1, args: &[1f64, 1f64, 7f64, 87f64, 97f64, 114f64, 115f64, 104f64, 105f64, 112f64, 1f64, 55f64, 55f64, 1f64, 1f64], res: &[0f64] },
+    TlmOp { kind: 6, args: &[], res: &[5f64, 5f64] },
+    TlmOp { kind: 2, args: &[], res: &[0f64] },
+    TlmOp { kind: 6, args: &[], res: &[f64::INFINITY, -1f64] },
+    TlmOp { kind: 1, args: &[1f64, 1f64, 7f64, 87f64, 97f64, 114f64, 115f64, 104f64, 105f64, 112f64, 1f64, 56f64, 55f64, 1f64, 1f64], res: &[0f64] },
+    TlmOp { kind: 6, args: &[], res: &[5f64, 5f64] },
+    TlmOp { kind: 3, args: &[], res: &[0f64] },
+    TlmOp { kind: 4, args: &[], res: &[0f64, 0f64] },
+    TlmOp { kind: 5, args: &[], res: &[0f64] },
+    TlmOp { kind: 6, args: &[], res: &[f64::INFINITY, -1f64] },
+];
+pub const TLM_CLEAR_DIRTY_RESET_5: TlmScenario = TlmScenario {
+    name: "tlm_clear_dirty_reset_5",
+    ops: TLM_CLEAR_DIRTY_RESET_5_OPS,
+};
+
+pub const TLM_SCENARIOS: &[TlmScenario] = &[
+    TLM_CONSTANTS_0,
+    TLM_STAMP_MOVE_DIE_1,
+    TLM_OVERLAP_KEEPS_VALUE_2,
+    TLM_OOB_REFS_3,
+    TLM_NUKE_FOLLOWS_LASTPOS_4,
+    TLM_CLEAR_DIRTY_RESET_5,
+];
+
+/// One `client/render/frame/RailroadCache.ts` op (see
+/// `railroad_cache::RigHarness::run_op` docs). kind 0 construct,
+/// 1 apply [constructs|snaps|destructs slices], 2 clearDirty, 3 reset,
+/// 4 dumpState (nonzero railroadState + dirty + revealed), 5
+/// dumpRailroads, 6 getRailroadTileRefs, 7 computeRailTiles, 8
+/// dumpRefCount.
+pub struct RlcOp {
+    pub kind: u8,
+    pub args: &'static [f64],
+    pub res: &'static [f64],
+}
+pub struct RlcScenario {
+    pub name: &'static str,
+    pub ops: &'static [RlcOp],
+}
+
+const RLC_ORIENT_EXTREMES_0_OPS: &[RlcOp] = &[
+    RlcOp { kind: 0, args: &[10f64, 10f64], res: &[0f64] },
+    RlcOp { kind: 7, args: &[10f64, 0f64], res: &[0f64] },
+    RlcOp { kind: 7, args: &[10f64, 1f64, 5f64], res: &[1f64, 5f64, 0f64] },
+    RlcOp { kind: 7, args: &[10f64, 3f64, 0f64, 10f64, 20f64], res: &[3f64, 0f64, 0f64, 10f64, 0f64, 20f64, 0f64] },
+    RlcOp { kind: 7, args: &[10f64, 3f64, 1f64, 2f64, 3f64], res: &[3f64, 1f64, 1f64, 2f64, 1f64, 3f64, 1f64] },
+    RlcOp { kind: 7, args: &[10f64, 2f64, 0f64, 11f64], res: &[2f64, 0f64, 0f64, 11f64, 0f64] },
+];
+pub const RLC_ORIENT_EXTREMES_0: RlcScenario = RlcScenario {
+    name: "rlc_orient_extremes_0",
+    ops: RLC_ORIENT_EXTREMES_0_OPS,
+};
+
+const RLC_ORIENT_CORNERS_1_OPS: &[RlcOp] = &[
+    RlcOp { kind: 0, args: &[10f64, 10f64], res: &[0f64] },
+    RlcOp { kind: 7, args: &[10f64, 3f64, 11f64, 21f64, 20f64], res: &[3f64, 11f64, 0f64, 21f64, 2f64, 20f64, 1f64] },
+    RlcOp { kind: 7, args: &[10f64, 3f64, 10f64, 20f64, 21f64], res: &[3f64, 10f64, 0f64, 20f64, 3f64, 21f64, 1f64] },
+    RlcOp { kind: 7, args: &[10f64, 3f64, 20f64, 10f64, 11f64], res: &[3f64, 20f64, 0f64, 10f64, 5f64, 11f64, 1f64] },
+    RlcOp { kind: 7, args: &[10f64, 3f64, 21f64, 11f64, 10f64], res: &[3f64, 21f64, 0f64, 11f64, 4f64, 10f64, 1f64] },
+    RlcOp { kind: 7, args: &[10f64, 3f64, 10f64, 11f64, 1f64], res: &[3f64, 10f64, 1f64, 11f64, 2f64, 1f64, 0f64] },
+    RlcOp { kind: 7, args: &[10f64, 3f64, 11f64, 10f64, 0f64], res: &[3f64, 11f64, 1f64, 10f64, 3f64, 0f64, 0f64] },
+    RlcOp { kind: 7, args: &[10f64, 3f64, 0f64, 1f64, 11f64], res: &[3f64, 0f64, 1f64, 1f64, 4f64, 11f64, 0f64] },
+    RlcOp { kind: 7, args: &[10f64, 3f64, 1f64, 0f64, 10f64], res: &[3f64, 1f64, 1f64, 0f64, 5f64, 10f64, 0f64] },
+    RlcOp { kind: 7, args: &[10f64, 3f64, 0f64, 11f64, 22f64], res: &[3f64, 0f64, 0f64, 11f64, 1f64, 22f64, 0f64] },
+];
+pub const RLC_ORIENT_CORNERS_1: RlcScenario = RlcScenario {
+    name: "rlc_orient_corners_1",
+    ops: RLC_ORIENT_CORNERS_1_OPS,
+};
+
+const RLC_ANIM_TWO_SIDED_2_OPS: &[RlcOp] = &[
+    RlcOp { kind: 0, args: &[10f64, 10f64], res: &[0f64] },
+    RlcOp { kind: 1, args: &[1f64, 1f64, 8f64, 0f64, 10f64, 20f64, 30f64, 40f64, 50f64, 60f64, 70f64, 0f64, 0f64], res: &[0f64] },
+    RlcOp { kind: 4, args: &[], res: &[6f64, 0f64, 1f64, 10f64, 1f64, 20f64, 1f64, 50f64, 1f64, 60f64, 1f64, 70f64, 1f64, 1f64, 6f64, 0f64, 10f64, 20f64, 50f64, 60f64, 70f64] },
+    RlcOp { kind: 5, args: &[], res: &[1f64, 1f64, 8f64, 0f64, 10f64, 20f64, 30f64, 40f64, 50f64, 60f64, 70f64] },
+    RlcOp { kind: 8, args: &[], res: &[8f64, 0f64, 1f64, 10f64, 1f64, 20f64, 1f64, 30f64, 1f64, 40f64, 1f64, 50f64, 1f64, 60f64, 1f64, 70f64, 1f64] },
+    RlcOp { kind: 1, args: &[0f64, 0f64, 0f64], res: &[0f64] },
+    RlcOp { kind: 4, args: &[], res: &[8f64, 0f64, 1f64, 10f64, 1f64, 20f64, 1f64, 30f64, 1f64, 40f64, 1f64, 50f64, 1f64, 60f64, 1f64, 70f64, 1f64, 1f64, 2f64, 30f64, 40f64] },
+    RlcOp { kind: 1, args: &[0f64, 0f64, 0f64], res: &[0f64] },
+    RlcOp { kind: 4, args: &[], res: &[8f64, 0f64, 1f64, 10f64, 1f64, 20f64, 1f64, 30f64, 1f64, 40f64, 1f64, 50f64, 1f64, 60f64, 1f64, 70f64, 1f64, 1f64, 0f64] },
+];
+pub const RLC_ANIM_TWO_SIDED_2: RlcScenario = RlcScenario {
+    name: "rlc_anim_two_sided_2",
+    ops: RLC_ANIM_TWO_SIDED_2_OPS,
+};
+
+const RLC_SNAP_AND_SHARED_3_OPS: &[RlcOp] = &[
+    RlcOp { kind: 0, args: &[10f64, 10f64], res: &[0f64] },
+    RlcOp { kind: 1, args: &[1f64, 1f64, 2f64, 0f64, 1f64, 0f64, 0f64], res: &[0f64] },
+    RlcOp { kind: 1, args: &[0f64, 0f64, 1f64, 1f64], res: &[0f64] },
+    RlcOp { kind: 2, args: &[], res: &[0f64] },
+    RlcOp { kind: 4, args: &[], res: &[0f64, 0f64, 0f64] },
+    RlcOp { kind: 1, args: &[0f64, 1f64, 1f64, 2f64, 3f64, 2f64, 0f64, 1f64, 2f64, 1f64, 2f64, 0f64], res: &[0f64] },
+    RlcOp { kind: 4, args: &[], res: &[3f64, 0f64, 2f64, 1f64, 2f64, 2f64, 2f64, 1f64, 0f64] },
+    RlcOp { kind: 5, args: &[], res: &[2f64, 2f64, 2f64, 0f64, 1f64, 3f64, 2f64, 1f64, 2f64] },
+    RlcOp { kind: 8, args: &[], res: &[3f64, 0f64, 1f64, 1f64, 2f64, 2f64, 1f64] },
+    RlcOp { kind: 6, args: &[3f64, 2f64, 99f64, 3f64], res: &[4f64, 0f64, 1f64, 1f64, 2f64] },
+    RlcOp { kind: 1, args: &[0f64, 0f64, 1f64, 2f64], res: &[0f64] },
+    RlcOp { kind: 4, args: &[], res: &[2f64, 1f64, 2f64, 2f64, 2f64, 1f64, 0f64] },
+    RlcOp { kind: 8, args: &[], res: &[2f64, 1f64, 1f64, 2f64, 1f64] },
+    RlcOp { kind: 2, args: &[], res: &[0f64] },
+    RlcOp { kind: 1, args: &[0f64, 0f64, 1f64, 99f64], res: &[0f64] },
+    RlcOp { kind: 4, args: &[], res: &[2f64, 1f64, 2f64, 2f64, 2f64, 0f64, 0f64] },
+];
+pub const RLC_SNAP_AND_SHARED_3: RlcScenario = RlcScenario {
+    name: "rlc_snap_and_shared_3",
+    ops: RLC_SNAP_AND_SHARED_3_OPS,
+};
+
+const RLC_RESET_4_OPS: &[RlcOp] = &[
+    RlcOp { kind: 0, args: &[10f64, 10f64], res: &[0f64] },
+    RlcOp { kind: 1, args: &[2f64, 1f64, 2f64, 0f64, 10f64, 2f64, 1f64, 5f64, 0f64, 0f64], res: &[0f64] },
+    RlcOp { kind: 3, args: &[], res: &[0f64] },
+    RlcOp { kind: 4, args: &[], res: &[0f64, 0f64, 3f64, 0f64, 10f64, 5f64] },
+    RlcOp { kind: 5, args: &[], res: &[0f64] },
+    RlcOp { kind: 8, args: &[], res: &[0f64] },
+];
+pub const RLC_RESET_4: RlcScenario = RlcScenario {
+    name: "rlc_reset_4",
+    ops: RLC_RESET_4_OPS,
+};
+
+pub const RLC_SCENARIOS: &[RlcScenario] = &[
+    RLC_ORIENT_EXTREMES_0,
+    RLC_ORIENT_CORNERS_1,
+    RLC_ANIM_TWO_SIDED_2,
+    RLC_SNAP_AND_SHARED_3,
+    RLC_RESET_4,
+];
+
+/// One `client/utilities/PlayerProfileUrl.ts` op (see
+/// `player_profile_url::run_op` docs). kind 0 playerProfileUrl
+/// [base, publicId] (codec strings) -> the joined URL (shareBase
+/// scripted through __PPU_BASE).
+pub struct PpuOp {
+    pub kind: u8,
+    pub args: &'static [f64],
+    pub res: &'static [f64],
+}
+pub struct PpuScenario {
+    pub name: &'static str,
+    pub ops: &'static [PpuOp],
+}
+
+const PPU_PLAIN_0_OPS: &[PpuOp] = &[
+    PpuOp { kind: 0, args: &[21f64, 104f64, 116f64, 116f64, 112f64, 115f64, 58f64, 47f64, 47f64, 111f64, 112f64, 101f64, 110f64, 102f64, 114f64, 111f64, 110f64, 116f64, 46f64, 105f64, 111f64, 47f64, 6f64, 97f64, 98f64, 99f64, 49f64, 50f64, 51f64], res: &[51f64, 104f64, 116f64, 116f64, 112f64, 115f64, 58f64, 47f64, 47f64, 111f64, 112f64, 101f64, 110f64, 102f64, 114f64, 111f64, 110f64, 116f64, 46f64, 105f64, 111f64, 47f64, 35f64, 109f64, 111f64, 100f64, 97f64, 108f64, 61f64, 112f64, 114f64, 111f64, 102f64, 105f64, 108f64, 101f64, 38f64, 112f64, 117f64, 98f64, 108f64, 105f64, 99f64, 73f64, 68f64, 61f64, 97f64, 98f64, 99f64, 49f64, 50f64, 51f64] },
+    PpuOp { kind: 0, args: &[21f64, 104f64, 116f64, 116f64, 112f64, 115f64, 58f64, 47f64, 47f64, 111f64, 112f64, 101f64, 110f64, 102f64, 114f64, 111f64, 110f64, 116f64, 46f64, 105f64, 111f64, 47f64, 0f64], res: &[45f64, 104f64, 116f64, 116f64, 112f64, 115f64, 58f64, 47f64, 47f64, 111f64, 112f64, 101f64, 110f64, 102f64, 114f64, 111f64, 110f64, 116f64, 46f64, 105f64, 111f64, 47f64, 35f64, 109f64, 111f64, 100f64, 97f64, 108f64, 61f64, 112f64, 114f64, 111f64, 102f64, 105f64, 108f64, 101f64, 38f64, 112f64, 117f64, 98f64, 108f64, 105f64, 99f64, 73f64, 68f64, 61f64] },
+];
+pub const PPU_PLAIN_0: PpuScenario = PpuScenario {
+    name: "ppu_plain_0",
+    ops: PPU_PLAIN_0_OPS,
+};
+
+const PPU_RESERVED_1_OPS: &[PpuOp] = &[
+    PpuOp { kind: 0, args: &[21f64, 104f64, 116f64, 116f64, 112f64, 115f64, 58f64, 47f64, 47f64, 111f64, 112f64, 101f64, 110f64, 102f64, 114f64, 111f64, 110f64, 116f64, 46f64, 105f64, 111f64, 47f64, 7f64, 97f64, 35f64, 98f64, 38f64, 99f64, 37f64, 100f64], res: &[58f64, 104f64, 116f64, 116f64, 112f64, 115f64, 58f64, 47f64, 47f64, 111f64, 112f64, 101f64, 110f64, 102f64, 114f64, 111f64, 110f64, 116f64, 46f64, 105f64, 111f64, 47f64, 35f64, 109f64, 111f64, 100f64, 97f64, 108f64, 61f64, 112f64, 114f64, 111f64, 102f64, 105f64, 108f64, 101f64, 38f64, 112f64, 117f64, 98f64, 108f64, 105f64, 99f64, 73f64, 68f64, 61f64, 97f64, 37f64, 50f64, 51f64, 98f64, 37f64, 50f64, 54f64, 99f64, 37f64, 50f64, 53f64, 100f64] },
+    PpuOp { kind: 0, args: &[21f64, 104f64, 116f64, 116f64, 112f64, 115f64, 58f64, 47f64, 47f64, 111f64, 112f64, 101f64, 110f64, 102f64, 114f64, 111f64, 110f64, 116f64, 46f64, 105f64, 111f64, 47f64, 11f64, 97f64, 32f64, 98f64, 42f64, 99f64, 40f64, 100f64, 41f64, 101f64, 39f64, 102f64], res: &[58f64, 104f64, 116f64, 116f64, 112f64, 115f64, 58f64, 47f64, 47f64, 111f64, 112f64, 101f64, 110f64, 102f64, 114f64, 111f64, 110f64, 116f64, 46f64, 105f64, 111f64, 47f64, 35f64, 109f64, 111f64, 100f64, 97f64, 108f64, 61f64, 112f64, 114f64, 111f64, 102f64, 105f64, 108f64, 101f64, 38f64, 112f64, 117f64, 98f64, 108f64, 105f64, 99f64, 73f64, 68f64, 61f64, 97f64, 37f64, 50f64, 48f64, 98f64, 42f64, 99f64, 40f64, 100f64, 41f64, 101f64, 39f64, 102f64] },
+    PpuOp { kind: 0, args: &[21f64, 104f64, 116f64, 116f64, 112f64, 115f64, 58f64, 47f64, 47f64, 111f64, 112f64, 101f64, 110f64, 102f64, 114f64, 111f64, 110f64, 116f64, 46f64, 105f64, 111f64, 47f64, 9f64, 97f64, 45f64, 98f64, 95f64, 99f64, 46f64, 100f64, 33f64, 126f64], res: &[54f64, 104f64, 116f64, 116f64, 112f64, 115f64, 58f64, 47f64, 47f64, 111f64, 112f64, 101f64, 110f64, 102f64, 114f64, 111f64, 110f64, 116f64, 46f64, 105f64, 111f64, 47f64, 35f64, 109f64, 111f64, 100f64, 97f64, 108f64, 61f64, 112f64, 114f64, 111f64, 102f64, 105f64, 108f64, 101f64, 38f64, 112f64, 117f64, 98f64, 108f64, 105f64, 99f64, 73f64, 68f64, 61f64, 97f64, 45f64, 98f64, 95f64, 99f64, 46f64, 100f64, 33f64, 126f64] },
+];
+pub const PPU_RESERVED_1: PpuScenario = PpuScenario {
+    name: "ppu_reserved_1",
+    ops: PPU_RESERVED_1_OPS,
+};
+
+const PPU_UNICODE_2_OPS: &[PpuOp] = &[
+    PpuOp { kind: 0, args: &[21f64, 104f64, 116f64, 116f64, 112f64, 115f64, 58f64, 47f64, 47f64, 111f64, 112f64, 101f64, 110f64, 102f64, 114f64, 111f64, 110f64, 116f64, 46f64, 105f64, 111f64, 47f64, 4f64, 99f64, 97f64, 102f64, 233f64], res: &[54f64, 104f64, 116f64, 116f64, 112f64, 115f64, 58f64, 47f64, 47f64, 111f64, 112f64, 101f64, 110f64, 102f64, 114f64, 111f64, 110f64, 116f64, 46f64, 105f64, 111f64, 47f64, 35f64, 109f64, 111f64, 100f64, 97f64, 108f64, 61f64, 112f64, 114f64, 111f64, 102f64, 105f64, 108f64, 101f64, 38f64, 112f64, 117f64, 98f64, 108f64, 105f64, 99f64, 73f64, 68f64, 61f64, 99f64, 97f64, 102f64, 37f64, 67f64, 51f64, 37f64, 65f64, 57f64] },
+    PpuOp { kind: 0, args: &[21f64, 104f64, 116f64, 116f64, 112f64, 115f64, 58f64, 47f64, 47f64, 111f64, 112f64, 101f64, 110f64, 102f64, 114f64, 111f64, 110f64, 116f64, 46f64, 105f64, 111f64, 47f64, 2f64, 55357f64, 56832f64], res: &[57f64, 104f64, 116f64, 116f64, 112f64, 115f64, 58f64, 47f64, 47f64, 111f64, 112f64, 101f64, 110f64, 102f64, 114f64, 111f64, 110f64, 116f64, 46f64, 105f64, 111f64, 47f64, 35f64, 109f64, 111f64, 100f64, 97f64, 108f64, 61f64, 112f64, 114f64, 111f64, 102f64, 105f64, 108f64, 101f64, 38f64, 112f64, 117f64, 98f64, 108f64, 105f64, 99f64, 73f64, 68f64, 61f64, 37f64, 70f64, 48f64, 37f64, 57f64, 70f64, 37f64, 57f64, 56f64, 37f64, 56f64, 48f64] },
+    PpuOp { kind: 0, args: &[21f64, 104f64, 116f64, 116f64, 112f64, 115f64, 58f64, 47f64, 47f64, 111f64, 112f64, 101f64, 110f64, 102f64, 114f64, 111f64, 110f64, 116f64, 46f64, 105f64, 111f64, 47f64, 2f64, 26085f64, 26412f64], res: &[63f64, 104f64, 116f64, 116f64, 112f64, 115f64, 58f64, 47f64, 47f64, 111f64, 112f64, 101f64, 110f64, 102f64, 114f64, 111f64, 110f64, 116f64, 46f64, 105f64, 111f64, 47f64, 35f64, 109f64, 111f64, 100f64, 97f64, 108f64, 61f64, 112f64, 114f64, 111f64, 102f64, 105f64, 108f64, 101f64, 38f64, 112f64, 117f64, 98f64, 108f64, 105f64, 99f64, 73f64, 68f64, 61f64, 37f64, 69f64, 54f64, 37f64, 57f64, 55f64, 37f64, 65f64, 53f64, 37f64, 69f64, 54f64, 37f64, 57f64, 67f64, 37f64, 65f64, 67f64] },
+];
+pub const PPU_UNICODE_2: PpuScenario = PpuScenario {
+    name: "ppu_unicode_2",
+    ops: PPU_UNICODE_2_OPS,
+};
+
+const PPU_DESKTOP_BASE_3_OPS: &[PpuOp] = &[
+    PpuOp { kind: 0, args: &[26f64, 97f64, 112f64, 112f64, 58f64, 47f64, 47f64, 111f64, 112f64, 101f64, 110f64, 102f64, 114f64, 111f64, 110f64, 116f64, 47f64, 105f64, 110f64, 100f64, 101f64, 120f64, 46f64, 104f64, 116f64, 109f64, 108f64, 3f64, 112f64, 105f64, 100f64], res: &[53f64, 97f64, 112f64, 112f64, 58f64, 47f64, 47f64, 111f64, 112f64, 101f64, 110f64, 102f64, 114f64, 111f64, 110f64, 116f64, 47f64, 105f64, 110f64, 100f64, 101f64, 120f64, 46f64, 104f64, 116f64, 109f64, 108f64, 35f64, 109f64, 111f64, 100f64, 97f64, 108f64, 61f64, 112f64, 114f64, 111f64, 102f64, 105f64, 108f64, 101f64, 38f64, 112f64, 117f64, 98f64, 108f64, 105f64, 99f64, 73f64, 68f64, 61f64, 112f64, 105f64, 100f64] },
+    PpuOp { kind: 0, args: &[0f64, 1f64, 120f64], res: &[25f64, 35f64, 109f64, 111f64, 100f64, 97f64, 108f64, 61f64, 112f64, 114f64, 111f64, 102f64, 105f64, 108f64, 101f64, 38f64, 112f64, 117f64, 98f64, 108f64, 105f64, 99f64, 73f64, 68f64, 61f64, 120f64] },
+];
+pub const PPU_DESKTOP_BASE_3: PpuScenario = PpuScenario {
+    name: "ppu_desktop_base_3",
+    ops: PPU_DESKTOP_BASE_3_OPS,
+};
+
+pub const PPU_SCENARIOS: &[PpuScenario] = &[
+    PPU_PLAIN_0,
+    PPU_RESERVED_1,
+    PPU_UNICODE_2,
+    PPU_DESKTOP_BASE_3,
+];
+
+/// One `client/PagePin.ts` op (see `page_pin::RigHarness::run_op` docs).
+/// kind 0 setup [mode, path] (mode 1 = the __PPN_PATH facade THROWS),
+/// 1 pagePin -> codec, 2 capturePagePin, 3 resetPagePinForTests, 4
+/// facadeCalls (pins the lazy latch read count).
+pub struct PpnOp {
+    pub kind: u8,
+    pub args: &'static [f64],
+    pub res: &'static [f64],
+}
+pub struct PpnScenario {
+    pub name: &'static str,
+    pub ops: &'static [PpnOp],
+}
+
+const PPN_PINNED_LAZY_0_OPS: &[PpnOp] = &[
+    PpnOp { kind: 0, args: &[0f64, 17f64, 47f64, 118f64, 47f64, 97f64, 98f64, 99f64, 49f64, 50f64, 51f64, 52f64, 47f64, 103f64, 97f64, 109f64, 101f64, 47f64, 49f64], res: &[0f64] },
+    PpnOp { kind: 1, args: &[], res: &[5f64, 7f64, 97f64, 98f64, 99f64, 49f64, 50f64, 51f64, 52f64] },
+    PpnOp { kind: 4, args: &[], res: &[1f64] },
+    PpnOp { kind: 1, args: &[], res: &[5f64, 7f64, 97f64, 98f64, 99f64, 49f64, 50f64, 51f64, 52f64] },
+    PpnOp { kind: 4, args: &[], res: &[1f64] },
+];
+pub const PPN_PINNED_LAZY_0: PpnScenario = PpnScenario {
+    name: "ppn_pinned_lazy_0",
+    ops: PPN_PINNED_LAZY_0_OPS,
+};
+
+const PPN_UNPINNED_1_OPS: &[PpnOp] = &[
+    PpnOp { kind: 0, args: &[0f64, 7f64, 47f64, 103f64, 97f64, 109f64, 101f64, 47f64, 49f64], res: &[0f64] },
+    PpnOp { kind: 1, args: &[], res: &[2f64] },
+    PpnOp { kind: 4, args: &[], res: &[1f64] },
+];
+pub const PPN_UNPINNED_1: PpnScenario = PpnScenario {
+    name: "ppn_unpinned_1",
+    ops: PPN_UNPINNED_1_OPS,
+};
+
+const PPN_THROWING_HOST_2_OPS: &[PpnOp] = &[
+    PpnOp { kind: 0, args: &[1f64, 11f64, 47f64, 118f64, 47f64, 119f64, 104f64, 97f64, 116f64, 101f64, 118f64, 101f64, 114f64], res: &[0f64] },
+    PpnOp { kind: 1, args: &[], res: &[2f64] },
+    PpnOp { kind: 4, args: &[], res: &[1f64] },
+];
+pub const PPN_THROWING_HOST_2: PpnScenario = PpnScenario {
+    name: "ppn_throwing_host_2",
+    ops: PPN_THROWING_HOST_2_OPS,
+};
+
+const PPN_CAPTURE_REREADS_3_OPS: &[PpnOp] = &[
+    PpnOp { kind: 0, args: &[0f64, 18f64, 47f64, 118f64, 47f64, 100f64, 101f64, 97f64, 100f64, 98f64, 101f64, 101f64, 102f64, 47f64, 103f64, 97f64, 109f64, 101f64, 47f64, 49f64], res: &[0f64] },
+    PpnOp { kind: 1, args: &[], res: &[5f64, 8f64, 100f64, 101f64, 97f64, 100f64, 98f64, 101f64, 101f64, 102f64] },
+    PpnOp { kind: 2, args: &[], res: &[0f64] },
+    PpnOp { kind: 4, args: &[], res: &[2f64] },
+    PpnOp { kind: 1, args: &[], res: &[5f64, 8f64, 100f64, 101f64, 97f64, 100f64, 98f64, 101f64, 101f64, 102f64] },
+    PpnOp { kind: 4, args: &[], res: &[2f64] },
+];
+pub const PPN_CAPTURE_REREADS_3: PpnScenario = PpnScenario {
+    name: "ppn_capture_rereads_3",
+    ops: PPN_CAPTURE_REREADS_3_OPS,
+};
+
+const PPN_RESET_REREADS_4_OPS: &[PpnOp] = &[
+    PpnOp { kind: 0, args: &[0f64, 12f64, 47f64, 118f64, 47f64, 49f64, 49f64, 49f64, 49f64, 49f64, 49f64, 49f64, 47f64, 120f64], res: &[0f64] },
+    PpnOp { kind: 1, args: &[], res: &[5f64, 7f64, 49f64, 49f64, 49f64, 49f64, 49f64, 49f64, 49f64] },
+    PpnOp { kind: 3, args: &[], res: &[0f64] },
+    PpnOp { kind: 1, args: &[], res: &[5f64, 7f64, 49f64, 49f64, 49f64, 49f64, 49f64, 49f64, 49f64] },
+    PpnOp { kind: 4, args: &[], res: &[2f64] },
+];
+pub const PPN_RESET_REREADS_4: PpnScenario = PpnScenario {
+    name: "ppn_reset_rereads_4",
+    ops: PPN_RESET_REREADS_4_OPS,
+};
+
+const PPN_EDGE_PATHS_5_OPS: &[PpnOp] = &[
+    PpnOp { kind: 0, args: &[0f64, 3f64, 47f64, 118f64, 47f64], res: &[0f64] },
+    PpnOp { kind: 4, args: &[], res: &[0f64] },
+    PpnOp { kind: 0, args: &[0f64, 6f64, 47f64, 118f64, 47f64, 97f64, 98f64, 99f64], res: &[0f64] },
+    PpnOp { kind: 1, args: &[], res: &[5f64, 3f64, 97f64, 98f64, 99f64] },
+    PpnOp { kind: 0, args: &[0f64, 20f64, 47f64, 118f64, 47f64, 97f64, 98f64, 99f64, 49f64, 50f64, 51f64, 52f64, 100f64, 101f64, 102f64, 47f64, 103f64, 97f64, 109f64, 101f64, 47f64, 49f64], res: &[0f64] },
+    PpnOp { kind: 1, args: &[], res: &[5f64, 10f64, 97f64, 98f64, 99f64, 49f64, 50f64, 51f64, 52f64, 100f64, 101f64, 102f64] },
+    PpnOp { kind: 0, args: &[0f64, 2f64, 47f64, 118f64], res: &[0f64] },
+    PpnOp { kind: 1, args: &[], res: &[2f64] },
+    PpnOp { kind: 0, args: &[0f64, 0f64], res: &[0f64] },
+    PpnOp { kind: 1, args: &[], res: &[2f64] },
+];
+pub const PPN_EDGE_PATHS_5: PpnScenario = PpnScenario {
+    name: "ppn_edge_paths_5",
+    ops: PPN_EDGE_PATHS_5_OPS,
+};
+
+pub const PPN_SCENARIOS: &[PpnScenario] = &[
+    PPN_PINNED_LAZY_0,
+    PPN_UNPINNED_1,
+    PPN_THROWING_HOST_2,
+    PPN_CAPTURE_REREADS_3,
+    PPN_RESET_REREADS_4,
+    PPN_EDGE_PATHS_5,
+];
+
+/// One `client/CreatorCode.ts` op (see `creator_code::RigHarness::run_op`
+/// docs). kind 0 setup [pathname, search, hash, nowQueue, initStorage]
+/// (codec), 1 stash, 2 take, 3 normalize, 4 parsePath, 5 consume, 6
+/// resume, 7 constants, 8 dumpStorage. Facade events ride the res
+/// trace: 74 getItem, 75 setItem, 76 removeItem, 77 replaceState, 78
+/// pathname, 79 search, 80 hash, 81 Date.now, 82 open callback.
+pub struct CccOp {
+    pub kind: u8,
+    pub args: &'static [f64],
+    pub res: &'static [f64],
+}
+pub struct CccScenario {
+    pub name: &'static str,
+    pub ops: &'static [CccOp],
+}
+
+const CCC_CONSTANTS_0_OPS: &[CccOp] = &[
+    CccOp { kind: 7, args: &[], res: &[20f64, 99f64, 114f64, 101f64, 97f64, 116f64, 111f64, 114f64, 45f64, 99f64, 111f64, 100f64, 101f64, 45f64, 112f64, 101f64, 110f64, 100f64, 105f64, 110f64, 103f64, 604800000f64] },
+];
+pub const CCC_CONSTANTS_0: CccScenario = CccScenario {
+    name: "ccc_constants_0",
+    ops: CCC_CONSTANTS_0_OPS,
+};
+
+const CCC_NORMALIZE_1_OPS: &[CccOp] = &[
+    CccOp { kind: 3, args: &[8f64, 32f64, 32f64, 97f64, 98f64, 49f64, 50f64, 32f64, 32f64], res: &[5f64, 4f64, 65f64, 66f64, 49f64, 50f64] },
+    CccOp { kind: 3, args: &[1f64, 223f64], res: &[2f64] },
+    CccOp { kind: 3, args: &[2f64, 64261f64, 120f64], res: &[5f64, 3f64, 83f64, 84f64, 88f64] },
+    CccOp { kind: 3, args: &[22f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64], res: &[5f64, 22f64, 65f64, 65f64, 65f64, 65f64, 65f64, 65f64, 65f64, 65f64, 65f64, 65f64, 65f64, 65f64, 65f64, 65f64, 65f64, 65f64, 65f64, 65f64, 65f64, 65f64, 65f64, 65f64] },
+    CccOp { kind: 3, args: &[23f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64, 97f64], res: &[2f64] },
+    CccOp { kind: 3, args: &[3f64, 97f64, 32f64, 98f64], res: &[2f64] },
+    CccOp { kind: 3, args: &[2f64, 32f64, 32f64], res: &[2f64] },
+    CccOp { kind: 3, args: &[2f64, 133f64, 120f64], res: &[2f64] },
+    CccOp { kind: 3, args: &[4f64, 65279f64, 65f64, 66f64, 95f64], res: &[5f64, 3f64, 65f64, 66f64, 95f64] },
+    CccOp { kind: 3, args: &[5f64, 65f64, 66f64, 45f64, 95f64, 57f64], res: &[5f64, 5f64, 65f64, 66f64, 45f64, 95f64, 57f64] },
+];
+pub const CCC_NORMALIZE_1: CccScenario = CccScenario {
+    name: "ccc_normalize_1",
+    ops: CCC_NORMALIZE_1_OPS,
+};
+
+const CCC_PARSE_PATH_2_OPS: &[CccOp] = &[
+    CccOp { kind: 4, args: &[6f64, 47f64, 99f64, 47f64, 65f64, 66f64, 67f64], res: &[5f64, 3f64, 65f64, 66f64, 67f64] },
+    CccOp { kind: 4, args: &[7f64, 47f64, 99f64, 47f64, 65f64, 66f64, 67f64, 47f64], res: &[2f64] },
+    CccOp { kind: 4, args: &[3f64, 47f64, 99f64, 47f64], res: &[2f64] },
+    CccOp { kind: 4, args: &[6f64, 47f64, 67f64, 47f64, 97f64, 98f64, 99f64], res: &[2f64] },
+    CccOp { kind: 4, args: &[8f64, 47f64, 99f64, 47f64, 97f64, 37f64, 50f64, 70f64, 98f64], res: &[2f64] },
+    CccOp { kind: 4, args: &[8f64, 47f64, 99f64, 47f64, 97f64, 37f64, 50f64, 48f64, 98f64], res: &[5f64, 3f64, 97f64, 32f64, 98f64] },
+    CccOp { kind: 4, args: &[4f64, 47f64, 99f64, 47f64, 37f64], res: &[5f64, 1f64, 37f64] },
+    CccOp { kind: 4, args: &[6f64, 47f64, 99f64, 47f64, 37f64, 122f64, 122f64], res: &[5f64, 3f64, 37f64, 122f64, 122f64] },
+    CccOp { kind: 4, args: &[6f64, 47f64, 99f64, 47f64, 37f64, 52f64, 49f64], res: &[5f64, 1f64, 65f64] },
+    CccOp { kind: 4, args: &[9f64, 47f64, 99f64, 47f64, 97f64, 98f64, 99f64, 37f64, 48f64, 65f64], res: &[5f64, 4f64, 97f64, 98f64, 99f64, 10f64] },
+    CccOp { kind: 4, args: &[7f64, 47f64, 103f64, 97f64, 109f64, 101f64, 47f64, 49f64], res: &[2f64] },
+    CccOp { kind: 4, args: &[0f64], res: &[2f64] },
+    CccOp { kind: 4, args: &[5f64, 47f64, 47f64, 99f64, 47f64, 120f64], res: &[2f64] },
+];
+pub const CCC_PARSE_PATH_2: CccScenario = CccScenario {
+    name: "ccc_parse_path_2",
+    ops: CCC_PARSE_PATH_2_OPS,
+};
+
+const CCC_STASH_TAKE_ROUNDTRIP_3_OPS: &[CccOp] = &[
+    CccOp { kind: 0, args: &[5f64, 1f64, 47f64, 5f64, 0f64, 5f64, 0f64, 2f64, 1000f64, 1500f64, 2f64], res: &[0f64] },
+    CccOp { kind: 1, args: &[3f64, 65f64, 66f64, 67f64], res: &[56f64, 81f64, 1000f64, 75f64, 20f64, 99f64, 114f64, 101f64, 97f64, 116f64, 111f64, 114f64, 45f64, 99f64, 111f64, 100f64, 101f64, 45f64, 112f64, 101f64, 110f64, 100f64, 105f64, 110f64, 103f64, 31f64, 123f64, 34f64, 99f64, 111f64, 100f64, 101f64, 34f64, 58f64, 34f64, 65f64, 66f64, 67f64, 34f64, 44f64, 34f64, 115f64, 116f64, 97f64, 115f64, 104f64, 101f64, 100f64, 65f64, 116f64, 34f64, 58f64, 49f64, 48f64, 48f64, 48f64, 125f64] },
+    CccOp { kind: 8, args: &[], res: &[5f64, 31f64, 123f64, 34f64, 99f64, 111f64, 100f64, 101f64, 34f64, 58f64, 34f64, 65f64, 66f64, 67f64, 34f64, 44f64, 34f64, 115f64, 116f64, 97f64, 115f64, 104f64, 101f64, 100f64, 65f64, 116f64, 34f64, 58f64, 49f64, 48f64, 48f64, 48f64, 125f64] },
+    CccOp { kind: 2, args: &[], res: &[5f64, 3f64, 65f64, 66f64, 67f64, 79f64, 74f64, 20f64, 99f64, 114f64, 101f64, 97f64, 116f64, 111f64, 114f64, 45f64, 99f64, 111f64, 100f64, 101f64, 45f64, 112f64, 101f64, 110f64, 100f64, 105f64, 110f64, 103f64, 5f64, 31f64, 123f64, 34f64, 99f64, 111f64, 100f64, 101f64, 34f64, 58f64, 34f64, 65f64, 66f64, 67f64, 34f64, 44f64, 34f64, 115f64, 116f64, 97f64, 115f64, 104f64, 101f64, 100f64, 65f64, 116f64, 34f64, 58f64, 49f64, 48f64, 48f64, 48f64, 125f64, 76f64, 20f64, 99f64, 114f64, 101f64, 97f64, 116f64, 111f64, 114f64, 45f64, 99f64, 111f64, 100f64, 101f64, 45f64, 112f64, 101f64, 110f64, 100f64, 105f64, 110f64, 103f64, 81f64, 1500f64] },
+    CccOp { kind: 8, args: &[], res: &[2f64] },
+];
+pub const CCC_STASH_TAKE_ROUNDTRIP_3: CccScenario = CccScenario {
+    name: "ccc_stash_take_roundtrip_3",
+    ops: CCC_STASH_TAKE_ROUNDTRIP_3_OPS,
+};
+
+const CCC_TAKE_EXPIRED_AND_EXACT_TTL_4_OPS: &[CccOp] = &[
+    CccOp { kind: 0, args: &[5f64, 1f64, 47f64, 5f64, 0f64, 5f64, 0f64, 2f64, 0f64, 604800001f64, 2f64], res: &[0f64] },
+    CccOp { kind: 1, args: &[3f64, 88f64, 89f64, 90f64], res: &[53f64, 81f64, 0f64, 75f64, 20f64, 99f64, 114f64, 101f64, 97f64, 116f64, 111f64, 114f64, 45f64, 99f64, 111f64, 100f64, 101f64, 45f64, 112f64, 101f64, 110f64, 100f64, 105f64, 110f64, 103f64, 28f64, 123f64, 34f64, 99f64, 111f64, 100f64, 101f64, 34f64, 58f64, 34f64, 88f64, 89f64, 90f64, 34f64, 44f64, 34f64, 115f64, 116f64, 97f64, 115f64, 104f64, 101f64, 100f64, 65f64, 116f64, 34f64, 58f64, 48f64, 125f64] },
+    CccOp { kind: 2, args: &[], res: &[2f64, 76f64, 74f64, 20f64, 99f64, 114f64, 101f64, 97f64, 116f64, 111f64, 114f64, 45f64, 99f64, 111f64, 100f64, 101f64, 45f64, 112f64, 101f64, 110f64, 100f64, 105f64, 110f64, 103f64, 5f64, 28f64, 123f64, 34f64, 99f64, 111f64, 100f64, 101f64, 34f64, 58f64, 34f64, 88f64, 89f64, 90f64, 34f64, 44f64, 34f64, 115f64, 116f64, 97f64, 115f64, 104f64, 101f64, 100f64, 65f64, 116f64, 34f64, 58f64, 48f64, 125f64, 76f64, 20f64, 99f64, 114f64, 101f64, 97f64, 116f64, 111f64, 114f64, 45f64, 99f64, 111f64, 100f64, 101f64, 45f64, 112f64, 101f64, 110f64, 100f64, 105f64, 110f64, 103f64, 81f64, 604800001f64] },
+    CccOp { kind: 0, args: &[5f64, 1f64, 47f64, 5f64, 0f64, 5f64, 0f64, 2f64, 0f64, 604800000f64, 2f64], res: &[0f64] },
+    CccOp { kind: 1, args: &[3f64, 88f64, 89f64, 90f64], res: &[53f64, 81f64, 0f64, 75f64, 20f64, 99f64, 114f64, 101f64, 97f64, 116f64, 111f64, 114f64, 45f64, 99f64, 111f64, 100f64, 101f64, 45f64, 112f64, 101f64, 110f64, 100f64, 105f64, 110f64, 103f64, 28f64, 123f64, 34f64, 99f64, 111f64, 100f64, 101f64, 34f64, 58f64, 34f64, 88f64, 89f64, 90f64, 34f64, 44f64, 34f64, 115f64, 116f64, 97f64, 115f64, 104f64, 101f64, 100f64, 65f64, 116f64, 34f64, 58f64, 48f64, 125f64] },
+    CccOp { kind: 2, args: &[], res: &[5f64, 3f64, 88f64, 89f64, 90f64, 76f64, 74f64, 20f64, 99f64, 114f64, 101f64, 97f64, 116f64, 111f64, 114f64, 45f64, 99f64, 111f64, 100f64, 101f64, 45f64, 112f64, 101f64, 110f64, 100f64, 105f64, 110f64, 103f64, 5f64, 28f64, 123f64, 34f64, 99f64, 111f64, 100f64, 101f64, 34f64, 58f64, 34f64, 88f64, 89f64, 90f64, 34f64, 44f64, 34f64, 115f64, 116f64, 97f64, 115f64, 104f64, 101f64, 100f64, 65f64, 116f64, 34f64, 58f64, 48f64, 125f64, 76f64, 20f64, 99f64, 114f64, 101f64, 97f64, 116f64, 111f64, 114f64, 45f64, 99f64, 111f64, 100f64, 101f64, 45f64, 112f64, 101f64, 110f64, 100f64, 105f64, 110f64, 103f64, 81f64, 604800000f64] },
+];
+pub const CCC_TAKE_EXPIRED_AND_EXACT_TTL_4: CccScenario = CccScenario {
+    name: "ccc_take_expired_and_exact_ttl_4",
+    ops: CCC_TAKE_EXPIRED_AND_EXACT_TTL_4_OPS,
+};
+
+const CCC_TAKE_LEGACY_RAW_5_OPS: &[CccOp] = &[
+    CccOp { kind: 0, args: &[5f64, 1f64, 47f64, 5f64, 0f64, 5f64, 0f64, 0f64, 5f64, 9f64, 114f64, 97f64, 119f64, 115f64, 116f64, 114f64, 105f64, 110f64, 103f64], res: &[0f64] },
+    CccOp { kind: 2, args: &[], res: &[2f64, 55f64, 74f64, 20f64, 99f64, 114f64, 101f64, 97f64, 116f64, 111f64, 114f64, 45f64, 99f64, 111f64, 100f64, 101f64, 45f64, 112f64, 101f64, 110f64, 100f64, 105f64, 110f64, 103f64, 5f64, 9f64, 114f64, 97f64, 119f64, 115f64, 116f64, 114f64, 105f64, 110f64, 103f64, 76f64, 20f64, 99f64, 114f64, 101f64, 97f64, 116f64, 111f64, 114f64, 45f64, 99f64, 111f64, 100f64, 101f64, 45f64, 112f64, 101f64, 110f64, 100f64, 105f64, 110f64, 103f64] },
+    CccOp { kind: 8, args: &[], res: &[2f64] },
+];
+pub const CCC_TAKE_LEGACY_RAW_5: CccScenario = CccScenario {
+    name: "ccc_take_legacy_raw_5",
+    ops: CCC_TAKE_LEGACY_RAW_5_OPS,
+};
+
+const CCC_TAKE_MALFORMED_JSON_6_OPS: &[CccOp] = &[
+    CccOp { kind: 0, args: &[5f64, 1f64, 47f64, 5f64, 0f64, 5f64, 0f64, 0f64, 5f64, 8f64, 123f64, 34f64, 99f64, 111f64, 100f64, 101f64, 34f64, 58f64], res: &[0f64] },
+    CccOp { kind: 2, args: &[], res: &[2f64, 54f64, 74f64, 20f64, 99f64, 114f64, 101f64, 97f64, 116f64, 111f64, 114f64, 45f64, 99f64, 111f64, 100f64, 101f64, 45f64, 112f64, 101f64, 110f64, 100f64, 105f64, 110f64, 103f64, 5f64, 8f64, 123f64, 34f64, 99f64, 111f64, 100f64, 101f64, 34f64, 58f64, 76f64, 20f64, 99f64, 114f64, 101f64, 97f64, 116f64, 111f64, 114f64, 45f64, 99f64, 111f64, 100f64, 101f64, 45f64, 112f64, 101f64, 110f64, 100f64, 105f64, 110f64, 103f64] },
+];
+pub const CCC_TAKE_MALFORMED_JSON_6: CccScenario = CccScenario {
+    name: "ccc_take_malformed_json_6",
+    ops: CCC_TAKE_MALFORMED_JSON_6_OPS,
+};
+
+const CCC_TAKE_NONNUMERIC_STASHEDAT_7_OPS: &[CccOp] = &[
+    CccOp { kind: 0, args: &[5f64, 1f64, 47f64, 5f64, 0f64, 5f64, 0f64, 1f64, 42f64, 5f64, 32f64, 123f64, 34f64, 99f64, 111f64, 100f64, 101f64, 34f64, 58f64, 34f64, 65f64, 66f64, 67f64, 34f64, 44f64, 34f64, 115f64, 116f64, 97f64, 115f64, 104f64, 101f64, 100f64, 65f64, 116f64, 34f64, 58f64, 34f64, 49f64, 48f64, 48f64, 34f64, 125f64], res: &[0f64] },
+    CccOp { kind: 2, args: &[], res: &[2f64, 78f64, 74f64, 20f64, 99f64, 114f64, 101f64, 97f64, 116f64, 111f64, 114f64, 45f64, 99f64, 111f64, 100f64, 101f64, 45f64, 112f64, 101f64, 110f64, 100f64, 105f64, 110f64, 103f64, 5f64, 32f64, 123f64, 34f64, 99f64, 111f64, 100f64, 101f64, 34f64, 58f64, 34f64, 65f64, 66f64, 67f64, 34f64, 44f64, 34f64, 115f64, 116f64, 97f64, 115f64, 104f64, 101f64, 100f64, 65f64, 116f64, 34f64, 58f64, 34f64, 49f64, 48f64, 48f64, 34f64, 125f64, 76f64, 20f64, 99f64, 114f64, 101f64, 97f64, 116f64, 111f64, 114f64, 45f64, 99f64, 111f64, 100f64, 101f64, 45f64, 112f64, 101f64, 110f64, 100f64, 105f64, 110f64, 103f64] },
+    CccOp { kind: 8, args: &[], res: &[2f64] },
+    CccOp { kind: 1, args: &[1f64, 81f64], res: &[52f64, 81f64, 42f64, 75f64, 20f64, 99f64, 114f64, 101f64, 97f64, 116f64, 111f64, 114f64, 45f64, 99f64, 111f64, 100f64, 101f64, 45f64, 112f64, 101f64, 110f64, 100f64, 105f64, 110f64, 103f64, 27f64, 123f64, 34f64, 99f64, 111f64, 100f64, 101f64, 34f64, 58f64, 34f64, 81f64, 34f64, 44f64, 34f64, 115f64, 116f64, 97f64, 115f64, 104f64, 101f64, 100f64, 65f64, 116f64, 34f64, 58f64, 52f64, 50f64, 125f64] },
+];
+pub const CCC_TAKE_NONNUMERIC_STASHEDAT_7: CccScenario = CccScenario {
+    name: "ccc_take_nonnumeric_stashedat_7",
+    ops: CCC_TAKE_NONNUMERIC_STASHEDAT_7_OPS,
+};
+
+const CCC_TAKE_ARRAY_OBJECT_8_OPS: &[CccOp] = &[
+    CccOp { kind: 0, args: &[5f64, 1f64, 47f64, 5f64, 0f64, 5f64, 0f64, 0f64, 5f64, 5f64, 91f64, 49f64, 44f64, 50f64, 93f64], res: &[0f64] },
+    CccOp { kind: 2, args: &[], res: &[2f64, 51f64, 74f64, 20f64, 99f64, 114f64, 101f64, 97f64, 116f64, 111f64, 114f64, 45f64, 99f64, 111f64, 100f64, 101f64, 45f64, 112f64, 101f64, 110f64, 100f64, 105f64, 110f64, 103f64, 5f64, 5f64, 91f64, 49f64, 44f64, 50f64, 93f64, 76f64, 20f64, 99f64, 114f64, 101f64, 97f64, 116f64, 111f64, 114f64, 45f64, 99f64, 111f64, 100f64, 101f64, 45f64, 112f64, 101f64, 110f64, 100f64, 105f64, 110f64, 103f64] },
+];
+pub const CCC_TAKE_ARRAY_OBJECT_8: CccScenario = CccScenario {
+    name: "ccc_take_array_object_8",
+    ops: CCC_TAKE_ARRAY_OBJECT_8_OPS,
+};
+
+const CCC_TAKE_NULL_AND_NUMBER_9_OPS: &[CccOp] = &[
+    CccOp { kind: 0, args: &[5f64, 1f64, 47f64, 5f64, 0f64, 5f64, 0f64, 0f64, 5f64, 4f64, 110f64, 117f64, 108f64, 108f64], res: &[0f64] },
+    CccOp { kind: 2, args: &[], res: &[2f64, 50f64, 74f64, 20f64, 99f64, 114f64, 101f64, 97f64, 116f64, 111f64, 114f64, 45f64, 99f64, 111f64, 100f64, 101f64, 45f64, 112f64, 101f64, 110f64, 100f64, 105f64, 110f64, 103f64, 5f64, 4f64, 110f64, 117f64, 108f64, 108f64, 76f64, 20f64, 99f64, 114f64, 101f64, 97f64, 116f64, 111f64, 114f64, 45f64, 99f64, 111f64, 100f64, 101f64, 45f64, 112f64, 101f64, 110f64, 100f64, 105f64, 110f64, 103f64] },
+    CccOp { kind: 0, args: &[5f64, 1f64, 47f64, 5f64, 0f64, 5f64, 0f64, 0f64, 5f64, 2f64, 52f64, 50f64], res: &[0f64] },
+    CccOp { kind: 2, args: &[], res: &[2f64, 48f64, 74f64, 20f64, 99f64, 114f64, 101f64, 97f64, 116f64, 111f64, 114f64, 45f64, 99f64, 111f64, 100f64, 101f64, 45f64, 112f64, 101f64, 110f64, 100f64, 105f64, 110f64, 103f64, 5f64, 2f64, 52f64, 50f64, 76f64, 20f64, 99f64, 114f64, 101f64, 97f64, 116f64, 111f64, 114f64, 45f64, 99f64, 111f64, 100f64, 101f64, 45f64, 112f64, 101f64, 110f64, 100f64, 105f64, 110f64, 103f64] },
+    CccOp { kind: 0, args: &[5f64, 1f64, 47f64, 5f64, 0f64, 5f64, 0f64, 0f64, 5f64, 2f64, 123f64, 125f64], res: &[0f64] },
+    CccOp { kind: 2, args: &[], res: &[2f64, 48f64, 74f64, 20f64, 99f64, 114f64, 101f64, 97f64, 116f64, 111f64, 114f64, 45f64, 99f64, 111f64, 100f64, 101f64, 45f64, 112f64, 101f64, 110f64, 100f64, 105f64, 110f64, 103f64, 5f64, 2f64, 123f64, 125f64, 76f64, 20f64, 99f64, 114f64, 101f64, 97f64, 116f64, 111f64, 114f64, 45f64, 99f64, 111f64, 100f64, 101f64, 45f64, 112f64, 101f64, 110f64, 100f64, 105f64, 110f64, 103f64] },
+];
+pub const CCC_TAKE_NULL_AND_NUMBER_9: CccScenario = CccScenario {
+    name: "ccc_take_null_and_number_9",
+    ops: CCC_TAKE_NULL_AND_NUMBER_9_OPS,
+};
+
+const CCC_TAKE_CODE_FIELD_10_OPS: &[CccOp] = &[
+    CccOp { kind: 0, args: &[5f64, 1f64, 47f64, 5f64, 0f64, 5f64, 0f64, 2f64, 0f64, 1f64, 5f64, 15f64, 123f64, 34f64, 115f64, 116f64, 97f64, 115f64, 104f64, 101f64, 100f64, 65f64, 116f64, 34f64, 58f64, 48f64, 125f64], res: &[0f64] },
+    CccOp { kind: 2, args: &[], res: &[2f64, 63f64, 74f64, 20f64, 99f64, 114f64, 101f64, 97f64, 116f64, 111f64, 114f64, 45f64, 99f64, 111f64, 100f64, 101f64, 45f64, 112f64, 101f64, 110f64, 100f64, 105f64, 110f64, 103f64, 5f64, 15f64, 123f64, 34f64, 115f64, 116f64, 97f64, 115f64, 104f64, 101f64, 100f64, 65f64, 116f64, 34f64, 58f64, 48f64, 125f64, 76f64, 20f64, 99f64, 114f64, 101f64, 97f64, 116f64, 111f64, 114f64, 45f64, 99f64, 111f64, 100f64, 101f64, 45f64, 112f64, 101f64, 110f64, 100f64, 105f64, 110f64, 103f64, 81f64, 0f64] },
+    CccOp { kind: 0, args: &[5f64, 1f64, 47f64, 5f64, 0f64, 5f64, 0f64, 2f64, 0f64, 1f64, 5f64, 24f64, 123f64, 34f64, 99f64, 111f64, 100f64, 101f64, 34f64, 58f64, 53f64, 44f64, 34f64, 115f64, 116f64, 97f64, 115f64, 104f64, 101f64, 100f64, 65f64, 116f64, 34f64, 58f64, 48f64, 125f64], res: &[0f64] },
+    CccOp { kind: 2, args: &[], res: &[2f64, 72f64, 74f64, 20f64, 99f64, 114f64, 101f64, 97f64, 116f64, 111f64, 114f64, 45f64, 99f64, 111f64, 100f64, 101f64, 45f64, 112f64, 101f64, 110f64, 100f64, 105f64, 110f64, 103f64, 5f64, 24f64, 123f64, 34f64, 99f64, 111f64, 100f64, 101f64, 34f64, 58f64, 53f64, 44f64, 34f64, 115f64, 116f64, 97f64, 115f64, 104f64, 101f64, 100f64, 65f64, 116f64, 34f64, 58f64, 48f64, 125f64, 76f64, 20f64, 99f64, 114f64, 101f64, 97f64, 116f64, 111f64, 114f64, 45f64, 99f64, 111f64, 100f64, 101f64, 45f64, 112f64, 101f64, 110f64, 100f64, 105f64, 110f64, 103f64, 81f64, 0f64] },
+    CccOp { kind: 0, args: &[5f64, 1f64, 47f64, 5f64, 0f64, 5f64, 0f64, 2f64, 0f64, 1f64, 5f64, 39f64, 123f64, 34f64, 99f64, 111f64, 100f64, 101f64, 34f64, 58f64, 34f64, 65f64, 34f64, 44f64, 34f64, 99f64, 111f64, 100f64, 101f64, 34f64, 58f64, 34f64, 65f64, 66f64, 67f64, 34f64, 44f64, 34f64, 115f64, 116f64, 97f64, 115f64, 104f64, 101f64, 100f64, 65f64, 116f64, 34f64, 58f64, 48f64, 125f64], res: &[0f64] },
+    CccOp { kind: 2, args: &[], res: &[5f64, 3f64, 65f64, 66f64, 67f64, 87f64, 74f64, 20f64, 99f64, 114f64, 101f64, 97f64, 116f64, 111f64, 114f64, 45f64, 99f64, 111f64, 100f64, 101f64, 45f64, 112f64, 101f64, 110f64, 100f64, 105f64, 110f64, 103f64, 5f64, 39f64, 123f64, 34f64, 99f64, 111f64, 100f64, 101f64, 34f64, 58f64, 34f64, 65f64, 34f64, 44f64, 34f64, 99f64, 111f64, 100f64, 101f64, 34f64, 58f64, 34f64, 65f64, 66f64, 67f64, 34f64, 44f64, 34f64, 115f64, 116f64, 97f64, 115f64, 104f64, 101f64, 100f64, 65f64, 116f64, 34f64, 58f64, 48f64, 125f64, 76f64, 20f64, 99f64, 114f64, 101f64, 97f64, 116f64, 111f64, 114f64, 45f64, 99f64, 111f64, 100f64, 101f64, 45f64, 112f64, 101f64, 110f64, 100f64, 105f64, 110f64, 103f64, 81f64, 0f64] },
+];
+pub const CCC_TAKE_CODE_FIELD_10: CccScenario = CccScenario {
+    name: "ccc_take_code_field_10",
+    ops: CCC_TAKE_CODE_FIELD_10_OPS,
+};
+
+const CCC_TAKE_ABSENT_11_OPS: &[CccOp] = &[
+    CccOp { kind: 0, args: &[5f64, 1f64, 47f64, 5f64, 0f64, 5f64, 0f64, 0f64, 2f64], res: &[0f64] },
+    CccOp { kind: 2, args: &[], res: &[2f64, 23f64, 74f64, 20f64, 99f64, 114f64, 101f64, 97f64, 116f64, 111f64, 114f64, 45f64, 99f64, 111f64, 100f64, 101f64, 45f64, 112f64, 101f64, 110f64, 100f64, 105f64, 110f64, 103f64, 2f64] },
+];
+pub const CCC_TAKE_ABSENT_11: CccScenario = CccScenario {
+    name: "ccc_take_absent_11",
+    ops: CCC_TAKE_ABSENT_11_OPS,
+};
+
+const CCC_CONSUME_NOOP_12_OPS: &[CccOp] = &[
+    CccOp { kind: 0, args: &[5f64, 7f64, 47f64, 103f64, 97f64, 109f64, 101f64, 47f64, 49f64, 5f64, 4f64, 63f64, 97f64, 61f64, 49f64, 5f64, 2f64, 35f64, 104f64, 0f64, 2f64], res: &[0f64] },
+    CccOp { kind: 5, args: &[], res: &[10f64, 78f64, 5f64, 7f64, 47f64, 103f64, 97f64, 109f64, 101f64, 47f64, 49f64] },
+];
+pub const CCC_CONSUME_NOOP_12: CccScenario = CccScenario {
+    name: "ccc_consume_noop_12",
+    ops: CCC_CONSUME_NOOP_12_OPS,
+};
+
+const CCC_CONSUME_VALID_13_OPS: &[CccOp] = &[
+    CccOp { kind: 0, args: &[5f64, 6f64, 47f64, 99f64, 47f64, 97f64, 98f64, 99f64, 5f64, 4f64, 63f64, 120f64, 61f64, 49f64, 5f64, 2f64, 35f64, 104f64, 1f64, 7f64, 2f64], res: &[0f64] },
+    CccOp { kind: 5, args: &[], res: &[83f64, 78f64, 5f64, 6f64, 47f64, 99f64, 47f64, 97f64, 98f64, 99f64, 81f64, 7f64, 75f64, 20f64, 99f64, 114f64, 101f64, 97f64, 116f64, 111f64, 114f64, 45f64, 99f64, 111f64, 100f64, 101f64, 45f64, 112f64, 101f64, 110f64, 100f64, 105f64, 110f64, 103f64, 28f64, 123f64, 34f64, 99f64, 111f64, 100f64, 101f64, 34f64, 58f64, 34f64, 65f64, 66f64, 67f64, 34f64, 44f64, 34f64, 115f64, 116f64, 97f64, 115f64, 104f64, 101f64, 100f64, 65f64, 116f64, 34f64, 58f64, 55f64, 125f64, 79f64, 5f64, 4f64, 63f64, 120f64, 61f64, 49f64, 80f64, 5f64, 2f64, 35f64, 104f64, 77f64, 7f64, 47f64, 63f64, 120f64, 61f64, 49f64, 35f64, 104f64] },
+    CccOp { kind: 8, args: &[], res: &[5f64, 28f64, 123f64, 34f64, 99f64, 111f64, 100f64, 101f64, 34f64, 58f64, 34f64, 65f64, 66f64, 67f64, 34f64, 44f64, 34f64, 115f64, 116f64, 97f64, 115f64, 104f64, 101f64, 100f64, 65f64, 116f64, 34f64, 58f64, 55f64, 125f64] },
+];
+pub const CCC_CONSUME_VALID_13: CccScenario = CccScenario {
+    name: "ccc_consume_valid_13",
+    ops: CCC_CONSUME_VALID_13_OPS,
+};
+
+const CCC_CONSUME_INVALID_STILL_STRIPS_14_OPS: &[CccOp] = &[
+    CccOp { kind: 0, args: &[5f64, 8f64, 47f64, 99f64, 47f64, 36f64, 36f64, 98f64, 97f64, 100f64, 5f64, 0f64, 5f64, 0f64, 0f64, 2f64], res: &[0f64] },
+    CccOp { kind: 5, args: &[], res: &[20f64, 78f64, 5f64, 8f64, 47f64, 99f64, 47f64, 36f64, 36f64, 98f64, 97f64, 100f64, 79f64, 5f64, 0f64, 80f64, 5f64, 0f64, 77f64, 1f64, 47f64] },
+];
+pub const CCC_CONSUME_INVALID_STILL_STRIPS_14: CccScenario = CccScenario {
+    name: "ccc_consume_invalid_still_strips_14",
+    ops: CCC_CONSUME_INVALID_STILL_STRIPS_14_OPS,
+};
+
+const CCC_CONSUME_EMPTY_PATHNAME_15_OPS: &[CccOp] = &[
+    CccOp { kind: 0, args: &[5f64, 0f64, 5f64, 0f64, 5f64, 0f64, 0f64, 2f64], res: &[0f64] },
+    CccOp { kind: 5, args: &[], res: &[3f64, 78f64, 5f64, 0f64] },
+];
+pub const CCC_CONSUME_EMPTY_PATHNAME_15: CccScenario = CccScenario {
+    name: "ccc_consume_empty_pathname_15",
+    ops: CCC_CONSUME_EMPTY_PATHNAME_15_OPS,
+};
+
+const CCC_RESUME_HIT_16_OPS: &[CccOp] = &[
+    CccOp { kind: 0, args: &[5f64, 1f64, 47f64, 5f64, 0f64, 5f64, 0f64, 2f64, 1000f64, 1001f64, 2f64], res: &[0f64] },
+    CccOp { kind: 1, args: &[3f64, 81f64, 82f64, 83f64], res: &[56f64, 81f64, 1000f64, 75f64, 20f64, 99f64, 114f64, 101f64, 97f64, 116f64, 111f64, 114f64, 45f64, 99f64, 111f64, 100f64, 101f64, 45f64, 112f64, 101f64, 110f64, 100f64, 105f64, 110f64, 103f64, 31f64, 123f64, 34f64, 99f64, 111f64, 100f64, 101f64, 34f64, 58f64, 34f64, 81f64, 82f64, 83f64, 34f64, 44f64, 34f64, 115f64, 116f64, 97f64, 115f64, 104f64, 101f64, 100f64, 65f64, 116f64, 34f64, 58f64, 49f64, 48f64, 48f64, 48f64, 125f64] },
+    CccOp { kind: 6, args: &[], res: &[4f64, 1f64, 84f64, 74f64, 20f64, 99f64, 114f64, 101f64, 97f64, 116f64, 111f64, 114f64, 45f64, 99f64, 111f64, 100f64, 101f64, 45f64, 112f64, 101f64, 110f64, 100f64, 105f64, 110f64, 103f64, 5f64, 31f64, 123f64, 34f64, 99f64, 111f64, 100f64, 101f64, 34f64, 58f64, 34f64, 81f64, 82f64, 83f64, 34f64, 44f64, 34f64, 115f64, 116f64, 97f64, 115f64, 104f64, 101f64, 100f64, 65f64, 116f64, 34f64, 58f64, 49f64, 48f64, 48f64, 48f64, 125f64, 76f64, 20f64, 99f64, 114f64, 101f64, 97f64, 116f64, 111f64, 114f64, 45f64, 99f64, 111f64, 100f64, 101f64, 45f64, 112f64, 101f64, 110f64, 100f64, 105f64, 110f64, 103f64, 81f64, 1001f64, 82f64, 3f64, 81f64, 82f64, 83f64] },
+];
+pub const CCC_RESUME_HIT_16: CccScenario = CccScenario {
+    name: "ccc_resume_hit_16",
+    ops: CCC_RESUME_HIT_16_OPS,
+};
+
+const CCC_RESUME_MISS_17_OPS: &[CccOp] = &[
+    CccOp { kind: 0, args: &[5f64, 1f64, 47f64, 5f64, 0f64, 5f64, 0f64, 0f64, 2f64], res: &[0f64] },
+    CccOp { kind: 6, args: &[], res: &[4f64, 0f64, 23f64, 74f64, 20f64, 99f64, 114f64, 101f64, 97f64, 116f64, 111f64, 114f64, 45f64, 99f64, 111f64, 100f64, 101f64, 45f64, 112f64, 101f64, 110f64, 100f64, 105f64, 110f64, 103f64, 2f64] },
+];
+pub const CCC_RESUME_MISS_17: CccScenario = CccScenario {
+    name: "ccc_resume_miss_17",
+    ops: CCC_RESUME_MISS_17_OPS,
+};
+
+pub const CCC_SCENARIOS: &[CccScenario] = &[
+    CCC_CONSTANTS_0,
+    CCC_NORMALIZE_1,
+    CCC_PARSE_PATH_2,
+    CCC_STASH_TAKE_ROUNDTRIP_3,
+    CCC_TAKE_EXPIRED_AND_EXACT_TTL_4,
+    CCC_TAKE_LEGACY_RAW_5,
+    CCC_TAKE_MALFORMED_JSON_6,
+    CCC_TAKE_NONNUMERIC_STASHEDAT_7,
+    CCC_TAKE_ARRAY_OBJECT_8,
+    CCC_TAKE_NULL_AND_NUMBER_9,
+    CCC_TAKE_CODE_FIELD_10,
+    CCC_TAKE_ABSENT_11,
+    CCC_CONSUME_NOOP_12,
+    CCC_CONSUME_VALID_13,
+    CCC_CONSUME_INVALID_STILL_STRIPS_14,
+    CCC_CONSUME_EMPTY_PATHNAME_15,
+    CCC_RESUME_HIT_16,
+    CCC_RESUME_MISS_17,
+];
+

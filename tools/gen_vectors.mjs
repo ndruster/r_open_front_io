@@ -380,6 +380,84 @@ const NKT = await loadTs("src/client/render/frame/derive/NukeTelegraphs.ts");
 const PST = await loadTs("src/client/render/frame/derive/PlayerStatus.ts");
 const RMX = await loadTs("src/client/render/frame/derive/RelationMatrix.ts");
 const TRS = await loadTs("src/client/render/frame/derive/TerrainRowSpans.ts");
+const STP = await loadTs("src/client/render/frame/SpiralTrails.ts");
+const TLM = await loadTs("src/client/render/frame/TrailManager.ts");
+const RLC = await loadTs("src/client/render/frame/RailroadCache.ts");
+const PPU = await loadTs("src/client/utilities/PlayerProfileUrl.ts");
+
+// S9: PagePin.ts — the lazy `captured` latch is reset per scenario through the
+// module's own resetPagePinForTests() (kind 0 mirrors the Rust harness
+// `*self = default()`: latch cleared, call counter zeroed). The facade
+// globalThis.__PPN_PATH() returns the scripted pathname or THROWS (non-browser
+// host), counting its own invocations so the facadeCalls op pins the lazy
+// read count.
+let ppnMode = 0; // 0 = return ppnPath, 1 = throw
+let ppnPath = "";
+let ppnCalls = 0;
+globalThis.__PPN_PATH = () => {
+  ppnCalls += 1;
+  if (ppnMode === 1) throw new Error("ppn capture: no window");
+  return ppnPath;
+};
+const PPN = await loadTs("src/client/PagePin.ts");
+
+// S9: PlayerProfileUrl.ts — ClientEnv.shareBase() is scripted through
+// globalThis.__PPU_BASE (a plain string, precedent: __CK_ENV).
+globalThis.__PPU_BASE = "https://openfront.io/";
+
+// S9: CreatorCode.ts — every host touch is a traced facade global. The trace
+// codes ride the Rust res prefix: 74 getItem, 75 setItem, 76 removeItem, 77
+// replaceState, 78 pathname, 79 search, 80 hash, 81 Date.now, 82 open().
+// `resumePendingCreatorCode(open)` never runs against the real window.open —
+// the capture passes a black-box callback that traces [82, ...codec(code)].
+let cccStorage = null; // string | null (the getItem domain)
+let cccNows = [];
+let cccLoc = { pathname: "/", search: "", hash: "" };
+let cccTrace = [];
+const cccPushVal = (v) => {
+  cccTrace.push(...encVal(v));
+  return v;
+};
+globalThis.__CCC_LS = {
+  getItem(key) {
+    cccTrace.push(74, ...encS(key)); // push_str: bare [len, codes]
+    return cccPushVal(cccStorage);
+  },
+  setItem(key, value) {
+    cccTrace.push(75, ...encS(key), ...encS(value));
+    cccStorage = value;
+  },
+  removeItem(key) {
+    cccTrace.push(76, ...encS(key));
+    cccStorage = null;
+  },
+};
+globalThis.__CCC_NOW = () => {
+  if (!cccNows.length) throw new Error("ccc capture: unscripted Date.now()");
+  const v = cccNows.shift();
+  cccTrace.push(81, v);
+  return v;
+};
+globalThis.__CCC_LOC = {
+  get pathname() {
+    cccTrace.push(78, ...encVal(cccLoc.pathname));
+    return cccLoc.pathname;
+  },
+  get search() {
+    cccTrace.push(79, ...encVal(cccLoc.search));
+    return cccLoc.search;
+  },
+  get hash() {
+    cccTrace.push(80, ...encVal(cccLoc.hash));
+    return cccLoc.hash;
+  },
+};
+globalThis.__CCC_HISTORY = {
+  replaceState(state, title, url) {
+    cccTrace.push(77, ...encS(url));
+  },
+};
+const CCC = await loadTs("src/client/CreatorCode.ts");
 const PF = await loadTs("src/core/pathfinding/PathFinder.ts");
 const { AStar } = await loadTs("src/core/pathfinding/algorithms/AStar.ts");
 const { AStarRail } = await loadTs("src/core/pathfinding/algorithms/AStar.Rail.ts");
@@ -14181,6 +14259,748 @@ runTRS("trs_merge_extra", [
 runTRS("trs_unsorted", [[0, 10, [21, 2, 12, 3]]]); // refs interleaved across rows
 runTRS("trs_constants", [[1], [2, [0, 1, 2, 1000, 36, 255]]]);
 
+// ---- S9: SpiralTrails.ts (stp_) ----------------------------------------------
+// Harness over one SpiralTrails instance. Kind table (matches
+// `spiral_trails::RigHarness::run_op`): 0 construct [mapW] -> [0]; 1 setParams
+// [ownerID, radius, strands, rotationSpeed, nc, (r,g,b)*nc] -> [0]; 2
+// clearParams [ownerID] -> [0]; 3 update [n, (id, tlen, (type)*tlen, ownerID,
+// pos, lastPos)*n, m, (trackedId)*m] -> [0]; 4 dumpRibbons (live ribbonList,
+// samples widened f32->f64); 5 dumpParams (insertion order); 6 constants.
+const stpScenarios = [];
+let stpIdx = 0;
+let stpTrails = null;
+const stpDumpRibbons = () => {
+  const rs = stpTrails.getRibbons();
+  return [
+    rs.length,
+    ...rs.flatMap((r) => [
+      r.id,
+      r.radius,
+      r.strands,
+      r.twist,
+      r.rotationSpeed,
+      r.colors.length,
+      ...r.colors.flat(),
+      r.headDist,
+      r.sampleCount,
+      r.samples.length,
+      ...Array.from(r.samples.subarray(0, r.sampleCount * 5)),
+      r.lastPos,
+      r.dirX,
+      r.dirY,
+      r.hasDir ? 1 : 0,
+    ]),
+  ];
+};
+const stpDumpParams = () => [
+  stpTrails.params.size,
+  ...[...stpTrails.params].flatMap(([o, p]) => [
+    o,
+    p.radius,
+    p.strands,
+    p.rotationSpeed,
+    p.colors.length,
+    ...p.colors.flat(),
+  ]),
+];
+function runSTP(name, ops) {
+  const played = [];
+  for (const [k, ...a] of ops) {
+    let args;
+    let res;
+    if (k === 0) {
+      args = [a[0]];
+      stpTrails = new STP.SpiralTrails(a[0]);
+      res = [0];
+    } else if (k === 1) {
+      const [owner, radius, strands, rot, colors] = a;
+      args = [owner, radius, strands, rot, colors.length, ...colors.flat()];
+      stpTrails.setParams(owner, { radius, strands, rotationSpeed: rot, colors });
+      res = [0];
+    } else if (k === 2) {
+      args = [a[0]];
+      stpTrails.clearParams(a[0]);
+      res = [0];
+    } else if (k === 3) {
+      const [units, tracked] = a;
+      args = [
+        units.length,
+        ...units.flatMap(([id, tlen, type, owner, pos, lastPos]) => [
+          id,
+          ...encS(type),
+          owner,
+          pos,
+          lastPos,
+        ]),
+        tracked.length,
+        ...tracked,
+      ];
+      stpTrails.update(
+        new Map(
+          units.map(([id, , type, owner, pos, lastPos]) => [
+            id,
+            { unitType: type, ownerID: owner, pos, lastPos },
+          ]),
+        ),
+        tracked,
+      );
+      res = [0];
+    } else if (k === 4) {
+      args = [];
+      res = stpDumpRibbons();
+    } else if (k === 5) {
+      args = [];
+      res = stpDumpParams();
+    } else if (k === 6) {
+      args = [];
+      res = [STP.MAX_TRAIL_STRANDS, STP.SAMPLE_FLOATS];
+    } else throw new Error("stp: bad op kind " + k);
+    played.push({ kind: k, args: args.flat().map(uenc), res: res.flat().map(uenc) });
+  }
+  stpScenarios.push({ name: `${name}_${stpIdx++}`, ops: played });
+}
+runSTP("stp_constants", [[6]]);
+runSTP("stp_clamp", [
+  [0, 10],
+  [1, 1, 2, NaN, 0, []], // strands NaN: Math.round(NaN) -> NaN, both clamps propagate
+  [1, 2, 2, 0.4, 0, []], // round(0.4)=0 -> max 1
+  [1, 3, 2, 2.5, 0, []], // half-up round(2.5)=3
+  [1, 4, 2, 7.5, 0, []], // round(7.5)=8 -> min 8
+  [1, 5, 2, 9, 0, []], // 9 -> clamped to 8
+  [1, 6, 2, -3, 0, []], // round(-3)=-3 -> max 1
+  [1, 7, 2, Infinity, 0, []], // Infinity -> min 8
+  [1, 8, NaN, 3, 0, [[NaN, 1, 0]]], // radius NaN: pitch Math.max(NaN,8)=NaN, twist NaN
+  [5],
+]);
+runSTP("stp_ribbon_lifecycle", [
+  [0, 10],
+  [1, 7, 2, 3, 1.5, [[1, 0.5, 0]]], // pitch max(2*4,8)=8 -> twist TAU/8
+  // fresh ribbon stamps at lastPos, no advance (lastPos === ribbon.lastPos)
+  [3, [[1, 10, "Atom Bomb", 7, 55, 55]], [1]],
+  [4],
+  // advance 55 -> 65: straight up, 1 tile, steps ceil(2)=2, 3 samples
+  [3, [[1, 10, "Atom Bomb", 7, 65, 65]], [1]],
+  [4],
+  // unit disappears -> ribbon dropped, ribbonList rebuilt empty
+  [3, [], []],
+  [4],
+]);
+runSTP("stp_skips", [
+  [0, 10],
+  [1, 7, 1, 2, 0, []],
+  // MIRV warhead never grows a ribbon; non-smoothed type skipped; owner
+  // without params skipped; untracked unit skipped
+  [3, [[1, 12, "MIRV Warhead", 7, 5, 5], [2, 8, "Warship", 7, 6, 6], [3, 10, "Atom Bomb", 99, 7, 7], [4, 10, "Atom Bomb", 7, 8, 8]], [1, 2, 3]],
+  [4],
+  [3, [[4, 10, "Atom Bomb", 7, 8, 8]], [4]],
+  [4],
+]);
+runSTP("stp_180_turn", [
+  [0, 10],
+  [1, 1, 1, 2, 0, []],
+  [3, [[2, 13, "Hydrogen Bomb", 1, 50, 50]], [2]], // create at (5,5)
+  [3, [[2, 13, "Hydrogen Bomb", 1, 52, 52]], [2]], // north: dir (0,1)
+  [4],
+  [3, [[2, 13, "Hydrogen Bomb", 1, 50, 50]], [2]], // exact 180: blend len < 1e-6 fallback
+  [4],
+  // same-position re-update: the `lastPos !== ribbon.lastPos` gate skips the
+  // advance entirely (no new samples)
+  [3, [[2, 13, "Hydrogen Bomb", 1, 50, 50]], [2]],
+  [4],
+]);
+runSTP("stp_growth", [
+  [0, 100],
+  [1, 1, 0, 1, 0, []], // radius 0 -> pitch max(0,8)=8 -> twist TAU/8
+  [3, [[9, 6, "MIRV", 1, 0, 0]], [9]], // create at ref 0
+  // 0 -> 13000: dy 130, steps 260, 261 samples -> Float32Array doubles at 256
+  [3, [[9, 6, "MIRV", 1, 13000, 13000]], [9]],
+  [4],
+]);
+runSTP("stp_clear_params", [
+  [0, 10],
+  [1, 3, 1, 1, 0, []],
+  [5],
+  [2, 3],
+  [5],
+  [1, 4, 1, 1, 0, [[0.25, 0.5, 0.75]]],
+  [5],
+]);
+
+// ---- S9: TrailManager.ts (tlm_) ----------------------------------------------
+// Kind table (matches `trail_manager::RigHarness::run_op`): 0 construct
+// [mapW, mapH]; 1 update [n, (id, tlen, (type)*tlen, ownerID, pos, lastPos)*n,
+// m, (trackedId)*m]; 2 clearDirtyRows; 3 reset; 4 dumpState (nonzero
+// trailState pairs + nonzero trailCounts pairs); 5 dumpTrails; 6 dumpDirty;
+// 7 constants [NUKE_TRAIL_BIT].
+const tlmScenarios = [];
+let tlmIdx = 0;
+let tlmMgr = null;
+const tlmDumpState = () => {
+  const ts = [...tlmMgr.trailState.entries()].filter(([, v]) => v !== 0);
+  const tc = [...tlmMgr.trailCounts.entries()].filter(([, v]) => v !== 0);
+  return [ts.length, ...ts.flat(), tc.length, ...tc.flat()];
+};
+const tlmDumpTrails = () => [
+  tlmMgr.unitTrails.size,
+  ...[...tlmMgr.unitTrails].flatMap(([id, t]) => [
+    id,
+    t.value,
+    t.tiles.size,
+    ...t.tiles,
+    t.lastPosStamped,
+  ]),
+];
+function runTLM(name, ops) {
+  const played = [];
+  for (const [k, ...a] of ops) {
+    let args;
+    let res;
+    if (k === 0) {
+      args = [a[0], a[1]];
+      tlmMgr = new TLM.TrailManager(a[0], a[1]);
+      res = [0];
+    } else if (k === 1) {
+      const [units, tracked] = a;
+      args = [
+        units.length,
+        ...units.flatMap(([id, tlen, type, owner, pos, lastPos]) => [id, ...encS(type), owner, pos, lastPos]),
+        tracked.length,
+        ...tracked,
+      ];
+      tlmMgr.update(
+        new Map(
+          units.map(([id, , type, owner, pos, lastPos]) => [
+            id,
+            { unitType: type, ownerID: owner, pos, lastPos },
+          ]),
+        ),
+        tracked,
+      );
+      res = [0];
+    } else if (k === 2) {
+      args = [];
+      tlmMgr.clearDirtyRows();
+      res = [0];
+    } else if (k === 3) {
+      args = [];
+      tlmMgr.reset();
+      res = [0];
+    } else if (k === 4) {
+      args = [];
+      res = tlmDumpState();
+    } else if (k === 5) {
+      args = [];
+      res = tlmDumpTrails();
+    } else if (k === 6) {
+      args = [];
+      res = [tlmMgr.dirtyRowMin, tlmMgr.dirtyRowMax];
+    } else if (k === 7) {
+      args = [];
+      res = [TLM.NUKE_TRAIL_BIT];
+    } else throw new Error("tlm: bad op kind " + k);
+    played.push({ kind: k, args: args.flat().map(uenc), res: res.flat().map(uenc) });
+  }
+  tlmScenarios.push({ name: `${name}_${tlmIdx++}`, ops: played });
+}
+runTLM("tlm_constants", [[7]]);
+runTLM("tlm_stamp_move_die", [
+  [0, 10, 10],
+  // boat first-sighting stamps POS (not lastPos); value = owner only
+  [1, [[1, 5, "Warship", 5, 55, 50]], [1]],
+  [4], [5], [6],
+  // nuke first-sighting stamps LASTPOS; value = owner | 4096
+  [1, [[1, 5, "Warship", 5, 55, 50], [2, 11, "Atom Bomb", 6, 66, 23]], [1, 2]],
+  [4], [5],
+  // boat bresenham 55 -> 58 (row 5 straight east, 4 tiles)
+  [1, [[1, 5, "Warship", 5, 58, 55], [2, 11, "Atom Bomb", 6, 66, 23]], [1, 2]],
+  [4], [5], [6],
+  // boat dies: its 4 tiles drop 1 -> 0 -> stamped 0 (nuke tile 23 survives)
+  [1, [[2, 11, "Atom Bomb", 6, 66, 23]], [2]],
+  [4], [5], [6],
+]);
+runTLM("tlm_overlap_keeps_value", [
+  [0, 10, 10],
+  [1, [[1, 5, "Warship", 3, 0, 0]], [1]], // A stamps 0
+  [1, [[1, 5, "Warship", 3, 1, 0], [2, 5, "Warship", 4, 1, 1]], [1, 2]], // A walks to 1, B stamps 1 with value 4 (OVERWRITES)
+  [4], [5],
+  [1, [[1, 5, "Warship", 3, 1, 1]], [1]], // B dies: tile 1 count 2 -> 1, NO stamp — keeps 4
+  [4],
+  [1, [], []], // A dies: tiles 0 and 1 drop to 0 -> both stamped 0
+  [4], [5],
+]);
+runTLM("tlm_oob_refs", [
+  [0, 10, 10],
+  // Infinity head: claim/stamp write dropped, row ToInt32(Inf/10)=0 dirties
+  [1, [[1, 8, "Warship", 7, Infinity, 0]], [1]],
+  [4], [5], [6],
+  // fractional 0.5 head: same drop semantics
+  [1, [[1, 8, "Warship", 7, Infinity, 0], [2, 5, "Warship", 8, 0.5, 0.5]], [1, 2]],
+  [4], [5], [6],
+  // -1 head === the first-sighting sentinel: re-claims every tick (Set dedups,
+  // count never double-increments)
+  [1, [[1, 8, "Warship", 7, Infinity, 0], [2, 5, "Warship", 8, 0.5, 0.5], [3, 5, "Warship", 9, -1, -1]], [1, 2, 3]],
+  [1, [[1, 8, "Warship", 7, Infinity, 0], [2, 5, "Warship", 8, 0.5, 0.5], [3, 5, "Warship", 9, -1, -1]], [1, 2, 3]],
+  [4], [5],
+  // death releases the OOB refs: --counts[Inf] -> undefined -> NaN !== 0
+  [1, [], []],
+  [4], [6],
+]);
+runTLM("tlm_nuke_follows_lastpos", [
+  [0, 10, 10],
+  [1, [[3, 12, "Hydrogen Bomb", 9, 88, 21]], [3]], // stamps lastPos 21, NOT pos 88
+  [4], [5],
+  [1, [[3, 12, "Hydrogen Bomb", 9, 99, 31]], [3]], // bresenham 21 -> 31
+  [4], [5], [6],
+]);
+runTLM("tlm_clear_dirty_reset", [
+  [0, 10, 10],
+  [6], // fresh manager: Infinity / -1
+  [1, [[1, 5, "Warship", 1, 55, 55]], [1]],
+  [6],
+  [2], // clearDirtyRows
+  [6],
+  [1, [[1, 5, "Warship", 1, 56, 55]], [1]],
+  [6],
+  [3], // reset: arrays zeroed, trails gone, dirty re-seeded
+  [4], [5], [6],
+]);
+
+// ---- S9: RailroadCache.ts (rlc_) ----------------------------------------------
+// Kind table (matches `railroad_cache::RigHarness::run_op`): 0 construct
+// [mapW, mapH]; 1 apply [nc, (id, t, (ref)*t)*nc, ns, (orig, new1, new2, t1,
+// (ref)*t1, t2, (ref)*t2)*ns, nd, (id)*nd]; 2 clearDirty; 3 reset; 4 dumpState
+// (nonzero railroadState + dirty + revealed); 5 dumpRailroads; 6
+// getRailroadTileRefs [m, (id)*m] -> [t, (ref)*t]; 7 computeRailTiles [w, n,
+// (ref)*n] -> [n, (ref, type)*n]; 8 dumpRefCount (Map insertion order).
+const rlcScenarios = [];
+let rlcIdx = 0;
+let rlcCache = null;
+const rlcDumpState = () => {
+  const nz = [...rlcCache.railroadState.entries()].filter(([, v]) => v !== 0);
+  return [
+    nz.length,
+    ...nz.flat(),
+    rlcCache.railroadDirty ? 1 : 0,
+    rlcCache.revealedRailTiles.length,
+    ...rlcCache.revealedRailTiles,
+  ];
+};
+function runRLC(name, ops) {
+  const played = [];
+  for (const [k, ...a] of ops) {
+    let args;
+    let res;
+    if (k === 0) {
+      args = [a[0], a[1]];
+      rlcCache = new RLC.RailroadCache(a[0], a[1]);
+      res = [0];
+    } else if (k === 1) {
+      const [constructs, snaps, destructs] = a;
+      args = [
+        constructs.length,
+        ...constructs.flatMap(([id, tiles]) => [id, tiles.length, ...tiles]),
+        snaps.length,
+        ...snaps.flatMap(([o, n1, n2, t1, t2]) => [o, n1, n2, t1.length, ...t1, t2.length, ...t2]),
+        destructs.length,
+        ...destructs,
+      ];
+      const gu = { updates: {} };
+      if (constructs.length) {
+        gu.updates[GUPD.GameUpdateType.RailroadConstructionEvent] = constructs.map(
+          ([id, tiles]) => ({ id, tiles }),
+        );
+      }
+      if (snaps.length) {
+        gu.updates[GUPD.GameUpdateType.RailroadSnapEvent] = snaps.map(
+          ([o, n1, n2, t1, t2]) => ({ originalId: o, newId1: n1, newId2: n2, tiles1: t1, tiles2: t2 }),
+        );
+      }
+      if (destructs.length) {
+        gu.updates[GUPD.GameUpdateType.RailroadDestructionEvent] = destructs.map((id) => ({ id }));
+      }
+      rlcCache.apply(gu);
+      res = [0];
+    } else if (k === 2) {
+      args = [];
+      rlcCache.clearDirty();
+      res = [0];
+    } else if (k === 3) {
+      args = [];
+      rlcCache.reset();
+      res = [0];
+    } else if (k === 4) {
+      args = [];
+      res = rlcDumpState();
+    } else if (k === 5) {
+      args = [];
+      const rr = rlcCache.getRailroads();
+      res = [rr.size, ...[...rr].flatMap(([id, t]) => [id, t.length, ...t])];
+    } else if (k === 6) {
+      args = [a[0].length, ...a[0]];
+      const refs = rlcCache.getRailroadTileRefs(a[0]);
+      res = [refs.length, ...refs];
+    } else if (k === 7) {
+      args = [a[0], a[1].length, ...a[1]];
+      const tiles = RLC.computeRailTiles(a[1], a[0]);
+      res = [tiles.length, ...tiles.flatMap((t) => [t.ref, t.type])];
+    } else if (k === 8) {
+      args = [];
+      res = [rlcCache.tileRefCount.size, ...[...rlcCache.tileRefCount].flatMap(([r, v]) => [r, v])];
+    } else throw new Error("rlc: bad op kind " + k);
+    played.push({ kind: k, args: args.flat().map(uenc), res: res.flat().map(uenc) });
+  }
+  rlcScenarios.push({ name: `${name}_${rlcIdx++}`, ops: played });
+}
+runRLC("rlc_orient_extremes", [
+  [0, 10, 10],
+  [7, 10, []], // empty -> []
+  [7, 10, [5]], // single -> VERTICAL
+  [7, 10, [0, 10, 20]], // vertical run
+  [7, 10, [1, 2, 3]], // horizontal run
+  [7, 10, [0, 11]], // diagonal extremity -> VERTICAL fallback
+]);
+runRLC("rlc_orient_corners", [
+  [0, 10, 10],
+  [7, 10, [11, 21, 20]], // TOP_LEFT (dx1=0,dx2=-1,dy1=1)
+  [7, 10, [10, 20, 21]], // TOP_RIGHT (dx1=0,dx2=1,dy1=1)
+  [7, 10, [20, 10, 11]], // BOTTOM_RIGHT (dx1=0,dx2=1,dy1=-1)
+  [7, 10, [21, 11, 10]], // BOTTOM_LEFT (dx1=0,dx2=-1,dy1=-1)
+  [7, 10, [10, 11, 1]], // TOP_LEFT (dx1=1,dx2=0,dy2=-1)
+  [7, 10, [11, 10, 0]], // TOP_RIGHT (dx1=-1,dx2=0,dy2=-1)
+  [7, 10, [0, 1, 11]], // BOTTOM_LEFT (dx1=1,dx2=0,dy2=1)
+  [7, 10, [1, 0, 10]], // BOTTOM_RIGHT (dx1=-1,dx2=0,dy2=1)
+  [7, 10, [0, 11, 22]], // diagonal middle -> VERTICAL fallback
+]);
+runRLC("rlc_anim_two_sided", [
+  [0, 10, 10],
+  // 8-tile vertical railroad: head/tail advance 3+3, then the <=6 fast close
+  [1, [[1, [0, 10, 20, 30, 40, 50, 60, 70]]], [], []],
+  [4], [5], [8],
+  [1, [], [], []],
+  [4],
+  [1, [], [], []], // complete now -> tick no-op, revealed cleared
+  [4],
+]);
+runRLC("rlc_snap_and_shared", [
+  [0, 10, 10],
+  [1, [[1, [0, 1]]], [], []], // construct anim (not complete)
+  [1, [], [], [1]], // destruct -> unconditional dirty
+  [2],
+  [4],
+  // snap: remove original + two COMPLETE adds; tiles share ref 1 -> count 2
+  [1, [], [[1, 2, 3, [0, 1], [1, 2]]], []],
+  [4], [5], [8],
+  [6, [2, 99, 3]], // unknown id contributes nothing
+  [1, [], [], [2]], // destruct 2: tile 0 clears, tile 1 count 2 -> 1 KEEPS value
+  [4], [8],
+  [2], // clearDirty FIRST, then the unknown destruct must NOT re-dirty
+  [1, [], [], [99]],
+  [4],
+]);
+runRLC("rlc_reset", [
+  [0, 10, 10],
+  [1, [[1, [0, 10]], [2, [5]]], [], []],
+  [3],
+  [4], [5], [8],
+]);
+
+// ---- S9: PlayerProfileUrl.ts (ppu_) ------------------------------------------
+// Stateless: kind 0 [blen, (base)*, plen, (publicId)*] -> [len, (charcode)*].
+// The capture scripts globalThis.__PPU_BASE before each call (the Rust twin
+// takes the base as an argument).
+const ppuScenarios = [];
+let ppuIdx = 0;
+function runPPU(name, cases) {
+  const played = [];
+  for (const [base, pid] of cases) {
+    globalThis.__PPU_BASE = base;
+    const res = PPU.playerProfileUrl(pid);
+    played.push({
+      kind: 0,
+      args: [...encS(base), ...encS(pid)].map(uenc),
+      res: encS(res).map(uenc),
+    });
+  }
+  ppuScenarios.push({ name: `${name}_${ppuIdx++}`, ops: played });
+}
+runPPU("ppu_plain", [
+  ["https://openfront.io/", "abc123"],
+  ["https://openfront.io/", ""], // empty publicID -> bare suffix
+]);
+runPPU("ppu_reserved", [
+  ["https://openfront.io/", "a#b&c%d"], // # & % all escape
+  ["https://openfront.io/", "a b*c(d)e'f"], // space escapes; * ( ) ' unreserved
+  ["https://openfront.io/", "a-b_c.d!~"], // the rest of the unreserved set
+]);
+runPPU("ppu_unicode", [
+  ["https://openfront.io/", "café"], // 2-byte UTF-8 -> %C3%A9
+  ["https://openfront.io/", "😀"], // 4-byte UTF-8 -> %F0%9F%98%80
+  ["https://openfront.io/", "日本"], // 3-byte -> %E6%97%A5%E6%9C%AC
+]);
+runPPU("ppu_desktop_base", [
+  // The OPE bug the module comment calls out: an app:// base rides through
+  // untouched (shareBase() is the contract, not window.location).
+  ["app://openfront/index.html", "pid"],
+  ["", "x"], // empty base
+]);
+
+// ---- S9: PagePin.ts (ppn_) ----------------------------------------------------
+// Kind table (matches `page_pin::RigHarness::run_op`): 0 setup [mode, plen,
+// (path)*] (mode 1 = the facade THROWS); 1 pagePin -> codec; 2 capturePagePin;
+// 3 resetPagePinForTests; 4 facadeCalls -> [count]. The module latch is reset
+// through the module's own resetPagePinForTests() (mirrors the Rust full
+// harness reset: latch undefined, counter zeroed).
+const ppnScenarios = [];
+let ppnIdx = 0;
+function runPPN(name, ops) {
+  const played = [];
+  for (const [k, ...a] of ops) {
+    let args;
+    let res;
+    if (k === 0) {
+      const [mode, path] = a;
+      args = [mode, ...encS(path)];
+      ppnMode = mode;
+      ppnPath = path;
+      ppnCalls = 0;
+      PPN.resetPagePinForTests();
+      res = [0];
+    } else if (k === 1) {
+      args = [];
+      res = encVal(PPN.pagePin());
+    } else if (k === 2) {
+      args = [];
+      PPN.capturePagePin();
+      res = [0];
+    } else if (k === 3) {
+      args = [];
+      PPN.resetPagePinForTests();
+      res = [0];
+    } else if (k === 4) {
+      args = [];
+      res = [ppnCalls];
+    } else throw new Error("ppn: bad op kind " + k);
+    played.push({ kind: k, args: args.flat().map(uenc), res: res.flat().map(uenc) });
+  }
+  ppnScenarios.push({ name: `${name}_${ppnIdx++}`, ops: played });
+}
+runPPN("ppn_pinned_lazy", [
+  [0, 0, "/v/abc1234/game/1"],
+  [1], // "abc1234" — one facade read
+  [4], // 1
+  [1], // latch: NO second facade read
+  [4], // still 1
+]);
+runPPN("ppn_unpinned", [
+  [0, 0, "/game/1"],
+  [1], // null
+  [4],
+]);
+runPPN("ppn_throwing_host", [
+  [0, 1, "/v/whatever"], // facade throws (no window)
+  [1], // null via the catch
+  [4], // one attempted read
+]);
+runPPN("ppn_capture_rereads", [
+  [0, 0, "/v/deadbeef/game/1"],
+  [1], // deadbeef, calls 1
+  [2], // capturePagePin: drop + read now -> calls 2
+  [4],
+  [1], // still deadbeef, no extra call
+  [4],
+]);
+runPPN("ppn_reset_rereads", [
+  [0, 0, "/v/1111111/x"],
+  [1],
+  [3], // resetPagePinForTests
+  [1], // re-reads -> calls 2
+  [4],
+]);
+runPPN("ppn_edge_paths", [
+  [0, 0, "/v/"], // empty commit segment -> null
+  [4],
+  [0, 0, "/v/abc"], // no trailing slash -> commit abc
+  [1],
+  [0, 0, "/v/abc1234def/game/1"], // full commit, NOT shortened
+  [1],
+  [0, 0, "/v"], // not a /v/ prefix -> null
+  [1],
+  [0, 0, ""], // empty pathname -> null
+  [1],
+]);
+
+// ---- S9: CreatorCode.ts (ccc_) -------------------------------------------------
+// Kind table (matches `creator_code::RigHarness::run_op`): 0 setup
+// [...codec(pathname), ...codec(search), ...codec(hash), n, (now)*n,
+// ...codec(initStorage)]; 1 stash [...codec(code)] -> [traceLen,(trace)*];
+// 2 take -> [...codec(result), traceLen,(trace)*]; 3 normalize; 4 parsePath;
+// 5 consume -> [traceLen,(trace)*]; 6 resume -> [...codec(bool),
+// traceLen,(trace)*]; 7 constants -> [klen,(key)*,TTL_MS]; 8 dumpStorage.
+// Trace codes: 74 getItem, 75 setItem, 76 removeItem, 77 replaceState,
+// 78 pathname, 79 search, 80 hash, 81 Date.now, 82 open callback.
+const cccScenarios = [];
+let cccIdx = 0;
+function runCCC(name, ops) {
+  const played = [];
+  for (const [k, ...a] of ops) {
+    let args;
+    let res;
+    if (k === 0) {
+      const [pathname, search, hash, nows, initStorage] = a;
+      args = [...encVal(pathname), ...encVal(search), ...encVal(hash), nows.length, ...nows, ...encVal(initStorage)];
+      cccLoc = { pathname, search, hash };
+      cccNows = [...nows];
+      cccStorage = initStorage;
+      cccTrace = [];
+      res = [0];
+    } else if (k === 1) {
+      args = [...encS(a[0])];
+      cccTrace = [];
+      CCC.stashPendingCreatorCode(a[0]);
+      res = [cccTrace.length, ...cccTrace];
+    } else if (k === 2) {
+      args = [];
+      cccTrace = [];
+      const v = CCC.takePendingCreatorCode();
+      res = [...encVal(v), cccTrace.length, ...cccTrace];
+    } else if (k === 3) {
+      args = [...encS(a[0])];
+      res = encVal(CCC.normalizeCreatorCodeInput(a[0]));
+    } else if (k === 4) {
+      args = [...encS(a[0])];
+      res = encVal(CCC.parseCreatorCodePath(a[0]));
+    } else if (k === 5) {
+      args = [];
+      cccTrace = [];
+      CCC.consumeCreatorCodePath();
+      res = [cccTrace.length, ...cccTrace];
+    } else if (k === 6) {
+      args = [];
+      cccTrace = [];
+      const v = CCC.resumePendingCreatorCode((code) => cccTrace.push(82, ...encS(code)));
+      res = [...encVal(v), cccTrace.length, ...cccTrace];
+    } else if (k === 7) {
+      args = [];
+      res = [...encS(CCC.PENDING_CREATOR_CODE_KEY), CCC.PENDING_CREATOR_CODE_TTL_MS];
+    } else if (k === 8) {
+      args = [];
+      res = encVal(cccStorage);
+    } else throw new Error("ccc: bad op kind " + k);
+    played.push({ kind: k, args: args.flat().map(uenc), res: res.flat().map(uenc) });
+  }
+  cccScenarios.push({ name: `${name}_${cccIdx++}`, ops: played });
+}
+const TTL = 7 * 24 * 60 * 60 * 1000;
+runCCC("ccc_constants", [[7]]);
+runCCC("ccc_normalize", [
+  [3, "  ab12  "], // trim + upper -> AB12
+  [3, "ß"], // ß -> SS (length 2) -> too short
+  [3, "ﬅx"], // ﬅ -> ST, +x -> STX valid (length CHANGE passes)
+  [3, "a".repeat(22)], // 22 chars pass
+  [3, "a".repeat(23)], // 23 fail
+  [3, "a b"], // space fails the charset AFTER uppercasing
+  [3, "  "], // empty after trim
+  [3, "\u0085x"], // NEL is NOT JS whitespace -> stays -> charset fail
+  [3, "\ufeffAB_"], // BOM IS trimmed -> AB_ passes
+  [3, "AB-_9"], // full charset
+]);
+runCCC("ccc_parse_path", [
+  [4, "/c/ABC"],
+  [4, "/c/ABC/"], // trailing slash: [^/]+ then $ fails
+  [4, "/c/"], // empty segment
+  [4, "/C/abc"], // case-sensitive prefix
+  [4, "/c/a%2Fb"], // decodes to a/b -> slash fail
+  [4, "/c/a%20b"], // decodes to "a b" (raw segment returned, normalize rejects later)
+  [4, "/c/%"], // decodeURIComponent throws -> RAW fallback -> "%"
+  [4, "/c/%zz"], // throws -> raw "%zz"
+  [4, "/c/%41"], // -> "A"
+  [4, "/c/abc%0A"], // decodes "abc\n"; greedy [^/]+ eats it, $ = end-of-input
+  [4, "/game/1"],
+  [4, ""],
+  [4, "//c/x"],
+]);
+runCCC("ccc_stash_take_roundtrip", [
+  [0, "/", "", "", [1000, 1500], null],
+  [1, "ABC"], // 81 now=1000, 75 key + {"code":"ABC","stashedAt":1000}
+  [8], // dump the EXACT stringify bytes (key order code, stashedAt)
+  [2], // 74 + 5 raw + 76 + 81 now=1500 -> diff 500 <= TTL -> "ABC"
+  [8], // consumed -> null
+]);
+runCCC("ccc_take_expired_and_exact_ttl", [
+  [0, "/", "", "", [0, TTL + 1], null],
+  [1, "XYZ"], // stashedAt 0
+  [2], // now TTL+1: diff > TTL strict -> null (consumed anyway)
+  [0, "/", "", "", [0, TTL], null],
+  [1, "XYZ"],
+  [2], // diff === TTL: strict > false -> SURVIVES
+]);
+runCCC("ccc_take_legacy_raw", [
+  [0, "/", "", "", [], "rawstring"], // JSON.parse throws
+  [2], // 74 + 5 + 76 -> null; NO 81 (throw falls through)
+  [8],
+]);
+runCCC("ccc_take_malformed_json", [
+  [0, "/", "", "", [], '{"code":'],
+  [2], // throws -> null, no 81
+]);
+runCCC("ccc_take_nonnumeric_stashedat", [
+  [0, "/", "", "", [42], '{"code":"ABC","stashedAt":"100"}'],
+  [2], // typeof stashedAt !== number short-circuits the || BEFORE Date.now
+  // -> NO 81 event, the now queue still holds 42
+  [8],
+  [1, "Q"], // stash pops the UNTOUCHED 42
+]);
+runCCC("ccc_take_array_object", [
+  [0, "/", "", "", [], "[1,2]"], // typeof object && !== null passes the gate
+  [2], // stashedAt undefined -> null, no 81
+]);
+runCCC("ccc_take_null_and_number", [
+  [0, "/", "", "", [], "null"],
+  [2], // typeof object but === null -> gate fails
+  [0, "/", "", "", [], "42"],
+  [2], // typeof number -> gate fails
+  [0, "/", "", "", [], "{}"],
+  [2], // empty object passes gate, stashedAt undefined -> null
+]);
+runCCC("ccc_take_code_field", [
+  [0, "/", "", "", [0, 1], '{"stashedAt":0}'],
+  [2], // stashedAt ok, code undefined -> null (81 DID fire)
+  [0, "/", "", "", [0, 1], '{"code":5,"stashedAt":0}'],
+  [2], // code non-string -> null
+  [0, "/", "", "", [0, 1], '{"code":"A","code":"ABC","stashedAt":0}'],
+  [2], // duplicate key: last value wins -> "ABC"
+]);
+runCCC("ccc_take_absent", [
+  [0, "/", "", "", [], null],
+  [2], // getItem null -> early return BEFORE removeItem: [74, 2] only
+]);
+runCCC("ccc_consume_noop", [
+  [0, "/game/1", "?a=1", "#h", [], null],
+  [5], // pathname read (78), segment null -> early return: NO 79/80/77
+]);
+runCCC("ccc_consume_valid", [
+  [0, "/c/abc", "?x=1", "#h", [7], null],
+  [5], // 78, 81+75 (stash), 79, 80, 77 "/?x=1#h"
+  [8], // stashed "ABC" at now 7
+]);
+runCCC("ccc_consume_invalid_still_strips", [
+  [0, "/c/$$bad", "", "", [], null],
+  [5], // segment "$$bad" normalizes to null -> NO stash, but strip still runs
+]);
+runCCC("ccc_consume_empty_pathname", [
+  [0, "", "", "", [], null],
+  [5], // pathname "" -> parse null -> early return
+]);
+runCCC("ccc_resume_hit", [
+  [0, "/", "", "", [1000, 1001], null],
+  [1, "QRS"],
+  [6], // take succeeds -> 82 open("QRS"), res true
+]);
+runCCC("ccc_resume_miss", [
+  [0, "/", "", "", [], null],
+  [6], // getItem null -> false, trace [74, 2]
+]);
+
 const structures = {
   votetally: vtScenarios,
   rankedcheckin: rgScenarios,
@@ -14274,6 +15094,12 @@ const structures = {
   playerstatus: pstScenarios,
   relationmatrix: rmxScenarios,
   terrainrowspans: trsScenarios,
+  spiraltrails: stpScenarios,
+  trailmanager: tlmScenarios,
+  railroadcache: rlcScenarios,
+  playerprofileurl: ppuScenarios,
+  pagepin: ppnScenarios,
+  creatorcode: cccScenarios,
 };
 
 // ================================================================ JSON
@@ -17299,6 +18125,62 @@ opStream(
     "/// `terrain_row_spans::run_op` docs). kind 0 build [mapW,n,(ref)*n] ->\n" +
     "/// rects + bytes (terrainByteAt = (ref*7+3)&0xff on both sides), 1 the\n" +
     "/// merge constants, 2 byte probes.",
+);
+
+// ---- S9 render/frame stateful classes + client facade emitters ---------------
+opStream(
+  "spiraltrails",
+  "Stp",
+  "/// One `client/render/frame/SpiralTrails.ts` op (see\n" +
+    "/// `spiral_trails::RigHarness::run_op` docs). kind 0 construct [mapW],\n" +
+    "/// 1 setParams (strands clamp via Math.round/max/min, NaN propagates),\n" +
+    "/// 2 clearParams, 3 update (units + trackedIds), 4 dumpRibbons (samples\n" +
+    "/// f32-widened), 5 dumpParams, 6 constants.",
+);
+opStream(
+  "trailmanager",
+  "Tlm",
+  "/// One `client/render/frame/TrailManager.ts` op (see\n" +
+    "/// `trail_manager::RigHarness::run_op` docs). kind 0 construct\n" +
+    "/// [mapW,mapH], 1 update, 2 clearDirtyRows, 3 reset, 4 dumpState\n" +
+    "/// (nonzero trailState + trailCounts pairs), 5 dumpTrails, 6 dumpDirty,\n" +
+    "/// 7 constants [NUKE_TRAIL_BIT].",
+);
+opStream(
+  "railroadcache",
+  "Rlc",
+  "/// One `client/render/frame/RailroadCache.ts` op (see\n" +
+    "/// `railroad_cache::RigHarness::run_op` docs). kind 0 construct,\n" +
+    "/// 1 apply [constructs|snaps|destructs slices], 2 clearDirty, 3 reset,\n" +
+    "/// 4 dumpState (nonzero railroadState + dirty + revealed), 5\n" +
+    "/// dumpRailroads, 6 getRailroadTileRefs, 7 computeRailTiles, 8\n" +
+    "/// dumpRefCount.",
+);
+opStream(
+  "playerprofileurl",
+  "Ppu",
+  "/// One `client/utilities/PlayerProfileUrl.ts` op (see\n" +
+    "/// `player_profile_url::run_op` docs). kind 0 playerProfileUrl\n" +
+    "/// [base, publicId] (codec strings) -> the joined URL (shareBase\n" +
+    "/// scripted through __PPU_BASE).",
+);
+opStream(
+  "pagepin",
+  "Ppn",
+  "/// One `client/PagePin.ts` op (see `page_pin::RigHarness::run_op` docs).\n" +
+    "/// kind 0 setup [mode, path] (mode 1 = the __PPN_PATH facade THROWS),\n" +
+    "/// 1 pagePin -> codec, 2 capturePagePin, 3 resetPagePinForTests, 4\n" +
+    "/// facadeCalls (pins the lazy latch read count).",
+);
+opStream(
+  "creatorcode",
+  "Ccc",
+  "/// One `client/CreatorCode.ts` op (see `creator_code::RigHarness::run_op`\n" +
+    "/// docs). kind 0 setup [pathname, search, hash, nowQueue, initStorage]\n" +
+    "/// (codec), 1 stash, 2 take, 3 normalize, 4 parsePath, 5 consume, 6\n" +
+    "/// resume, 7 constants, 8 dumpStorage. Facade events ride the res\n" +
+    "/// trace: 74 getItem, 75 setItem, 76 removeItem, 77 replaceState, 78\n" +
+    "/// pathname, 79 search, 80 hash, 81 Date.now, 82 open callback.",
 );
 
 const dataDir = join(root, "crates", "core", "tests", "data");

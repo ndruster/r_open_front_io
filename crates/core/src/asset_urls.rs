@@ -219,8 +219,8 @@ pub fn run_op(kind: u8, args: &[f64]) -> Vec<f64> {
 
 /// `encodeURIComponent` with JS semantics over a well-formed UTF-8 string:
 /// the unreserved set passes through, every other byte becomes uppercase
-/// `%XX` of its UTF-8 encoding.
-fn encode_uri_component(s: &str) -> String {
+/// `%XX` of its UTF-8 encoding. Shared with `player_profile_url`.
+pub(crate) fn encode_uri_component(s: &str) -> String {
     let unreserved = |b: u8| {
         b.is_ascii_alphanumeric()
             || matches!(b, b'-' | b'_' | b'.' | b'!' | b'~' | b'*' | b'\'' | b'(' | b')')

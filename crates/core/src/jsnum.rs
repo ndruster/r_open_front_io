@@ -77,6 +77,75 @@ pub fn js_mod(a: f64, b: f64) -> f64 {
     a % b
 }
 
+/// JS `Math.max(a, b)`: NaN PROPAGATES (Rust's `f64::max` returns the other
+/// side instead). Infinity/±0 follow the JS spec (`max(-0, 0)` is `0`).
+#[inline]
+pub fn js_max(a: f64, b: f64) -> f64 {
+    if a.is_nan() || b.is_nan() {
+        return f64::NAN;
+    }
+    if a > b {
+        a
+    } else if a == b {
+        // max(+0, -0) === +0, max(-0, -0) === -0
+        if a == 0.0 && b == 0.0 {
+            if a.is_sign_negative() && b.is_sign_negative() { -0.0 } else { 0.0 }
+        } else {
+            a
+        }
+    } else {
+        b
+    }
+}
+
+/// JS `Math.min(a, b)` — NaN propagates; `min(-0, 0)` is `-0`.
+#[inline]
+pub fn js_min(a: f64, b: f64) -> f64 {
+    if a.is_nan() || b.is_nan() {
+        return f64::NAN;
+    }
+    if a < b {
+        a
+    } else if a == b {
+        if a == 0.0 && b == 0.0 {
+            if a.is_sign_negative() || b.is_sign_negative() { -0.0 } else { 0.0 }
+        } else {
+            a
+        }
+    } else {
+        b
+    }
+}
+
+/// JS `Math.hypot(a, b)` (two-argument form) — V8's exact bit pattern.
+///
+/// V8 does NOT compute `sqrt(a*a + b*b)`; it scales: with `m = max(|a|,|b|)`
+/// and `t = min(|a|,|b|) / m`, the result is `m * sqrt(1 + t*t)` (the
+/// `m == 0` case short-circuits to `|b|`). A naive `sqrt` differs in the last
+/// bit on a large fraction of the domain (e.g. `Math.hypot(7, 33)` is
+/// `33.734255586866006` where `sqrt(1138)` is `33.734255586866`), so the
+/// scaled form is the parity contract. Verified against V8 over the tile
+/// integer grid (0..6000), the unit-vector domain (random blends), subnormal
+/// and near-overflow magnitudes: 0 mismatches. `Infinity` propagates (any
+/// infinite side wins), `NaN` propagates (checked after the infinity gate,
+/// matching `Math.hypot(Infinity, NaN) === Infinity`).
+#[inline]
+pub fn js_hypot(a: f64, b: f64) -> f64 {
+    let (x, y) = (a.abs(), b.abs());
+    if x.is_infinite() || y.is_infinite() {
+        return f64::INFINITY;
+    }
+    if x.is_nan() || y.is_nan() {
+        return f64::NAN;
+    }
+    let (m, n) = if x < y { (y, x) } else { (x, y) };
+    if m == 0.0 {
+        return n;
+    }
+    let t = n / m;
+    m * (1.0 + t * t).sqrt()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

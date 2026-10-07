@@ -2062,6 +2062,39 @@ WebSockets — stays excluded, mirroring the `src/core` exclusions).
     reads / 0 SDK calls → `"web"`; present → 3 reads / 1 SDK call →
     `"crazygames"` / `"web"`).
     8 scenarios (`b64_` 3, `mtl_` 2, `hbi_` 2, `cpl_` 1).
+75. **`client/render/gl/utils/EffectPalette.ts` + `client/NewsMarkdown.ts`**
+    (`effect_palette`, `news_markdown`) — the S15 batch-C tail (the two
+    items S15 kept "pending judgement").
+    `EffectPalette` — `parseEffectColors` / `packEffectEntry` /
+    `EFFECT_ENTRY_FLOATS` with `colord` OUT of the port graph: the capture
+    imports the REAL vendored colord 2.9.3 (`tools/vendor/colord/`, the
+    package-lock-locked ESM entry) and scripts every distinct input string's
+    `(isValid, r, g, b)` into a facade table the Rust twin replays.
+    Plugin-less colord: named colors / hwb / cmyk / lab / lch / xyz and
+    non-strings are ALL invalid; hex 3/4/6/8 valid, 5/7 invalid; `rgb()`
+    rounds and clamps. `r/255` IEEE then the f32 store. `packEffectEntry`:
+    the `?? 0` intercepts ONLY nullish (absent / undefined / null → 0) — a
+    non-nullish Object scalar reads `NaN` and an Array goes through
+    ToPrimitive → `join(",")` → string ToNumber (`[]`→0, `[5]`→5,
+    `[1,2]`→NaN, `[true]`→NaN via the string path), pinned by the V8 golden;
+    the out-of-domain `attrs.type` else-branch still reads `colorSize` /
+    `movementSpeed`; `c ? c[k] : 0` keeps a truthy row's zero channel.
+    `NewsMarkdown` — `normalizeNewsMarkdown`'s four-`.replace` chain with a
+    HAND-WRITTEN regex subset (the S12 lookbehind exclusion is void — no
+    general engine), all on UTF-16 units. Regex 1 per-line bold-header →
+    `## ` (lazy double-group: the first ` **` whose tail reaches a
+    line-final `**` wins, `.+?` ≥ 1). Regex 2 PR urls: the `(?<!\()` is a
+    plain "previous unit is not `(`" test (string start passes), the trailing
+    `\b` after the greedy `\d+` can never be rescued by shrinking
+    (`…/pull/123abc` misses, `…/pull/123.4` captures `123`). Regex 3 compare
+    urls: `[\w.-]+` greedy + trailing `\b` backtracks unit-by-unit until the
+    wordness flips (`…/compare/abc.` captures `abc`, `…/compare/-` / `.`
+    never match). Regex 4 mentions: `i` widens the classes but keeps the
+    ORIGINAL case, the prefix group consumes its one unit so `g` overlap
+    makes `@a@b`'s second fail, the username is the LONGEST valid ≤ 39 whose
+    last unit is alphanumeric and whose lookahead is neither word nor `-`
+    (a 40-alphanumeric run has no valid length and misses). 8 scenarios
+    (`ep_` 3, `nm_` 5).
 
 Regenerate whenever a ported source changes:
 
@@ -2095,7 +2128,7 @@ node rust/tools/run_wasm_parity.mjs
 
 `wasm-probe` exposes the ported functions through `extern "C"` scalar
 entrypoints (`src/wasm_probe.rs`); the runner imports `data/vectors.json` and
-compares every value. Last run: **812,518 comparisons, all bit-identical**.
+compares every value. Last run: **815,236 comparisons, all bit-identical**.
 
 ### Windows: the linker environment
 

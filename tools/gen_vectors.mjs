@@ -542,6 +542,8 @@ const B64 = await loadTs("src/core/Base64.ts");
 const MTL = await loadTs("src/server/telemetry/MatchTelemetry.ts");
 const CPL = await loadTs("src/client/ClientPlatform.ts");
 const CGS = await loadTs("src/client/CrazyGamesSDK.ts");
+const EP = await loadTs("src/client/render/gl/utils/EffectPalette.ts");
+const NM = await loadTs("src/client/NewsMarkdown.ts");
 
 const PF = await loadTs("src/core/pathfinding/PathFinder.ts");
 const { AStar } = await loadTs("src/core/pathfinding/algorithms/AStar.ts");
@@ -19248,6 +19250,180 @@ runCPL("cpl_platforms", [
   [false, true, false], // web with window: 3 reads, 1 SDK call
 ]);
 
+// S15 c: EffectPalette.ts — the REAL vendored colord 2.9.3 observes every
+// distinct input string of a batch into the facade table the Rust twin
+// replays. The table entries are (input, isValid, toRgb r/g/b); a non-string
+// element is observed through colord(42)-style calls (invalid, V8-pinned).
+const epScenarios = [];
+// One table row: [encS input, valid 1|0, r, g, b] (the Rust read_table
+// reads the input as a codec string token).
+function epObs(s) {
+  const c = EP_colord(s);
+  if (!c.isValid()) return [0, 0, 0, 0];
+  const { r, g, b } = c.toRgb();
+  return [1, r, g, b];
+}
+// colord is imported from the vendored real package (ts_load rewires the
+// EffectPalette import; the capture needs the same instance).
+const { colord: EP_colord } = await import(
+  pathToFileURL(join(here, "vendor", "colord", "index.mjs")).href
+);
+const epTableTok = (strings) => {
+  const uniq = [...new Set(strings)];
+  return [uniq.length, ...uniq.flatMap((s) => [...encS(s), ...(epObs(s))])];
+};
+function runEP(name, lists, packs) {
+  // lists: array of colors inputs for parseEffectColors (a non-array input
+  // is the JS value itself); packs: array of attrs objects for
+  // packEffectEntry. Both share one observation table over every distinct
+  // string that reaches colord.
+  const allStrings = [];
+  for (const L of lists) if (Array.isArray(L)) allStrings.push(...L.filter((x) => typeof x === "string"));
+  for (const a of packs) if (Array.isArray(a.colors)) allStrings.push(...a.colors.filter((x) => typeof x === "string"));
+  // kind 0 batch: [n, (colors codec)*n, table]
+  const k0args = [lists.length, ...lists.flatMap((L) => encVal(L)), ...epTableTok(allStrings)];
+  const k0res = [];
+  for (const L of lists) {
+    try {
+      const got = EP.parseEffectColors(L);
+      k0res.push([0, got.length, ...got.flat()]);
+    } catch {
+      k0res.push([1]);
+    }
+  }
+  // kind 1 batch: [n, (attrs codec)*n, table]
+  const k1args = [packs.length, ...packs.flatMap((a) => encVal(a)), ...epTableTok(allStrings)];
+  const k1res = [];
+  for (const a of packs) {
+    try {
+      const out = new Float32Array(EP.EFFECT_ENTRY_FLOATS);
+      EP.packEffectEntry(a, out);
+      k1res.push([0, ...Array.from(out)]);
+    } catch {
+      k1res.push([1]);
+    }
+  }
+  epScenarios.push({
+    name,
+    ops: [
+      { kind: 0, args: k0args.flat().map(uenc), res: k0res.flat().map(uenc) },
+      { kind: 1, args: k1args.flat().map(uenc), res: k1res.flat().map(uenc) },
+    ],
+  });
+}
+runEP("ep_parse_basic", [
+  ["#ff0000", "notacolor", "#00ff00"], // mixed valid/invalid
+  ["red", "transparent"], // plugin-less colord: named colors invalid
+  ["#fff", "#ffff", "#fffff", "#ffffff", "#ffffffff", "#fffffffff"], // hex width ladder
+  "not-an-array", // .map TypeError -> [1]
+  undefined, // missing list -> [1]
+  [], // empty list -> [0,0]
+], []);
+runEP("ep_parse_cap_and_rgb", [
+  Array.from({ length: 12 }, (_, i) => `rgb(${i},${i + 1},${i + 2})`), // slice(0,8)
+  ["rgb(1.5, 2.5, 3.5)", "rgb(300,-5,0)", " #ff0000 ", "rgb(1 2 3)"], // rounding / clamp / trim / spaces
+  [42, "#ff0000", null], // non-string elements never throw, just invalid
+], []);
+runEP("ep_pack_styles", [], [
+  { type: "gradient", colors: ["#ff0000", "#00ff00"], colorSize: 1.5, movementSpeed: 3 },
+  { type: "transition", colors: ["#0000ff"], frequency: 0.25 },
+  { type: "spiral", colors: [], rotationSpeed: 7 },
+  { type: "weird", colors: [] }, // out-of-domain: ?? 0 intercepts the missing scalars
+  { type: "gradient", colors: ["#ff0000"], colorSize: "abc", movementSpeed: 2 }, // ToNumber NaN
+  { type: "gradient", colors: ["#ff0000", "#00ff00", "#0000ff", "#fff", "#ffff", "#ffffffff", "rgb(1,2,3)", "rgb(4,5,6)", "#000"] }, // 9 -> cap 8
+  { type: "transition", colors: "nope" }, // attrs.colors non-array -> [1]
+  "not-an-object", // attrs.map TypeError -> [1]
+  // Non-nullish object / array scalars reach the write through ToNumber
+  // (V8-pinned): Obj -> NaN, Arr -> join(",") -> js_number.
+  { type: "gradient", colors: [], colorSize: {}, movementSpeed: [] }, // NaN / 0
+  { type: "transition", colors: [], frequency: [5] }, // "5" -> 5
+  { type: "transition", colors: [], frequency: [1, 2] }, // "1,2" -> NaN
+  { type: "spiral", colors: [], rotationSpeed: ["x"] }, // "x" -> NaN
+  { type: "gradient", colors: [], colorSize: null, movementSpeed: undefined }, // nullish -> 0
+  { type: "gradient", colors: [], colorSize: [true, undefined, null], movementSpeed: [[1, 2]] }, // "true,," -> NaN / "1,2" -> NaN
+  { type: "gradient", colors: [], colorSize: [-0], movementSpeed: [1e21] }, // "-0" -> "0" -> 0 / "1e+21" -> f32
+  { type: "gradient", colors: [], colorSize: [{}], movementSpeed: [NaN] }, // "[object Object]" -> NaN / "NaN" -> NaN
+]);
+
+// S15 c: NewsMarkdown.ts — normalizeNewsMarkdown over the scripted inputs;
+// the Rust hand-rolled engine replays the exact V8 replace chain.
+const nmScenarios = [];
+function runNM(name, inputs) {
+  nmScenarios.push({
+    name,
+    ops: [{
+      kind: 0,
+      args: [inputs.length, ...inputs.flatMap((s) => encS(s))].map(uenc),
+      res: [inputs.length, ...inputs.map((s) => encS(NM.normalizeNewsMarkdown(s))).flat()].map(uenc),
+    }],
+  });
+}
+runNM("nm_headers", [
+  "Title **bold** here", // no line-final ** -> untouched
+  "- bullet **x**", // excluded first char
+  "* star **x**",
+  "  lead **x**",
+  "A **b**", // plain header
+  "A  **b**", // lazy $1 keeps the extra space
+  "A **b**c**", // lazy content: b**c
+  "A **b** **c**", // first split wins: b** **c
+  "A **", // no content
+  "A **b**\nB **c**", // multiline gm
+  "x\r\nA **b**", // \r line terminator
+  "A\u2028B **c**", // U+2028 line sep
+  "A\u2029B **c**", // U+2029
+  "\u000bA **b**", // leading vertical tab is \s -> excluded
+  "## already **x**", // '#' passes [^\-*\s]
+]);
+runNM("nm_pr_urls", [
+  "see https://github.com/openfrontio/OpenFrontIO/pull/123 done",
+  "(https://github.com/openfrontio/OpenFrontIO/pull/123)", // lookbehind hit
+  "xhttps://github.com/openfrontio/OpenFrontIO/pull/123", // leading \b fails
+  "123https://github.com/openfrontio/OpenFrontIO/pull/45",
+  "https://github.com/openfrontio/OpenFrontIO/pull/123abc", // trailing \b unfixed by backtrack
+  "https://github.com/openfrontio/OpenFrontIO/pull/123.4", // \b at the dot
+  "https://github.com/openfrontio/OpenFrontIO/pull/007",
+  "a https://github.com/openfrontio/OpenFrontIO/pull/1 b https://github.com/openfrontio/OpenFrontIO/pull/2", // two g matches
+]);
+runNM("nm_compare_urls", [
+  "https://github.com/openfrontio/OpenFrontIO/compare/v1.2.3-rc",
+  "https://github.com/openfrontio/OpenFrontIO/compare/abc.", // trailing-dot backtrack
+  "https://github.com/openfrontio/OpenFrontIO/compare/v1.2.3.",
+  "https://github.com/openfrontio/OpenFrontIO/compare/-", // single non-word, \b fails
+  "https://github.com/openfrontio/OpenFrontIO/compare/.",
+  "(https://github.com/openfrontio/OpenFrontIO/compare/x)", // lookbehind hit
+  "https://github.com/openfrontio/OpenFrontIO/compare/x_y.z-w next",
+]);
+runNM("nm_mentions", [
+  "hi @bob!",
+  "@bob @alice",
+  "@a@b", // consumed prefix blocks the second
+  "a@b@c", // word prefix blocks both
+  "@BOB", // i flag, original case kept
+  "@bob-", // lookahead '-' blocks
+  "@bob_x", // lookahead word blocks
+  "@us_er", // '_' in name blocks at the underscore
+  `@${"a".repeat(39)} x`, // 39 matches
+  `@${"a".repeat(40)} x`, // 40 blocks entirely
+  "@-bob", // '-' start blocks
+  "`@bob", // backtick prefix blocks
+  "[@bob", // '[' prefix blocks
+  "/@bob", // '/' prefix blocks
+  "line1\n@bob", // ^ multiline prefix
+  "@1a", // digit start
+  "@a-b", "@a--b", // '-' middles
+  "@", // bare @
+  "@a", // single char
+  "x @ab @cd",
+]);
+runNM("nm_chain", [
+  "Release **Notes**\nSee https://github.com/openfrontio/OpenFrontIO/pull/42 by @alice and @bob",
+  "@https://github.com/openfrontio/OpenFrontIO/pull/1", // header untouched, PR converts, mention blocked by the 'e' before '@'? no — '@' is at start
+  "Ref **v1** https://github.com/openfrontio/OpenFrontIO/compare/v1.0.0...v1.1.0 by @maintainer",
+  "**bold** alone", // first char '*' excluded
+  "x **y**\n@user\n(https://github.com/openfrontio/OpenFrontIO/pull/9)",
+]);
+
 const structures = {
   votetally: vtScenarios,
   rankedcheckin: rgScenarios,
@@ -19385,6 +19561,8 @@ const structures = {
   matchtelemetrynoop: mtlScenarios,
   hotbaricons: hbiScenarios,
   clientplatform: cplScenarios,
+  effectpalette: epScenarios,
+  newsmarkdown: nmScenarios,
 };
 
 // ================================================================ JSON
@@ -22785,6 +22963,25 @@ opStream(
     "/// kind 0 [n, (desktop, windowPresent, cg)*n] -> [n, (result 0|1|2,\n" +
     "/// windowReads 0|2|3, sdkCalls 0|1)*n] — the facade-scripted\n" +
     "/// short-circuit order pinned through observable counts.",
+);
+opStream(
+  "effectpalette",
+  "Ep",
+  "/// One `client/render/gl/utils/EffectPalette.ts` op (see\n" +
+    "/// `effect_palette::run_op` docs). kind 0 parseEffectColors batch\n" +
+    "/// [n, (colors list codec)*n, (colord facade table)] -> ([0, k,\n" +
+    "/// (triple)*k] | [1])*n; kind 1 packEffectEntry batch [n, (attrs\n" +
+    "/// codec)*n, (table)] -> ([0, (f32 float)*32] | [1])*n. The table is\n" +
+    "/// [m, (encS input, valid 1|0, r, g, b)*m] observed from the REAL\n" +
+    "/// vendored colord 2.9.3 in V8.",
+);
+opStream(
+  "newsmarkdown",
+  "Nm",
+  "/// One `client/NewsMarkdown.ts` op (see `news_markdown::run_op` docs).\n" +
+    "/// kind 0 normalizeNewsMarkdown batch [n, (encS input)*n] -> [n,\n" +
+    "/// (encS result)*n] — the four-`.replace` chain replayed by the\n" +
+    "/// hand-written engine subset.",
 );
 
 const dataDir = join(root, "crates", "core", "tests", "data");

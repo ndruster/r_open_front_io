@@ -375,6 +375,16 @@
 //!   `typeof window !== "undefined"` gate conjoined with
 //!   `crazyGamesSDK.isOnCrazyGames()` → `"crazygames"`, else `"web"`; the
 //!   host-bound SDK / shell predicates are facades whose call trace is dumped)
+//! * [`effect_palette`] — `src/client/render/gl/utils/EffectPalette.ts`
+//!   (`parseEffectColors` / `packEffectEntry` / `EFFECT_ENTRY_FLOATS`: the
+//!   colord validity + `toRgb` surface is a scripted facade table observed
+//!   from the real colord 2.9.3 package in V8, the `?? 0` intercept and the
+//!   Float32Array f32 store pinned per quirk)
+//! * [`news_markdown`] — `src/client/NewsMarkdown.ts` (`normalizeNewsMarkdown`'s
+//!   four-`.replace` chain: the bold-header `gm` regex, the PR / compare URL
+//!   `g` regexes with the `(?<!\()` lookbehind and trailing `\b` backtrack,
+//!   and the `gim` @mention regex — all through a hand-written engine subset,
+//!   not the `regex` crate)
 //!
 //! Two rules govern every future port into this crate:
 //!
@@ -416,6 +426,7 @@ pub mod desync_detector;
 pub mod detmath;
 pub mod doomsday_clock;
 pub mod effect_editor_state;
+pub mod effect_palette;
 pub mod event_bus;
 pub mod exec_util;
 pub mod execution_manager;
@@ -451,6 +462,7 @@ pub mod name_visibility;
 pub mod nation_creation;
 pub mod nation_emoji;
 pub mod nation_utils;
+pub mod news_markdown;
 pub mod nuke_telegraphs;
 pub mod nuke_trajectory;
 pub mod pathfinding;

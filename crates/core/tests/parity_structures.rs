@@ -4489,3 +4489,19 @@ replay_s12!(
     CPL_SCENARIOS,
     openfront_core::client_platform::run_op
 );
+// client/render/gl/utils/EffectPalette.ts: the colord-facade parse chain
+// (drop-invalid / cap-8 / r/255) and the three-branch pack with the `?? 0`
+// intercept and the Float32Array f32 store.
+replay_s12!(
+    replay_effectpalette_scenarios,
+    EP_SCENARIOS,
+    openfront_core::effect_palette::run_op
+);
+// client/NewsMarkdown.ts: the four-.replace chain over the hand-written
+// engine subset (lazy gm header regex, lookbehind + \b URL regexes, the
+// overlapping gim mention scan).
+replay_s12!(
+    replay_newsmarkdown_scenarios,
+    NM_SCENARIOS,
+    openfront_core::news_markdown::run_op
+);

@@ -71,7 +71,7 @@ fn js_trim(s: &str) -> &str {
 }
 
 /// The JS `\s` set for the collapse regex (same members as js_trim).
-fn is_js_space(c: char) -> bool {
+pub(crate) fn is_js_space(c: char) -> bool {
     matches!(
         c,
         '\t' | '\n'

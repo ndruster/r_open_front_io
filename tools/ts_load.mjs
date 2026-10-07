@@ -4564,6 +4564,29 @@ function prepare(rel) {
     );
   }
 
+  if (rel.endsWith("render/gl/utils/EffectPalette.ts")) {
+    // S15 c: the colord package is not installed in either checkout; the
+    // REAL colord 2.9.3 ESM entry (npm pack of the package-lock pin) is
+    // vendored under tools/vendor/colord so the capture observes the
+    // genuine parser. The ./ColorUtils value import redirects to the
+    // prepared copy (RenderOverrides precedent); the CosmeticSchemas
+    // import is an explicit `import type` -> erased by strip mode.
+    out = must(
+      out,
+      'import { colord } from "colord";\n',
+      `import { colord } from "${pathToFileURL(join(here, "vendor", "colord", "index.mjs")).href}";\n`,
+      "EffectPalette colord import",
+    );
+    const epCuRel = "src/client/render/gl/utils/ColorUtils.ts";
+    if (!prepared.has(epCuRel)) prepare(epCuRel);
+    out = must(
+      out,
+      'import { MAX_TRAIL_COLORS } from "./ColorUtils";\n',
+      `import { MAX_TRAIL_COLORS } from "./${prepared.get(epCuRel)}";\n`,
+      "EffectPalette ColorUtils import",
+    );
+  }
+
   mkdirSync(cacheDir, { recursive: true });
   const hash = createHash("sha1").update(out).digest("hex").slice(0, 10);
   const base = `${basename(rel, ".ts")}-${hash}.ts`;

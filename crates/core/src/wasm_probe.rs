@@ -5384,3 +5384,12 @@ s8_stateless_probe!(
     probe_cpl_reset, probe_cpl_arg, probe_cpl_op, probe_cpl_out_at,
     CPL_ARGS, CPL_OUT, crate::client_platform::run_op
 );
+// S15 c: effect palette / news markdown.
+s8_stateless_probe!(
+    probe_ep_reset, probe_ep_arg, probe_ep_op, probe_ep_out_at,
+    EP_ARGS, EP_OUT, crate::effect_palette::run_op
+);
+s8_stateless_probe!(
+    probe_nm_reset, probe_nm_arg, probe_nm_op, probe_nm_out_at,
+    NM_ARGS, NM_OUT, crate::news_markdown::run_op
+);

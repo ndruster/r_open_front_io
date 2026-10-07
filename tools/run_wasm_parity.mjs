@@ -184,6 +184,8 @@ for (const name of [
   "probe_mtl_reset", "probe_mtl_arg", "probe_mtl_op", "probe_mtl_out_at",
   "probe_hbi_reset", "probe_hbi_arg", "probe_hbi_op", "probe_hbi_out_at",
   "probe_cpl_reset", "probe_cpl_arg", "probe_cpl_op", "probe_cpl_out_at",
+  "probe_ep_reset", "probe_ep_arg", "probe_ep_op", "probe_ep_out_at",
+  "probe_nm_reset", "probe_nm_arg", "probe_nm_op", "probe_nm_out_at",
 ]) {
   if (typeof ex[name] !== "function") {
     console.error(`missing wasm export ${name} - rebuild with --features wasm-probe`);
@@ -2623,6 +2625,8 @@ for (const [key, reset, arg, op, outAt] of [
   ["matchtelemetrynoop", "probe_mtl_reset", "probe_mtl_arg", "probe_mtl_op", "probe_mtl_out_at"],
   ["hotbaricons", "probe_hbi_reset", "probe_hbi_arg", "probe_hbi_op", "probe_hbi_out_at"],
   ["clientplatform", "probe_cpl_reset", "probe_cpl_arg", "probe_cpl_op", "probe_cpl_out_at"],
+  ["effectpalette", "probe_ep_reset", "probe_ep_arg", "probe_ep_op", "probe_ep_out_at"],
+  ["newsmarkdown", "probe_nm_reset", "probe_nm_arg", "probe_nm_op", "probe_nm_out_at"],
 ]) {
   for (const s of S[key]) {
     ex[reset]();

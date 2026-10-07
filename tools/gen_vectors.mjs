@@ -544,6 +544,25 @@ const CPL = await loadTs("src/client/ClientPlatform.ts");
 const CGS = await loadTs("src/client/CrazyGamesSDK.ts");
 const EP = await loadTs("src/client/render/gl/utils/EffectPalette.ts");
 const NM = await loadTs("src/client/NewsMarkdown.ts");
+// S15 d: the theme cluster (CA / THP) over the colord capture facade. The
+// globals must exist BEFORE loadTs: the ThemeProvider module constructs the
+// themeProvider singleton (and both themes) at import time.
+const COLSHIM = await import(
+  pathToFileURL(join(here, "vendor", "colord", "capture_shim.mjs")).href
+);
+const TP_SIN = new Map();
+globalThis.__TP_SIN = (x) => {
+  const v = Math.sin(x);
+  TP_SIN.set(x, v);
+  return v;
+};
+let TP_WARN = null;
+globalThis.__TP_WARN = (m) => {
+  TP_WARN = m;
+};
+globalThis.__TP_OVERRIDES = {};
+const CA = await loadTs("src/client/theme/ColorAllocator.ts");
+const THP = await loadTs("src/client/theme/ThemeProvider.ts");
 
 const PF = await loadTs("src/core/pathfinding/PathFinder.ts");
 const { AStar } = await loadTs("src/core/pathfinding/algorithms/AStar.ts");
@@ -19424,6 +19443,359 @@ runNM("nm_chain", [
   "x **y**\n@user\n(https://github.com/openfrontio/OpenFrontIO/pull/9)",
 ]);
 
+// S15 d: ColorAllocator.ts + ThemeProvider.ts over the colord capture facade
+// (tools/vendor/colord/capture_shim.mjs). The REAL colord 2.9.3 + lab/lch
+// plugins run in V8; every construction is memoized by a deterministic key
+// string and every observation (toRgb / toLab / toLch / toHsl / toRgbString /
+// darken / alpha / delta) is traced by id. The Rust twin replays the control
+// flow over those id tables. Math.sin and console.warn route through the
+// scripted __TP_SIN / __TP_WARN globals (ts_load rewrites the call sites);
+// UserSettings.graphicsOverrides reads the scripted __TP_OVERRIDES (the
+// globals and module loads are set up above, before loadTs).
+
+// Observe every facade id through every getter (pure functions, deduped by
+// the shim), then slice the trace into the fixed-order token block the Rust
+// read_tables expects: construct, rgb, lab, lch, hsl, toRgbString, alpha,
+// darken, delta, sin.
+function colordTables() {
+  for (const inst of COLSHIM.byId.values()) {
+    inst.toRgb();
+    inst.toLab();
+    inst.toLch();
+    inst.toHsl();
+    inst.toRgbString();
+  }
+  const T = COLSHIM.TRACE;
+  const tok = (rows) => [rows.length, ...rows.flat()];
+  return [
+    ...tok(T.construct),
+    ...tok(T.toRgb),
+    ...tok(T.toLab),
+    ...tok(T.toLch),
+    ...tok(T.toHsl),
+    ...tok(T.toRgbString),
+    ...tok(T.alpha),
+    ...tok(T.darken),
+    ...tok(T.delta),
+    ...tok([...TP_SIN].map(([x, v]) => [x, v])),
+  ];
+}
+const resetFacade = () => {
+  COLSHIM.resetTrace();
+  TP_SIN.clear();
+  TP_WARN = null;
+};
+
+// ---- ColorAllocator.ts ------------------------------------------------------
+const caScenarios = [];
+const caMk = (h) => COLSHIM.colord(h);
+
+// kind 0: one full assignColor sequence over a scripted pool / fallback.
+function runCA(name, pool, fallback, ids) {
+  resetFacade();
+  [...pool, ...fallback].forEach(caMk);
+  const alloc = new CA.ColorAllocator(pool.map(caMk), fallback.map(caMk));
+  const res = [ids.length];
+  for (const id of ids) {
+    const { r, g, b, a } = alloc.assignColor(id).toRgb();
+    res.push([0, r, g, b, a]);
+  }
+  caScenarios.push({
+    name,
+    ops: [
+      {
+        kind: 0,
+        args: [
+          ids.length,
+          ...ids.flatMap(encS),
+          pool.length,
+          ...pool.flatMap(encS),
+          fallback.length,
+          ...fallback.flatMap(encS),
+          ...colordTables(),
+        ].flat().map(uenc),
+        res: res.flat().map(uenc),
+      },
+    ],
+  });
+}
+
+// kind 1: direct selectDistinctColorIndex over scripted available / assigned
+// hex lists ([0, idx] | [1, encS "No assigned colors"]).
+function runCD(name, avail, assigned) {
+  resetFacade();
+  const A = avail.map(caMk);
+  const B = assigned.map(caMk);
+  let res;
+  try {
+    res = [0, CA.selectDistinctColorIndex(A, B)];
+  } catch (e) {
+    res = [1, ...encS(e.message)];
+  }
+  caScenarios.push({
+    name,
+    ops: [
+      {
+        kind: 1,
+        args: [
+          avail.length,
+          ...avail.flatMap(encS),
+          assigned.length,
+          ...assigned.flatMap(encS),
+          ...colordTables(),
+        ].flat().map(uenc),
+        res: res.flat().map(uenc),
+      },
+    ],
+  });
+}
+
+const DEFAULT_HUMAN = [
+  "#a3e635", "#84cc16", "#10b981", "#34d399", "#2dd4bf", "#4ade80", "#6ee7b7",
+  "#86efac", "#97ffbb", "#baffc9", "#e6fad2", "#22c55e", "#43be54", "#52b788",
+  "#30b2b4", "#e6fffa", "#dcf0fa", "#e9d5ff", "#ccccff", "#dcdcff", "#cae1ff",
+  "#93c5fd", "#7dd3fc", "#63cafd", "#38bdf8", "#60a5fa", "#3b82f6", "#4f46e5",
+  "#7c3aed", "#9333ea", "#b388ff", "#a78bfa", "#d946ef", "#a855f7", "#be5cfb",
+  "#c084fc", "#f0abfc", "#f472b6", "#ec4899", "#dc2626", "#ef4444", "#eb4b4b",
+  "#f56565", "#f87171", "#fb7185", "#fda4af", "#fca5a5", "#ffcce5",
+];
+runCA("ca_assign_basic", ["#ff0000", "#00ff00", "#0000ff"], ["#ffff00"], [
+  "p1", "p2", "p1", "p3", "p4", "p5", "p2",
+]);
+runCA("ca_assign_empty_pool", [], ["#123456", "#abcdef"], ["x", "y", "z", "x"]);
+runCA("ca_assign_single", ["#7f7f7f"], [], ["s1", "s2"]);
+runCA("ca_assign_gt50", DEFAULT_HUMAN, ["#230000", "#ff0023", "#00ff23"],
+  Array.from({ length: 55 }, (_, i) => `player-${i}`));
+runCD("ca_distinct_pick",
+  ["#ff0000", "#00ff00", "#0000ff", "#ffffff", "#000000"],
+  ["#010101", "#fe0102"]);
+runCD("ca_distinct_tied", ["#ff0000", "#ff0001"], ["#ff0002"]);
+runCD("ca_distinct_throw", ["#ff0000"], []);
+
+// ---- ThemeProvider.ts -------------------------------------------------------
+const thScenarios = [];
+const rgbRow = (c) => {
+  const { r, g, b, a } = c.toRgb();
+  return [r, g, b, a];
+};
+
+// kind 0: buildTeamPalettes over the scripted theme name.
+function runTHPalettes(name, settingsName) {
+  resetFacade();
+  const settings = RSET.createThemeSettings(settingsName);
+  const palettes = THP.buildTeamPalettes(settings);
+  const res = [palettes.size];
+  for (const [, cols] of palettes) res.push([cols.length, ...cols.flatMap(rgbRow)]);
+  thScenarios.push({
+    name,
+    ops: [
+      {
+        kind: 0,
+        args: [...encVal(settingsName), ...colordTables()].flat().map(uenc),
+        res: res.flat().map(uenc),
+      },
+    ],
+  });
+}
+
+// kind 1: full SettingsTheme replay over a scripted op sequence.
+const TH_PV = (team, id, type) => ({
+  team: () => team,
+  id: () => id,
+  type: () => type,
+});
+function runTHTheme(name, settingsName, flag, steps) {
+  resetFacade();
+  const settings = RSET.createThemeSettings(settingsName);
+  settings.fallbackColors.forEach(caMk);
+  const theme = new THP.SettingsTheme(settings);
+  theme.useClassicBotColors = flag;
+  const res = [steps.length];
+  const argTok = [];
+  for (const st of steps) {
+    switch (st[0]) {
+      case 0: {
+        const c = theme.teamColor(st[1]);
+        res.push([0, ...rgbRow(c)]);
+        argTok.push([0, ...encS(st[1])]);
+        break;
+      }
+      case 1: {
+        const c = theme.teamColorForPlayer(st[1], st[2]);
+        res.push([0, ...rgbRow(c)]);
+        argTok.push([1, ...encS(st[1]), ...encS(st[2])]);
+        break;
+      }
+      case 2: {
+        const c = theme.territoryColor(TH_PV(st[1], st[2], st[3]));
+        res.push([0, ...rgbRow(c)]);
+        argTok.push([
+          2,
+          ...(st[1] === null ? [0] : [1, ...encS(st[1])]),
+          ...encS(st[2]),
+          ...encS(st[3]),
+        ]);
+        break;
+      }
+      case 3: {
+        const c = theme.borderColor(COLSHIM.colord(st[1]));
+        res.push([0, ...rgbRow(c)]);
+        argTok.push([3, ...encS(st[1])]);
+        break;
+      }
+      case 4: {
+        const d = theme.defendedBorderColors(COLSHIM.colord(st[1]));
+        res.push([0, ...rgbRow(d.light), ...rgbRow(d.dark)]);
+        argTok.push([4, ...encS(st[1])]);
+        break;
+      }
+      case 5: {
+        res.push([0, ...rgbRow(theme.focusedBorderColor())]);
+        argTok.push([5]);
+        break;
+      }
+      default: {
+        res.push([0, ...rgbRow(theme.spawnHighlightColor())]);
+        argTok.push([6]);
+        break;
+      }
+    }
+  }
+  thScenarios.push({
+    name,
+    ops: [
+      {
+        kind: 1,
+        args: [
+          ...encVal(settingsName),
+          flag ? 1 : 0,
+          ...colordTables(),
+          steps.length,
+          ...argTok,
+        ].flat().map(uenc),
+        res: res.flat().map(uenc),
+      },
+    ],
+  });
+}
+
+// kind 2: structureColors over scripted knobs (the warn path needs an
+// unreachable contrast target, which no shipped theme JSON can express).
+function runTHStruct(name, hex, target, scale, darken) {
+  resetFacade();
+  const settings = RSET.createThemeSettings("default");
+  settings.borderLightnessScale = scale;
+  settings.borderDarken = darken;
+  settings.structureContrastTarget = target;
+  settings.fallbackColors.forEach(caMk);
+  const theme = new THP.SettingsTheme(settings);
+  const { light, dark } = theme.structureColors(COLSHIM.colord(hex));
+  const res = [0, ...rgbRow(light), ...rgbRow(dark)];
+  if (TP_WARN === null) res.push(0);
+  else res.push(1, ...encS(TP_WARN));
+  thScenarios.push({
+    name,
+    ops: [
+      {
+        kind: 2,
+        args: [
+          ...encS(hex),
+          uenc(target),
+          uenc(scale),
+          uenc(darken),
+          ...colordTables(),
+        ].flat().map(uenc),
+        res: res.flat().map(uenc),
+      },
+    ],
+  });
+}
+
+// kind 3: the themeProvider singleton over scripted overrides (reset has no
+// observable beyond the step marker).
+function runTHProvider(name, steps) {
+  resetFacade();
+  const res = [steps.length];
+  const argTok = [];
+  for (const st of steps) {
+    if (st[0] === 0) {
+      globalThis.__TP_OVERRIDES = st[1];
+      try {
+        const theme = THP.themeProvider.current();
+        const keys = Object.keys(THP.themeProvider.themes);
+        const idx = keys.findIndex((k) => THP.themeProvider.themes[k] === theme);
+        res.push([0, idx, theme.useClassicBotColors ? 1 : 0]);
+      } catch (e) {
+        res.push([1, ...encS(e.message)]);
+      }
+      argTok.push([0, ...encVal(st[1])]);
+    } else {
+      THP.themeProvider.reset();
+      res.push([2]);
+      argTok.push([1]);
+    }
+  }
+  globalThis.__TP_OVERRIDES = {};
+  thScenarios.push({
+    name,
+    ops: [
+      {
+        kind: 3,
+        args: [steps.length, ...argTok].flat().map(uenc),
+        res: res.flat().map(uenc),
+      },
+    ],
+  });
+}
+
+runTHPalettes("th_palettes_default", "default");
+runTHPalettes("th_palettes_colorblind", "colorblind");
+runTHPalettes("th_palettes_undef", undefined);
+runTHTheme("th_theme_default", "default", false, [
+  [0, "Red"],
+  [0, "Bot"],
+  [0, "Zebra"], // unknown team -> humanColorAllocator fallback
+  [1, "Blue", "u1"],
+  [1, "Blue", "u1"], // cache hit
+  [1, "Red", "u2"],
+  [2, "Green", "g1", "HUMAN"], // team wins over type
+  [2, null, "h1", "HUMAN"],
+  [2, null, "b1", "BOT"], // flag off -> flat Bot team color
+  [2, null, "n1", "NATION"],
+  [2, null, "n2", "NATION"],
+  [3, "#eb3333"],
+  [4, "#2962ff"],
+  [5],
+  [6],
+]);
+runTHTheme("th_theme_classicbot", "default", true, [
+  [2, null, "b9", "BOT"],
+  [2, null, "b9", "BOT"], // allocator cache hit
+  [2, null, "w1", "WEIRD"], // out-of-domain type -> nation pool
+  [3, "#06b6d4"],
+  [4, "#9234ea"],
+  [5],
+]);
+runTHTheme("th_theme_colorblind", "colorblind", false, [
+  [3, "#d55e00"], // scale 0.6 branch (no darken)
+  [0, "Humans"],
+  [2, null, "z1", "HUMAN"],
+  [4, "#0072b2"],
+]);
+runTHStruct("th_struct_default", "#eb3333", 0.5, 1, 0.125);
+runTHStruct("th_struct_colorblind", "#d55e00", 0.5, 0.6, 0);
+runTHStruct("th_struct_lightfill", "#baffc9", 0.5, 1, 0.125);
+runTHStruct("th_struct_warn", "#41be52", Infinity, 1, 0.125);
+runTHProvider("th_provider_steps", [
+  [0, {}],
+  [0, { palette: "colorblind", classicBotColors: true }],
+  [0, { palette: null, classicBotColors: false }],
+  [1],
+  [0, { palette: "bogus" }], // themes["bogus"] undefined -> set TypeError
+  [0, undefined], // overrides undefined -> read TypeError
+  [0, { palette: 5 }], // non-string key -> set TypeError
+]);
+
 const structures = {
   votetally: vtScenarios,
   rankedcheckin: rgScenarios,
@@ -19563,6 +19935,8 @@ const structures = {
   clientplatform: cplScenarios,
   effectpalette: epScenarios,
   newsmarkdown: nmScenarios,
+  colorallocator: caScenarios,
+  themeprovider: thScenarios,
 };
 
 // ================================================================ JSON
@@ -22982,6 +23356,28 @@ opStream(
     "/// kind 0 normalizeNewsMarkdown batch [n, (encS input)*n] -> [n,\n" +
     "/// (encS result)*n] — the four-`.replace` chain replayed by the\n" +
     "/// hand-written engine subset.",
+);
+opStream(
+  "colorallocator",
+  "Ca",
+  "/// One `client/theme/ColorAllocator.ts` op (see `color_allocator::run_op`\n" +
+    "/// docs). kind 0 assignColor sequence [n, (encS id)*n, (pool hex list),\n" +
+    "/// (fallback hex list), (colord tables)] -> [n, (0, r, g, b, a)*n];\n" +
+    "/// kind 1 selectDistinctColorIndex [(avail hex list), (assigned hex\n" +
+    "/// list), (tables)] -> [0, idx] | [1, encS \"No assigned colors\"]. The\n" +
+    "/// tables block is the capture_shim trace slice (see the Rust docs).",
+);
+opStream(
+  "themeprovider",
+  "Th",
+  "/// One `client/theme/ThemeProvider.ts` op (see `theme_provider::run_op`\n" +
+    "/// docs). kind 0 buildTeamPalettes [...codec name, (tables)] -> [size,\n" +
+    "/// (n, (r,g,b,a)*n)*size]; kind 1 SettingsTheme sequence [...codec name,\n" +
+    "/// flag, (tables), n, (step)*n] -> [n, (0, r, g, b, a)*n]; kind 2\n" +
+    "/// structureColors [encS hex, target, scale, darken, (tables)] -> [0,\n" +
+    "/// (r,g,b,a)*2, warn 0 | 1 + encS text]; kind 3 themeProvider steps\n" +
+    "/// [n, ([0, ...codec overrides] | [1])*n] -> [n, ([0, themeIdx, flag] |\n" +
+    "/// [1, encS TypeError msg] | [2])*n].",
 );
 
 const dataDir = join(root, "crates", "core", "tests", "data");

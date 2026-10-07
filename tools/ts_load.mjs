@@ -4587,6 +4587,116 @@ function prepare(rel) {
     );
   }
 
+  if (rel.endsWith("theme/ColorAllocator.ts")) {
+    // S15 d: colord rides the capture facade (capture_shim.mjs) so the real
+    // package's extend / plugin install also patches the observation trace.
+    // Colord is type-only (erased by strip mode). PseudoRandom has no
+    // imports; Util redirects to the prepared copy.
+    const shimUrl = pathToFileURL(join(here, "vendor", "colord", "capture_shim.mjs")).href;
+    out = must(
+      out,
+      'import { Colord, extend } from "colord";\n' +
+        'import labPlugin from "colord/plugins/lab";\n' +
+        'import lchPlugin from "colord/plugins/lch";\n',
+      `import { extend, labPlugin, lchPlugin } from "${shimUrl}";\n`,
+      "ColorAllocator colord imports",
+    );
+    out = must(
+      out,
+      'import { PseudoRandom } from "../../core/PseudoRandom";\n',
+      `import { PseudoRandom } from "${TS_URL}src/core/PseudoRandom.ts";\n`,
+      "ColorAllocator PseudoRandom import",
+    );
+    const caUtilRel = "src/core/Util.ts";
+    if (!prepared.has(caUtilRel)) prepare(caUtilRel);
+    out = must(
+      out,
+      'import { simpleHash } from "../../core/Util";\n',
+      `import { simpleHash } from "./${prepared.get(caUtilRel)}";\n`,
+      "ColorAllocator Util import",
+    );
+  }
+
+  if (rel.endsWith("theme/ThemeProvider.ts")) {
+    // S15 d: the colord facade shim (only `colord` is a value; Colord /
+    // LabaColor are type-only and ride the erasure). Game's ColoredTeams /
+    // PlayerType are value uses (enum / const record) -> inlined (Team
+    // enum-inlining precedent); Team itself is a type alias. UserSettings
+    // is a localStorage + zod graph -> stub whose graphicsOverrides reads
+    // the scripted global. The ../view import is type-only (PlayerView).
+    // PALETTE_NAMES inlines from the zod GraphicsOverrides graph (the
+    // RenderSettings precedent). createThemeSettings is a value import ->
+    // the prepared RenderSettings copy. ColorAllocator -> its prepared
+    // copy (same shim instance, shared trace). Math.sin and console.warn
+    // route through scripted globals (V8 transcendental / warn-text
+    // observability).
+    const shimUrl = pathToFileURL(join(here, "vendor", "colord", "capture_shim.mjs")).href;
+    out = must(
+      out,
+      'import { Colord, colord, LabaColor } from "colord";\n',
+      `import { colord } from "${shimUrl}";\n`,
+      "ThemeProvider colord import",
+    );
+    out = must(
+      out,
+      'import { ColoredTeams, PlayerType, Team } from "../../core/game/Game";\n' +
+        'import { UserSettings } from "../../core/game/UserSettings";\n',
+      "const ColoredTeams = { Red: \"Red\", Blue: \"Blue\", Teal: \"Teal\", " +
+        "Purple: \"Purple\", Yellow: \"Yellow\", Orange: \"Orange\", Green: \"Green\", " +
+        "Bot: \"Bot\", Humans: \"Humans\", Nations: \"Nations\" };\n" +
+        "const PlayerType = { Bot: \"BOT\", Human: \"HUMAN\", Nation: \"NATION\" };\n" +
+        "class UserSettings {\n" +
+        "  graphicsOverrides() {\n" +
+        "    return globalThis.__TP_OVERRIDES;\n" +
+        "  }\n" +
+        "}\n",
+      "ThemeProvider Game/UserSettings imports",
+    );
+    const tpUtilRel = "src/core/Util.ts";
+    if (!prepared.has(tpUtilRel)) prepare(tpUtilRel);
+    out = must(
+      out,
+      'import { simpleHash } from "../../core/Util";\n',
+      `import { simpleHash } from "./${prepared.get(tpUtilRel)}";\n`,
+      "ThemeProvider Util import",
+    );
+    out = must(
+      out,
+      'import { PALETTE_NAMES } from "../render/gl/GraphicsOverrides";\n',
+      'const PALETTE_NAMES = ["default", "colorblind"];\n',
+      "ThemeProvider PALETTE_NAMES import",
+    );
+    const tpRsRel = "src/client/render/gl/RenderSettings.ts";
+    if (!prepared.has(tpRsRel)) prepare(tpRsRel);
+    out = must(
+      out,
+      'import {\n' +
+        '  createThemeSettings,\n' +
+        '  ThemeName,\n' +
+        '  ThemeSettings,\n' +
+        '} from "../render/gl/RenderSettings";\n' +
+        'import { PlayerView } from "../view";\n',
+      `import { createThemeSettings } from "./${prepared.get(tpRsRel)}";\n`,
+      "ThemeProvider RenderSettings/view imports",
+    );
+    const tpCaRel = "src/client/theme/ColorAllocator.ts";
+    if (!prepared.has(tpCaRel)) prepare(tpCaRel);
+    out = must(
+      out,
+      'import { ColorAllocator } from "./ColorAllocator";\n',
+      `import { ColorAllocator } from "./${prepared.get(tpCaRel)}";\n`,
+      "ThemeProvider ColorAllocator import",
+    );
+    out = must(
+      out,
+      "  constructor(private settings: ThemeSettings) {",
+      "  private settings: ThemeSettings;\n\n  constructor(settings: ThemeSettings) {\n    this.settings = settings;",
+      "ThemeProvider ctor",
+    );
+    out = must(out, "Math.sin(", "globalThis.__TP_SIN(", "ThemeProvider Math.sin");
+    out = must(out, "console.warn(", "globalThis.__TP_WARN(", "ThemeProvider console.warn");
+  }
+
   mkdirSync(cacheDir, { recursive: true });
   const hash = createHash("sha1").update(out).digest("hex").slice(0, 10);
   const base = `${basename(rel, ".ts")}-${hash}.ts`;

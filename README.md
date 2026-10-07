@@ -2095,6 +2095,42 @@ WebSockets — stays excluded, mirroring the `src/core` exclusions).
     last unit is alphanumeric and whose lookahead is neither word nor `-`
     (a 40-alphanumeric run has no valid length and misses). 8 scenarios
     (`ep_` 3, `nm_` 5).
+76. **`client/theme/ColorAllocator.ts` + `client/theme/ThemeProvider.ts`**
+    (`color_allocator`, `theme_provider`) — the S15 batch-D tail. The colord
+    surface rides a FULLER facade than the EffectPalette precedent: the
+    capture runs the REAL colord 2.9.3 + lab/lch plugins through
+    `tools/vendor/colord/capture_shim.mjs`, which memoizes every
+    `colord(input)` construction by a deterministic key string (string →
+    `"S<len>:<u0,u1,..>"`, object → `"O<k>=<String(v)>;..;"` — NOT
+    JSON.stringify, which collapses -0 and NaN), assigns auto-increment ids,
+    and monkey-patches `Colord.prototype` to trace every observation
+    (toRgb / toLab / toLch / toHsl / toRgbString / darken / alpha / delta)
+    deduped per id. The ten-block trace ships with every op as the
+    `ColordTables` token section; the Rust twin replays the control flow
+    over the ids, so the genuine parser / CIEDE2000 / rounding quirks stay
+    pinned by V8. `Math.sin` and `console.warn` route through scripted
+    `__TP_SIN` / `__TP_WARN` globals (the sin table rides the tenth
+    `ColordTables` block), `UserSettings.graphicsOverrides` reads the
+    scripted `__TP_OVERRIDES`.
+    `ColorAllocator` — `assignColor`'s cache / fallback refill
+    (`[...colors, ...fallback]` survives the splices) / random-vs-distinct
+    gate (`size === 0 || size > 50` → `PseudoRandom(simpleHash(id))`, else
+    the `selectDistinctColorIndex` scan: strict `>` keeps the FIRST maximum
+    index on ties, `Math.min` folds NaN-propagating from Infinity, empty
+    assigned throws `Error("No assigned colors")`).
+    `ThemeProvider` — `generateTeamColors` (64 entries, index 0 = the base
+    instance, golden angle 137.508, JS `%` sign, JS min/max NaN propagation,
+    the `{l,c,h}` object-key order), `buildTeamPalettes` (Bot stays flat),
+    `teamColorForPlayer` (cache before the `simpleHash % len`),
+    `territoryColor` dispatch (team wins → HUMAN → BOT with the classic-flag
+    branch → nation for every other type), `borderColor` (the `{...hsl,l}`
+    spread keeps the h,s,l,a key order), `structureColors` (the LAB pair
+    mutates `l` in place — each construction is a NEW memoized id; the
+    runaway warn at `loopCount > 50` embeds `toRgbString()` + `String(
+    contrast)`; a NaN contrast never satisfies `contrast < target`), and
+    `themeProvider.current()` (`palette ?? "default"`, the two TypeError
+    texts, `classicBotColors ?? false` keeping any present value's
+    truthiness). 18 scenarios (`ca_` 7, `th_` 11).
 
 Regenerate whenever a ported source changes:
 
@@ -2128,7 +2164,7 @@ node rust/tools/run_wasm_parity.mjs
 
 `wasm-probe` exposes the ported functions through `extern "C"` scalar
 entrypoints (`src/wasm_probe.rs`); the runner imports `data/vectors.json` and
-compares every value. Last run: **815,236 comparisons, all bit-identical**.
+compares every value. Last run: **823,292 comparisons, all bit-identical**.
 
 ### Windows: the linker environment
 

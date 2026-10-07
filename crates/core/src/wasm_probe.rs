@@ -5393,3 +5393,12 @@ s8_stateless_probe!(
     probe_nm_reset, probe_nm_arg, probe_nm_op, probe_nm_out_at,
     NM_ARGS, NM_OUT, crate::news_markdown::run_op
 );
+// S15 d: the theme cluster (color allocator / theme provider).
+s8_stateless_probe!(
+    probe_ca_reset, probe_ca_arg, probe_ca_op, probe_ca_out_at,
+    CA_ARGS, CA_OUT, crate::color_allocator::run_op
+);
+s8_stateless_probe!(
+    probe_th_reset, probe_th_arg, probe_th_op, probe_th_out_at,
+    TH_ARGS, TH_OUT, crate::theme_provider::run_op
+);

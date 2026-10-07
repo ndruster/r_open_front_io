@@ -4505,3 +4505,18 @@ replay_s12!(
     NM_SCENARIOS,
     openfront_core::news_markdown::run_op
 );
+// client/theme/ColorAllocator.ts: the assignColor pool/fallback splice model
+// and the CIEDE2000 distinct scan over the colord capture-facade id tables.
+replay_s12!(
+    replay_colorallocator_scenarios,
+    CA_SCENARIOS,
+    openfront_core::color_allocator::run_op
+);
+// client/theme/ThemeProvider.ts: the golden-angle team palettes, the
+// SettingsTheme dispatch, the structure contrast loop and the provider
+// override gate over the same id tables.
+replay_s12!(
+    replay_themeprovider_scenarios,
+    TH_SCENARIOS,
+    openfront_core::theme_provider::run_op
+);

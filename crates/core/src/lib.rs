@@ -385,6 +385,17 @@
 //!   `g` regexes with the `(?<!\()` lookbehind and trailing `\b` backtrack,
 //!   and the `gim` @mention regex — all through a hand-written engine subset,
 //!   not the `regex` crate)
+//! * [`color_allocator`] — `src/client/theme/ColorAllocator.ts`
+//!   (`ColorAllocator.assignColor` / `selectDistinctColorIndex`: the pool /
+//!   fallback splice model, the 0 / >50 random-pick gate through [`util`]'s
+//!   `simple_hash` + [`pseudo_random`], and the CIEDE2000 nearest-neighbor
+//!   scan — every colord primitive replays the capture-facade id tables)
+//! * [`theme_provider`] — `src/client/theme/ThemeProvider.ts`
+//!   (`generateTeamColors` / `buildTeamPalettes` / `SettingsTheme` / the
+//!   `themeProvider` singleton: the golden-angle LCH spread with the scripted
+//!   `Math.sin` facade, the team / player color dispatch, the structure
+//!   contrast loop with the runaway `console.warn` text, and the palette
+//!   override gate — all over the same colord id tables as [`color_allocator`])
 //!
 //! Two rules govern every future port into this crate:
 //!
@@ -414,6 +425,7 @@ pub mod camera;
 pub mod censor;
 pub mod client_platform;
 pub mod close_codes;
+pub mod color_allocator;
 pub mod color_utils;
 pub mod cluster_checkin;
 pub mod config_patch;
@@ -505,6 +517,7 @@ pub mod terrain_map_loader;
 pub mod terrain_row_spans;
 pub mod terrain_search_map;
 pub mod text_layout;
+pub mod theme_provider;
 pub mod tile_codec;
 pub mod tile_set;
 pub mod tile_traversal_scratch;

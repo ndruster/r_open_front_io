@@ -4466,3 +4466,26 @@ replay_s12!(
     DBG_SCENARIOS,
     openfront_core::debug_gui::run_op
 );
+// S15 b: the jose base64url codec (inlined shim golden), the telemetry noop
+// module, the nineteen load-time icon constants and the clientPlatform
+// three-gate short-circuit trace.
+replay_s12!(
+    replay_base64uuid_scenarios,
+    B64_SCENARIOS,
+    openfront_core::base64_uuid::run_op
+);
+replay_s12!(
+    replay_matchtelemetrynoop_scenarios,
+    MTL_SCENARIOS,
+    openfront_core::match_telemetry::run_op
+);
+replay_s12!(
+    replay_hotbaricons_scenarios,
+    HBI_SCENARIOS,
+    openfront_core::hotbar_icons::run_op
+);
+replay_s12!(
+    replay_clientplatform_scenarios,
+    CPL_SCENARIOS,
+    openfront_core::client_platform::run_op
+);

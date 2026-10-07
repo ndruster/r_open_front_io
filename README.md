@@ -2031,6 +2031,37 @@ WebSockets — stays excluded, mirroring the `src/core` exclusions).
     same mock-gui draw→isModified→reset dump, and the mutated variant applies
     `path[key] = value` writes BEFORE building. `LINES_PER_PLAYER` is the
     `2` constant. 10 scenarios (`dbg_` 10).
+74. **`core/Base64.ts` + `server/telemetry/MatchTelemetry.ts` +
+    `client/hud/HotbarIcons.ts` + `client/ClientPlatform.ts`**
+    (`base64_uuid`, `match_telemetry` mtl section, `hotbar_icons`,
+    `client_platform`) — the S15 batch-B tail.
+    `Base64` — `uuidToBase64url` / `base64urlToUuid` with the `jose` codec
+    INLINED in the loader (WHATWG forgiving-base64 state machine, fuzz- and
+    exhaustive-validated against the real jose 6.2.3 package: zero
+    value/throw divergence): `replace(/-/g,"")` strips U+002D only, sixteen
+    fixed `parseInt(hex.slice(i*2,i*2+2),16)` slots (JS slice clamps;
+    StrWhiteSpace trimmed both ends, sign, unconditional `0x` prefix strip —
+    `"0x"` alone is NaN while `"0z"` is 0; NaN/-0/out-of-range ride the
+    ToUint8 contract → byte 0), URL-safe alphabet, no padding; decode
+    rejects `len % 4 === 1`, `+`/`/`, non-alphabet, and `=` outside its
+    final-chunk slot (a lone `=` at slot 2 must be followed by the second
+    `=`), and the byte length is NOT validated against 16 — `""` → `"----"`,
+    `"AA"` → `"00----"`.
+    `MatchTelemetry` — `zeroCounters()` (twelve-key declaration-order
+    literal, fresh object per call) and the stateless
+    `noopMatchTelemetryEmitter` (`emit` → `"dropped"` with the argument
+    unobserved, `counters` → a fresh zeroed object, `stop` → `undefined`).
+    `HotbarIcons` — the nineteen load-time `assetUrl("images/….svg")`
+    constants replayed through the ported `build_asset_url` over the
+    scripted `__ASSET_MANIFEST__` / `__CDN_BASE__` (manifest hits need a
+    TRUTHY value, base trailing `/`s trimmed; no literal path can throw).
+    `ClientPlatform` — `clientPlatform()` over the scripted facades with
+    the REAL short-circuit order pinned by counting `window` getter reads:
+    `isDesktopShell()` first and unconditional (2 reads → `"steam"`, SDK
+    never consulted), else `typeof window !== "undefined" &&` (absent → 0
+    reads / 0 SDK calls → `"web"`; present → 3 reads / 1 SDK call →
+    `"crazygames"` / `"web"`).
+    8 scenarios (`b64_` 3, `mtl_` 2, `hbi_` 2, `cpl_` 1).
 
 Regenerate whenever a ported source changes:
 
@@ -2064,7 +2095,7 @@ node rust/tools/run_wasm_parity.mjs
 
 `wasm-probe` exposes the ported functions through `extern "C"` scalar
 entrypoints (`src/wasm_probe.rs`); the runner imports `data/vectors.json` and
-compares every value. Last run: **809,746 comparisons, all bit-identical**.
+compares every value. Last run: **812,518 comparisons, all bit-identical**.
 
 ### Windows: the linker environment
 

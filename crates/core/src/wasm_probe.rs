@@ -5367,3 +5367,20 @@ s8_stateless_probe!(
     probe_dbg_reset, probe_dbg_arg, probe_dbg_op, probe_dbg_out_at,
     DBG_ARGS, DBG_OUT, crate::debug_gui::run_op
 );
+// S15 b: base64 / telemetry noop / hotbar icons / client platform.
+s8_stateless_probe!(
+    probe_b64_reset, probe_b64_arg, probe_b64_op, probe_b64_out_at,
+    B64_ARGS, B64_OUT, crate::base64_uuid::run_op
+);
+s8_stateless_probe!(
+    probe_mtl_reset, probe_mtl_arg, probe_mtl_op, probe_mtl_out_at,
+    MTL_ARGS, MTL_OUT, crate::match_telemetry::run_op
+);
+s8_stateless_probe!(
+    probe_hbi_reset, probe_hbi_arg, probe_hbi_op, probe_hbi_out_at,
+    HBI_ARGS, HBI_OUT, crate::hotbar_icons::run_op
+);
+s8_stateless_probe!(
+    probe_cpl_reset, probe_cpl_arg, probe_cpl_op, probe_cpl_out_at,
+    CPL_ARGS, CPL_OUT, crate::client_platform::run_op
+);

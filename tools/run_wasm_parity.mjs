@@ -180,6 +180,10 @@ for (const name of [
   "probe_snd_reset", "probe_snd_arg", "probe_snd_op", "probe_snd_out_at",
   "probe_mpp_reset", "probe_mpp_arg", "probe_mpp_op", "probe_mpp_out_at",
   "probe_dbg_reset", "probe_dbg_arg", "probe_dbg_op", "probe_dbg_out_at",
+  "probe_b64_reset", "probe_b64_arg", "probe_b64_op", "probe_b64_out_at",
+  "probe_mtl_reset", "probe_mtl_arg", "probe_mtl_op", "probe_mtl_out_at",
+  "probe_hbi_reset", "probe_hbi_arg", "probe_hbi_op", "probe_hbi_out_at",
+  "probe_cpl_reset", "probe_cpl_arg", "probe_cpl_op", "probe_cpl_out_at",
 ]) {
   if (typeof ex[name] !== "function") {
     console.error(`missing wasm export ${name} - rebuild with --features wasm-probe`);
@@ -2615,6 +2619,10 @@ for (const [key, reset, arg, op, outAt] of [
   ["soundscat", "probe_snd_reset", "probe_snd_arg", "probe_snd_op", "probe_snd_out_at"],
   ["miscpure", "probe_mpp_reset", "probe_mpp_arg", "probe_mpp_op", "probe_mpp_out_at"],
   ["debuggui", "probe_dbg_reset", "probe_dbg_arg", "probe_dbg_op", "probe_dbg_out_at"],
+  ["base64uuid", "probe_b64_reset", "probe_b64_arg", "probe_b64_op", "probe_b64_out_at"],
+  ["matchtelemetrynoop", "probe_mtl_reset", "probe_mtl_arg", "probe_mtl_op", "probe_mtl_out_at"],
+  ["hotbaricons", "probe_hbi_reset", "probe_hbi_arg", "probe_hbi_op", "probe_hbi_out_at"],
+  ["clientplatform", "probe_cpl_reset", "probe_cpl_arg", "probe_cpl_op", "probe_cpl_out_at"],
 ]) {
   for (const s of S[key]) {
     ex[reset]();

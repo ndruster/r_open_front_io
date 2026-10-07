@@ -14,7 +14,7 @@ import { writeFileSync, mkdirSync } from "node:fs";
 import { pathToFileURL, fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
-import { loadTs, TS_ROOT } from "./ts_load.mjs";
+import { loadTs, preparedPath, TS_ROOT } from "./ts_load.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = join(here, "..");
@@ -535,6 +535,13 @@ const DBGTT = await loadTs("src/client/render/gl/debug/props/Toggle.ts");
 const DBGSV = await loadTs("src/client/render/gl/debug/props/Slider.ts");
 const DBGSL = await loadTs("src/client/render/gl/debug/props/Select.ts");
 const DBGCR = await loadTs("src/client/render/gl/debug/props/Color.ts");
+// S15 b: jose-codec Base64 / telemetry noop / hotbar icons (load-time
+// constants - re-imported per scenario, never through loadTs) / client
+// platform (B64 / MTL / CPL - the MT tag is taken by MatchTelemetryRecorder).
+const B64 = await loadTs("src/core/Base64.ts");
+const MTL = await loadTs("src/server/telemetry/MatchTelemetry.ts");
+const CPL = await loadTs("src/client/ClientPlatform.ts");
+const CGS = await loadTs("src/client/CrazyGamesSDK.ts");
 
 const PF = await loadTs("src/core/pathfinding/PathFinder.ts");
 const { AStar } = await loadTs("src/core/pathfinding/algorithms/AStar.ts");
@@ -19004,6 +19011,243 @@ runGMS("gms_join", [
   ],
 ]);
 
+// --- S15 b: Base64 / MatchTelemetry noop / HotbarIcons / ClientPlatform ----
+//
+// The b64_ golden runs the REAL Base64.ts against the inlined jose shim
+// (ts_load), so the Rust codec replays V8's own execution of the WHATWG
+// forgiving-base64 state machine. hbi_ re-imports the module with a
+// cache-busting query per scenario so the 19 load-time assetUrl constants
+// re-evaluate under the scripted manifest / CDN base. cpl_ scripts
+// `globalThis.window` behind a counting getter and monkey-patches the
+// crazyGamesSDK singleton, pinning the real short-circuit order through
+// observable window-read / SDK-call counts.
+
+const b64Scenarios = [];
+function runB64(name, ops) {
+  const played = [];
+  for (const [k, ...a] of ops) {
+    let args = [];
+    let res = [];
+    if (k === 0) {
+      const uuids = a[0];
+      args = [uuids.length, ...uuids.flatMap(encS)];
+      res = uuids.map((u) => encS(B64.uuidToBase64url(u)));
+    } else {
+      const strs = a[0];
+      args = [strs.length, ...strs.flatMap(encS)];
+      res = strs.map((s) => {
+        try {
+          return [0, ...encS(B64.base64urlToUuid(s))];
+        } catch {
+          return [1];
+        }
+      });
+    }
+    played.push({ kind: k, args: args.flat().map(uenc), res: res.flat().map(uenc) });
+  }
+  b64Scenarios.push({ name, ops: played });
+}
+runB64("b64_encode", [
+  [
+    0,
+    [
+      "123e4567-e89b-12d3-a456-426614174000", // canonical
+      "123e4567e89b12d3a456426614174000", // no dashes -> same bytes
+      "123E4567-E89B-12D3-A456-426614174000", // uppercase hex
+      "-1-2-3-e--4567e89b12d3a456426614174000", // weird dash placement
+      "abc", // short hex -> 1-unit / empty slices
+      "", // all-empty slices -> 16 zero bytes
+      "1g000000-0000-0000-0000-000000000000", // "1g" truncates -> 1
+      "0x000000-0000-0000-0000-000000000000", // "0x" -> NaN -> 0
+      "0z000000-0000-0000-0000-000000000000", // "0z" -> 0
+      "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz", // every slice NaN -> 0
+      "12 3e4567-e89b-12d3-a456-42661417400", // embedded-space slices
+      "\tff000000-0000-0000-0000-0000000000", // tab is parseInt ws
+      "00000000000000000000000000000000", // all zero
+      "ffffffffffffffffffffffffffffffff", // all 255
+      "-0-0-0-0-0-0-0-0-0-0-0-0-0-0-0-0", // dashes stripped first -> "00" slots
+    ],
+  ],
+]);
+runB64("b64_decode", [
+  [
+    1,
+    [
+      "Ej5FZ-ibEtOkVkJmFBdAAA", // canonical roundtrip
+      "", // empty decode -> "----"
+      "AA", // 1 byte -> "00----"
+      "AAA", // 2 bytes
+      "AAAA", // 2 zero bytes
+      "AAA=", // trailing lone = in slot 3
+      "AA==", // =-pair in slots 2-3
+      "A", // len % 4 === 1 -> throw
+      "AAAA=", // = after a full chunk -> throw
+      "AB=A", // = mid-string -> throw
+      "AA=A", // incomplete =-pair -> throw
+      "!!!!", // non-alphabet -> throw
+      "+", // standard-base64 chars are NOT in the url alphabet
+      "/",
+      "é",
+      "AA\u000b", // 0B is NOT forgiving-base64 whitespace -> throw
+      "\u00a0AA", // NBSP not stripped -> throw
+      "A=", // = at pos % 4 === 1 -> throw
+      "====", // = at pos 0 -> throw
+      "AA AA", // ASCII space stripped -> "AAAA"
+      "\t\r\nAAA\u000c", // stripped -> "AAA"
+      "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA", // 40 chars -> 30 bytes
+      "________", // 63s
+      "--------", // 62s
+    ],
+  ],
+]);
+{
+  // Roundtrip op pair: the decode batch consumes the encode batch's outputs.
+  const uuids = [
+    "123e4567-e89b-12d3-a456-426614174000",
+    "00000000-0000-0000-0000-000000000000",
+    "ffffffff-ffff-ffff-ffff-ffffffffffff",
+    "00010203-0405-0607-0809-0a0b0c0d0e0f",
+    "abcdef01-2345-6789-abcd-ef0123456789",
+  ];
+  const encs = uuids.map((u) => B64.uuidToBase64url(u));
+  runB64("b64_roundtrip", [
+    [0, uuids],
+    [1, encs],
+  ]);
+}
+
+const mtlScenarios = [];
+function runMTL(name, ops) {
+  const played = [];
+  for (const [k, ...a] of ops) {
+    let args = [];
+    let res = [];
+    if (k === 0) {
+      const n = a[0];
+      args = [n];
+      res = [[n], ...Array.from({ length: n }, () => encVal(MTL.zeroCounters()))];
+    } else {
+      const methods = a[0];
+      args = [methods.length, ...methods];
+      res = [
+        [methods.length],
+        ...methods.map((m) =>
+          encVal(
+            m === 0
+              ? MTL.noopMatchTelemetryEmitter.emit({})
+              : m === 1
+                ? MTL.noopMatchTelemetryEmitter.counters()
+                : MTL.noopMatchTelemetryEmitter.stop(),
+          ),
+        ),
+      ];
+    }
+    played.push({ kind: k, args: args.flat().map(uenc), res: res.flat().map(uenc) });
+  }
+  mtlScenarios.push({ name, ops: played });
+}
+runMTL("mtl_counters", [[0, 2]]);
+runMTL("mtl_noop", [[1, [0, 1, 2, 0, 1]]]);
+
+// The nineteen export names in HotbarIcons.ts declaration order (the Rust
+// ICON_NAMES table mirrors it; the dump walks the values, not the names).
+const HBI_NAMES = [
+  "warshipIcon",
+  "cityIcon",
+  "factoryIcon",
+  "goldCoinIcon",
+  "mirvIcon",
+  "missileSiloIcon",
+  "hydrogenBombIcon",
+  "atomBombIcon",
+  "portIcon",
+  "samLauncherIcon",
+  "defensePostIcon",
+  "soldierIcon",
+  "claimIcon",
+  "profileIcon",
+  "guildIcon",
+  "teamIcon",
+  "upperLimitIcon",
+  "allianceIcon",
+  "traitorIcon",
+];
+const hbiScenarios = [];
+let hbiVer = 0;
+async function runHBI(name, manifest, base) {
+  globalThis.__ASSET_MANIFEST__ = manifest;
+  globalThis.__CDN_BASE__ = base;
+  const mod = await import(
+    pathToFileURL(preparedPath("src/client/hud/HotbarIcons.ts")).href + `?v=${++hbiVer}`
+  );
+  const args = [
+    Object.keys(manifest).length,
+    ...Object.entries(manifest).flatMap(([k, v]) => [...encS(k), ...encS(v)]),
+    ...encS(base),
+  ];
+  const res = HBI_NAMES.map((n) => [0, ...encS(mod[n])]);
+  hbiScenarios.push({
+    name,
+    ops: [{ kind: 0, args: args.flat().map(uenc), res: res.flat().map(uenc) }],
+  });
+}
+await runHBI("hbi_empty_manifest", {}, "");
+await runHBI("hbi_partial_hits", {
+  "images/MIRVIcon.svg": "/_assets/mirv.svg",
+  "images/GoldCoinIcon.svg": "", // falsy value -> falls through
+  "images/TraitorIcon.svg": "/_assets/traitor.svg",
+  "images/Unused.svg": "/_assets/nope.svg", // no path references it
+}, "//cdn//"); // trailing slashes trimmed by buildAssetUrl
+delete globalThis.__ASSET_MANIFEST__;
+delete globalThis.__CDN_BASE__;
+
+const cplScenarios = [];
+function runCPL(name, triples) {
+  const orig = CGS.crazyGamesSDK.isOnCrazyGames;
+  const args = [triples.length];
+  const res = [];
+  for (const [desktop, windowPresent, cg] of triples) {
+    let reads = 0;
+    let calls = 0;
+    if (windowPresent) {
+      Object.defineProperty(globalThis, "window", {
+        configurable: true,
+        get() {
+          reads++;
+          return { openfrontDesktop: desktop ? {} : undefined };
+        },
+      });
+    } else {
+      delete globalThis.window;
+    }
+    CGS.crazyGamesSDK.isOnCrazyGames = () => {
+      calls++;
+      return cg;
+    };
+    const p = CPL.clientPlatform();
+    args.push(desktop ? 1 : 0, windowPresent ? 1 : 0, cg ? 1 : 0);
+    res.push(p === "steam" ? 0 : p === "crazygames" ? 1 : 2, reads, calls);
+  }
+  delete globalThis.window;
+  CGS.crazyGamesSDK.isOnCrazyGames = orig;
+  cplScenarios.push({
+    name,
+    ops: [
+      {
+        kind: 0,
+        args: args.flat().map(uenc),
+        res: [triples.length, ...res].flat().map(uenc),
+      },
+    ],
+  });
+}
+runCPL("cpl_platforms", [
+  [true, true, false], // steam: 2 window reads, SDK never consulted
+  [false, false, true], // web: no window -> no reads, no SDK call
+  [false, true, true], // crazygames: 3 reads, 1 SDK call
+  [false, true, false], // web with window: 3 reads, 1 SDK call
+]);
+
 const structures = {
   votetally: vtScenarios,
   rankedcheckin: rgScenarios,
@@ -19137,6 +19381,10 @@ const structures = {
   soundscat: sndScenarios,
   miscpure: mppScenarios,
   debuggui: dbgScenarios,
+  base64uuid: b64Scenarios,
+  matchtelemetrynoop: mtlScenarios,
+  hotbaricons: hbiScenarios,
+  clientplatform: cplScenarios,
 };
 
 // ================================================================ JSON
@@ -22504,6 +22752,39 @@ opStream(
     "/// args with the options list), 4 color lifecycle (the mock-facade\n" +
     "/// draw / isModified / resetToDefault trace + the hex quirk dump), 5\n" +
     "/// buildTree dump walk, 6 the LINES_PER_PLAYER constant.",
+);
+opStream(
+  "base64uuid",
+  "B64",
+  "/// One `core/Base64.ts` op (see `base64_uuid::run_op` docs). kind 0\n" +
+    "/// uuidToBase64url batch (the golden runs the inlined jose shim in V8),\n" +
+    "/// kind 1 base64urlToUuid batch -> ([0, encS uuid] | [1])*n (the [1]\n" +
+    "/// token models the forgiving-base64 throw).",
+);
+opStream(
+  "matchtelemetrynoop",
+  "Mtl",
+  "/// One `server/telemetry/MatchTelemetry.ts` runtime-value op (see\n" +
+    "/// `match_telemetry::run_op` docs). kind 0 zeroCounters batch ->\n" +
+    "/// [n, (codec 12-key object)*n], kind 1 the noop emitter call trace\n" +
+    "/// (0 emit -> \"dropped\", 1 counters -> fresh object, 2 stop ->\n" +
+    "/// undefined).",
+);
+opStream(
+  "hotbaricons",
+  "Hbi",
+  "/// One `client/hud/HotbarIcons.ts` op (see `hotbar_icons::run_op` docs).\n" +
+    "/// kind 0 [n, (encS key, encS value)*n, encS cdnBase] -> the nineteen\n" +
+    "/// load-time assetUrl constants in declaration order ([0, encS url] | 1\n" +
+    "/// each). The golden re-imports the module per scripted manifest.",
+);
+opStream(
+  "clientplatform",
+  "Cpl",
+  "/// One `client/ClientPlatform.ts` op (see `client_platform::run_op` docs).\n" +
+    "/// kind 0 [n, (desktop, windowPresent, cg)*n] -> [n, (result 0|1|2,\n" +
+    "/// windowReads 0|2|3, sdkCalls 0|1)*n] — the facade-scripted\n" +
+    "/// short-circuit order pinned through observable counts.",
 );
 
 const dataDir = join(root, "crates", "core", "tests", "data");

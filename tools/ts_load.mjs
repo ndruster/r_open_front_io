@@ -4438,6 +4438,132 @@ function prepare(rel) {
     out = out.slice(0, gtlCut);
   }
 
+  if (rel.endsWith("core/Base64.ts")) {
+    // S15 b: `jose` is not in the capture graph (the upstream checkout has
+    // no node_modules), so the base64url codec is inlined. The decode
+    // algorithm is the WHATWG forgiving-base64 state machine (what
+    // `Uint8Array.fromBase64({alphabet:"base64url"})`, jose 6.2.3's primary
+    // path, executes): strip ASCII whitespace {9,A,C,D,20}, reject
+    // len%4===1, reject '+', '/' and any non-alphabet char, accept '=' only
+    // as the final 1-2 chars at their chunk slot, accumulate 6-bit values
+    // and emit whole bytes. It was fuzz-validated (200k strings over the
+    // full ASCII alphabet + whitespace + junk, plus an exhaustive sweep of
+    // {A,B,=,space,tab} up to length 5) against the real jose 6.2.3 package:
+    // zero value/throw-domain divergences. (jose 6.2.9 throws TypeError
+    // where 6.2.3 throws SyntaxError; the TS callers never observe the
+    // error class, only that it throws.)
+    out = must(
+      out,
+      'import { base64url } from "jose";\n',
+      "const base64url = {\n" +
+        '  encode(input) {\n' +
+        "    const A =\n" +
+        '      "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";\n' +
+        '    let s = "";\n' +
+        "    let i = 0;\n" +
+        "    for (; i + 3 <= input.length; i += 3) {\n" +
+        "      const n = (input[i] << 16) | (input[i + 1] << 8) | input[i + 2];\n" +
+        "      s += A[(n >> 18) & 63] + A[(n >> 12) & 63] + A[(n >> 6) & 63] + A[n & 63];\n" +
+        "    }\n" +
+        "    if (input.length - i === 1) {\n" +
+        "      const n = input[i] << 16;\n" +
+        "      s += A[(n >> 18) & 63] + A[(n >> 12) & 63];\n" +
+        "    } else if (input.length - i === 2) {\n" +
+        "      const n = (input[i] << 16) | (input[i + 1] << 8);\n" +
+        "      s += A[(n >> 18) & 63] + A[(n >> 12) & 63] + A[(n >> 6) & 63];\n" +
+        "    }\n" +
+        "    return s;\n" +
+        "  },\n" +
+        "  decode(input) {\n" +
+        '    const bad = () => new TypeError("The input to be decoded is not correctly encoded.");\n' +
+        '    let s = "";\n' +
+        "    for (let i = 0; i < input.length; i++) {\n" +
+        "      const c = input.charCodeAt(i);\n" +
+        "      if (c !== 0x09 && c !== 0x0a && c !== 0x0c && c !== 0x0d && c !== 0x20) {\n" +
+        "        s += input[i];\n" +
+        "      }\n" +
+        "    }\n" +
+        "    const len = s.length;\n" +
+        "    if (len % 4 === 1) throw bad();\n" +
+        "    const out = [];\n" +
+        "    let chunk = 0;\n" +
+        "    let bits = 0;\n" +
+        "    for (let pos = 0; pos < len; pos++) {\n" +
+        "      const ch = s[pos];\n" +
+        "      if (ch === \"=\") {\n" +
+        "        if (pos % 4 === 2 && pos === len - 2) {\n" +
+        "          if (s[pos + 1] !== \"=\") throw bad();\n" +
+        "          break;\n" +
+        "        }\n" +
+        "        if (pos % 4 === 3 && pos === len - 1) break;\n" +
+        "        throw bad();\n" +
+        "      }\n" +
+        "      let v;\n" +
+        "      const cc = ch.charCodeAt(0);\n" +
+        "      if (cc >= 65 && cc <= 90) v = cc - 65;\n" +
+        "      else if (cc >= 97 && cc <= 122) v = cc - 71;\n" +
+        "      else if (cc >= 48 && cc <= 57) v = cc + 4;\n" +
+        "      else if (cc === 45) v = 62;\n" +
+        "      else if (cc === 95) v = 63;\n" +
+        "      else throw bad();\n" +
+        "      chunk = (chunk << 6) | v;\n" +
+        "      bits += 6;\n" +
+        "      if (bits === 24) {\n" +
+        "        out.push((chunk >> 16) & 0xff, (chunk >> 8) & 0xff, chunk & 0xff);\n" +
+        "        chunk = 0;\n" +
+        "        bits = 0;\n" +
+        "      }\n" +
+        "    }\n" +
+        "    if (bits === 12) out.push((chunk >> 4) & 0xff);\n" +
+        "    else if (bits === 18) out.push((chunk >> 10) & 0xff, (chunk >> 2) & 0xff);\n" +
+        "    else if (bits !== 0) throw bad();\n" +
+        "    return Uint8Array.from(out);\n" +
+        "  },\n" +
+        "};\n",
+      "Base64 jose import",
+    );
+  }
+
+  if (rel.endsWith("client/hud/HotbarIcons.ts")) {
+    // S15 b: the 19 icon constants are load-time `assetUrl()` calls, so the
+    // AssetUrls import rides the prepared copy. The capture scripts
+    // globalThis.__ASSET_MANIFEST__ / __CDN_BASE__ before this module FIRST
+    // loads (getAssetManifest/getCdnBase read them at call time, and a
+    // re-import with a cache-busting query re-evaluates the constants).
+    const hbiAuRel = "src/core/AssetUrls.ts";
+    if (!prepared.has(hbiAuRel)) prepare(hbiAuRel);
+    out = must(
+      out,
+      'import { assetUrl } from "../../core/AssetUrls";\n',
+      `import { assetUrl } from "./${prepared.get(hbiAuRel)}";\n`,
+      "HotbarIcons AssetUrls import",
+    );
+  }
+
+  if (rel.endsWith("client/ClientPlatform.ts")) {
+    // S15 b: both value imports ride prepared copies (the ClientPlatform
+    // type import is `import type`-erased by strip mode). CrazyGamesSDK.ts
+    // is load-clean: the singleton ctor only builds a Promise; every
+    // window / document access lives in method bodies the capture never
+    // calls. DesktopShell.ts is already prepared (gms_ batch).
+    const cpCgRel = "src/client/CrazyGamesSDK.ts";
+    if (!prepared.has(cpCgRel)) prepare(cpCgRel);
+    const cpDsRel = "src/client/DesktopShell.ts";
+    if (!prepared.has(cpDsRel)) prepare(cpDsRel);
+    out = must(
+      out,
+      'import { crazyGamesSDK } from "./CrazyGamesSDK";\n',
+      `import { crazyGamesSDK } from "./${prepared.get(cpCgRel)}";\n`,
+      "ClientPlatform CrazyGamesSDK import",
+    );
+    out = must(
+      out,
+      'import { isDesktopShell } from "./DesktopShell";\n',
+      `import { isDesktopShell } from "./${prepared.get(cpDsRel)}";\n`,
+      "ClientPlatform DesktopShell import",
+    );
+  }
+
   mkdirSync(cacheDir, { recursive: true });
   const hash = createHash("sha1").update(out).digest("hex").slice(0, 10);
   const base = `${basename(rel, ".ts")}-${hash}.ts`;
@@ -4451,6 +4577,16 @@ function prepare(rel) {
 export async function loadTs(rel) {
   const mod = await import(pathToFileURL(prepare(rel)).href);
   return mod;
+}
+
+/**
+ * The prepared cache path of one source file (rewrites it first). Used by
+ * captures that must re-import a module with a cache-busting query so its
+ * load-time constants re-evaluate under new global scripts (S15 b:
+ * HotbarIcons).
+ */
+export function preparedPath(rel) {
+  return prepare(rel);
 }
 
 /** Remove the rewrite cache (rewrite files are disposable). */

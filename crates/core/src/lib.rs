@@ -355,6 +355,26 @@
 //!   `resetToDefault` write-back, the `Math.round(v*255).toString(16)
 //!   .padStart(2,"0")` hex quirk surface) and `buildTree`'s pure literal
 //!   debug tree; plus `LINES_PER_PLAYER` from `name-pass/Types.ts`
+//! * [`base64_uuid`] — `src/core/Base64.ts` (`uuidToBase64url` /
+//!   `base64urlToUuid`: the dash-stripping 16-slot `parseInt(_, 16)` pass with
+//!   JS slice clamping and the `ToUint8` typed-array store, and the WHATWG
+//!   forgiving-base64 decode the jose `base64url` codec delegates to — the
+//!   throw domain is the `[1]` status token; the jose package itself is not in
+//!   the capture graph)
+//! * [`match_telemetry`] (S15 `mtl_` ops) — appends the `zeroCounters()`
+//!   twelve-key declaration-order literal and the stateless
+//!   `noopMatchTelemetryEmitter` (`emit` → `"dropped"`, `counters` → a fresh
+//!   zeroed object, `stop` → `undefined`) from
+//!   `src/server/telemetry/MatchTelemetry.ts`
+//! * [`hotbar_icons`] — `src/client/hud/HotbarIcons.ts` (the nineteen
+//!   `assetUrl("images/....svg")` load-time constants in declaration order,
+//!   re-evaluated per scenario through the [`asset_urls`] build facade with a
+//!   scripted manifest / CDN base)
+//! * [`client_platform`] — `src/client/ClientPlatform.ts` (`clientPlatform()`'s
+//!   three-gate short-circuit order: `isDesktopShell()` → `"steam"`, the
+//!   `typeof window !== "undefined"` gate conjoined with
+//!   `crazyGamesSDK.isOnCrazyGames()` → `"crazygames"`, else `"web"`; the
+//!   host-bound SDK / shell predicates are facades whose call trace is dumped)
 //!
 //! Two rules govern every future port into this crate:
 //!
@@ -378,9 +398,11 @@ pub mod api_schemas;
 pub mod asset_urls;
 pub mod atlas_data;
 pub mod attack_rings;
+pub mod base64_uuid;
 pub mod boot_interrupts;
 pub mod camera;
 pub mod censor;
+pub mod client_platform;
 pub mod close_codes;
 pub mod color_utils;
 pub mod cluster_checkin;
@@ -409,6 +431,7 @@ pub mod game_update_utils;
 pub mod game_updates;
 pub mod game_version;
 pub mod gold_rate_tracker;
+pub mod hotbar_icons;
 pub mod intent_authorization;
 pub mod join_verify;
 pub mod js_fixed;

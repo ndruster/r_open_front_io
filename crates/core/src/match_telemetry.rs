@@ -457,3 +457,132 @@ mod tests {
         assert_eq!(r2[0], 0.0); // latch: no second emit, empty trace
     }
 }
+
+// =============== S15 b: `src/server/telemetry/MatchTelemetry.ts` ============
+//
+// The telemetry TYPE module's two runtime values: the `zeroCounters()`
+// twelve-key literal and the stateless `noopMatchTelemetryEmitter`. The rest
+// of the file is interfaces / mapped types (erased at runtime).
+//
+// Faithfulness notes (quirk list):
+//
+// * `zeroCounters()` key order is the literal's declaration order: observed,
+//   enqueued, sent, droppedDisabled, droppedCap, droppedEventBytes,
+//   droppedQueueCount, droppedQueueBytes, droppedSerialization,
+//   droppedDelivery, batchesSucceeded, batchesFailed — all `0` (a fresh
+//   object per call, so two calls never alias).
+// * `noopMatchTelemetryEmitter.emit` is `() => "dropped"` — the event
+//   argument is never observed; `counters` delegates to `zeroCounters()`
+//   (fresh object each call); `stop` is `() => undefined` (the Undef token,
+//   NOT absent — the TS arrow's return value is `undefined`).
+
+/// `zeroCounters()` — the twelve-key declaration-order literal.
+pub fn zero_counters() -> JsVal {
+    let keys = [
+        "observed",
+        "enqueued",
+        "sent",
+        "droppedDisabled",
+        "droppedCap",
+        "droppedEventBytes",
+        "droppedQueueCount",
+        "droppedQueueBytes",
+        "droppedSerialization",
+        "droppedDelivery",
+        "batchesSucceeded",
+        "batchesFailed",
+    ];
+    JsVal::Obj(
+        keys
+            .iter()
+            .map(|k| (k.to_string(), JsVal::Num(0.0)))
+            .collect(),
+    )
+}
+
+// ---------------------------------------------------------------- mtl_ op
+//
+// kind 0: [n] -> (codec zeroCounters())*n — `n` independent dumps (each a
+//         fresh object; the codec pins the twelve-key order).
+// kind 1: [n, (methodId)*n] -> (codec return)*n — the noop emitter call
+//         trace: 0 = emit (-> `"dropped"`, the argument unobserved),
+//         1 = counters (-> a fresh zeroCounters object), 2 = stop
+//         (-> `undefined`).
+
+pub fn run_op(kind: u8, args: &[f64]) -> Vec<f64> {
+    let mut out = Vec::new();
+    let mut i = 0usize;
+    match kind {
+        0 => {
+            let n = args[i] as usize;
+            out.push(n as f64);
+            for _ in 0..n {
+                push_val(&mut out, &zero_counters());
+            }
+        }
+        1 => {
+            let n = args[i] as usize;
+            i += 1;
+            out.push(n as f64);
+            for _ in 0..n {
+                let m = args[i] as u8;
+                i += 1;
+                let v = match m {
+                    0 => JsVal::Str("dropped".to_string()),
+                    1 => zero_counters(),
+                    2 => JsVal::Undef,
+                    x => unreachable!("match_telemetry mtl: method {x}"),
+                };
+                push_val(&mut out, &v);
+            }
+        }
+        k => unreachable!("match_telemetry mtl: unknown op kind {k}"),
+    }
+    out
+}
+
+#[cfg(test)]
+mod mtl_tests {
+    use super::*;
+
+    #[test]
+    fn zero_counters_key_order() {
+        let mut j = 1usize; // skip the count prefix
+        let dump = run_op(0, &[2.0]);
+        assert_eq!(dump[0], 2.0);
+        for _ in 0..2 {
+            let v = read_val(&dump, &mut j);
+            let JsVal::Obj(fields) = &v else { panic!() };
+            assert_eq!(
+                fields.iter().map(|(k, _)| k.as_str()).collect::<Vec<_>>(),
+                vec![
+                    "observed",
+                    "enqueued",
+                    "sent",
+                    "droppedDisabled",
+                    "droppedCap",
+                    "droppedEventBytes",
+                    "droppedQueueCount",
+                    "droppedQueueBytes",
+                    "droppedSerialization",
+                    "droppedDelivery",
+                    "batchesSucceeded",
+                    "batchesFailed",
+                ]
+            );
+            assert!(fields.iter().all(|(_, x)| *x == JsVal::Num(0.0)));
+        }
+    }
+
+    #[test]
+    fn noop_emitter_trace() {
+        // emit -> "dropped", counters -> zeroed object, stop -> undefined.
+        let mut j = 1usize; // skip the count prefix
+        let dump = run_op(1, &[3.0, 0.0, 1.0, 2.0]);
+        assert_eq!(dump[0], 3.0);
+        assert_eq!(read_val(&dump, &mut j), JsVal::Str("dropped".into()));
+        let JsVal::Obj(f) = read_val(&dump, &mut j) else { panic!() };
+        assert_eq!(f.len(), 12);
+        assert_eq!(read_val(&dump, &mut j), JsVal::Undef);
+    }
+}

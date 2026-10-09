@@ -4520,3 +4520,34 @@ replay_s12!(
     TH_SCENARIOS,
     openfront_core::theme_provider::run_op
 );
+
+// core/configuration/Config.ts: the game-rule facade over the codec'd
+// GameConfig wire object and the scripted Game/Player/Unit/Stats mocks
+// (every facade call pinned into the trace). The harness is stateful per
+// scenario (kind 0 constructs, kind 4/6 mutate the unitInfo cache).
+#[test]
+fn replay_config_scenarios() {
+    use openfront_core::config::Config;
+    for s in vectors::CFG_SCENARIOS {
+        let mut cfg = Config::default();
+        for op in s.ops {
+            let got = cfg.run_op(op.kind, op.args);
+            assert_eq!(
+                got.len(),
+                op.res.len(),
+                "{} op[{:?}] res len: got {got:?} want {:?}",
+                s.name,
+                op.kind,
+                op.res
+            );
+            for (j, (g, w)) in got.iter().zip(op.res.iter()).enumerate() {
+                assert!(
+                    obj_is(*g, *w),
+                    "{} op[{:?}] res[{j}]: got {g} want {w}",
+                    s.name,
+                    op.kind
+                );
+            }
+        }
+    }
+}

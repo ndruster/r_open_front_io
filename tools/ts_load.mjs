@@ -1384,6 +1384,122 @@ function prepare(rel) {
     );
   }
 
+  if (rel.endsWith("configuration/Config.ts")) {
+    // zod only builds the JwksSchema declaration at module load (the capture
+    // never validates with it), so the fully inert self-returning Proxy is
+    // enough (StatsSchemas precedent). The `declare global { interface Window
+    // }` block is erasable type syntax and strip mode accepts it untouched.
+    // PlayerView / AssetManifest / ClusterConfig / DoomsdayClockSpeed /
+    // UserSettings / GameConfig / TeamCountConfig / NukeType are type-only
+    // uses -> the imports are dropped. DetMath (exp / log / pow / pow2) and
+    // Util (assertNever / sigmoid / toInt / within) are *value* uses: DetMath
+    // loads directly from the upstream root, Util rides the prepared copy.
+    // The Game.ts import mixes runtime enums (Difficulty / GameType /
+    // PlayerType / TerrainType / UnitType) with types (Game / Gold / Player /
+    // PlayerInfo / TerraNullius / Tick / Unit / UnitInfo): the type names are
+    // dropped from the named import and the specifier redirected to the
+    // prepared Game.ts copy (enums inlined as plain objects). `export enum
+    // GameEnv` is inlined as a plain object (strip mode rejects `enum`). The
+    // ctor's four parameter properties are expanded; the `listed` /
+    // `_spectator` default values must survive.
+    out = must(
+      out,
+      'import { z } from "zod";\n',
+      "const z = new Proxy(function () {}, { get: () => z, apply: () => z });\n",
+      "Config zod import",
+    );
+    out = must(
+      out,
+      'import { PlayerView } from "../../client/view";\n' +
+        'import { AssetManifest } from "../AssetUrls";\n' +
+        'import { ClusterConfig } from "../ClusterConfig";\n',
+      "",
+      "Config client/asset/cluster imports",
+    );
+    out = must(
+      out,
+      'import { exp, log, pow, pow2 } from "../DetMath";\n',
+      `import { exp, log, pow, pow2 } from "${TS_URL}src/core/DetMath.ts";\n`,
+      "Config DetMath import",
+    );
+    out = must(
+      out,
+      'import { DoomsdayClockSpeed } from "../game/DoomsdayClock";\n',
+      "",
+      "Config DoomsdayClock import",
+    );
+    for (const t of [
+      "Game",
+      "Gold",
+      "Player",
+      "PlayerInfo",
+      "TerraNullius",
+      "Tick",
+      "Unit",
+      "UnitInfo",
+    ]) {
+      out = must(out, `  ${t},\n`, "", `Config Game type ${t}`);
+    }
+    if (!prepared.has("src/core/game/Game.ts")) prepare("src/core/game/Game.ts");
+    out = must(
+      out,
+      '} from "../game/Game";\n',
+      `} from "./${prepared.get("src/core/game/Game.ts")}";\n`,
+      "Config Game import",
+    );
+    out = must(
+      out,
+      'import { UserSettings } from "../game/UserSettings";\n' +
+        'import { GameConfig, TeamCountConfig } from "../Schemas";\n' +
+        'import { NukeType } from "../StatsSchemas";\n',
+      "",
+      "Config UserSettings/Schemas/StatsSchemas imports",
+    );
+    const cfgUtilRel = "src/core/Util.ts";
+    if (!prepared.has(cfgUtilRel)) prepare(cfgUtilRel);
+    out = must(
+      out,
+      'import { assertNever, sigmoid, toInt, within } from "../Util";\n',
+      `import { assertNever, sigmoid, toInt, within } from "./${prepared.get(cfgUtilRel)}";\n`,
+      "Config Util import",
+    );
+    out = must(
+      out,
+      "export enum GameEnv {\n  Dev,\n  Preprod,\n  Prod,\n}",
+      "export const GameEnv = { Dev: 0, Preprod: 1, Prod: 2 };",
+      "Config GameEnv enum",
+    );
+    out = must(
+      out,
+      "  constructor(\n" +
+        "    private _gameConfig: GameConfig,\n" +
+        "    private _userSettings: UserSettings | null,\n" +
+        "    private _isReplay: boolean,\n" +
+        "    public readonly listed: boolean = false,\n" +
+        "    private _spectator: boolean = false,\n" +
+        "  ) {}",
+      "  private _gameConfig: GameConfig;\n" +
+        "  private _userSettings: UserSettings | null;\n" +
+        "  private _isReplay: boolean;\n" +
+        "  public readonly listed: boolean;\n" +
+        "  private _spectator: boolean;\n\n" +
+        "  constructor(\n" +
+        "    _gameConfig: GameConfig,\n" +
+        "    _userSettings: UserSettings | null,\n" +
+        "    _isReplay: boolean,\n" +
+        "    listed: boolean = false,\n" +
+        "    _spectator: boolean = false,\n" +
+        "  ) {\n" +
+        "    this._gameConfig = _gameConfig;\n" +
+        "    this._userSettings = _userSettings;\n" +
+        "    this._isReplay = _isReplay;\n" +
+        "    this.listed = listed;\n" +
+        "    this._spectator = _spectator;\n" +
+        "  }",
+      "Config ctor",
+    );
+  }
+
   if (rel.endsWith("core/Schemas.ts")) {
     // The zod / zb schema declarations are wire-validation and are not
     // ported, but unlike ServerList / StatsSchemas the capture must *read*

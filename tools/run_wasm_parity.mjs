@@ -2629,6 +2629,7 @@ for (const [key, reset, arg, op, outAt] of [
   ["newsmarkdown", "probe_nm_reset", "probe_nm_arg", "probe_nm_op", "probe_nm_out_at"],
   ["colorallocator", "probe_ca_reset", "probe_ca_arg", "probe_ca_op", "probe_ca_out_at"],
   ["themeprovider", "probe_th_reset", "probe_th_arg", "probe_th_op", "probe_th_out_at"],
+  ["config", "probe_cfg_reset", "probe_cfg_arg", "probe_cfg_op", "probe_cfg_out_at"],
 ]) {
   for (const s of S[key]) {
     ex[reset]();

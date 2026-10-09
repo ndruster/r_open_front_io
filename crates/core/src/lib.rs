@@ -261,6 +261,16 @@
 //!   `VoteRound<T>`: insertion-ordered string-keyed candidates over
 //!   per-candidate `Set<string>` IP sets, idempotent same-IP adds, the
 //!   strict-majority `result` / `resultAmong` first-winner scans)
+//! * [`config`] — `src/core/configuration/Config.ts` (the game-rule config
+//!   facade: `parseGameEnv`, the `Config` method table — every numeric /
+//!   boolean getter, the `doomsdayClock` / `overtime` `??`-resolved dumps,
+//!   `trainSaturation` / `tradeShipSaturation` / spawn-rate curves, the
+//!   bigint gold paths with the V8 `BigInt()` throw matrix, `attackLogic`
+//!   with `terrainAttackBase`, `maxTroops` / `troopIncreaseRate` /
+//!   `startManpower` over scripted `Player` facades whose call order is
+//!   traced, the `unitInfo` switch with its JS-`Map`-ordered cache and the
+//!   `costWrapper` closure bodies exercised as standalone ops, and
+//!   `dynamicSamRange` over a scripted `Unit.samLauncherState()`)
 //! * [`config_patch`] — `src/server/ConfigPatch.ts` (`applyGameConfigPatch`'s
 //!   `COPIED_KEYS` copy-if-`!== undefined` loop, the `NULLABLE_KEYS`
 //!   `value ?? undefined` clear-to-undefined loop and the unconditional
@@ -428,6 +438,7 @@ pub mod close_codes;
 pub mod color_allocator;
 pub mod color_utils;
 pub mod cluster_checkin;
+pub mod config;
 pub mod config_patch;
 pub mod consensus;
 pub mod cosmetic_schemas;

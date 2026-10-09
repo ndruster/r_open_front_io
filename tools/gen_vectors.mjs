@@ -191,6 +191,7 @@ const CV = await loadTs("src/server/Consensus.ts");
 const LS = await loadTs("src/server/ListingState.ts");
 const NV = await loadTs("src/server/NameVisibility.ts");
 const MP = await loadTs("src/server/MapPlaylist.ts");
+const CFG = await loadTs("src/core/configuration/Config.ts");
 // S5: the Censor module initializer binds `profanityMatcher` to this
 // scripted obscenity facade at load time (the library is unresolvable in
 // the port repo), so it must exist BEFORE the import. The row table and
@@ -19796,6 +19797,803 @@ runTHProvider("th_provider_steps", [
   [0, { palette: 5 }], // non-string key -> set TypeError
 ]);
 
+// ================================================================ Config.ts
+// core/configuration/Config.ts op stream (Rust twin: `config::Config::run_op`).
+// kind 0 construct [encMap(gameConfig), encVal(userSettings), isReplay,
+// listed, spectator] -> [0]; kind 1 parseGameEnv [encVal] -> [0, [0,3,n] |
+// [1,encS]]; kind 2 method [mid, ...args] -> [traceLen,(trace)*,[0,...encVal]
+// | [1,encS]]; kind 3 attackLogic [flat block] -> [0,[0,...encVal] | [1,encS]];
+// kind 4 unitInfo [encS type] -> [0,[0,hit,6,map] | [1,encS]] (mutates the
+// cache); kind 5 callUnitCost [encS type, encVal extra, player block] ->
+// [traceLen,(trace)*,[0,3,n] | [1,encS]]; kind 6 dumpUnitInfoCache ->
+// [0,n,(encS)*n]. bigints cross as Number(v) (the |v| <= 2^53 domain).
+//
+// kind-2 method ids (TS declaration order; config.rs::run_method mirrors):
+//   0 isReplay 1 isIntentionalSpectator 2 listed 3 traitorDefenseDebuff
+//   4 traitorSpeedDebuff 5 traitorDuration 6 teamLandShareWinThresholdTenths
+//   7 doomsdayClockConfig 8 overtimeConfig 9 spawnImmunityDuration
+//   10 nationSpawnImmunityDuration 11 hasExtendedSpawnImmunity 12 gameConfig
+//   13 userSettings 14 cityTroopIncrease 15 falloutDefenseModifier[x]
+//   16 msPerTick 17 SAMCooldown 18 SiloCooldown 19 defensePostRange
+//   20 defensePostDefenseBonus 21 defensePostSpeedBonus 22 playerTeams
+//   23 spawnNations 24 isUnitDisabled[str] 25 bots 26 instantBuild
+//   27 disableNavMesh 28 disableAlliances 29 waterNukes 30 isRandomSpawn
+//   31 infiniteGold 32 donateGold 33 infiniteTroops 34 donateTroops
+//   35 goldMultiplier 36 startingGold[ptype,isLc] 37 trainSaturation[x]
+//   38 trainSpawnRate[nf,x] 39 trainGold[rel,cv,player] 40 trainStationMinRange
+//   41 trainStationMaxRange 42 railroadMaxSize 43 tradeShipGold[dist,player]
+//   44 tradeShipSaturation[x] 45 tradeShipSpawnRate[rej,x]
+//   46 conquerGoldAmount[player] 47 defaultDonationAmount[player]
+//   48 donateCooldown 49 embargoAllCooldown 50 deletionMarkDuration
+//   51 deleteUnitCooldown 52 emojiMessageDuration 53 emojiMessageCooldown
+//   54 quickChatCooldown 55 targetDuration 56 targetCooldown
+//   57 allianceRequestDuration 58 allianceRequestCooldown 59 allianceDuration
+//   60 temporaryEmbargoDuration 61 minDistanceBetweenPlayers
+//   62 percentageTilesOwnedToWin[sec] 63 armyLimitWarningThreshold
+//   64 boatMaxNumber 65 numSpawnPhaseTurns 66 numBots
+//   67 boatAttackAmount[player] 68 warshipShellLifetime 69 radiusPortSpawn
+//   70 tradeShipShortRangeDebuff 71 proximityBonusPortsNb[tp]
+//   72 attackAmount[player] 73 startManpower[ptype,isLc] 74 maxTroops[player]
+//   75 troopIncreaseRate[player] 76 goldAdditionRate[player]
+//   77 nukeMagnitudes[str] 78 nukeAllianceBreakThreshold 79 nukeSpeed[str]
+//   80 mirvNormalizeTargetTicks 81 defaultNukeTargetableRange
+//   82 defaultSamRange 83 samRange[l] 84 maxSamRange 85 samUpgradeDuration
+//   86 dynamicSamRange[tick,sam-player] 87 defaultSamMissileSpeed
+//   88 nukeDeathFactor[str,humans,tiles,maxTroops] 89 structureMinDist
+//   90 shellLifetime 91 warshipPatrolRange 92 warshipTargettingRange
+//   93 warshipShellAttackRate 94 warshipDockingRange
+//   95 warshipPortHealingBonusPerLevel 96 warshipRetreatHealthPercent
+//   97 warshipPassiveHealing 98 warshipPassiveHealingRange
+//   99 warshipPortSwitchThreshold 100 warshipMaxVeterancy
+//   101 warshipVeterancyHealthBonus 102 warshipVeterancyShellDamageBonus
+//   103 warshipVeterancyTransportKills 104 warshipVeterancyTradeCaptures
+//   105 defensePostShellAttackRate 106 safeFromPiratesCooldownMax
+//   107 defensePostTargettingRange 108 allianceExtensionPromptOffset
+//
+// The player block mirrors `config::Cur::player`: pid, ptype string, then the
+// scripted return lists (isLobbyCreator, troops, numTilesOwned, units lists,
+// isUnderConstruction, level, unitsOwned, unitsConstructed, gold,
+// numMirvsLaunched, samLauncherState values, sam level). Every mock call
+// pushes the same trace event (30-43, config.rs event table) as the Rust
+// Facades, consuming one scripted return in call order.
+const cfgScenarios = [];
+let cfgIdx = 0;
+
+const cfgP = (o = {}) => ({
+  pid: o.pid ?? 1,
+  ptype: o.ptype ?? "HUMAN",
+  ic: o.ic ?? [],
+  troops: o.troops ?? [],
+  nto: o.nto ?? [],
+  units: o.units ?? [],
+  iuc: o.iuc ?? [],
+  ulevel: o.ulevel ?? [],
+  owned: o.owned ?? [],
+  constructed: o.constructed ?? [],
+  gold: o.gold ?? [],
+  mirv: o.mirv ?? [],
+  state: o.state ?? [],
+  sam_level: o.sam_level ?? [],
+});
+
+const cfgEncPlayer = (p) =>
+  [
+    uenc(p.pid),
+    encS(p.ptype),
+    [p.ic.length, ...p.ic.map(uenc)],
+    [p.troops.length, ...p.troops.map(uenc)],
+    [p.nto.length, ...p.nto.map(uenc)],
+    [p.units.length, ...p.units.flatMap((l) => [l.length, ...l.map(uenc)])],
+    [p.iuc.length, ...p.iuc.map(uenc)],
+    [p.ulevel.length, ...p.ulevel.map(uenc)],
+    [p.owned.length, ...p.owned.map(uenc)],
+    [p.constructed.length, ...p.constructed.map(uenc)],
+    [p.gold.length, ...p.gold.map(uenc)],
+    [p.mirv.length, ...p.mirv.map(uenc)],
+    [p.state.length, ...p.state.flatMap(encVal)],
+    [p.sam_level.length, ...p.sam_level.map(uenc)],
+  ].flat();
+
+function cfgFacades(p, tr) {
+  const st = {
+    ic: 0, troops: 0, nto: 0, units: 0, iuc: 0, ulevel: 0,
+    owned: 0, constructed: 0, gold: 0, mirv: 0, state: 0, sam_level: 0,
+  };
+  const take = (key) => {
+    const arr = p[key];
+    if (st[key] >= arr.length) throw new Error(`cfg script exhausted: ${key}`);
+    return arr[st[key]++];
+  };
+  const player = {
+    type: () => { tr.push(30, p.pid, ...encS(p.ptype)); return p.ptype; },
+    isLobbyCreator: () => { const v = take("ic"); tr.push(31, p.pid, v); return v; },
+    troops: () => { const v = take("troops"); tr.push(32, p.pid, v); return v; },
+    numTilesOwned: () => { const v = take("nto"); tr.push(33, p.pid, v); return v; },
+    units: (t) => {
+      const l = take("units");
+      tr.push(34, p.pid, ...encS(t), l.length, ...l);
+      return l.map((uid) => ({
+        isUnderConstruction: () => { const v = take("iuc"); tr.push(35, uid, v); return v; },
+        level: () => { const v = take("ulevel"); tr.push(36, uid, v); return v; },
+      }));
+    },
+    unitsOwned: (t) => { const v = take("owned"); tr.push(37, p.pid, ...encS(t), v); return v; },
+    unitsConstructed: (t) => { const v = take("constructed"); tr.push(38, p.pid, ...encS(t), v); return v; },
+    gold: () => { const v = take("gold"); tr.push(39, p.pid, v); return BigInt(v); },
+  };
+  const game = {
+    stats: () => {
+      tr.push(40);
+      return {
+        numMirvsLaunched: () => { const v = take("mirv"); tr.push(41, v); return BigInt(v); },
+      };
+    },
+  };
+  const sam = {
+    samLauncherState: () => { const v = take("state"); tr.push(42, p.pid, ...encVal(v)); return v; },
+    level: () => { const v = take("sam_level"); tr.push(43, p.pid, v); return v; },
+  };
+  return { player, game, sam };
+}
+
+const CFG_P = new Set([39, 43, 46, 47, 67, 72, 74, 75, 76, 86]);
+
+const cfgMethodArgs = (mid, rest) => {
+  const out = [uenc(mid)];
+  const np = CFG_P.has(mid) ? rest.length - 1 : rest.length;
+  for (let i = 0; i < np; i++) {
+    const x = rest[i];
+    if (typeof x === "string") out.push(...encS(x));
+    else out.push(uenc(x));
+  }
+  if (CFG_P.has(mid)) out.push(...cfgEncPlayer(rest[rest.length - 1]));
+  return out;
+};
+
+function cfgMethod(cfg, mid, rest, tr) {
+  const fac = CFG_P.has(mid) ? cfgFacades(rest[rest.length - 1], tr) : null;
+  switch (mid) {
+    case 0: return cfg.isReplay();
+    case 1: return cfg.isIntentionalSpectator();
+    case 2: return cfg.listed;
+    case 3: return cfg.traitorDefenseDebuff();
+    case 4: return cfg.traitorSpeedDebuff();
+    case 5: return cfg.traitorDuration();
+    case 6: return cfg.teamLandShareWinThresholdTenths();
+    case 7: return cfg.doomsdayClockConfig();
+    case 8: return cfg.overtimeConfig();
+    case 9: return cfg.spawnImmunityDuration();
+    case 10: return cfg.nationSpawnImmunityDuration();
+    case 11: return cfg.hasExtendedSpawnImmunity();
+    case 12: return cfg.gameConfig();
+    case 13: return cfg.userSettings();
+    case 14: return cfg.cityTroopIncrease();
+    case 15: return cfg.falloutDefenseModifier(rest[0]);
+    case 16: return cfg.msPerTick();
+    case 17: return cfg.SAMCooldown();
+    case 18: return cfg.SiloCooldown();
+    case 19: return cfg.defensePostRange();
+    case 20: return cfg.defensePostDefenseBonus();
+    case 21: return cfg.defensePostSpeedBonus();
+    case 22: return cfg.playerTeams();
+    case 23: return cfg.spawnNations();
+    case 24: return cfg.isUnitDisabled(rest[0]);
+    case 25: return cfg.bots();
+    case 26: return cfg.instantBuild();
+    case 27: return cfg.disableNavMesh();
+    case 28: return cfg.disableAlliances();
+    case 29: return cfg.waterNukes();
+    case 30: return cfg.isRandomSpawn();
+    case 31: return cfg.infiniteGold();
+    case 32: return cfg.donateGold();
+    case 33: return cfg.infiniteTroops();
+    case 34: return cfg.donateTroops();
+    case 35: return cfg.goldMultiplier();
+    case 36: return cfg.startingGold({ playerType: rest[0], isLobbyCreator: rest[1] });
+    case 37: return cfg.trainSaturation(rest[0]);
+    case 38: return cfg.trainSpawnRate(rest[0], rest[1]);
+    case 39: return cfg.trainGold(rest[0], rest[1], fac.player);
+    case 40: return cfg.trainStationMinRange();
+    case 41: return cfg.trainStationMaxRange();
+    case 42: return cfg.railroadMaxSize();
+    case 43: return cfg.tradeShipGold(rest[0], fac.player);
+    case 44: return cfg.tradeShipSaturation(rest[0]);
+    case 45: return cfg.tradeShipSpawnRate(rest[0], rest[1]);
+    case 46: return cfg.conquerGoldAmount(fac.player);
+    case 47: return cfg.defaultDonationAmount(fac.player);
+    case 48: return cfg.donateCooldown();
+    case 49: return cfg.embargoAllCooldown();
+    case 50: return cfg.deletionMarkDuration();
+    case 51: return cfg.deleteUnitCooldown();
+    case 52: return cfg.emojiMessageDuration();
+    case 53: return cfg.emojiMessageCooldown();
+    case 54: return cfg.quickChatCooldown();
+    case 55: return cfg.targetDuration();
+    case 56: return cfg.targetCooldown();
+    case 57: return cfg.allianceRequestDuration();
+    case 58: return cfg.allianceRequestCooldown();
+    case 59: return cfg.allianceDuration();
+    case 60: return cfg.temporaryEmbargoDuration();
+    case 61: return cfg.minDistanceBetweenPlayers();
+    case 62: return cfg.percentageTilesOwnedToWin(rest[0]);
+    case 63: return cfg.armyLimitWarningThreshold();
+    case 64: return cfg.boatMaxNumber();
+    case 65: return cfg.numSpawnPhaseTurns();
+    case 66: return cfg.numBots();
+    case 67: return cfg.boatAttackAmount(fac.player);
+    case 68: return cfg.warshipShellLifetime();
+    case 69: return cfg.radiusPortSpawn();
+    case 70: return cfg.tradeShipShortRangeDebuff();
+    case 71: return cfg.proximityBonusPortsNb(rest[0]);
+    case 72: return cfg.attackAmount(fac.player);
+    case 73: return cfg.startManpower({ playerType: rest[0], isLobbyCreator: rest[1] });
+    case 74: return cfg.maxTroops(fac.player);
+    case 75: return cfg.troopIncreaseRate(fac.player);
+    case 76: return cfg.goldAdditionRate(fac.player);
+    case 77: return cfg.nukeMagnitudes(rest[0]);
+    case 78: return cfg.nukeAllianceBreakThreshold();
+    case 79: return cfg.nukeSpeed(rest[0]);
+    case 80: return cfg.mirvNormalizeTargetTicks();
+    case 81: return cfg.defaultNukeTargetableRange();
+    case 82: return cfg.defaultSamRange();
+    case 83: return cfg.samRange(rest[0]);
+    case 84: return cfg.maxSamRange();
+    case 85: return cfg.samUpgradeDuration();
+    case 86: return cfg.dynamicSamRange(fac.sam, rest[0]);
+    case 87: return cfg.defaultSamMissileSpeed();
+    case 88: return cfg.nukeDeathFactor(rest[0], rest[1], rest[2], rest[3]);
+    case 89: return cfg.structureMinDist();
+    case 90: return cfg.shellLifetime();
+    case 91: return cfg.warshipPatrolRange();
+    case 92: return cfg.warshipTargettingRange();
+    case 93: return cfg.warshipShellAttackRate();
+    case 94: return cfg.warshipDockingRange();
+    case 95: return cfg.warshipPortHealingBonusPerLevel();
+    case 96: return cfg.warshipRetreatHealthPercent();
+    case 97: return cfg.warshipPassiveHealing();
+    case 98: return cfg.warshipPassiveHealingRange();
+    case 99: return cfg.warshipPortSwitchThreshold();
+    case 100: return cfg.warshipMaxVeterancy();
+    case 101: return cfg.warshipVeterancyHealthBonus();
+    case 102: return cfg.warshipVeterancyShellDamageBonus();
+    case 103: return cfg.warshipVeterancyTransportKills();
+    case 104: return cfg.warshipVeterancyTradeCaptures();
+    case 105: return cfg.defensePostShellAttackRate();
+    case 106: return cfg.safeFromPiratesCooldownMax();
+    case 107: return cfg.defensePostTargettingRange();
+    case 108: return cfg.allianceExtensionPromptOffset();
+    default: throw new Error(`cfg harness: unknown mid ${mid}`);
+  }
+}
+
+const cfgAttackArgs = (inp) => {
+  const def = inp.defender;
+  const out = [
+    uenc(inp.terrain), uenc(inp.attackTroops), ...encS(inp.attType),
+    uenc(inp.attTiles), def === null ? 0 : 1,
+  ];
+  if (def !== null) {
+    out.push(
+      ...encS(def.type), uenc(def.numTiles), uenc(def.troops),
+      def.isTraitor ? 1 : 0, def.isDisconnectedTeammate ? 1 : 0,
+    );
+  }
+  out.push(inp.defensePost ? 1 : 0, ...encVal(inp.falloutRatio), uenc(inp.borderSize));
+  return out;
+};
+
+function runCFG(name, ops) {
+  const played = [];
+  let cfg = null;
+  for (const [k, ...a] of ops) {
+    let args, res;
+    if (k === 0) {
+      const [gc, us, replay, listed, spectator] = a;
+      cfg = new CFG.Config(gc, us, replay, listed, spectator);
+      args = [...encMap(gc), ...encVal(us), replay ? 1 : 0, listed ? 1 : 0, spectator ? 1 : 0];
+      res = [0];
+    } else if (k === 1) {
+      const v = a[0];
+      args = encVal(v);
+      let r;
+      try { r = [0, ...encVal(CFG.parseGameEnv(v))]; }
+      catch (e) { r = [1, ...encS(e.message)]; }
+      res = [0, ...r];
+    } else if (k === 2) {
+      const mid = a[0];
+      const rest = a.slice(1);
+      const tr = [];
+      args = cfgMethodArgs(mid, rest);
+      let r;
+      try {
+        const v = cfgMethod(cfg, mid, rest, tr);
+        r = [0, ...encVal(typeof v === "bigint" ? Number(v) : v)];
+      } catch (e) { r = [1, ...encS(e.message)]; }
+      res = [tr.length, ...tr, ...r];
+    } else if (k === 3) {
+      const inp = a[0];
+      args = cfgAttackArgs(inp);
+      let r;
+      try {
+        r = [0, ...encVal(cfg.attackLogic({
+          terrain: inp.terrain,
+          attackTroops: inp.attackTroops,
+          attacker: { type: inp.attType, numTiles: inp.attTiles },
+          defender: inp.defender,
+          defenderHasDefensePost: inp.defensePost,
+          falloutRatio: inp.falloutRatio,
+          borderSize: inp.borderSize,
+        }))];
+      } catch (e) { r = [1, ...encS(e.message)]; }
+      res = [0, ...r];
+    } else if (k === 4) {
+      const t = a[0];
+      const hit = cfg.unitInfoCache.has(t) ? 1 : 0;
+      args = encS(t);
+      let r;
+      try {
+        const info = cfg.unitInfo(t);
+        const es = Object.entries(info);
+        r = [0, hit, 6, es.length, ...es.flatMap(([key, v]) => [
+          ...encS(key),
+          ...encVal(typeof v === "function" ? "function" : v),
+        ])];
+      } catch (e) { r = [1, ...encS(e.message)]; }
+      res = [0, ...r];
+    } else if (k === 5) {
+      const [t, extra, p] = a;
+      const tr = [];
+      const fac = cfgFacades(p, tr);
+      args = [...encS(t), ...encVal(extra), ...cfgEncPlayer(p)];
+      let r;
+      try {
+        const v = cfg.unitInfo(t).cost(fac.game, fac.player, extra);
+        r = [0, ...encVal(typeof v === "bigint" ? Number(v) : v)];
+      } catch (e) { r = [1, ...encS(e.message)]; }
+      res = [tr.length, ...tr, ...r];
+    } else {
+      args = [];
+      res = [0, cfg.unitInfoCache.size, ...[...cfg.unitInfoCache.keys()].flatMap(encS)];
+    }
+    played.push({ kind: k, args: args.map(uenc), res: res.map(uenc) });
+  }
+  cfgScenarios.push({ name: `${name}_${cfgIdx++}`, ops: played });
+}
+
+// ---- scenarios ---------------------------------------------------------------
+
+runCFG("cfg_flags", [
+  [0, {}, null, false, true, false],
+  [2, 0], [2, 1], [2, 2],
+  [0, {}, null, true, false, true],
+  [2, 0], [2, 1], [2, 2],
+]);
+
+runCFG("cfg_parse_env", [
+  [0, {}, null, false, false, false],
+  [1, "dev"], [1, "staging"], [1, "prod"], [1, "DEV"], [1, ""],
+  [1, undefined], [1, null], [1, 5], [1, "5"], [1, "prod "],
+]);
+
+runCFG("cfg_constants", [
+  [0, {}, null, false, false, false],
+  [2, 3], [2, 4], [2, 5], [2, 6], [2, 10], [2, 14], [2, 16], [2, 17], [2, 18],
+  [2, 19], [2, 20], [2, 21], [2, 40], [2, 41], [2, 42], [2, 48], [2, 49],
+  [2, 50], [2, 51], [2, 52], [2, 53], [2, 54], [2, 55], [2, 56], [2, 57],
+  [2, 58], [2, 60], [2, 61], [2, 63], [2, 68], [2, 69], [2, 70], [2, 78],
+  [2, 80], [2, 81], [2, 82], [2, 84], [2, 85], [2, 87], [2, 89], [2, 90],
+  [2, 91], [2, 92], [2, 93], [2, 94], [2, 95], [2, 96], [2, 97], [2, 98],
+  [2, 99], [2, 100], [2, 101], [2, 102], [2, 103], [2, 104], [2, 105],
+  [2, 106], [2, 107], [2, 108], [2, 71, 0], [2, 71, 3], [2, 71, 12],
+  [2, 71, 100], [2, 15, 0], [2, 15, 0.5], [2, 15, 1], [2, 15, -1],
+  [2, 15, NaN],
+]);
+
+runCFG("cfg_doomsday", [
+  [0, {}, null, false, false, false],
+  [2, 7], [2, 8],
+  [0, { doomsdayClock: { enabled: true, speed: "fast" } }, null, false, false, false],
+  [2, 7],
+  [0, { doomsdayClock: { enabled: 0, speed: "" } }, null, false, false, false],
+  [2, 7],
+  [0, { doomsdayClock: null }, null, false, false, false],
+  [2, 7], [2, 8],
+  [0, { overtime: { enabled: true, startMinutes: 0 } }, null, false, false, false],
+  [2, 8],
+  [0, { overtime: { startMinutes: null } }, null, false, false, false],
+  [2, 8],
+  [0, { overtime: { enabled: false, startMinutes: 45 } }, null, false, false, false],
+  [2, 8],
+]);
+
+runCFG("cfg_spawn_immunity", [
+  [0, {}, null, false, false, false],
+  [2, 9], [2, 11],
+  [0, { spawnImmunityDuration: 0 }, null, false, false, false],
+  [2, 9], [2, 11],
+  [0, { spawnImmunityDuration: false }, null, false, false, false],
+  [2, 9],
+  [0, { spawnImmunityDuration: 51 }, null, false, false, false],
+  [2, 9], [2, 11],
+  [0, { spawnImmunityDuration: "12" }, null, false, false, false],
+  [2, 9], [2, 11],
+]);
+
+runCFG("cfg_usersettings", [
+  [0, { a: 1, b: "x", hostCheats: { startingGold: 5 } }, { theme: "dark" }, false, false, false],
+  [2, 12], [2, 13],
+  [0, {}, null, false, false, false],
+  [2, 13],
+  [0, {}, undefined, false, false, false],
+  [2, 13],
+]);
+
+runCFG("cfg_teams_nations_disabled", [
+  [0, {}, null, false, false, false],
+  [2, 22], [2, 23], [2, 24, "City"],
+  [0, { playerTeams: 4, nations: "disabled" }, null, false, false, false],
+  [2, 22], [2, 23],
+  [0, { playerTeams: null, nations: null }, null, false, false, false],
+  [2, 22], [2, 23],
+  [0, { playerTeams: "all" }, null, false, false, false],
+  [2, 22],
+  [0, { playerTeams: false }, null, false, false, false],
+  [2, 22],
+  [0, { disabledUnits: ["City", "Port"] }, null, false, false, false],
+  [2, 24, "City"], [2, 24, "Factory"],
+  [0, { disabledUnits: "CityPort" }, null, false, false, false],
+  [2, 24, "City"], [2, 24, "Factory"],
+  [0, { disabledUnits: [1, 2] }, null, false, false, false],
+  [2, 24, "City"],
+  [0, { disabledUnits: null }, null, false, false, false],
+  [2, 24, "City"],
+]);
+
+runCFG("cfg_raw_flags", [
+  [0, {}, null, false, false, false],
+  [2, 25], [2, 26], [2, 27], [2, 28], [2, 29], [2, 30], [2, 31], [2, 32],
+  [2, 33], [2, 34], [2, 35], [2, 66],
+  [0, {
+    bots: 42, instantBuild: true, disableNavMesh: true,
+    customAllianceDuration: 5, disableAlliances: 7, waterNukes: true,
+    randomSpawn: true, infiniteGold: true, donateGold: true,
+    infiniteTroops: true, donateTroops: true, goldMultiplier: 3,
+  }, null, false, false, false],
+  [2, 25], [2, 26], [2, 27], [2, 28], [2, 29], [2, 30], [2, 31], [2, 32],
+  [2, 33], [2, 34], [2, 35], [2, 66],
+  [0, { customAllianceDuration: 0 }, null, false, false, false],
+  [2, 28],
+  [0, { customAllianceDuration: -0 }, null, false, false, false],
+  [2, 28],
+  [0, { customAllianceDuration: 5, disableAlliances: null }, null, false, false, false],
+  [2, 28],
+  [0, { goldMultiplier: 0 }, null, false, false, false],
+  [2, 35],
+  [0, { disableNavMesh: 0 }, null, false, false, false],
+  [2, 27],
+]);
+
+runCFG("cfg_alliance_duration", [
+  [0, {}, null, false, false, false],
+  [2, 59],
+  [0, { customAllianceDuration: 10 }, null, false, false, false],
+  [2, 59],
+  [0, { customAllianceDuration: 0 }, null, false, false, false],
+  [2, 59],
+  [0, { customAllianceDuration: -5 }, null, false, false, false],
+  [2, 59],
+  [0, { customAllianceDuration: NaN }, null, false, false, false],
+  [2, 59],
+  [0, { customAllianceDuration: "10" }, null, false, false, false],
+  [2, 59],
+]);
+
+runCFG("cfg_starting_gold", [
+  [0, {}, null, false, false, false],
+  [2, 36, "BOT", 1], [2, 36, "HUMAN", 0], [2, 36, "NATION", 1],
+  [0, { startingGold: 1000 }, null, false, false, false],
+  [2, 36, "HUMAN", 0], [2, 36, "NATION", 1],
+  [0, { startingGold: 1000, hostCheats: { startingGold: 500 } }, null, false, false, false],
+  [2, 36, "HUMAN", 1], [2, 36, "HUMAN", 0],
+  [0, { startingGold: 1000, hostCheats: { startingGold: 0 } }, null, false, false, false],
+  [2, 36, "HUMAN", 1],
+  [0, { startingGold: 1000, hostCheats: null }, null, false, false, false],
+  [2, 36, "HUMAN", 1],
+  [0, { startingGold: "2000" }, null, false, false, false],
+  [2, 36, "HUMAN", 0],
+  [0, { startingGold: 1.5 }, null, false, false, false],
+  [2, 36, "HUMAN", 0],
+  [0, { startingGold: "abc" }, null, false, false, false],
+  [2, 36, "HUMAN", 0],
+  [0, { hostCheats: { startingGold: "MAX" } }, null, false, false, false],
+  [2, 36, "HUMAN", 1],
+]);
+
+runCFG("cfg_train", [
+  [0, {}, null, false, false, false],
+  [2, 37, 0], [2, 37, 35], [2, 37, 100], [2, 37, 560], [2, 37, 900],
+  [2, 37, 2000], [2, 37, NaN],
+  [2, 38, 0, 0], [2, 38, 5, 100], [2, 38, 10, 560],
+  [2, 39, "ally", 3, cfgP({})],
+  [2, 39, "team", 3, cfgP({})],
+  [2, 39, "other", 20, cfgP({})],
+  [2, 39, "self", 0, cfgP({})],
+  [2, 39, "bogus", 5, cfgP({})],
+  [2, 39, "ally", NaN, cfgP({})],
+  [0, { hostCheats: { goldMultiplier: 2 } }, null, false, false, false],
+  [2, 39, "ally", 3, cfgP({ ic: [1] })],
+  [2, 39, "ally", 3, cfgP({ ic: [0] })],
+  [0, { goldMultiplier: 3 }, null, false, false, false],
+  [2, 39, "team", 12, cfgP({})],
+]);
+
+runCFG("cfg_tradeship", [
+  [0, {}, null, false, false, false],
+  [2, 43, 0, cfgP({})],
+  [2, 43, 100, cfgP({})],
+  [2, 43, 300, cfgP({ ic: [1] })],
+  [2, 43, 1000, cfgP({})],
+  [2, 43, NaN, cfgP({})],
+  [2, 44, 0], [2, 44, 50], [2, 44, 330], [2, 44, 800], [2, 44, 2000],
+  [2, 45, 0, 100], [2, 45, 3, 330], [2, 45, 9, 800], [2, 45, 0, NaN],
+  [0, { goldMultiplier: 2 }, null, false, false, false],
+  [2, 43, 100, cfgP({})],
+]);
+
+runCFG("cfg_conquer_gold", [
+  [0, {}, null, false, false, false],
+  [2, 46, cfgP({ ptype: "BOT", gold: [1000] })],
+  [2, 46, cfgP({ ptype: "NATION", gold: [1001] })],
+  [2, 46, cfgP({ ptype: "HUMAN", gold: [1001] })],
+  [2, 46, cfgP({ ptype: "HUMAN", gold: [0] })],
+  [2, 46, cfgP({ ptype: "HUMAN", gold: [3] })],
+]);
+
+runCFG("cfg_donation_boat", [
+  [0, {}, null, false, false, false],
+  [2, 47, cfgP({ troops: [100] })],
+  [2, 47, cfgP({ troops: [10] })],
+  [2, 47, cfgP({ troops: [2] })],
+  [2, 67, cfgP({ troops: [100] })],
+  [2, 67, cfgP({ troops: [7] })],
+]);
+
+runCFG("cfg_pct_to_win", [
+  [0, {}, null, false, false, false],
+  [2, 62, 5000],
+  [0, { overtime: { enabled: true, startMinutes: 30 } }, null, false, false, false],
+  [2, 62, 1800], [2, 62, 1799.5], [2, 62, 2400], [2, 62, 4200],
+  [2, 62, 1e9], [2, 62, NaN],
+  [0, { overtime: { enabled: true } }, null, false, false, false],
+  [2, 62, 3600],
+  [0, { overtime: { enabled: true, startMinutes: "10" } }, null, false, false, false],
+  [2, 62, 3600],
+]);
+
+runCFG("cfg_boat_spawn", [
+  [0, {}, null, false, false, false],
+  [2, 64], [2, 65], [2, 66],
+  [0, { disabledUnits: ["Transport"] }, null, false, false, false],
+  [2, 64],
+  [0, { randomSpawn: true }, null, false, false, false],
+  [2, 65],
+  [0, { gameType: "Singleplayer" }, null, false, false, false],
+  [2, 65],
+  [0, { gameType: "Singleplayer", randomSpawn: true }, null, false, false, false],
+  [2, 65],
+  [0, { gameType: "Multiplayer", randomSpawn: false }, null, false, false, false],
+  [2, 65],
+]);
+
+runCFG("cfg_attack_start", [
+  [0, {}, null, false, false, false],
+  [2, 72, cfgP({ ptype: "BOT", troops: [900] })],
+  [2, 72, cfgP({ ptype: "HUMAN", troops: [900] })],
+  [2, 73, "BOT", 0],
+  [2, 73, "NATION", 0],
+  [0, { difficulty: "Easy" }, null, false, false, false],
+  [2, 73, "NATION", 0],
+  [0, { difficulty: "Medium" }, null, false, false, false],
+  [2, 73, "NATION", 0],
+  [0, { difficulty: "Hard" }, null, false, false, false],
+  [2, 73, "NATION", 0],
+  [0, { difficulty: "Impossible" }, null, false, false, false],
+  [2, 73, "NATION", 0],
+  [0, { difficulty: "Bogus" }, null, false, false, false],
+  [2, 73, "NATION", 0],
+  [0, {}, null, false, false, false],
+  [2, 73, "HUMAN", 0],
+  [0, { infiniteTroops: true }, null, false, false, false],
+  [2, 73, "HUMAN", 0],
+  [0, { hostCheats: { infiniteTroops: true } }, null, false, false, false],
+  [2, 73, "HUMAN", 1], [2, 73, "HUMAN", 0],
+]);
+
+runCFG("cfg_max_troops", [
+  [0, {}, null, false, false, false],
+  [2, 74, cfgP({ nto: [100], units: [[10, 11, 12]], iuc: [0, 1, 0], ulevel: [3, 5] })],
+  [2, 74, cfgP({ ptype: "BOT", nto: [100], units: [[]] })],
+  [2, 74, cfgP({ nto: [0], units: [[]] })],
+  [2, 74, cfgP({ nto: [100], units: [[7, 8]], iuc: [1, 1] })],
+  [0, { infiniteTroops: true }, null, false, false, false],
+  [2, 74, cfgP({})],
+  [2, 74, cfgP({ ptype: "BOT", nto: [50], units: [[]] })],
+  [0, { hostCheats: { infiniteTroops: true } }, null, false, false, false],
+  [2, 74, cfgP({ ic: [1] })],
+  [2, 74, cfgP({ ic: [0], nto: [100], units: [[]] })],
+  [0, { difficulty: "Easy" }, null, false, false, false],
+  [2, 74, cfgP({ ptype: "NATION", nto: [100], units: [[]] })],
+  [0, { difficulty: "Impossible" }, null, false, false, false],
+  [2, 74, cfgP({ ptype: "NATION", nto: [100], units: [[]] })],
+  [0, { difficulty: "Bogus" }, null, false, false, false],
+  [2, 74, cfgP({ ptype: "NATION", nto: [100], units: [[]] })],
+]);
+
+runCFG("cfg_troop_increase", [
+  [0, {}, null, false, false, false],
+  [2, 75, cfgP({ nto: [100], units: [[]], troops: [1000, 1000, 1000, 1000] })],
+  [2, 75, cfgP({ troops: [0, 0, 0, 0], nto: [0], units: [[]] })],
+  [2, 75, cfgP({ ptype: "BOT", nto: [100], units: [[]], troops: [1000, 1000, 1000, 1000] })],
+  [0, { difficulty: "Easy" }, null, false, false, false],
+  [2, 75, cfgP({ ptype: "NATION", nto: [100], units: [[]], troops: [1000, 1000, 1000, 1000] })],
+  [0, { difficulty: "Impossible" }, null, false, false, false],
+  [2, 75, cfgP({ ptype: "NATION", nto: [100], units: [[]], troops: [1000, 1000, 1000, 1000] })],
+  [0, {}, null, false, false, false],
+  [2, 75, cfgP({ ptype: "NATION", nto: [100], units: [[]], troops: [1000, 1000, 1000, 1000] })],
+  [0, { infiniteTroops: true }, null, false, false, false],
+  [2, 75, cfgP({ troops: [1e8, 1e8, 1e8, 1e8] })],
+]);
+
+runCFG("cfg_gold_addition", [
+  [0, {}, null, false, false, false],
+  [2, 76, cfgP({ ptype: "BOT" })],
+  [2, 76, cfgP({ ptype: "HUMAN" })],
+  [0, { goldMultiplier: 2 }, null, false, false, false],
+  [2, 76, cfgP({ ptype: "BOT" })],
+  [0, { hostCheats: { goldMultiplier: 5 } }, null, false, false, false],
+  [2, 76, cfgP({ ic: [1] })],
+  [2, 76, cfgP({ ic: [0] })],
+  [0, { hostCheats: { goldMultiplier: NaN } }, null, false, false, false],
+  [2, 76, cfgP({})],
+]);
+
+runCFG("cfg_nuke_tables", [
+  [0, {}, null, false, false, false],
+  [2, 77, "MIRV Warhead"], [2, 77, "Atom Bomb"], [2, 77, "Hydrogen Bomb"],
+  [2, 77, "MIRV"], [2, 77, "City"],
+  [2, 79, "Atom Bomb"], [2, 79, "Hydrogen Bomb"], [2, 79, "MIRV"],
+  [2, 79, "MIRV Warhead"], [2, 79, "Trade Ship"],
+]);
+
+runCFG("cfg_sam", [
+  [0, {}, null, false, false, false],
+  [2, 83, 0], [2, 83, 1], [2, 83, 5], [2, 83, 150],
+  [2, 86, 1000, cfgP({ state: [undefined], sam_level: [3] })],
+  [2, 86, 1000, cfgP({ state: [{}], sam_level: [2] })],
+  [2, 86, 1000, cfgP({ state: [null] })],
+  [2, 86, 145, cfgP({ state: [{ upgradeStartTick: 100, duration: 45, targetLevel: 5, startRange: 70 }] })],
+  [2, 86, 122, cfgP({ state: [{ upgradeStartTick: 100, duration: 45, targetLevel: 5, startRange: 70 }] })],
+  [2, 86, 145, cfgP({ state: [{ upgradeStartTick: 100, targetLevel: 3 }] })],
+  [2, 86, 130, cfgP({ state: [{ upgradeStartTick: 100, duration: 0, targetLevel: 4 }] })],
+  [2, 86, 99, cfgP({ state: [{ upgradeStartTick: 100, duration: 45, targetLevel: 5, startRange: 70 }] })],
+]);
+
+runCFG("cfg_nuke_death", [
+  [0, {}, null, false, false, false],
+  [2, 88, "Atom Bomb", 100, 50, 100000],
+  [2, 88, "Atom Bomb", 100, 0, 100000],
+  [2, 88, "MIRV Warhead", 10000, 50, 100000],
+  [2, 88, "MIRV Warhead", 1000, 50, 100000],
+  [2, 88, "MIRV Warhead", 0, 50, 0],
+]);
+
+const cfgAL = (over = {}) => [3, {
+  terrain: 0, attackTroops: 10000, attType: "HUMAN", attTiles: 100,
+  defender: { type: "HUMAN", numTiles: 80, troops: 6000, isTraitor: false, isDisconnectedTeammate: false },
+  defensePost: false, falloutRatio: null, borderSize: 50, ...over,
+}];
+
+runCFG("cfg_attack_logic", [
+  [0, {}, null, false, false, false],
+  cfgAL(),
+  cfgAL({ attType: "BOT" }),
+  cfgAL({ terrain: 1 }),
+  cfgAL({ terrain: 2 }),
+  cfgAL({ terrain: 4 }),
+  cfgAL({ terrain: 3 }),
+  cfgAL({ terrain: -1.5 }),
+  cfgAL({ terrain: 0.5 }),
+  cfgAL({ defender: null }),
+  cfgAL({ defender: null, attType: "BOT" }),
+  cfgAL({ defensePost: true }),
+  cfgAL({ defensePost: true, defender: null }),
+  cfgAL({ falloutRatio: 0.5 }),
+  cfgAL({ falloutRatio: 1 }),
+  cfgAL({ falloutRatio: 0 }),
+  cfgAL({ falloutRatio: undefined }),
+  cfgAL({ defender: { type: "HUMAN", numTiles: 80, troops: 6000, isTraitor: true, isDisconnectedTeammate: false } }),
+  cfgAL({ defender: { type: "HUMAN", numTiles: 80, troops: 6000, isTraitor: false, isDisconnectedTeammate: true } }),
+  cfgAL({ defender: { type: "BOT", numTiles: 80, troops: 6000, isTraitor: false, isDisconnectedTeammate: false } }),
+  cfgAL({ attType: "NATION", defender: { type: "BOT", numTiles: 80, troops: 6000, isTraitor: false, isDisconnectedTeammate: false } }),
+  cfgAL({ attTiles: 1e6, defender: { type: "HUMAN", numTiles: 1e6, troops: 600000, isTraitor: false, isDisconnectedTeammate: false } }),
+  cfgAL({ defender: { type: "HUMAN", numTiles: 80, troops: 6000, isTraitor: false, isDisconnectedTeammate: false }, attackTroops: 10000 }),
+  cfgAL({ attackTroops: 10000, defender: { type: "HUMAN", numTiles: 80, troops: 6000, isTraitor: false, isDisconnectedTeammate: false }, borderSize: 1 }),
+  cfgAL({ attackTroops: 300000, defender: { type: "HUMAN", numTiles: 80, troops: 180000, isTraitor: false, isDisconnectedTeammate: false } }),
+  cfgAL({ attackTroops: 100, defender: { type: "HUMAN", numTiles: 80, troops: 200, isTraitor: false, isDisconnectedTeammate: false } }),
+  cfgAL({ attackTroops: 100, defender: { type: "HUMAN", numTiles: 80, troops: 2000, isTraitor: false, isDisconnectedTeammate: false } }),
+  cfgAL({ attackTroops: 100, defender: { type: "HUMAN", numTiles: 80, troops: 200000, isTraitor: false, isDisconnectedTeammate: false } }),
+  cfgAL({ attackTroops: 100, defender: { type: "HUMAN", numTiles: 80, troops: 2000000, isTraitor: false, isDisconnectedTeammate: false } }),
+  cfgAL({ attackTroops: 0 }),
+  cfgAL({ defender: { type: "HUMAN", numTiles: 0, troops: 6000, isTraitor: false, isDisconnectedTeammate: false } }),
+]);
+
+runCFG("cfg_unit_info", [
+  [0, {}, null, false, false, false],
+  [4, "Transport"], [4, "Warship"], [4, "Shell"], [4, "SAMMissile"],
+  [4, "Port"], [4, "Atom Bomb"], [4, "Hydrogen Bomb"], [4, "Trade Ship"],
+  [4, "MIRV"], [4, "MIRV Warhead"], [4, "Missile Silo"], [4, "Defense Post"],
+  [4, "SAM Launcher"], [4, "City"], [4, "Factory"], [4, "Train"],
+  [4, "Warship"], [4, "City"],
+  [4, "Bogus"], [4, "Bogus"],
+  [6],
+]);
+
+runCFG("cfg_unit_info_instant", [
+  [0, { instantBuild: true }, null, false, false, false],
+  [4, "Port"], [4, "Missile Silo"], [4, "Defense Post"], [4, "SAM Launcher"],
+  [4, "City"], [4, "Factory"],
+  [6],
+  [0, { instantBuild: "yes" }, null, false, false, false],
+  [4, "City"],
+  [0, { instantBuild: 0 }, null, false, false, false],
+  [4, "City"],
+]);
+
+runCFG("cfg_cost_zero", [
+  [0, {}, null, false, false, false],
+  [5, "Transport", undefined, cfgP({})],
+  [5, "Shell", undefined, cfgP({})],
+  [5, "SAMMissile", undefined, cfgP({})],
+  [5, "MIRV Warhead", undefined, cfgP({})],
+  [5, "Trade Ship", undefined, cfgP({})],
+  [5, "Train", undefined, cfgP({})],
+]);
+
+runCFG("cfg_cost_wrapper", [
+  [0, {}, null, false, false, false],
+  [5, "Warship", undefined, cfgP({ owned: [2], constructed: [3] })],
+  [5, "Warship", 2, cfgP({ owned: [2], constructed: [1] })],
+  [5, "Port", undefined, cfgP({ owned: [1, 2], constructed: [1, 1] })],
+  [5, "Factory", undefined, cfgP({ owned: [3, 0], constructed: [2, 5] })],
+  [5, "City", undefined, cfgP({ owned: [10], constructed: [10] })],
+  [5, "City", undefined, cfgP({ owned: [1024], constructed: [1024] })],
+  [5, "Atom Bomb", undefined, cfgP({ owned: [9], constructed: [9] })],
+  [5, "Hydrogen Bomb", undefined, cfgP({ owned: [0], constructed: [0] })],
+  [5, "Missile Silo", undefined, cfgP({ owned: [1], constructed: [1] })],
+  [5, "Defense Post", undefined, cfgP({ owned: [4], constructed: [4] })],
+  [5, "SAM Launcher", undefined, cfgP({ owned: [2], constructed: [2] })],
+  [5, "City", null, cfgP({ owned: [1], constructed: [1] })],
+  [5, "City", true, cfgP({ owned: [1], constructed: [1] })],
+  [5, "City", NaN, cfgP({ owned: [1], constructed: [1] })],
+  [5, "Warship", NaN, cfgP({ owned: [1], constructed: [1] })],
+  [0, { infiniteGold: true }, null, false, false, false],
+  [5, "City", undefined, cfgP({})],
+  [0, { hostCheats: { infiniteGold: true } }, null, false, false, false],
+  [5, "City", undefined, cfgP({ ic: [1] })],
+  [5, "City", undefined, cfgP({ ic: [0], owned: [1], constructed: [1] })],
+]);
+
+runCFG("cfg_cost_mirv", [
+  [0, {}, null, false, false, false],
+  [5, "MIRV", undefined, cfgP({ mirv: [3] })],
+  [5, "MIRV", undefined, cfgP({ ptype: "BOT", mirv: [0] })],
+  [0, { infiniteGold: true }, null, false, false, false],
+  [5, "MIRV", undefined, cfgP({})],
+  [0, { hostCheats: { infiniteGold: true } }, null, false, false, false],
+  [5, "MIRV", undefined, cfgP({ ic: [1] })],
+  [5, "MIRV", undefined, cfgP({ ic: [0], mirv: [1] })],
+]);
+
 const structures = {
   votetally: vtScenarios,
   rankedcheckin: rgScenarios,
@@ -19937,6 +20735,7 @@ const structures = {
   newsmarkdown: nmScenarios,
   colorallocator: caScenarios,
   themeprovider: thScenarios,
+  config: cfgScenarios,
 };
 
 // ================================================================ JSON
@@ -23378,6 +24177,20 @@ opStream(
     "/// (r,g,b,a)*2, warn 0 | 1 + encS text]; kind 3 themeProvider steps\n" +
     "/// [n, ([0, ...codec overrides] | [1])*n] -> [n, ([0, themeIdx, flag] |\n" +
     "/// [1, encS TypeError msg] | [2])*n].",
+);
+opStream(
+  "config",
+  "Cfg",
+  "/// One `core/configuration/Config.ts` op (see `config::Config::run_op`\n" +
+    "/// docs). kind 0 construct [encMap(gameConfig), encVal(userSettings),\n" +
+    "/// isReplay, listed, spectator] -> [0]; kind 1 parseGameEnv [encVal] ->\n" +
+    "/// [0, [0,3,n] | [1,encS]]; kind 2 method [mid,...] -> [traceLen,\n" +
+    "/// (trace)*,[0,...encVal] | [1,encS]]; kind 3 attackLogic [flat block] ->\n" +
+    "/// [0,[0,...encVal] | [1,encS]]; kind 4 unitInfo [encS type] -> [0,[0,\n" +
+    "/// hit,6,map] | [1,encS]]; kind 5 callUnitCost [encS type, encVal extra,\n" +
+    "/// player block] -> [traceLen,(trace)*,[0,3,n] | [1,encS]]; kind 6\n" +
+    "/// dumpUnitInfoCache -> [0,n,(encS)*n]. Facade trace events 30-43 pin the\n" +
+    "/// mock call order; bigints cross as Number(v) (|v| <= 2^53 domain).",
 );
 
 const dataDir = join(root, "crates", "core", "tests", "data");

@@ -5402,3 +5402,36 @@ s8_stateless_probe!(
     probe_th_reset, probe_th_arg, probe_th_op, probe_th_out_at,
     TH_ARGS, TH_OUT, crate::theme_provider::run_op
 );
+
+// ============ S1: core/configuration/Config.ts (config) =======================
+
+thread_local! {
+    static CFG_HARNESS: std::cell::RefCell<crate::config::Config> =
+        std::cell::RefCell::new(crate::config::Config::default());
+    static CFG_ARGS: std::cell::RefCell<Vec<f64>> = const { std::cell::RefCell::new(Vec::new()) };
+    static CFG_OUT: std::cell::RefCell<Vec<f64>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
+#[no_mangle]
+pub extern "C" fn probe_cfg_reset() {
+    CFG_HARNESS.with(|h| h.borrow_mut().reset());
+}
+
+#[no_mangle]
+pub extern "C" fn probe_cfg_arg(v: f64) {
+    CFG_ARGS.with(|t| t.borrow_mut().push(v));
+}
+
+#[no_mangle]
+pub extern "C" fn probe_cfg_op(kind: u32) -> usize {
+    let a = CFG_ARGS.with(|t| std::mem::take(&mut *t.borrow_mut()));
+    let out = CFG_HARNESS.with(|h| h.borrow_mut().run_op(kind as u8, &a));
+    let len = out.len();
+    CFG_OUT.with(|o| *o.borrow_mut() = out);
+    len
+}
+
+#[no_mangle]
+pub extern "C" fn probe_cfg_out_at(i: usize) -> f64 {
+    CFG_OUT.with(|o| o.borrow()[i])
+}

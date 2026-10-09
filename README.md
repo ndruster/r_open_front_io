@@ -150,6 +150,13 @@ rust/
 │   │   │                          (Executor intent dispatcher; the 24
 │   │   │                          Execution classes stubbed as construction
 │   │   │                          recorders over a pinned trace)
+│   │   ├── config.rs              port of configuration/Config.ts (the
+│   │   │                          game-rule config facade: attackLogic /
+│   │   │                          unitInfo + costWrapper / train & trade
+│   │   │                          saturation / sam & nuke tables / bigint
+│   │   │                          gold math; GameConfig rides the js_json
+│   │   │                          codec, Game/Player/Unit/Stats facades
+│   │   │                          scripted-mocked with a pinned call trace)
 │   │   ├── station_manager.rs     port of game/RailNetworkImpl.ts
 │   │   │                          (StationManagerImpl only; count()=nextId
 │   │   │                          quirk, sparse stationsById, Set order)
@@ -2131,6 +2138,57 @@ WebSockets — stays excluded, mirroring the `src/core` exclusions).
     `themeProvider.current()` (`palette ?? "default"`, the two TypeError
     texts, `classicBotColors ?? false` keeping any present value's
     truthiness). 18 scenarios (`ca_` 7, `th_` 11).
+77. **`configuration/Config.ts`** (`config`) — the game-rule config facade,
+    the last B-tier piece the Game graph leaned on (previously the
+    `NationCreation` / `GameImpl` ports facade-ized it away). `GameConfig`
+    rides the `js_json` codec as an insertion-ordered field list (precedent
+    `config_patch`); the `Game` / `Player` / `Unit` / `Stats` facades are
+    scripted mocks whose every call is pinned into a flat trace (precedent
+    `nation_utils` / `stats_impl`), so the facade call order, the `&&` / `??`
+    short-circuits and the `unitInfo` cost-closure bodies are part of the
+    compared stream; bigints cross as f64 tokens in the `|v| <= 2^53` capture
+    domain. Ported surface: `parseGameEnv` (incl. the throw), the module
+    constants (the nine `attackLogic` tunables, `DOOMSDAY_CLOCK_DEFAULTS`
+    15-key / `OVERTIME_DEFAULTS` 3-key declaration-order dumps),
+    `terrainAttackBase` (both throw messages; the `default` interpolates the
+    RAW numeric terrain), all ~90 `Config` methods — `attackLogic` (the
+    full terra-nullius / defensePost / fallout / traitor / bot-defender /
+    disconnected-teammate / large-territory sigmoid chain, association order
+    transcribed), `trainSaturation` / `trainSpawnRate` / `trainGold` (the
+    no-default `switch` leaves `baseGold` undefined → `NaN` → `toInt` throws,
+    pinned), `tradeShipGold` / `tradeShipSaturation` / `tradeShipSpawnRate`,
+    `unitInfo`'s 16-case switch + `costWrapper` (the `types` reduce order
+    Port→[Port,Factory] / Factory→[Factory,Port], the `Human && infiniteGold`
+    short-circuit BEFORE the reduce, the `extraUnits = 0` default firing only
+    on undefined/absent), the MIRV cost closure (`25_000_000n + launches *
+    15_000_000n` bigint math through `game.stats().numMirvsLaunched()`), the
+    JS-`Map` insertion-order `unitInfoCache` (hit does NOT re-insert; the
+    key-order dump pins it), `samRange` / `dynamicSamRange` (the `duration:
+    0` case keeps `??` nullish semantics — division by zero yields
+    NaN/Infinity, pinned), `nukeMagnitudes` / `nukeSpeed` (the
+    fall-through `Unknown nuke type: <string>` interpolation),
+    `nukeDeathFactor` (the MIRVWarhead `1 - exp(-2·excess/max)` curve),
+    `maxTroops` / `troopIncreaseRate` (the `filter`-then-`map` two-phase
+    call order over the City units, the difficulty tables), the bigint
+    `startingGold` / `conquerGoldAmount` (`/ 2n` truncates toward zero) /
+    `goldAdditionRate`, `percentageTilesOwnedToWin` (the overtime whole-
+    second floor), `allianceDuration` (`typeof m === "number" && m > 0` —
+    NaN passes the typeof but fails `> 0`), `disableAlliances` (the `=== 0`
+    true for `-0`; the `||` returns the RAW right operand), the
+    `hasInfinite*` / `goldMultiplierFor` host-cheat gates (`isLobbyCreator()`
+    only called when the left side is truthy — the trace pins the absence),
+    and the `BigInt(x)` V8 throw matrix (non-integer number → "The number
+    <Number::toString> cannot be converted to a BigInt because it is not an
+    integer"; non-numeric → "Cannot convert <String(x)> to a BigInt", the
+    ORIGINAL untrimmed string; `BigInt("")` === 0n). `JwksSchema` is a zod
+    declaration (not ported); `GameEnv` is pinned through `parseGameEnv`.
+    29 scenarios (`cfg_` 29: flags / parse_env / constants / doomsday /
+    spawn_immunity / usersettings / teams_nations_disabled / raw_flags /
+    alliance_duration / starting_gold / train / tradeship / conquer_gold /
+    donation_boat / pct_to_win / boat_spawn / attack_start / max_troops /
+    troop_increase / gold_addition / nuke_tables / sam / nuke_death /
+    attack_logic / unit_info / unit_info_instant / cost_zero / cost_wrapper
+    / cost_mirv), 831,862 wasm comparisons bit-identical.
 
 Regenerate whenever a ported source changes:
 

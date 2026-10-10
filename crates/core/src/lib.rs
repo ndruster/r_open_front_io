@@ -271,6 +271,18 @@
 //!   traced, the `unitInfo` switch with its JS-`Map`-ordered cache and the
 //!   `costWrapper` closure bodies exercised as standalone ops, and
 //!   `dynamicSamRange` over a scripted `Unit.samLauncherState()`)
+//! * [`unit_impl`] — `src/core/game/UnitImpl.ts` (the game unit entity: the
+//!   full private field block, the ctor's `"x" in params` presence gates and
+//!   type-driven state construction, `toUpdate`'s declaration-order key
+//!   dump, `move` / `setOwner` / `modifyHealth` / `delete` with the
+//!   `displayMessage` default-parameter and stats fan-out, the warship /
+//!   transport / nuke state getters and `update*State` Partial merges with
+//!   their rebuild key orders, the SAM missile queue, the trajectory
+//!   accessors with the V8 `!.` TypeError messages, the veterancy cluster
+//!   (the `addVeterancyProgress` while-loop re-reading the cap per level)
+//!   and the level cluster over scripted `mg` / owner facades whose every
+//!   call is pinned into a flat trace; the owner `_units` /
+//!   `_myUnitsVersion` mutations ride as real harness state)
 //! * [`config_patch`] — `src/server/ConfigPatch.ts` (`applyGameConfigPatch`'s
 //!   `COPIED_KEYS` copy-if-`!== undefined` loop, the `NULLABLE_KEYS`
 //!   `value ?? undefined` clear-to-undefined loop and the unconditional
@@ -537,6 +549,7 @@ pub mod train_station;
 pub mod tribe_names;
 pub mod tutorial;
 pub mod unit_grid;
+pub mod unit_impl;
 pub mod unit_types;
 pub mod util;
 pub mod utils_format;

@@ -2630,6 +2630,7 @@ for (const [key, reset, arg, op, outAt] of [
   ["colorallocator", "probe_ca_reset", "probe_ca_arg", "probe_ca_op", "probe_ca_out_at"],
   ["themeprovider", "probe_th_reset", "probe_th_arg", "probe_th_op", "probe_th_out_at"],
   ["config", "probe_cfg_reset", "probe_cfg_arg", "probe_cfg_op", "probe_cfg_out_at"],
+  ["unitimpl", "probe_ui_reset", "probe_ui_arg", "probe_ui_op", "probe_ui_out_at"],
 ]) {
   for (const s of S[key]) {
     ex[reset]();

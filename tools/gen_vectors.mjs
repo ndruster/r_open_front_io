@@ -192,6 +192,7 @@ const LS = await loadTs("src/server/ListingState.ts");
 const NV = await loadTs("src/server/NameVisibility.ts");
 const MP = await loadTs("src/server/MapPlaylist.ts");
 const CFG = await loadTs("src/core/configuration/Config.ts");
+const UI = await loadTs("src/core/game/UnitImpl.ts");
 // S5: the Censor module initializer binds `profanityMatcher` to this
 // scripted obscenity facade at load time (the library is unresolvable in
 // the port repo), so it must exist BEFORE the import. The row table and
@@ -20594,6 +20595,530 @@ runCFG("cfg_cost_mirv", [
   [5, "MIRV", undefined, cfgP({ ic: [0], mirv: [1] })],
 ]);
 
+// ---- S1: core/game/UnitImpl.ts (unit_impl) ----------------------------------
+//
+// The `Unit` under test is the real TS `UnitImpl`; the `mg` (GameImpl) and
+// owner (PlayerImpl) surfaces are scripted mocks whose every call is pushed
+// into the per-op trace `curTr` (event codes 50-84, the Rust twin documents
+// the table in `unit_impl.rs`). Mock FIFO scripts REPEAT their last value once
+// exhausted (`Math.min(i, len - 1)`, the Rust `take_*` rule); the trace pins
+// the call count, so the repetition cannot mask a divergence. The owner
+// `_units` / `_myUnitsVersion` are REAL mock state (TS mutates them directly);
+// `_units` slots hold the unit under test for token 0 and `{ uiTok }`
+// placeholders for other units, pinned by mid 71 dumpOwner.
+//
+// mid table (TS declaration order, mirrored by `unit_impl::run_method`):
+// 0 setTargetable(v) 1 isTargetable 2 isUnit 3 touch 4 setTileTarget(v)
+// 5 tileTarget 6 id 7 toUpdate 8 type 9 lastTile 10 move(tile) 11 setTroops
+// 12 troops 13 health 14 hasHealth 15 tile 16 owner->pid 17 info
+// 18 setOwner(ownerBlock) 19 maxHealth 20 modifyHealth(delta, attacker)
+// 21 clearPendingDeletion 22 isMarkedForDeletion 23 markForDeletion
+// 24 isOverdueDeletion 25 delete(dm, destroyer) 26 isActive
+// 27 wasDestroyedByEnemy 28 destroyer 29 warshipState 30 updateWarshipState
+// 31 isInCombat 32 transportShipState 33 updateTransportShipState
+// 34 nukeState 35 updateNukeState 36 isUnderConstruction 37 setUnderConstruction
+// 38 hash 39 toString 40 launch 41 ticksLeftInCooldown 42 isInCooldown
+// 43 missileTimerQueue 44 samLauncherState 45 reloadMissile 46 setTargetTile
+// 47 targetTile 48 targetPlayer 49 setTrajectoryIndex [raw num] 50 trajectoryIndex
+// 51 trajectory 52 setTargetUnit 53 targetUnit 54 setTargetedBySAM
+// 55 targetedBySAM 56 setReachedTarget 57 reachedTarget 58 setSafeFromPirates
+// 59 isSafeFromPirates 60 level 61 veterancy 62 recordKill [encS str]
+// 63 recordTradeCapture 64 setTrainStation 65 hasTrainStation 66 increaseLevel
+// 67 decreaseLevel(destroyer) 68 trainType 69 isLoaded 70 setLoaded
+// 71 dumpOwner [raw idx] -> [0,pid,n,(tokens)*n,myUnitsVersion]
+
+const uiScenarios = [];
+let uiIdx = 0;
+
+// Mock objects (targetUnit sentinels `{ __tu: 1 }` become these) cross the
+// codec as reference tokens: the same object always encodes to `[3, tok]`.
+const uiTok = new Map();
+let uiTokN = 1;
+
+const uiEnc = (v) => {
+  if (v === undefined) return [1];
+  if (v === null) return [2];
+  if (typeof v === "number") return [3, uenc(v)];
+  if (typeof v === "boolean") return [4, v ? 1 : 0];
+  if (typeof v === "string") return [5, ...encS(v)];
+  if (uiTok.has(v)) return [3, uiTok.get(v)];
+  if (Array.isArray(v)) return [7, v.length, ...v.flatMap(uiEnc)];
+  return [
+    6,
+    Object.keys(v).length,
+    ...Object.entries(v).flatMap(([k, x]) => [...encS(k), ...uiEnc(x)]),
+  ];
+};
+
+const uiM = (o = {}) => ({
+  unit_info: o.unit_info ?? [{ maxHealth: 10 }],
+  ticks: o.ticks ?? [],
+  sam_range: o.sam_range ?? [],
+  sam_dur: o.sam_dur ?? [],
+  del_mark: o.del_mark ?? [],
+  wh_bonus: o.wh_bonus ?? [],
+  max_vet: o.max_vet ?? [],
+  vet_transport: o.vet_transport ?? [],
+  vet_trade: o.vet_trade ?? [],
+  safe_pirates: o.safe_pirates ?? [],
+  dyn_sam: o.dyn_sam ?? [],
+  tu_id: o.tu_id ?? [],
+});
+
+const uiO = (o = {}) => ({
+  pid: o.pid ?? 1,
+  small_id: o.small_id ?? [o.pid ?? 1],
+  ids: o.ids ?? [o.pid ?? 1],
+  names: o.names ?? ["p" + (o.pid ?? 1)],
+  units: o.units ?? [],
+  my_units_version: o.my_units_version ?? 0,
+});
+
+const uiEncOwner = (o) =>
+  [
+    uenc(o.pid),
+    [o.small_id.length, ...o.small_id.map(uenc)],
+    [o.ids.length, ...o.ids.map(uenc)],
+    [o.names.length, ...o.names.flatMap(encS)],
+    [o.units.length, ...o.units.map(uenc)],
+    uenc(o.my_units_version),
+  ].flat();
+
+const uiEncMg = (m) =>
+  [
+    [m.unit_info.length, ...m.unit_info.flatMap(uiEnc)],
+    [m.ticks.length, ...m.ticks.map(uenc)],
+    [m.sam_range.length, ...m.sam_range.map(uenc)],
+    [m.sam_dur.length, ...m.sam_dur.map(uenc)],
+    [m.del_mark.length, ...m.del_mark.map(uenc)],
+    [m.wh_bonus.length, ...m.wh_bonus.map(uenc)],
+    [m.max_vet.length, ...m.max_vet.map(uenc)],
+    [m.vet_transport.length, ...m.vet_transport.map(uenc)],
+    [m.vet_trade.length, ...m.vet_trade.map(uenc)],
+    [m.safe_pirates.length, ...m.safe_pirates.map(uenc)],
+    [m.dyn_sam.length, ...m.dyn_sam.map(uenc)],
+    [m.tu_id.length, ...m.tu_id.flatMap(uiEnc)],
+  ].flat();
+
+const uiTake = (st, arr, key) => {
+  const v = arr[Math.min(st[key], arr.length - 1)];
+  st[key]++;
+  return v;
+};
+
+function uiMethod(unit, mid, rest) {
+  switch (mid) {
+    case 0: unit.setTargetable(rest[0]); return undefined;
+    case 1: return unit.isTargetable();
+    case 2: return unit.isUnit();
+    case 3: unit.touch(); return undefined;
+    case 4: unit.setTileTarget(rest[0]); return undefined;
+    case 5: return unit.tileTarget();
+    case 6: return unit.id();
+    case 7: return unit.toUpdate();
+    case 8: return unit.type();
+    case 9: return unit.lastTile();
+    case 10: unit.move(rest[0]); return undefined;
+    case 11: unit.setTroops(rest[0]); return undefined;
+    case 12: return unit.troops();
+    case 13: return unit.health();
+    case 14: return unit.hasHealth();
+    case 15: return unit.tile();
+    case 16: return unit.owner().pid;
+    case 17: return unit.info();
+    case 18: unit.setOwner(rest[0]); return undefined;
+    case 19: return unit.maxHealth();
+    case 20: unit.modifyHealth(rest[0], rest[1]); return undefined;
+    case 21: unit.clearPendingDeletion(); return undefined;
+    case 22: return unit.isMarkedForDeletion();
+    case 23: unit.markForDeletion(); return undefined;
+    case 24: return unit.isOverdueDeletion();
+    case 25: unit.delete(rest[0], rest[1]); return undefined;
+    case 26: return unit.isActive();
+    case 27: return unit.wasDestroyedByEnemy();
+    case 28: return unit.destroyer();
+    case 29: return unit.warshipState();
+    case 30: unit.updateWarshipState(rest[0]); return undefined;
+    case 31: return unit.isInCombat();
+    case 32: return unit.transportShipState();
+    case 33: unit.updateTransportShipState(rest[0]); return undefined;
+    case 34: return unit.nukeState();
+    case 35: unit.updateNukeState(rest[0]); return undefined;
+    case 36: return unit.isUnderConstruction();
+    case 37: unit.setUnderConstruction(rest[0]); return undefined;
+    case 38: return unit.hash();
+    case 39: return unit.toString();
+    case 40: unit.launch(); return undefined;
+    case 41: return unit.ticksLeftInCooldown();
+    case 42: return unit.isInCooldown();
+    case 43: return unit.missileTimerQueue();
+    case 44: return unit.samLauncherState();
+    case 45: unit.reloadMissile(); return undefined;
+    case 46: unit.setTargetTile(rest[0]); return undefined;
+    case 47: return unit.targetTile();
+    case 48: return unit.targetPlayer();
+    case 49: unit.setTrajectoryIndex(rest[0]); return undefined;
+    case 50: return unit.trajectoryIndex();
+    case 51: return unit.trajectory();
+    case 52: unit.setTargetUnit(rest[0]); return undefined;
+    case 53: return unit.targetUnit();
+    case 54: unit.setTargetedBySAM(rest[0]); return undefined;
+    case 55: return unit.targetedBySAM();
+    case 56: unit.setReachedTarget(); return undefined;
+    case 57: return unit.reachedTarget();
+    case 58: unit.setSafeFromPirates(); return undefined;
+    case 59: return unit.isSafeFromPirates();
+    case 60: return unit.level();
+    case 61: return unit.veterancy();
+    case 62: unit.recordKill(rest[0]); return undefined;
+    case 63: unit.recordTradeCapture(); return undefined;
+    case 64: unit.setTrainStation(rest[0]); return undefined;
+    case 65: return unit.hasTrainStation();
+    case 66: unit.increaseLevel(); return undefined;
+    case 67: unit.decreaseLevel(rest[0]); return undefined;
+    case 68: return unit.trainType();
+    case 69: return unit.isLoaded();
+    case 70: unit.setLoaded(rest[0]); return undefined;
+    default: throw new Error(`ui harness: unknown mid ${mid}`);
+  }
+}
+
+function runUI(name, ops) {
+  const played = [];
+  let unit = null;
+  let curTr = [];
+  let ownerMocks = [];
+  let mgSt = null; // { m, st } — the per-scenario mg script + cursors
+
+  const mkOwner = (o) => {
+    const st = { si: 0, ii: 0, ni: 0 };
+    return {
+      pid: o.pid,
+      _units: o.units.map((t) => (t === 0 ? null : { uiTok: t })),
+      _myUnitsVersion: o.my_units_version,
+      smallID: () => { const v = uiTake(st, o.small_id, "si"); curTr.push(80, o.pid, v); return v; },
+      id: () => { const v = uiTake(st, o.ids, "ii"); curTr.push(81, o.pid, v); return v; },
+      name: () => { const v = uiTake(st, o.names, "ni"); curTr.push(82, o.pid, ...encS(v)); return v; },
+    };
+  };
+
+  const mkTu = () => {
+    const o = {
+      id: () => {
+        const v = uiTake(mgSt.st, mgSt.m.tu_id, "tuid");
+        curTr.push(84, ...uiEnc(v));
+        return v;
+      },
+    };
+    uiTok.set(o, uiTokN++);
+    return o;
+  };
+
+  const subst = (v) => {
+    if (v && typeof v === "object" && v.__tu) return mkTu();
+    if (Array.isArray(v)) return v.map(subst);
+    if (v && typeof v === "object") {
+      const o = {};
+      for (const [k, x] of Object.entries(v)) o[k] = subst(x);
+      return o;
+    }
+    return v;
+  };
+
+  const mkMg = (m) => {
+    const st = { ui: 0, tk: 0, samr: 0, samd: 0, delm: 0, whb: 0, maxv: 0, tt: 0, ct: 0, sfp: 0, dsr: 0, tuid: 0 };
+    mgSt = { m, st };
+    return {
+      unitInfo: (t) => { const v = uiTake(st, m.unit_info, "ui"); curTr.push(50, ...uiEnc(v)); return v; },
+      config: () => ({
+        samRange: (lvl) => { const v = uiTake(st, m.sam_range, "samr"); curTr.push(51, lvl, v); return v; },
+        samUpgradeDuration: () => { const v = uiTake(st, m.sam_dur, "samd"); curTr.push(52, v); return v; },
+        deletionMarkDuration: () => { const v = uiTake(st, m.del_mark, "delm"); curTr.push(53, v); return v; },
+        warshipVeterancyHealthBonus: () => { const v = uiTake(st, m.wh_bonus, "whb"); curTr.push(54, v); return v; },
+        warshipMaxVeterancy: () => { const v = uiTake(st, m.max_vet, "maxv"); curTr.push(55, v); return v; },
+        warshipVeterancyTransportKills: () => { const v = uiTake(st, m.vet_transport, "tt"); curTr.push(56, v); return v; },
+        warshipVeterancyTradeCaptures: () => { const v = uiTake(st, m.vet_trade, "ct"); curTr.push(57, v); return v; },
+        safeFromPiratesCooldownMax: () => { const v = uiTake(st, m.safe_pirates, "sfp"); curTr.push(58, v); return v; },
+        dynamicSamRange: (u, tick) => { const v = uiTake(st, m.dyn_sam, "dsr"); curTr.push(59, tick, v); return v; },
+      }),
+      ticks: () => { const v = uiTake(st, m.ticks, "tk"); curTr.push(60, v); return v; },
+      stats: () => {
+        curTr.push(61);
+        return {
+          unitBuild: (p, t) => { curTr.push(62, ...uiEnc(p.pid), ...encS(t)); },
+          unitCapture: (p, t) => { curTr.push(63, ...uiEnc(p.pid), ...encS(t)); },
+          unitLose: (p, t) => { curTr.push(64, ...uiEnc(p.pid), ...encS(t)); },
+          boatCapturedTroops: (np, op) => { curTr.push(65, ...uiEnc(np.pid), ...uiEnc(op.pid)); },
+          boatDestroyTroops: (d, o, t) => { curTr.push(66, ...uiEnc(d), ...uiEnc(o.pid), ...uiEnc(t)); },
+          boatDestroyTrade: (d, o) => { curTr.push(67, ...uiEnc(d), ...uiEnc(o.pid)); },
+          unitDestroy: (d, t) => { curTr.push(68, ...uiEnc(d), ...encS(t)); },
+        };
+      },
+      onUnitMoved: () => { curTr.push(69); },
+      removeUnit: () => { curTr.push(70); },
+      addUpdate: (u) => { curTr.push(71, ...uiEnc(u)); },
+      bumpUnitsVersion: () => { curTr.push(72); },
+      displayMessage: (k, mt, pid, u, vars, id) => {
+        curTr.push(73, ...uiEnc(k), ...uiEnc(mt), ...uiEnc(pid), ...uiEnc(u), ...uiEnc(vars), ...uiEnc(id));
+      },
+    };
+  };
+
+  for (const [k, ...a] of ops) {
+    let args, res;
+    curTr = [];
+    if (k === 0) {
+      const [type, tile, id, owner, params, mg] = a;
+      ownerMocks = [mkOwner(owner)];
+      const mgMock = mkMg(mg);
+      const p = subst(params);
+      unit = new UI.UnitImpl(type, mgMock, tile, id, ownerMocks[0], p);
+      ownerMocks[0]._units = ownerMocks[0]._units.map((x) => (x === null ? unit : x));
+      args = [...encS(type), ...uiEnc(tile), ...uiEnc(id), ...uiEncOwner(owner), ...uiEnc(p), ...uiEncMg(mg)];
+      res = [curTr.length, ...curTr, 0];
+    } else {
+      const mid = a[0];
+      const rest = a.slice(1);
+      let mrest;
+      if (mid === 18) {
+        mrest = [mkOwner(rest[0])];
+        args = [uenc(mid), ...uiEncOwner(rest[0])];
+      } else {
+        mrest = rest.map(subst);
+        args = [uenc(mid)];
+        if (mid === 49 || mid === 71) args.push(uenc(mrest[0]));
+        else if (mid === 62) args.push(...encS(mrest[0]));
+        else for (const x of mrest) args.push(...uiEnc(x));
+      }
+      let r;
+      if (mid === 71) {
+        const o = ownerMocks[mrest[0]];
+        r = [0, uenc(o.pid), uenc(o._units.length), ...o._units.map((x) => uenc(x === unit ? 0 : x.uiTok)), uenc(o._myUnitsVersion)];
+      } else {
+        if (mid === 18) ownerMocks.push(mrest[0]);
+        try { r = [0, ...uiEnc(uiMethod(unit, mid, mrest))]; }
+        catch (e) { r = [1, ...encS(e.message)]; }
+      }
+      res = [curTr.length, ...curTr, ...r];
+    }
+    played.push({ kind: k, args: args.map(uenc), res: res.map(uenc) });
+  }
+  uiScenarios.push({ name: `${name}_${uiIdx++}`, ops: played });
+}
+
+// ---- scenarios ---------------------------------------------------------------
+
+runUI("ui_ctor_types", [
+  [0, "Transport", 5, 1, uiO({}), {}, uiM({})],
+  [1, 8], [1, 13], [1, 12], [1, 15], [1, 9], [1, 32],
+  [0, "Warship", 6, 2, uiO({ pid: 2 }), {}, uiM({})],
+  [1, 8], [1, 13], [1, 60], [1, 26],
+  [0, "Shell", 7, 3, uiO({ pid: 3 }), {}, uiM({})],
+  [1, 8], [1, 13],
+  [0, "SAMMissile", 8, 4, uiO({ pid: 4 }), {}, uiM({})],
+  [1, 8],
+  [0, "Port", 9, 5, uiO({ pid: 5 }), {}, uiM({})],
+  [1, 8], [1, 13],
+  [0, "Atom Bomb", 10, 6, uiO({ pid: 6 }), {}, uiM({})],
+  [1, 8],
+  [0, "Hydrogen Bomb", 11, 7, uiO({ pid: 7 }), {}, uiM({})],
+  [1, 8],
+  [0, "Trade Ship", 12, 8, uiO({ pid: 8 }), {}, uiM({})],
+  [1, 8],
+  [0, "Missile Silo", 13, 9, uiO({ pid: 9 }), {}, uiM({})],
+  [1, 8], [1, 44],
+  [0, "Defense Post", 14, 10, uiO({ pid: 10 }), {}, uiM({})],
+  [1, 8],
+  [0, "SAM Launcher", 15, 11, uiO({ pid: 11 }), {}, uiM({ sam_range: [40], sam_dur: [200] })],
+  [1, 8], [1, 44],
+  [0, "City", 16, 12, uiO({ pid: 12 }), {}, uiM({})],
+  [1, 8],
+  [0, "MIRV", 17, 13, uiO({ pid: 13 }), {}, uiM({})],
+  [1, 8],
+  [0, "MIRV Warhead", 18, 14, uiO({ pid: 14 }), {}, uiM({})],
+  [1, 8],
+  [0, "Train", 19, 15, uiO({ pid: 15 }), {}, uiM({})],
+  [1, 8], [1, 68], [1, 69],
+  [0, "Factory", 20, 16, uiO({ pid: 16 }), {}, uiM({})],
+  [1, 8],
+]);
+
+runUI("ui_ctor_in_gates", [
+  [0, "Warship", 5, 1, uiO({}), { patrolTile: undefined }, uiM({ ticks: [10] })],
+  [1, 31], [1, 29], [1, 29],
+  [0, "Train", 6, 2, uiO({ pid: 2 }), { trainType: null }, uiM({})],
+  [1, 68],
+  [0, "Train", 7, 3, uiO({ pid: 3 }), { trainType: undefined }, uiM({})],
+  [1, 68],
+  [0, "Train", 8, 4, uiO({ pid: 4 }), {}, uiM({})],
+  [1, 68],
+  [0, "MIRV", 9, 5, uiO({ pid: 5 }), { trajectory: undefined, waitTicks: 1 }, uiM({})],
+  [1, 34], [1, 51],
+  [0, "Atom Bomb", 10, 6, uiO({ pid: 6 }), { trajectory: 7 }, uiM({})],
+  [1, 51], [1, 34], [1, 49, 5], [1, 50],
+  [0, "Transport", 11, 7, uiO({ pid: 7 }), { troops: null, loaded: null, targetTile: null, targetPlayer: null, targetUnit: null, lastSetSafeFromPirates: null }, uiM({})],
+  [1, 12], [1, 69], [1, 47], [1, 48], [1, 53],
+  [0, "Shell", 12, 8, uiO({ pid: 8 }), { troops: 5 }, uiM({})],
+  [1, 12],
+]);
+
+runUI("ui_move", [
+  [0, "Shell", 5, 1, uiO({}), {}, uiM({})],
+  [1, 10, 9], [1, 15], [1, 9], [1, 38],
+  [1, 10, null],
+  [1, 10, undefined], [1, 15], [1, 9], [1, 38],
+]);
+
+runUI("ui_set_owner", [
+  [0, "City", 5, 1, uiO({ pid: 1, small_id: [11], ids: [21], names: ["alice"], units: [0, 3] }), {}, uiM({})],
+  [1, 18, uiO({ pid: 2, small_id: [12], ids: [22], names: ["bob"], units: [7] })],
+  [1, 16], [1, 71, 0], [1, 71, 1], [1, 7],
+  [0, "Transport", 6, 2, uiO({ pid: 1, units: [0] }), {}, uiM({})],
+  [1, 18, uiO({ pid: 2 })],
+  [1, 71, 0], [1, 71, 1],
+  [0, "Shell", 7, 3, uiO({ pid: 1, units: [0, 5] }), {}, uiM({})],
+  [1, 18, uiO({ pid: 2 })],
+  [1, 71, 0], [1, 71, 1],
+]);
+
+runUI("ui_modify_health", [
+  [0, "Warship", 5, 1, uiO({ pid: 1, ids: [21] }), { patrolTile: 3 }, uiM({ unit_info: [{ maxHealth: 10 }], ticks: [50], wh_bonus: [10] })],
+  [1, 19], [1, 13],
+  [1, 20, 0, undefined],
+  [1, 20, -5, 7], [1, 13], [1, 31],
+  [1, 20, NaN, undefined],
+  [1, 20, Infinity, undefined], [1, 13],
+  [1, 20, -100, 7], [1, 26], [1, 27], [1, 28],
+  [0, "Warship", 6, 2, uiO({ pid: 2, ids: [22] }), { patrolTile: 3 }, uiM({ unit_info: [{ maxHealth: 10 }], ticks: [1], wh_bonus: [10] })],
+  [1, 20, -10, undefined], [1, 27], [1, 28],
+]);
+
+runUI("ui_deletion", [
+  [0, "MIRV", 5, 1, uiO({}), { trajectory: [1, 2, 3] }, uiM({ ticks: [100, 200, 300], del_mark: [50] })],
+  [1, 23], [1, 22], [1, 24], [1, 7],
+  [1, 21], [1, 22], [1, 24],
+  [0, "City", 6, 2, uiO({ pid: 2 }), {}, uiM({ ticks: [10], del_mark: [5] })],
+  [1, 25, undefined, undefined],
+  [1, 23], [1, 24], [1, 22],
+]);
+
+runUI("ui_delete", [
+  [0, "City", 5, 1, uiO({ names: ["alice"] }), {}, uiM({})],
+  [1, 25, undefined, undefined],
+  [1, 25, undefined, undefined],
+  [0, "Warship", 6, 2, uiO({ pid: 2, ids: [22] }), { patrolTile: 3 }, uiM({ ticks: [0] })],
+  [1, 25, false, undefined],
+  [0, "Warship", 7, 3, uiO({ pid: 3, ids: [23] }), { patrolTile: 3 }, uiM({ ticks: [0] })],
+  [1, 25, null, undefined],
+  [0, "Transport", 8, 4, uiO({ pid: 4, ids: [24] }), {}, uiM({})],
+  [1, 25, undefined, undefined], [1, 27], [1, 28],
+  [0, "City", 9, 5, uiO({ pid: 5 }), {}, uiM({})],
+  [1, 25, true, 7], [1, 27], [1, 28],
+  [0, "Warship", 10, 6, uiO({ pid: 6, ids: [26] }), { patrolTile: 3 }, uiM({ ticks: [0] })],
+  [1, 25, true, 7],
+  [0, "Transport", 11, 7, uiO({ pid: 7, ids: [27] }), { troops: 4 }, uiM({})],
+  [1, 25, false, 7],
+  [0, "Trade Ship", 12, 8, uiO({ pid: 8 }), {}, uiM({})],
+  [1, 25, false, 7],
+  [0, "Shell", 13, 9, uiO({ pid: 9 }), {}, uiM({})],
+  [1, 25, false, 7],
+  [0, "Port", 14, 10, uiO({ pid: 10 }), {}, uiM({})], [1, 25, false, 7],
+  [0, "Missile Silo", 15, 11, uiO({ pid: 11 }), {}, uiM({})], [1, 25, false, 7],
+  [0, "Defense Post", 16, 12, uiO({ pid: 12 }), {}, uiM({})], [1, 25, false, 7],
+  [0, "SAM Launcher", 17, 13, uiO({ pid: 13 }), {}, uiM({ sam_range: [40], sam_dur: [200] })], [1, 25, false, 7],
+  [0, "Factory", 18, 14, uiO({ pid: 14 }), {}, uiM({})], [1, 25, false, 7],
+]);
+
+runUI("ui_toupdate", [
+  [0, "Warship", 5, 1, uiO({ pid: 1, small_id: [11] }), { patrolTile: 3, troops: 4, targetTile: 8, targetUnit: { __tu: 1 }, loaded: true, trainType: "Train", lastSetSafeFromPirates: 2 }, uiM({ unit_info: [{ maxHealth: 10 }], ticks: [1], tu_id: [99], del_mark: [5] })],
+  [1, 7],
+  [1, 0, false], [1, 7],
+  [1, 37, true], [1, 7],
+  [1, 23], [1, 7],
+  [1, 56], [1, 7],
+]);
+
+runUI("ui_hash", [
+  [0, "City", 5, 3, uiO({}), {}, uiM({})],
+  [1, 38],
+  [1, 10, undefined], [1, 38],
+  [0, "MIRV Warhead", 0, 0, uiO({ pid: 2 }), {}, uiM({})],
+  [1, 38],
+]);
+
+runUI("ui_level", [
+  [0, "SAM Launcher", 5, 1, uiO({}), {}, uiM({ sam_range: [40], sam_dur: [200], dyn_sam: [45], ticks: [100, 101, 102] })],
+  [1, 44], [1, 7],
+  [1, 66], [1, 60], [1, 44], [1, 42], [1, 43], [1, 7],
+  [1, 67, undefined], [1, 60], [1, 44], [1, 43],
+  [1, 67, undefined],
+  [1, 26],
+  [0, "Missile Silo", 6, 2, uiO({ pid: 2 }), {}, uiM({ ticks: [5, 6, 7] })],
+  [1, 66], [1, 43], [1, 42],
+  [1, 67, 7], [1, 43],
+  [0, "City", 7, 3, uiO({ pid: 3 }), {}, uiM({})],
+  [1, 66], [1, 60], [1, 67, undefined], [1, 60],
+  [1, 67, undefined],
+]);
+
+runUI("ui_veterancy", [
+  [0, "Warship", 5, 1, uiO({}), { patrolTile: 3 }, uiM({ unit_info: [{ maxHealth: 100 }], max_vet: [3], vet_transport: [2], vet_trade: [5], wh_bonus: [10], ticks: [1] })],
+  [1, 61], [1, 19],
+  [1, 62, "Warship"], [1, 61], [1, 19],
+  [1, 62, "Transport"], [1, 63], [1, 63], [1, 63], [1, 61],
+  [1, 62, "Warship"], [1, 62, "Warship"], [1, 61],
+  [1, 62, "Transport"], [1, 63], [1, 61],
+  [1, 62, "Shell"],
+  [0, "Shell", 6, 2, uiO({ pid: 2 }), {}, uiM({})],
+  [1, 62, "Warship"], [1, 63],
+]);
+
+runUI("ui_construction", [
+  [0, "City", 5, 1, uiO({}), {}, uiM({})],
+  [1, 36], [1, 37, true], [1, 36], [1, 71, 0], [1, 37, true], [1, 37, false], [1, 36],
+]);
+
+runUI("ui_targets", [
+  [0, "MIRV", 5, 1, uiO({}), { targetPlayer: 3, targetUnit: { __tu: 1 }, trajectory: [1, 2] }, uiM({ tu_id: [77] })],
+  [1, 48], [1, 53], [1, 7],
+  [1, 4, undefined], [1, 5], [1, 46, 9], [1, 47], [1, 46, null], [1, 47],
+  [1, 52, { __tu: 1 }], [1, 53], [1, 7],
+  [1, 52, null], [1, 53], [1, 7],
+]);
+
+runUI("ui_sam", [
+  [0, "Missile Silo", 5, 1, uiO({}), {}, uiM({ ticks: [10, 20, 30, 40] })],
+  [1, 41], [1, 42], [1, 43],
+  [1, 40], [1, 41], [1, 42], [1, 43],
+  [1, 45], [1, 43], [1, 45], [1, 43],
+  [0, "Atom Bomb", 6, 2, uiO({ pid: 2 }), { trajectory: [1, 2, 3] }, uiM({})],
+  [1, 54, true], [1, 55], [1, 49, 5], [1, 50], [1, 49, -2], [1, 50], [1, 49, 1], [1, 50], [1, 51],
+]);
+
+runUI("ui_states", [
+  [0, "Warship", 5, 1, uiO({}), { patrolTile: 3 }, uiM({ ticks: [0, 1, 2, 3, 4, 5] })],
+  [1, 29], [1, 29],
+  [1, 30, {}],
+  [1, 30, { state: "attacking" }], [1, 29],
+  [1, 30, { patrolTile: undefined }], [1, 29],
+  [1, 30, { isInCombat: true }], [1, 30, { isInCombat: false }], [1, 30, { isInCombat: 0 }],
+  [0, "Transport", 6, 2, uiO({ pid: 2 }), {}, uiM({})],
+  [1, 33, { isRetreating: true }], [1, 32], [1, 33, { isRetreating: true }], [1, 33, { isRetreating: undefined }], [1, 33, {}], [1, 32], [1, 11, 6], [1, 32],
+  [0, "MIRV", 7, 3, uiO({ pid: 3 }), { trajectory: [1, 2] }, uiM({})],
+  [1, 35, {}], [1, 35, { targetedBySam: true }], [1, 34], [1, 35, { trajectory: [9] }], [1, 34], [1, 35, { waitTicks: 4 }], [1, 34],
+]);
+
+runUI("ui_type_errors", [
+  [0, "Shell", 5, 1, uiO({}), {}, uiM({ ticks: [1] })],
+  [1, 29], [1, 30, {}], [1, 31], [1, 32], [1, 33, {}], [1, 34], [1, 35, {}], [1, 49, 1], [1, 54, true], [1, 55],
+]);
+
+runUI("ui_misc", [
+  [0, "Trade Ship", 5, 1, uiO({ pid: 4, names: ["carol"], ids: [44] }), { troops: 3, lastSetSafeFromPirates: 90 }, uiM({ ticks: [100], safe_pirates: [50] })],
+  [1, 2], [1, 3], [1, 6], [1, 15], [1, 9], [1, 12], [1, 13], [1, 14], [1, 16], [1, 17],
+  [1, 39], [1, 58], [1, 59], [1, 64, true], [1, 65], [1, 70, true], [1, 69], [1, 56], [1, 57], [1, 21], [1, 22],
+]);
+
 const structures = {
   votetally: vtScenarios,
   rankedcheckin: rgScenarios,
@@ -20736,6 +21261,7 @@ const structures = {
   colorallocator: caScenarios,
   themeprovider: thScenarios,
   config: cfgScenarios,
+  unitimpl: uiScenarios,
 };
 
 // ================================================================ JSON
@@ -24191,6 +24717,21 @@ opStream(
     "/// player block] -> [traceLen,(trace)*,[0,3,n] | [1,encS]]; kind 6\n" +
     "/// dumpUnitInfoCache -> [0,n,(encS)*n]. Facade trace events 30-43 pin the\n" +
     "/// mock call order; bigints cross as Number(v) (|v| <= 2^53 domain).",
+);
+opStream(
+  "unitimpl",
+  "Ui",
+  "/// One `core/game/UnitImpl.ts` op (see `unit_impl::UnitHarness::run_op`\n" +
+    "/// docs). kind 0 construct [encS type, encVal tile, encVal id, owner\n" +
+    "/// block (pid, smallID script, id script, names, _units tokens,\n" +
+    "/// myUnitsVersion), encVal params, mg block (unit_info vlist, ticks,\n" +
+    "/// samRange, samDur, delMark, whBonus, maxVet, vetTransport, vetTrade,\n" +
+    "/// safePirates, dynSam, tu_id vlist)] -> [traceLen,(trace)*,0]; kind 1\n" +
+    "/// method [mid,...] -> [traceLen,(trace)*,[0,...encVal] | [1,encS]].\n" +
+    "/// Facade trace events 50-84 pin the mg/owner/stats mock call order and\n" +
+    "/// returns (owner: 80 smallID, 81 id, 82 name; targetUnit.id: 84);\n" +
+    "/// _units slots cross as tokens (0 = unit under test), targetUnit mocks\n" +
+    "/// as reference-token numbers; bigints cross as Number(v).",
 );
 
 const dataDir = join(root, "crates", "core", "tests", "data");

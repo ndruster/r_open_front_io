@@ -5435,3 +5435,36 @@ pub extern "C" fn probe_cfg_op(kind: u32) -> usize {
 pub extern "C" fn probe_cfg_out_at(i: usize) -> f64 {
     CFG_OUT.with(|o| o.borrow()[i])
 }
+
+// ============ S1: core/game/UnitImpl.ts (unit_impl) ==========================
+
+thread_local! {
+    static UI_HARNESS: std::cell::RefCell<crate::unit_impl::UnitHarness> =
+        std::cell::RefCell::new(crate::unit_impl::UnitHarness::default());
+    static UI_ARGS: std::cell::RefCell<Vec<f64>> = const { std::cell::RefCell::new(Vec::new()) };
+    static UI_OUT: std::cell::RefCell<Vec<f64>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
+#[no_mangle]
+pub extern "C" fn probe_ui_reset() {
+    UI_HARNESS.with(|h| h.borrow_mut().reset());
+}
+
+#[no_mangle]
+pub extern "C" fn probe_ui_arg(v: f64) {
+    UI_ARGS.with(|t| t.borrow_mut().push(v));
+}
+
+#[no_mangle]
+pub extern "C" fn probe_ui_op(kind: u32) -> usize {
+    let a = UI_ARGS.with(|t| std::mem::take(&mut *t.borrow_mut()));
+    let out = UI_HARNESS.with(|h| h.borrow_mut().run_op(kind as u8, &a));
+    let len = out.len();
+    UI_OUT.with(|o| *o.borrow_mut() = out);
+    len
+}
+
+#[no_mangle]
+pub extern "C" fn probe_ui_out_at(i: usize) -> f64 {
+    UI_OUT.with(|o| o.borrow()[i])
+}

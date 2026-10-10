@@ -4551,3 +4551,34 @@ fn replay_config_scenarios() {
         }
     }
 }
+
+// core/game/UnitImpl.ts: the unit entity over the scripted mg (GameImpl) and
+// owner (PlayerImpl) facade mocks (every facade call pinned into the trace,
+// event codes 50-84). The harness is stateful per scenario (kind 0 constructs
+// the unit and installs the owner / mg scripts; kind 1 runs one method).
+#[test]
+fn replay_unitimpl_scenarios() {
+    use openfront_core::unit_impl::UnitHarness;
+    for s in vectors::UI_SCENARIOS {
+        let mut h = UnitHarness::default();
+        for op in s.ops {
+            let got = h.run_op(op.kind, op.args);
+            assert_eq!(
+                got.len(),
+                op.res.len(),
+                "{} op[{:?}] res len: got {got:?} want {:?}",
+                s.name,
+                op.kind,
+                op.res
+            );
+            for (j, (g, w)) in got.iter().zip(op.res.iter()).enumerate() {
+                assert!(
+                    obj_is(*g, *w),
+                    "{} op[{:?}] res[{j}]: got {g} want {w}",
+                    s.name,
+                    op.kind
+                );
+            }
+        }
+    }
+}

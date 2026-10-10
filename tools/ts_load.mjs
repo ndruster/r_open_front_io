@@ -1500,6 +1500,118 @@ function prepare(rel) {
     );
   }
 
+  if (rel.endsWith("game/UnitImpl.ts")) {
+    // G3a: the whole Game.ts import block is a mix of type-only names
+    // (AllUnitParams / NukeState / Player / SamLauncherState / TerraNullius /
+    // Tick / TrajectoryTile / TransportShipState / Unit / UnitInfo /
+    // WarshipState - grep-verified type/interface/enum-free) and runtime
+    // enums (MessageType / TrainType / UnitType): the type names are dropped
+    // and the specifier redirected to the prepared Game.ts copy (enums
+    // inlined as plain objects). Util (simpleHash / toInt / withinInt),
+    // GameUpdates (GameUpdateType value; UnitUpdate type dropped) and
+    // Veterancy (maxHealthWithVeterancy) are *value* uses and ride prepared
+    // copies. GameImpl / TileRef / PlayerImpl are type-annotation-only (the
+    // annotations erase under strip mode) -> dropped outright; PlayerImpl is
+    // not ported, the capture scripts the owner facade instead. The ctor's
+    // five parameter properties are expanded (Config precedent); the `params:
+    // AllUnitParams = {}` default must survive. `implements Unit` dropped.
+    const uiUtilRel = "src/core/Util.ts";
+    if (!prepared.has(uiUtilRel)) prepare(uiUtilRel);
+    out = must(
+      out,
+      'import { simpleHash, toInt, withinInt } from "../Util";\n',
+      `import { simpleHash, toInt, withinInt } from "./${prepared.get(uiUtilRel)}";\n`,
+      "UnitImpl Util import",
+    );
+    for (const t of [
+      "AllUnitParams",
+      "NukeState",
+      "Player",
+      "SamLauncherState",
+      "TerraNullius",
+      "Tick",
+      "TrajectoryTile",
+      "TransportShipState",
+      "Unit",
+      "UnitInfo",
+      "WarshipState",
+    ]) {
+      out = must(out, `  ${t},\n`, "", `UnitImpl Game type ${t}`);
+    }
+    if (!prepared.has("src/core/game/Game.ts")) prepare("src/core/game/Game.ts");
+    out = must(
+      out,
+      '} from "./Game";\n',
+      `} from "./${prepared.get("src/core/game/Game.ts")}";\n`,
+      "UnitImpl Game import",
+    );
+    out = must(
+      out,
+      'import { GameImpl } from "./GameImpl";\n' +
+        'import { TileRef } from "./GameMap";\n',
+      "",
+      "UnitImpl GameImpl/GameMap imports",
+    );
+    const uiGuRel = "src/core/game/GameUpdates.ts";
+    if (!prepared.has(uiGuRel)) prepare(uiGuRel);
+    out = must(
+      out,
+      'import { GameUpdateType, UnitUpdate } from "./GameUpdates";\n',
+      `import { GameUpdateType } from "./${prepared.get(uiGuRel)}";\n`,
+      "UnitImpl GameUpdates import",
+    );
+    out = must(
+      out,
+      'import { PlayerImpl } from "./PlayerImpl";\n',
+      "",
+      "UnitImpl PlayerImpl import",
+    );
+    const uiVetRel = "src/core/game/Veterancy.ts";
+    if (!prepared.has(uiVetRel)) prepare(uiVetRel);
+    out = must(
+      out,
+      'import { maxHealthWithVeterancy } from "./Veterancy";\n',
+      `import { maxHealthWithVeterancy } from "./${prepared.get(uiVetRel)}";\n`,
+      "UnitImpl Veterancy import",
+    );
+    out = must(
+      out,
+      "export class UnitImpl implements Unit {",
+      "export class UnitImpl {",
+      "UnitImpl implements clause",
+    );
+    out = must(
+      out,
+      "  constructor(\n" +
+        "    private _type: UnitType,\n" +
+        "    private mg: GameImpl,\n" +
+        "    private _tile: TileRef,\n" +
+        "    private _id: number,\n" +
+        "    public _owner: PlayerImpl,\n" +
+        "    params: AllUnitParams = {},\n" +
+        "  ) {",
+      "  private _type: UnitType;\n" +
+        "  private mg: GameImpl;\n" +
+        "  private _tile: TileRef;\n" +
+        "  private _id: number;\n" +
+        "  public _owner: PlayerImpl;\n\n" +
+        "  constructor(\n" +
+        "    _type: UnitType,\n" +
+        "    mg: GameImpl,\n" +
+        "    _tile: TileRef,\n" +
+        "    _id: number,\n" +
+        "    _owner: PlayerImpl,\n" +
+        "    params: AllUnitParams = {},\n" +
+        "  ) {\n" +
+        "    this._type = _type;\n" +
+        "    this.mg = mg;\n" +
+        "    this._tile = _tile;\n" +
+        "    this._id = _id;\n" +
+        "    this._owner = _owner;",
+      "UnitImpl ctor",
+    );
+  }
+
   if (rel.endsWith("core/Schemas.ts")) {
     // The zod / zb schema declarations are wire-validation and are not
     // ported, but unlike ServerList / StatsSchemas the capture must *read*

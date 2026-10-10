@@ -157,6 +157,13 @@ rust/
 │   │   │                          gold math; GameConfig rides the js_json
 │   │   │                          codec, Game/Player/Unit/Stats facades
 │   │   │                          scripted-mocked with a pinned call trace)
+│   │   ├── unit_impl.rs           port of game/UnitImpl.ts (the unit state
+│   │   │                          machine: ctor params `in` gates, move /
+│   │   │                          setOwner / modifyHealth / delete chains,
+│   │   │                          toUpdate 26-key dump, veterancy curves,
+│   │   │                          SAM queue; GameImpl / PlayerImpl / Stats
+│   │   │                          facades scripted-mocked with a pinned
+│   │   │                          call trace — the arena lands with G6)
 │   │   ├── station_manager.rs     port of game/RailNetworkImpl.ts
 │   │   │                          (StationManagerImpl only; count()=nextId
 │   │   │                          quirk, sparse stationsById, Set order)
@@ -2189,6 +2196,49 @@ WebSockets — stays excluded, mirroring the `src/core` exclusions).
     troop_increase / gold_addition / nuke_tables / sam / nuke_death /
     attack_logic / unit_info / unit_info_instant / cost_zero / cost_wrapper
     / cost_mirv), 831,862 wasm comparisons bit-identical.
+78. **`game/UnitImpl.ts`** (`unit_impl`) — the unit state machine (G3a, the
+    first piece of the Game simulation graph; the arena lands with G6's
+    GameImpl). The `GameImpl` (`mg`) and `PlayerImpl` (`_owner`) references
+    are scripted facades whose every call rides a flat trace (precedent
+    `config` / `stats_impl`): mg events 50-73 (unitInfo / samRange /
+    samUpgradeDuration / deletionMarkDuration / the four veterancy config
+    reads / safeFromPiratesCooldownMax / dynamicSamRange / ticks / stats +
+    its five methods / onUnitMoved / removeUnit / addUpdate with the FULL
+    toUpdate codec dump / bumpUnitsVersion / displayMessage), owner events
+    80-84 (smallID / id / name / targetUnit.id) plus the mid-71 `dumpOwner`
+    state pin (`_units` tokens — 0 = the unit under test, so TS's
+    `filter(b => b !== this)` identity removal is observable — and the real
+    `_myUnitsVersion` mutation). Surface: the ctor's 16 UnitType switch with
+    the `"x" in params` presence gates (present-but-`undefined` vs absent —
+    `_trainType` has NO `??`, a present `null` stays `null`), the
+    trajectory/waitTicks nukeState / patrolTile warshipState /
+    TransportShip / SAMLauncher state inits, the seven-class `stats().
+    unitBuild` fan-out; `move` (the `=== null` throw, `undefined` poisons
+    `_tile`), `setOwner` (`_lastOwner` + version bump), `modifyHealth` (the
+    NaN `< 0` gate skipping `lastCombatTick`, the `=== 0n` → `delete(true,
+    attacker)` chain), `markForDeletion` / `isOverdueDeletion` over the
+    `ticks()` facade, `delete` (`displayMessage !== false` — undefined/null
+    BOTH display; `destroyer !== undefined` vs `?? undefined` modelled as
+    two separate gates so a `null` destroyer sets `wasDestroyedByEnemy` and
+    normalises `_destroyer` to undefined; the inactive-unit throw
+    `cannot delete Unit:<type>,owner:<name> not active` — the `${this}`
+    interpolation runs `toString` → `owner().name()` (event 82) BEFORE the
+    throw, the trace surviving in the error result); `toUpdate`'s 26-key
+    declaration-order dump (`markedForDeletion: _deletionAt ?? false`, the
+    `targetUnit?.id() ?? undefined` nullish normalisation, the
+    `warshipState()` getter APPENDING `isInCombat` at the END of the stored
+    field list on first call — JS insertion order); the three `update*State`
+    Partial merges with their key-order rebuilds; the SAM
+    `launch`/`reloadMissile`/`isInCooldown` queue; `isInCombat` evaluating
+    `mg.ticks()` (traced) BEFORE the `_warshipState!` read (the V8
+    TypeError message pinned verbatim); the trajectory accessors' non-array
+    `.length` → `undefined` → NaN → both relational comparisons false →
+    the index passes through UNCLAMPED; the level cluster (`increaseLevel`
+    rebuilding the SAM state, `decreaseLevel` to 0 → `delete`) and the
+    veterancy cluster (`addVeterancyProgress`'s while-chain re-reading the
+    config cap per level — the outer loop uses the captured value, the
+    inner `increaseVeterancy` a fresh facade read). 17 scenarios (`ui_` 17,
+    331 ops, 34,969 tokens), 862,353 wasm comparisons bit-identical.
 
 Regenerate whenever a ported source changes:
 

@@ -5468,3 +5468,102 @@ pub extern "C" fn probe_ui_op(kind: u32) -> usize {
 pub extern "C" fn probe_ui_out_at(i: usize) -> f64 {
     UI_OUT.with(|o| o.borrow()[i])
 }
+
+// ============ S1: core/game/AllianceImpl.ts (alliance_impl) ===================
+
+thread_local! {
+    static AL_HARNESS: std::cell::RefCell<crate::alliance_impl::AllianceHarness> =
+        std::cell::RefCell::new(crate::alliance_impl::AllianceHarness::default());
+    static AL_ARGS: std::cell::RefCell<Vec<f64>> = const { std::cell::RefCell::new(Vec::new()) };
+    static AL_OUT: std::cell::RefCell<Vec<f64>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
+#[no_mangle]
+pub extern "C" fn probe_al_reset() {
+    AL_HARNESS.with(|h| h.borrow_mut().reset());
+}
+
+#[no_mangle]
+pub extern "C" fn probe_al_arg(v: f64) {
+    AL_ARGS.with(|t| t.borrow_mut().push(v));
+}
+
+#[no_mangle]
+pub extern "C" fn probe_al_op(kind: u32) -> usize {
+    let a = AL_ARGS.with(|t| std::mem::take(&mut *t.borrow_mut()));
+    let out = AL_HARNESS.with(|h| h.borrow_mut().run_op(kind as u8, &a));
+    let len = out.len();
+    AL_OUT.with(|o| *o.borrow_mut() = out);
+    len
+}
+
+#[no_mangle]
+pub extern "C" fn probe_al_out_at(i: usize) -> f64 {
+    AL_OUT.with(|o| o.borrow()[i])
+}
+
+// ============ S1: core/game/AllianceRequestImpl.ts (alliance_request_impl) ====
+
+thread_local! {
+    static AR_HARNESS: std::cell::RefCell<crate::alliance_request_impl::AllianceRequestHarness> =
+        std::cell::RefCell::new(crate::alliance_request_impl::AllianceRequestHarness::default());
+    static AR_ARGS: std::cell::RefCell<Vec<f64>> = const { std::cell::RefCell::new(Vec::new()) };
+    static AR_OUT: std::cell::RefCell<Vec<f64>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
+#[no_mangle]
+pub extern "C" fn probe_ar_reset() {
+    AR_HARNESS.with(|h| h.borrow_mut().reset());
+}
+
+#[no_mangle]
+pub extern "C" fn probe_ar_arg(v: f64) {
+    AR_ARGS.with(|t| t.borrow_mut().push(v));
+}
+
+#[no_mangle]
+pub extern "C" fn probe_ar_op(kind: u32) -> usize {
+    let a = AR_ARGS.with(|t| std::mem::take(&mut *t.borrow_mut()));
+    let out = AR_HARNESS.with(|h| h.borrow_mut().run_op(kind as u8, &a));
+    let len = out.len();
+    AR_OUT.with(|o| *o.borrow_mut() = out);
+    len
+}
+
+#[no_mangle]
+pub extern "C" fn probe_ar_out_at(i: usize) -> f64 {
+    AR_OUT.with(|o| o.borrow()[i])
+}
+
+// ============ S1: core/game/AttackImpl.ts (attack_impl) =======================
+
+thread_local! {
+    static AK_HARNESS: std::cell::RefCell<crate::attack_impl::AttackHarness> =
+        std::cell::RefCell::new(crate::attack_impl::AttackHarness::default());
+    static AK_ARGS: std::cell::RefCell<Vec<f64>> = const { std::cell::RefCell::new(Vec::new()) };
+    static AK_OUT: std::cell::RefCell<Vec<f64>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
+#[no_mangle]
+pub extern "C" fn probe_ak_reset() {
+    AK_HARNESS.with(|h| h.borrow_mut().reset());
+}
+
+#[no_mangle]
+pub extern "C" fn probe_ak_arg(v: f64) {
+    AK_ARGS.with(|t| t.borrow_mut().push(v));
+}
+
+#[no_mangle]
+pub extern "C" fn probe_ak_op(kind: u32) -> usize {
+    let a = AK_ARGS.with(|t| std::mem::take(&mut *t.borrow_mut()));
+    let out = AK_HARNESS.with(|h| h.borrow_mut().run_op(kind as u8, &a));
+    let len = out.len();
+    AK_OUT.with(|o| *o.borrow_mut() = out);
+    len
+}
+
+#[no_mangle]
+pub extern "C" fn probe_ak_out_at(i: usize) -> f64 {
+    AK_OUT.with(|o| o.borrow()[i])
+}

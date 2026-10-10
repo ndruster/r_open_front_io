@@ -50624,3 +50624,417 @@ pub const UI_SCENARIOS: &[UiScenario] = &[
     UI_MISC_16,
 ];
 
+/// One `core/game/AllianceImpl.ts` op (see `alliance_impl::AllianceHarness::run_op`
+/// docs). kind 0 construct [reqTok, recTok, createdAt, id, durScript,
+/// ticksScript, playersBlock] -> [traceLen,(trace)*,0]; kind 1 method
+/// [mid,...] -> [traceLen,(trace)*,[0,...encVal]]. Facade trace events
+/// 90 allianceDuration, 91 ticks, 92 expireAlliance, 93 addUpdate, 94
+/// smallID. Players cross as tokens (the `===` gates are token equality).
+pub struct AlOp {
+    pub kind: u8,
+    pub args: &'static [f64],
+    pub res: &'static [f64],
+}
+pub struct AlScenario {
+    pub name: &'static str,
+    pub ops: &'static [AlOp],
+}
+
+const AL_CTOR_0_OPS: &[AlOp] = &[
+    AlOp { kind: 0, args: &[0f64, 1f64, 10f64, 7f64, 1f64, 100f64, 1f64, 500f64, 3f64, 11f64, 1f64, 11f64, 12f64, 1f64, 12f64, 13f64, 1f64, 13f64], res: &[2f64, 90f64, 100f64, 0f64] },
+    AlOp { kind: 1, args: &[3f64], res: &[0f64, 0f64, 3f64, 10f64] },
+    AlOp { kind: 1, args: &[9f64], res: &[0f64, 0f64, 3f64, 7f64] },
+    AlOp { kind: 1, args: &[11f64], res: &[0f64, 0f64, 3f64, 110f64] },
+    AlOp { kind: 1, args: &[1f64], res: &[0f64, 0f64, 3f64, 0f64] },
+    AlOp { kind: 1, args: &[2f64], res: &[0f64, 0f64, 3f64, 1f64] },
+];
+pub const AL_CTOR_0: AlScenario = AlScenario {
+    name: "al_ctor_0",
+    ops: AL_CTOR_0_OPS,
+};
+
+const AL_CTOR_NAN_1_OPS: &[AlOp] = &[
+    AlOp { kind: 0, args: &[0f64, 1f64, f64::NAN, 0f64, 1f64, f64::NAN, 0f64, 0f64], res: &[2f64, 90f64, f64::NAN, 0f64] },
+    AlOp { kind: 1, args: &[11f64], res: &[0f64, 0f64, 3f64, f64::NAN] },
+    AlOp { kind: 1, args: &[3f64], res: &[0f64, 0f64, 3f64, f64::NAN] },
+];
+pub const AL_CTOR_NAN_1: AlScenario = AlScenario {
+    name: "al_ctor_nan_1",
+    ops: AL_CTOR_NAN_1_OPS,
+};
+
+const AL_OTHER_2_OPS: &[AlOp] = &[
+    AlOp { kind: 0, args: &[0f64, 1f64, 10f64, 7f64, 1f64, 100f64, 1f64, 500f64, 3f64, 11f64, 1f64, 11f64, 12f64, 1f64, 12f64, 13f64, 1f64, 13f64], res: &[2f64, 90f64, 100f64, 0f64] },
+    AlOp { kind: 1, args: &[0f64, 0f64], res: &[0f64, 0f64, 3f64, 1f64] },
+    AlOp { kind: 1, args: &[0f64, 1f64], res: &[0f64, 0f64, 3f64, 0f64] },
+    AlOp { kind: 1, args: &[0f64, 2f64], res: &[0f64, 0f64, 3f64, 0f64] },
+];
+pub const AL_OTHER_2: AlScenario = AlScenario {
+    name: "al_other_2",
+    ops: AL_OTHER_2_OPS,
+};
+
+const AL_EXPIRE_3_OPS: &[AlOp] = &[
+    AlOp { kind: 0, args: &[0f64, 1f64, 10f64, 7f64, 1f64, 100f64, 1f64, 500f64, 2f64, 11f64, 1f64, 11f64, 12f64, 1f64, 12f64], res: &[2f64, 90f64, 100f64, 0f64] },
+    AlOp { kind: 1, args: &[4f64], res: &[2f64, 92f64, 0f64, 0f64, 1f64] },
+    AlOp { kind: 1, args: &[4f64], res: &[2f64, 92f64, 0f64, 0f64, 1f64] },
+];
+pub const AL_EXPIRE_3: AlScenario = AlScenario {
+    name: "al_expire_3",
+    ops: AL_EXPIRE_3_OPS,
+};
+
+const AL_EXTREQ_4_OPS: &[AlOp] = &[
+    AlOp { kind: 0, args: &[0f64, 1f64, 10f64, 7f64, 1f64, 100f64, 1f64, 500f64, 3f64, 11f64, 1f64, 1f64, 12f64, 1f64, 2f64, 13f64, 1f64, 3f64], res: &[2f64, 90f64, 100f64, 0f64] },
+    AlOp { kind: 1, args: &[5f64, 0f64], res: &[37f64, 94f64, 11f64, 1f64, 93f64, 6f64, 3f64, 4f64, 116f64, 121f64, 112f64, 101f64, 3f64, 9f64, 8f64, 112f64, 108f64, 97f64, 121f64, 101f64, 114f64, 73f64, 68f64, 3f64, 1f64, 10f64, 97f64, 108f64, 108f64, 105f64, 97f64, 110f64, 99f64, 101f64, 73f64, 68f64, 3f64, 7f64, 0f64, 1f64] },
+    AlOp { kind: 1, args: &[6f64], res: &[0f64, 0f64, 4f64, 0f64] },
+    AlOp { kind: 1, args: &[7f64], res: &[0f64, 0f64, 4f64, 1f64] },
+    AlOp { kind: 1, args: &[8f64, 0f64], res: &[0f64, 0f64, 4f64, 1f64] },
+    AlOp { kind: 1, args: &[8f64, 1f64], res: &[0f64, 0f64, 4f64, 0f64] },
+    AlOp { kind: 1, args: &[8f64, 2f64], res: &[0f64, 0f64, 4f64, 0f64] },
+    AlOp { kind: 1, args: &[5f64, 1f64], res: &[37f64, 94f64, 12f64, 2f64, 93f64, 6f64, 3f64, 4f64, 116f64, 121f64, 112f64, 101f64, 3f64, 9f64, 8f64, 112f64, 108f64, 97f64, 121f64, 101f64, 114f64, 73f64, 68f64, 3f64, 2f64, 10f64, 97f64, 108f64, 108f64, 105f64, 97f64, 110f64, 99f64, 101f64, 73f64, 68f64, 3f64, 7f64, 0f64, 1f64] },
+    AlOp { kind: 1, args: &[6f64], res: &[0f64, 0f64, 4f64, 1f64] },
+    AlOp { kind: 1, args: &[7f64], res: &[0f64, 0f64, 4f64, 0f64] },
+    AlOp { kind: 1, args: &[8f64, 1f64], res: &[0f64, 0f64, 4f64, 1f64] },
+    AlOp { kind: 1, args: &[5f64, 2f64], res: &[37f64, 94f64, 13f64, 3f64, 93f64, 6f64, 3f64, 4f64, 116f64, 121f64, 112f64, 101f64, 3f64, 9f64, 8f64, 112f64, 108f64, 97f64, 121f64, 101f64, 114f64, 73f64, 68f64, 3f64, 3f64, 10f64, 97f64, 108f64, 108f64, 105f64, 97f64, 110f64, 99f64, 101f64, 73f64, 68f64, 3f64, 7f64, 0f64, 1f64] },
+    AlOp { kind: 1, args: &[6f64], res: &[0f64, 0f64, 4f64, 1f64] },
+    AlOp { kind: 1, args: &[7f64], res: &[0f64, 0f64, 4f64, 0f64] },
+    AlOp { kind: 1, args: &[8f64, 2f64], res: &[0f64, 0f64, 4f64, 0f64] },
+    AlOp { kind: 1, args: &[11f64], res: &[0f64, 0f64, 3f64, 110f64] },
+];
+pub const AL_EXTREQ_4: AlScenario = AlScenario {
+    name: "al_extreq_4",
+    ops: AL_EXTREQ_4_OPS,
+};
+
+const AL_EXTEND_5_OPS: &[AlOp] = &[
+    AlOp { kind: 0, args: &[0f64, 1f64, 10f64, 7f64, 1f64, 100f64, 1f64, 500f64, 2f64, 11f64, 1f64, 11f64, 12f64, 1f64, 12f64], res: &[2f64, 90f64, 100f64, 0f64] },
+    AlOp { kind: 1, args: &[5f64, 0f64], res: &[37f64, 94f64, 11f64, 11f64, 93f64, 6f64, 3f64, 4f64, 116f64, 121f64, 112f64, 101f64, 3f64, 9f64, 8f64, 112f64, 108f64, 97f64, 121f64, 101f64, 114f64, 73f64, 68f64, 3f64, 11f64, 10f64, 97f64, 108f64, 108f64, 105f64, 97f64, 110f64, 99f64, 101f64, 73f64, 68f64, 3f64, 7f64, 0f64, 1f64] },
+    AlOp { kind: 1, args: &[10f64], res: &[4f64, 91f64, 500f64, 90f64, 100f64, 0f64, 1f64] },
+    AlOp { kind: 1, args: &[6f64], res: &[0f64, 0f64, 4f64, 0f64] },
+    AlOp { kind: 1, args: &[7f64], res: &[0f64, 0f64, 4f64, 0f64] },
+    AlOp { kind: 1, args: &[11f64], res: &[0f64, 0f64, 3f64, 600f64] },
+    AlOp { kind: 1, args: &[10f64], res: &[4f64, 91f64, 500f64, 90f64, 100f64, 0f64, 1f64] },
+    AlOp { kind: 1, args: &[11f64], res: &[0f64, 0f64, 3f64, 600f64] },
+];
+pub const AL_EXTEND_5: AlScenario = AlScenario {
+    name: "al_extend_5",
+    ops: AL_EXTEND_5_OPS,
+};
+
+pub const AL_SCENARIOS: &[AlScenario] = &[
+    AL_CTOR_0,
+    AL_CTOR_NAN_1,
+    AL_OTHER_2,
+    AL_EXPIRE_3,
+    AL_EXTREQ_4,
+    AL_EXTEND_5,
+];
+
+/// One `core/game/AllianceRequestImpl.ts` op (see
+/// `alliance_request_impl::AllianceRequestHarness::run_op` docs). kind 0
+/// construct [reqTok, recTok, tickCreated, playersBlock] -> [0]; kind 1
+/// method [mid,...] -> [traceLen,(trace)*,[0,...encVal]]. Trace events 94
+/// smallID, 95 acceptAllianceRequest, 96 rejectAllianceRequest.
+pub struct ArOp {
+    pub kind: u8,
+    pub args: &'static [f64],
+    pub res: &'static [f64],
+}
+pub struct ArScenario {
+    pub name: &'static str,
+    pub ops: &'static [ArOp],
+}
+
+const AR_BAG_6_OPS: &[ArOp] = &[
+    ArOp { kind: 0, args: &[0f64, 1f64, 3f64, 2f64, 11f64, 1f64, 1f64, 12f64, 1f64, 2f64], res: &[0f64, 0f64] },
+    ArOp { kind: 1, args: &[0f64], res: &[0f64, 0f64, 5f64, 7f64, 112f64, 101f64, 110f64, 100f64, 105f64, 110f64, 103f64] },
+    ArOp { kind: 1, args: &[1f64], res: &[0f64, 0f64, 3f64, 0f64] },
+    ArOp { kind: 1, args: &[2f64], res: &[0f64, 0f64, 3f64, 1f64] },
+    ArOp { kind: 1, args: &[3f64], res: &[0f64, 0f64, 3f64, 3f64] },
+    ArOp { kind: 1, args: &[6f64], res: &[6f64, 94f64, 11f64, 1f64, 94f64, 12f64, 2f64, 0f64, 6f64, 4f64, 4f64, 116f64, 121f64, 112f64, 101f64, 3f64, 5f64, 11f64, 114f64, 101f64, 113f64, 117f64, 101f64, 115f64, 116f64, 111f64, 114f64, 73f64, 68f64, 3f64, 1f64, 11f64, 114f64, 101f64, 99f64, 105f64, 112f64, 105f64, 101f64, 110f64, 116f64, 73f64, 68f64, 3f64, 2f64, 9f64, 99f64, 114f64, 101f64, 97f64, 116f64, 101f64, 100f64, 65f64, 116f64, 3f64, 3f64] },
+];
+pub const AR_BAG_6: ArScenario = ArScenario {
+    name: "ar_bag_6",
+    ops: AR_BAG_6_OPS,
+};
+
+const AR_ACCEPT_7_OPS: &[ArOp] = &[
+    ArOp { kind: 0, args: &[0f64, 1f64, 3f64, 2f64, 11f64, 1f64, 11f64, 12f64, 1f64, 12f64], res: &[0f64, 0f64] },
+    ArOp { kind: 1, args: &[4f64], res: &[2f64, 95f64, 0f64, 0f64, 1f64] },
+    ArOp { kind: 1, args: &[0f64], res: &[0f64, 0f64, 5f64, 8f64, 97f64, 99f64, 99f64, 101f64, 112f64, 116f64, 101f64, 100f64] },
+    ArOp { kind: 1, args: &[4f64], res: &[2f64, 95f64, 0f64, 0f64, 1f64] },
+    ArOp { kind: 1, args: &[6f64], res: &[6f64, 94f64, 11f64, 11f64, 94f64, 12f64, 12f64, 0f64, 6f64, 4f64, 4f64, 116f64, 121f64, 112f64, 101f64, 3f64, 5f64, 11f64, 114f64, 101f64, 113f64, 117f64, 101f64, 115f64, 116f64, 111f64, 114f64, 73f64, 68f64, 3f64, 11f64, 11f64, 114f64, 101f64, 99f64, 105f64, 112f64, 105f64, 101f64, 110f64, 116f64, 73f64, 68f64, 3f64, 12f64, 9f64, 99f64, 114f64, 101f64, 97f64, 116f64, 101f64, 100f64, 65f64, 116f64, 3f64, 3f64] },
+];
+pub const AR_ACCEPT_7: ArScenario = ArScenario {
+    name: "ar_accept_7",
+    ops: AR_ACCEPT_7_OPS,
+};
+
+const AR_REJECT_8_OPS: &[ArOp] = &[
+    ArOp { kind: 0, args: &[0f64, 1f64, 5f64, 2f64, 11f64, 1f64, 11f64, 12f64, 1f64, 12f64], res: &[0f64, 0f64] },
+    ArOp { kind: 1, args: &[5f64], res: &[2f64, 96f64, 0f64, 0f64, 1f64] },
+    ArOp { kind: 1, args: &[0f64], res: &[0f64, 0f64, 5f64, 8f64, 114f64, 101f64, 106f64, 101f64, 99f64, 116f64, 101f64, 100f64] },
+    ArOp { kind: 1, args: &[5f64], res: &[2f64, 96f64, 0f64, 0f64, 1f64] },
+];
+pub const AR_REJECT_8: ArScenario = ArScenario {
+    name: "ar_reject_8",
+    ops: AR_REJECT_8_OPS,
+};
+
+const AR_OVERWRITE_9_OPS: &[ArOp] = &[
+    ArOp { kind: 0, args: &[0f64, 1f64, 7f64, 2f64, 11f64, 2f64, 4f64, 5f64, 12f64, 1f64, 6f64], res: &[0f64, 0f64] },
+    ArOp { kind: 1, args: &[4f64], res: &[2f64, 95f64, 0f64, 0f64, 1f64] },
+    ArOp { kind: 1, args: &[5f64], res: &[2f64, 96f64, 0f64, 0f64, 1f64] },
+    ArOp { kind: 1, args: &[0f64], res: &[0f64, 0f64, 5f64, 8f64, 114f64, 101f64, 106f64, 101f64, 99f64, 116f64, 101f64, 100f64] },
+    ArOp { kind: 1, args: &[6f64], res: &[6f64, 94f64, 11f64, 4f64, 94f64, 12f64, 6f64, 0f64, 6f64, 4f64, 4f64, 116f64, 121f64, 112f64, 101f64, 3f64, 5f64, 11f64, 114f64, 101f64, 113f64, 117f64, 101f64, 115f64, 116f64, 111f64, 114f64, 73f64, 68f64, 3f64, 4f64, 11f64, 114f64, 101f64, 99f64, 105f64, 112f64, 105f64, 101f64, 110f64, 116f64, 73f64, 68f64, 3f64, 6f64, 9f64, 99f64, 114f64, 101f64, 97f64, 116f64, 101f64, 100f64, 65f64, 116f64, 3f64, 7f64] },
+];
+pub const AR_OVERWRITE_9: ArScenario = ArScenario {
+    name: "ar_overwrite_9",
+    ops: AR_OVERWRITE_9_OPS,
+};
+
+pub const AR_SCENARIOS: &[ArScenario] = &[
+    AR_BAG_6,
+    AR_ACCEPT_7,
+    AR_REJECT_8,
+    AR_OVERWRITE_9,
+];
+
+/// One `core/game/AttackImpl.ts` op (see `attack_impl::AttackHarness::run_op`
+/// docs). kind 0 construct [encS id, targetTok, attackerTok, encVal
+/// troops, encVal sourceTile, nBorder, (tiles)*, w, h, playersBlock] ->
+/// [0] (the real GameMap(w,h) is built on both sides); kind 1 method
+/// [mid,...] -> [traceLen,(trace)*,[0,...encVal] | [1,encS]]. Trace events
+/// 97 isPlayer, 98 map. Attack-array slots cross as tokens (0 = the
+/// attack under test); mid 17 exposes the private clusterBorderTiles.
+pub struct AkOp {
+    pub kind: u8,
+    pub args: &'static [f64],
+    pub res: &'static [f64],
+}
+pub struct AkScenario {
+    pub name: &'static str,
+    pub ops: &'static [AkOp],
+}
+
+const AK_CTOR_10_OPS: &[AkOp] = &[
+    AkOp { kind: 0, args: &[2f64, 97f64, 49f64, 0f64, 1f64, 3f64, 5f64, 3f64, 7f64, 4f64, 6f64, 7f64, 11f64, 12f64, 5f64, 5f64, 2f64, 11f64, 1f64, 1f64, 2f64, 0f64, 5f64, 0f64, 12f64, 1f64, 1f64, 0f64, 2f64, 0f64, 9f64], res: &[0f64, 0f64] },
+    AkOp { kind: 1, args: &[6f64], res: &[0f64, 0f64, 5f64, 2f64, 97f64, 49f64] },
+    AkOp { kind: 1, args: &[3f64], res: &[0f64, 0f64, 3f64, 5f64] },
+    AkOp { kind: 1, args: &[5f64], res: &[0f64, 0f64, 4f64, 1f64] },
+    AkOp { kind: 1, args: &[12f64], res: &[0f64, 0f64, 3f64, 0f64] },
+    AkOp { kind: 1, args: &[16f64], res: &[0f64, 0f64, 7f64, 1f64, 3f64, 7f64] },
+    AkOp { kind: 1, args: &[1f64], res: &[0f64, 0f64, 3f64, 0f64] },
+    AkOp { kind: 1, args: &[2f64], res: &[0f64, 0f64, 3f64, 1f64] },
+    AkOp { kind: 1, args: &[0f64], res: &[0f64, 0f64, 3f64, 7f64] },
+];
+pub const AK_CTOR_10: AkScenario = AkScenario {
+    name: "ak_ctor_10",
+    ops: AK_CTOR_10_OPS,
+};
+
+const AK_CTOR_RAW_TROOPS_11_OPS: &[AkOp] = &[
+    AkOp { kind: 0, args: &[2f64, 97f64, 50f64, 0f64, 1f64, 5f64, 2f64, 49f64, 50f64, 2f64, 0f64, 3f64, 3f64, 2f64, 11f64, 0f64, 0f64, 0f64, 12f64, 0f64, 0f64, 0f64], res: &[0f64, 0f64] },
+    AkOp { kind: 1, args: &[3f64], res: &[0f64, 0f64, 5f64, 2f64, 49f64, 50f64] },
+    AkOp { kind: 1, args: &[4f64, 1f64], res: &[0f64, 0f64, 1f64] },
+    AkOp { kind: 1, args: &[3f64], res: &[0f64, 0f64, 3f64, f64::NAN] },
+    AkOp { kind: 1, args: &[16f64], res: &[0f64, 0f64, 7f64, 0f64] },
+];
+pub const AK_CTOR_RAW_TROOPS_11: AkScenario = AkScenario {
+    name: "ak_ctor_raw_troops_11",
+    ops: AK_CTOR_RAW_TROOPS_11_OPS,
+};
+
+const AK_SETTROOPS_12_OPS: &[AkOp] = &[
+    AkOp { kind: 0, args: &[2f64, 97f64, 51f64, 0f64, 1f64, 3f64, 5f64, 3f64, 0f64, 0f64, 3f64, 3f64, 2f64, 11f64, 0f64, 0f64, 0f64, 12f64, 0f64, 0f64, 0f64], res: &[0f64, 0f64] },
+    AkOp { kind: 1, args: &[4f64, 3f64, -3f64], res: &[0f64, 0f64, 1f64] },
+    AkOp { kind: 1, args: &[3f64], res: &[0f64, 0f64, 3f64, 0f64] },
+    AkOp { kind: 1, args: &[4f64, 3f64, f64::NAN], res: &[0f64, 0f64, 1f64] },
+    AkOp { kind: 1, args: &[3f64], res: &[0f64, 0f64, 3f64, f64::NAN] },
+    AkOp { kind: 1, args: &[4f64, 3f64, -0.0f64], res: &[0f64, 0f64, 1f64] },
+    AkOp { kind: 1, args: &[3f64], res: &[0f64, 0f64, 3f64, 0f64] },
+    AkOp { kind: 1, args: &[4f64, 5f64, 1f64, 120f64], res: &[0f64, 0f64, 1f64] },
+    AkOp { kind: 1, args: &[3f64], res: &[0f64, 0f64, 3f64, f64::NAN] },
+    AkOp { kind: 1, args: &[4f64, 3f64, f64::INFINITY], res: &[0f64, 0f64, 1f64] },
+    AkOp { kind: 1, args: &[3f64], res: &[0f64, 0f64, 3f64, f64::INFINITY] },
+    AkOp { kind: 1, args: &[4f64, 4f64, 1f64], res: &[0f64, 0f64, 1f64] },
+    AkOp { kind: 1, args: &[3f64], res: &[0f64, 0f64, 3f64, 1f64] },
+    AkOp { kind: 1, args: &[4f64, 2f64], res: &[0f64, 0f64, 1f64] },
+    AkOp { kind: 1, args: &[3f64], res: &[0f64, 0f64, 3f64, 0f64] },
+    AkOp { kind: 1, args: &[4f64, 6f64, 0f64], res: &[0f64, 0f64, 1f64] },
+    AkOp { kind: 1, args: &[3f64], res: &[0f64, 0f64, 3f64, f64::NAN] },
+    AkOp { kind: 1, args: &[4f64, 3f64, 7f64], res: &[0f64, 0f64, 1f64] },
+    AkOp { kind: 1, args: &[3f64], res: &[0f64, 0f64, 3f64, 7f64] },
+];
+pub const AK_SETTROOPS_12: AkScenario = AkScenario {
+    name: "ak_settroops_12",
+    ops: AK_SETTROOPS_12_OPS,
+};
+
+const AK_FLAGS_13_OPS: &[AkOp] = &[
+    AkOp { kind: 0, args: &[2f64, 97f64, 52f64, 0f64, 1f64, 3f64, 1f64, 2f64, 0f64, 3f64, 3f64, 2f64, 11f64, 0f64, 0f64, 0f64, 12f64, 0f64, 0f64, 0f64], res: &[0f64, 0f64] },
+    AkOp { kind: 1, args: &[10f64], res: &[0f64, 0f64, 4f64, 0f64] },
+    AkOp { kind: 1, args: &[11f64], res: &[0f64, 0f64, 4f64, 0f64] },
+    AkOp { kind: 1, args: &[8f64], res: &[0f64, 0f64, 1f64] },
+    AkOp { kind: 1, args: &[10f64], res: &[0f64, 0f64, 4f64, 1f64] },
+    AkOp { kind: 1, args: &[11f64], res: &[0f64, 0f64, 4f64, 0f64] },
+    AkOp { kind: 1, args: &[9f64], res: &[0f64, 0f64, 1f64] },
+    AkOp { kind: 1, args: &[11f64], res: &[0f64, 0f64, 4f64, 1f64] },
+    AkOp { kind: 1, args: &[5f64], res: &[0f64, 0f64, 4f64, 1f64] },
+];
+pub const AK_FLAGS_13: AkScenario = AkScenario {
+    name: "ak_flags_13",
+    ops: AK_FLAGS_13_OPS,
+};
+
+const AK_BORDER_SET_14_OPS: &[AkOp] = &[
+    AkOp { kind: 0, args: &[2f64, 97f64, 53f64, 0f64, 1f64, 3f64, 1f64, 3f64, 4f64, 1f64, 0f64, 3f64, 3f64, 2f64, 11f64, 0f64, 0f64, 0f64, 12f64, 0f64, 0f64, 0f64], res: &[0f64, 0f64] },
+    AkOp { kind: 1, args: &[12f64], res: &[0f64, 0f64, 3f64, 0f64] },
+    AkOp { kind: 1, args: &[14f64, 0f64], res: &[0f64, 0f64, 1f64] },
+    AkOp { kind: 1, args: &[12f64], res: &[0f64, 0f64, 3f64, 0f64] },
+    AkOp { kind: 1, args: &[14f64, -0.0f64], res: &[0f64, 0f64, 1f64] },
+    AkOp { kind: 1, args: &[12f64], res: &[0f64, 0f64, 3f64, 0f64] },
+    AkOp { kind: 1, args: &[15f64, 0f64], res: &[0f64, 0f64, 1f64] },
+    AkOp { kind: 1, args: &[12f64], res: &[0f64, 0f64, 3f64, -1f64] },
+    AkOp { kind: 1, args: &[15f64, 99f64], res: &[0f64, 0f64, 1f64] },
+    AkOp { kind: 1, args: &[12f64], res: &[0f64, 0f64, 3f64, -1f64] },
+    AkOp { kind: 1, args: &[13f64], res: &[0f64, 0f64, 1f64] },
+    AkOp { kind: 1, args: &[12f64], res: &[0f64, 0f64, 3f64, 0f64] },
+    AkOp { kind: 1, args: &[16f64], res: &[0f64, 0f64, 7f64, 1f64, 3f64, 4f64] },
+];
+pub const AK_BORDER_SET_14: AkScenario = AkScenario {
+    name: "ak_border_set_14",
+    ops: AK_BORDER_SET_14_OPS,
+};
+
+const AK_DELETE_PLAYER_15_OPS: &[AkOp] = &[
+    AkOp { kind: 0, args: &[2f64, 97f64, 54f64, 0f64, 1f64, 3f64, 1f64, 2f64, 0f64, 3f64, 3f64, 2f64, 11f64, 2f64, 1f64, 1f64, 2f64, 0f64, 5f64, 0f64, 12f64, 1f64, 1f64, 0f64, 2f64, 0f64, 9f64], res: &[0f64, 0f64] },
+    AkOp { kind: 1, args: &[7f64], res: &[3f64, 97f64, 11f64, 1f64, 0f64, 1f64] },
+    AkOp { kind: 1, args: &[5f64], res: &[0f64, 0f64, 4f64, 0f64] },
+    AkOp { kind: 1, args: &[18f64, 0f64], res: &[0f64, 0f64, 11f64, 1f64, 5f64, 0f64] },
+    AkOp { kind: 1, args: &[18f64, 1f64], res: &[0f64, 0f64, 12f64, 0f64, 1f64, 9f64] },
+    AkOp { kind: 1, args: &[7f64], res: &[3f64, 97f64, 11f64, 1f64, 0f64, 1f64] },
+    AkOp { kind: 1, args: &[18f64, 0f64], res: &[0f64, 0f64, 11f64, 1f64, 5f64, 0f64] },
+    AkOp { kind: 1, args: &[18f64, 1f64], res: &[0f64, 0f64, 12f64, 0f64, 1f64, 9f64] },
+];
+pub const AK_DELETE_PLAYER_15: AkScenario = AkScenario {
+    name: "ak_delete_player_15",
+    ops: AK_DELETE_PLAYER_15_OPS,
+};
+
+const AK_DELETE_TN_16_OPS: &[AkOp] = &[
+    AkOp { kind: 0, args: &[2f64, 97f64, 55f64, 0f64, 1f64, 3f64, 1f64, 2f64, 0f64, 3f64, 3f64, 2f64, 0f64, 1f64, 0f64, 2f64, 0f64, 5f64, 0f64, 12f64, 1f64, 1f64, 0f64, 2f64, 0f64, 9f64], res: &[0f64, 0f64] },
+    AkOp { kind: 1, args: &[7f64], res: &[3f64, 97f64, 0f64, 0f64, 0f64, 1f64] },
+    AkOp { kind: 1, args: &[18f64, 0f64], res: &[0f64, 0f64, 0f64, 2f64, 0f64, 5f64, 0f64] },
+    AkOp { kind: 1, args: &[18f64, 1f64], res: &[0f64, 0f64, 12f64, 0f64, 1f64, 9f64] },
+];
+pub const AK_DELETE_TN_16: AkScenario = AkScenario {
+    name: "ak_delete_tn_16",
+    ops: AK_DELETE_TN_16_OPS,
+};
+
+const AK_CLUSTER_BASIC_17_OPS: &[AkOp] = &[
+    AkOp { kind: 0, args: &[2f64, 97f64, 56f64, 0f64, 1f64, 3f64, 1f64, 2f64, 0f64, 5f64, 5f64, 2f64, 11f64, 0f64, 0f64, 0f64, 12f64, 0f64, 0f64, 0f64], res: &[0f64, 0f64] },
+    AkOp { kind: 1, args: &[14f64, 6f64], res: &[0f64, 0f64, 1f64] },
+    AkOp { kind: 1, args: &[14f64, 7f64], res: &[0f64, 0f64, 1f64] },
+    AkOp { kind: 1, args: &[14f64, 11f64], res: &[0f64, 0f64, 1f64] },
+    AkOp { kind: 1, args: &[14f64, 12f64], res: &[0f64, 0f64, 1f64] },
+    AkOp { kind: 1, args: &[16f64], res: &[1f64, 98f64, 0f64, 7f64, 1f64, 3f64, 6f64] },
+    AkOp { kind: 1, args: &[17f64, 30f64, 2f64], res: &[1f64, 98f64, 0f64, 7f64, 1f64, 3f64, 6f64] },
+    AkOp { kind: 1, args: &[17f64, 4f64, 2f64], res: &[1f64, 98f64, 0f64, 7f64, 1f64, 3f64, 6f64] },
+    AkOp { kind: 1, args: &[17f64, 5f64, 2f64], res: &[1f64, 98f64, 0f64, 7f64, 1f64, 3f64, 6f64] },
+    AkOp { kind: 1, args: &[17f64, f64::NAN, 2f64], res: &[1f64, 98f64, 0f64, 7f64, 1f64, 3f64, 6f64] },
+];
+pub const AK_CLUSTER_BASIC_17: AkScenario = AkScenario {
+    name: "ak_cluster_basic_17",
+    ops: AK_CLUSTER_BASIC_17_OPS,
+};
+
+const AK_CLUSTER_MULTI_18_OPS: &[AkOp] = &[
+    AkOp { kind: 0, args: &[2f64, 97f64, 57f64, 0f64, 1f64, 3f64, 1f64, 2f64, 0f64, 5f64, 5f64, 2f64, 11f64, 0f64, 0f64, 0f64, 12f64, 0f64, 0f64, 0f64], res: &[0f64, 0f64] },
+    AkOp { kind: 1, args: &[14f64, 6f64], res: &[0f64, 0f64, 1f64] },
+    AkOp { kind: 1, args: &[14f64, 7f64], res: &[0f64, 0f64, 1f64] },
+    AkOp { kind: 1, args: &[14f64, 11f64], res: &[0f64, 0f64, 1f64] },
+    AkOp { kind: 1, args: &[14f64, 12f64], res: &[0f64, 0f64, 1f64] },
+    AkOp { kind: 1, args: &[14f64, 20f64], res: &[0f64, 0f64, 1f64] },
+    AkOp { kind: 1, args: &[14f64, 21f64], res: &[0f64, 0f64, 1f64] },
+    AkOp { kind: 1, args: &[16f64], res: &[1f64, 98f64, 0f64, 7f64, 1f64, 3f64, 6f64] },
+    AkOp { kind: 1, args: &[17f64, 2f64, 2f64], res: &[1f64, 98f64, 0f64, 7f64, 2f64, 3f64, 6f64, 3f64, 20f64] },
+    AkOp { kind: 1, args: &[17f64, 3f64, 2f64], res: &[1f64, 98f64, 0f64, 7f64, 1f64, 3f64, 6f64] },
+    AkOp { kind: 1, args: &[17f64, 2f64, 1f64], res: &[1f64, 98f64, 0f64, 7f64, 1f64, 3f64, 6f64] },
+    AkOp { kind: 1, args: &[17f64, 2f64, 0f64], res: &[1f64, 98f64, 0f64, 7f64, 0f64] },
+    AkOp { kind: 1, args: &[17f64, 2f64, -1f64], res: &[1f64, 98f64, 0f64, 7f64, 1f64, 3f64, 6f64] },
+    AkOp { kind: 1, args: &[17f64, 2f64, f64::NAN], res: &[1f64, 98f64, 0f64, 7f64, 0f64] },
+    AkOp { kind: 1, args: &[17f64, 2f64, f64::INFINITY], res: &[1f64, 98f64, 0f64, 7f64, 2f64, 3f64, 6f64, 3f64, 20f64] },
+];
+pub const AK_CLUSTER_MULTI_18: AkScenario = AkScenario {
+    name: "ak_cluster_multi_18",
+    ops: AK_CLUSTER_MULTI_18_OPS,
+};
+
+const AK_CLUSTER_TIES_19_OPS: &[AkOp] = &[
+    AkOp { kind: 0, args: &[2f64, 98f64, 48f64, 0f64, 1f64, 3f64, 1f64, 2f64, 0f64, 5f64, 5f64, 2f64, 11f64, 0f64, 0f64, 0f64, 12f64, 0f64, 0f64, 0f64], res: &[0f64, 0f64] },
+    AkOp { kind: 1, args: &[14f64, 6f64], res: &[0f64, 0f64, 1f64] },
+    AkOp { kind: 1, args: &[14f64, 7f64], res: &[0f64, 0f64, 1f64] },
+    AkOp { kind: 1, args: &[14f64, 20f64], res: &[0f64, 0f64, 1f64] },
+    AkOp { kind: 1, args: &[14f64, 21f64], res: &[0f64, 0f64, 1f64] },
+    AkOp { kind: 1, args: &[16f64], res: &[1f64, 98f64, 0f64, 7f64, 1f64, 3f64, 6f64] },
+    AkOp { kind: 1, args: &[17f64, 2f64, 2f64], res: &[1f64, 98f64, 0f64, 7f64, 2f64, 3f64, 6f64, 3f64, 20f64] },
+];
+pub const AK_CLUSTER_TIES_19: AkScenario = AkScenario {
+    name: "ak_cluster_ties_19",
+    ops: AK_CLUSTER_TIES_19_OPS,
+};
+
+const AK_CLUSTER_DIAG_20_OPS: &[AkOp] = &[
+    AkOp { kind: 0, args: &[2f64, 98f64, 49f64, 0f64, 1f64, 3f64, 1f64, 2f64, 0f64, 5f64, 5f64, 2f64, 11f64, 0f64, 0f64, 0f64, 12f64, 0f64, 0f64, 0f64], res: &[0f64, 0f64] },
+    AkOp { kind: 1, args: &[14f64, 6f64], res: &[0f64, 0f64, 1f64] },
+    AkOp { kind: 1, args: &[14f64, 12f64], res: &[0f64, 0f64, 1f64] },
+    AkOp { kind: 1, args: &[16f64], res: &[1f64, 98f64, 0f64, 7f64, 1f64, 3f64, 6f64] },
+    AkOp { kind: 1, args: &[17f64, 2f64, 2f64], res: &[1f64, 98f64, 0f64, 7f64, 1f64, 3f64, 6f64] },
+];
+pub const AK_CLUSTER_DIAG_20: AkScenario = AkScenario {
+    name: "ak_cluster_diag_20",
+    ops: AK_CLUSTER_DIAG_20_OPS,
+};
+
+const AK_CLUSTER_EDGE_21_OPS: &[AkOp] = &[
+    AkOp { kind: 0, args: &[2f64, 98f64, 50f64, 0f64, 1f64, 3f64, 1f64, 2f64, 0f64, 5f64, 5f64, 2f64, 11f64, 0f64, 0f64, 0f64, 12f64, 0f64, 0f64, 0f64], res: &[0f64, 0f64] },
+    AkOp { kind: 1, args: &[14f64, 0f64], res: &[0f64, 0f64, 1f64] },
+    AkOp { kind: 1, args: &[14f64, 5f64], res: &[0f64, 0f64, 1f64] },
+    AkOp { kind: 1, args: &[14f64, 24f64], res: &[0f64, 0f64, 1f64] },
+    AkOp { kind: 1, args: &[16f64], res: &[1f64, 98f64, 0f64, 7f64, 1f64, 3f64, 0f64] },
+    AkOp { kind: 1, args: &[17f64, 3f64, 2f64], res: &[1f64, 98f64, 0f64, 7f64, 1f64, 3f64, 0f64] },
+];
+pub const AK_CLUSTER_EDGE_21: AkScenario = AkScenario {
+    name: "ak_cluster_edge_21",
+    ops: AK_CLUSTER_EDGE_21_OPS,
+};
+
+const AK_EMPTY_SRC_22_OPS: &[AkOp] = &[
+    AkOp { kind: 0, args: &[2f64, 98f64, 51f64, 0f64, 1f64, 3f64, 1f64, 1f64, 0f64, 3f64, 3f64, 2f64, 11f64, 0f64, 0f64, 0f64, 12f64, 0f64, 0f64, 0f64], res: &[0f64, 0f64] },
+    AkOp { kind: 1, args: &[16f64], res: &[0f64, 0f64, 7f64, 1f64, 1f64] },
+    AkOp { kind: 1, args: &[0f64], res: &[0f64, 0f64, 1f64] },
+];
+pub const AK_EMPTY_SRC_22: AkScenario = AkScenario {
+    name: "ak_empty_src_22",
+    ops: AK_EMPTY_SRC_22_OPS,
+};
+
+pub const AK_SCENARIOS: &[AkScenario] = &[
+    AK_CTOR_10,
+    AK_CTOR_RAW_TROOPS_11,
+    AK_SETTROOPS_12,
+    AK_FLAGS_13,
+    AK_BORDER_SET_14,
+    AK_DELETE_PLAYER_15,
+    AK_DELETE_TN_16,
+    AK_CLUSTER_BASIC_17,
+    AK_CLUSTER_MULTI_18,
+    AK_CLUSTER_TIES_19,
+    AK_CLUSTER_DIAG_20,
+    AK_CLUSTER_EDGE_21,
+    AK_EMPTY_SRC_22,
+];
+

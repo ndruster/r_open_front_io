@@ -193,6 +193,9 @@ const NV = await loadTs("src/server/NameVisibility.ts");
 const MP = await loadTs("src/server/MapPlaylist.ts");
 const CFG = await loadTs("src/core/configuration/Config.ts");
 const UI = await loadTs("src/core/game/UnitImpl.ts");
+const AL_CLS = await loadTs("src/core/game/AllianceImpl.ts");
+const AR_CLS = await loadTs("src/core/game/AllianceRequestImpl.ts");
+const AK_CLS = await loadTs("src/core/game/AttackImpl.ts");
 // S5: the Censor module initializer binds `profanityMatcher` to this
 // scripted obscenity facade at load time (the library is unresolvable in
 // the port repo), so it must exist BEFORE the import. The row table and
@@ -21119,6 +21122,504 @@ runUI("ui_misc", [
   [1, 39], [1, 58], [1, 59], [1, 64, true], [1, 65], [1, 70, true], [1, 69], [1, 56], [1, 57], [1, 21], [1, 22],
 ]);
 
+// ---- S1: core/game/AllianceImpl.ts / AllianceRequestImpl.ts / AttackImpl.ts -
+//
+// G3b1: the three small collaborator classes behind PlayerImpl. Same harness
+// pattern as the ui_ block: the class under test is the REAL TS, the `mg` /
+// `game` (GameImpl) surfaces are scripted mocks whose every call rides the
+// per-op trace `curTr` (event codes 90-98, the Rust twins document the table
+// in alliance_impl.rs / attack_impl.rs). Mock FIFO scripts REPEAT their last
+// value once exhausted (the `uiTake` rule). Players cross as TOKENS (indices
+// into the players table) — the `===` reference gates are token equality; the
+// attack's `this` and the players' `_incomingAttacks` / `_outgoingAttacks`
+// slots use the ui_ token-0 convention (0 = the object under test, k > 0 =
+// opaque others, pinned by mid 18 dumpPlayers). `mg.map()` returns a REAL
+// GameMapImpl (all-land 0x85, the unit_grid precedent) — the BFS clustering
+// replays the real neighbor iteration order on both sides.
+//
+// al_ mid table (TS declaration order, `alliance_impl::run_method`):
+// 0 other(tok) 1 requestor 2 recipient 3 createdAt 4 expire
+// 5 addExtensionRequest(tok) 6 bothAgreedToExtend 7 onlyOneAgreedToExtend
+// 8 agreedToExtend(tok) 9 id 10 extend 11 expiresAt
+// ar_ mid table: 0 status 1 requestor 2 recipient 3 createdAt 4 accept
+// 5 reject 6 toUpdate
+// ak_ mid table: 0 sourceTile 1 target 2 attacker 3 troops 4 setTroops
+// 5 isActive 6 id 7 delete 8 orderRetreat 9 executeRetreat 10 retreating
+// 11 retreated 12 borderSize 13 clearBorder 14 addBorderTile [raw num]
+// 15 removeBorderTile [raw num] 16 clusteredPositions
+// 17 clusterBorderTiles [minSize,maxClusters] (raw; private in TS, compile-
+// time only) 18 dumpPlayers [raw idx] -> [0,pid,nIn,(toks)*,nOut,(toks)*]
+
+const alScenarios = [];
+const arScenarios = [];
+const akScenarios = [];
+let g3b1Idx = 0;
+
+// Mock objects (player mocks) cross the codec as reference tokens.
+const gTok = new Map();
+let gTokN = 1;
+
+const akEnc = (v) => {
+  if (v === undefined) return [1];
+  if (v === null) return [2];
+  if (typeof v === "number") return [3, uenc(v)];
+  if (typeof v === "boolean") return [4, v ? 1 : 0];
+  if (typeof v === "string") return [5, ...encS(v)];
+  if (gTok.has(v)) return [3, gTok.get(v)];
+  if (Array.isArray(v)) return [7, v.length, ...v.flatMap(akEnc)];
+  if (v instanceof Set) {
+    const arr = [...v];
+    return [7, arr.length, ...arr.flatMap(akEnc)];
+  }
+  return [
+    6,
+    Object.keys(v).length,
+    ...Object.entries(v).flatMap(([k, x]) => [...encS(k), ...akEnc(x)]),
+  ];
+};
+
+const alP = (o = {}) => ({
+  pid: o.pid ?? 1,
+  small_id: o.small_id ?? [o.pid ?? 1],
+  is_player: o.is_player ?? [],
+  incoming: o.incoming ?? [],
+  outgoing: o.outgoing ?? [],
+});
+
+const akEncPlayers = (ps) =>
+  [
+    ps.length,
+    ...ps.flatMap((p) => [
+      uenc(p.pid),
+      [p.is_player.length, ...p.is_player.map(uenc)],
+      [p.incoming.length, ...p.incoming.map(uenc)],
+      [p.outgoing.length, ...p.outgoing.map(uenc)],
+    ]),
+  ].flat();
+
+// al_ players block: [n, (pid, smallID list)*n]
+const alEncPlayers = (ps) =>
+  [
+    ps.length,
+    ...ps.flatMap((p) => [uenc(p.pid), [p.small_id.length, ...p.small_id.map(uenc)]]),
+  ].flat();
+
+function runAL(name, ops) {
+  const played = [];
+  let al = null;
+  let curTr = [];
+  let players = [];
+
+  const mkPlayer = (p, i) => {
+    const st = { si: 0 };
+    const o = {
+      pid: p.pid,
+      smallID: () => {
+        const v = uiTake(st, p.small_id, "si");
+        curTr.push(94, p.pid, v);
+        return v;
+      },
+    };
+    gTok.set(o, i);
+    return o;
+  };
+
+  const mkMg = (m) => {
+    const st = { ad: 0, tk: 0 };
+    return {
+      config: () => ({
+        allianceDuration: () => {
+          const v = uiTake(st, m.dur, "ad");
+          curTr.push(90, v);
+          return v;
+        },
+      }),
+      ticks: () => {
+        const v = uiTake(st, m.ticks, "tk");
+        curTr.push(91, v);
+        return v;
+      },
+      expireAlliance: (a) => {
+        curTr.push(92, 0);
+        if (a !== al) throw new Error("expireAlliance: not the alliance under test");
+      },
+      addUpdate: (u) => {
+        curTr.push(93, ...akEnc(u));
+      },
+    };
+  };
+
+  for (const [k, ...a] of ops) {
+    let args, res;
+    curTr = [];
+    if (k === 0) {
+      const [reqTok, recTok, createdAt, id, dur, ticks, ps] = a;
+      players = ps.map(alP);
+      const mocks = players.map(mkPlayer);
+      const mg = { dur, ticks };
+      al = new AL_CLS.AllianceImpl(mkMg(mg), mocks[reqTok], mocks[recTok], createdAt, id);
+      args = [
+        uenc(reqTok), uenc(recTok), uenc(createdAt), uenc(id),
+        [dur.length, ...dur.map(uenc)],
+        [ticks.length, ...ticks.map(uenc)],
+        ...alEncPlayers(players),
+      ].flat();
+      res = [curTr.length, ...curTr, 0];
+    } else {
+      const mid = a[0];
+      const rest = a.slice(1);
+      args = [uenc(mid)];
+      let r;
+      try {
+        switch (mid) {
+          case 0: r = [0, ...akEnc(al.other(tokMock(rest[0])))]; break;
+          case 1: r = [0, ...akEnc(al.requestor())]; break;
+          case 2: r = [0, ...akEnc(al.recipient())]; break;
+          case 3: r = [0, ...akEnc(al.createdAt())]; break;
+          case 4: al.expire(); r = [0, 1]; break;
+          case 5: al.addExtensionRequest(tokMock(rest[0])); r = [0, 1]; break;
+          case 6: r = [0, 4, al.bothAgreedToExtend() ? 1 : 0]; break;
+          case 7: r = [0, 4, al.onlyOneAgreedToExtend() ? 1 : 0]; break;
+          case 8: r = [0, 4, al.agreedToExtend(tokMock(rest[0])) ? 1 : 0]; break;
+          case 9: r = [0, ...akEnc(al.id())]; break;
+          case 10: al.extend(); r = [0, 1]; break;
+          case 11: r = [0, ...akEnc(al.expiresAt())]; break;
+          default: throw new Error(`al harness: unknown mid ${mid}`);
+        }
+      } catch (e) {
+        r = [1, ...encS(e.message)];
+      }
+      if (mid === 0 || mid === 5 || mid === 8) args.push(uenc(rest[0]));
+      res = [curTr.length, ...curTr, ...r];
+    }
+    played.push({ kind: k, args: args.map(uenc), res: res.map(uenc) });
+  }
+  alScenarios.push({ name: `${name}_${g3b1Idx++}`, ops: played });
+}
+
+// token -> mock object (the players table is rebuilt per construct; mocks keep
+// their registration index in gTok).
+const gTokRev = () => {
+  const rev = new Map();
+  for (const [o, t] of gTok) rev.set(t, o);
+  return rev;
+};
+function tokMock(tok) {
+  const o = gTokRev().get(tok);
+  if (o === undefined) throw new Error(`g3b1 harness: no mock for token ${tok}`);
+  return o;
+}
+
+function runAR(name, ops) {
+  const played = [];
+  let ar = null;
+  let curTr = [];
+  let players = [];
+
+  const mkPlayer = (p, i) => {
+    const st = { si: 0 };
+    const o = {
+      pid: p.pid,
+      smallID: () => {
+        const v = uiTake(st, p.small_id, "si");
+        curTr.push(94, p.pid, v);
+        return v;
+      },
+    };
+    gTok.set(o, i);
+    return o;
+  };
+
+  const mkGame = () => ({
+    acceptAllianceRequest: (r) => {
+      curTr.push(95, 0);
+      if (r !== ar) throw new Error("acceptAllianceRequest: not the request under test");
+    },
+    rejectAllianceRequest: (r) => {
+      curTr.push(96, 0);
+      if (r !== ar) throw new Error("rejectAllianceRequest: not the request under test");
+    },
+  });
+
+  for (const [k, ...a] of ops) {
+    let args, res;
+    curTr = [];
+    if (k === 0) {
+      const [reqTok, recTok, tickCreated, ps] = a;
+      players = ps.map(alP);
+      const mocks = players.map(mkPlayer);
+      ar = new AR_CLS.AllianceRequestImpl(mocks[reqTok], mocks[recTok], tickCreated, mkGame());
+      args = [uenc(reqTok), uenc(recTok), uenc(tickCreated), ...alEncPlayers(players)].flat();
+      res = [curTr.length, ...curTr, 0];
+    } else {
+      const mid = a[0];
+      args = [uenc(mid)];
+      let r;
+      try {
+        switch (mid) {
+          case 0: r = [0, ...akEnc(ar.status())]; break;
+          case 1: r = [0, ...akEnc(ar.requestor())]; break;
+          case 2: r = [0, ...akEnc(ar.recipient())]; break;
+          case 3: r = [0, ...akEnc(ar.createdAt())]; break;
+          case 4: ar.accept(); r = [0, 1]; break;
+          case 5: ar.reject(); r = [0, 1]; break;
+          case 6: r = [0, ...akEnc(ar.toUpdate())]; break;
+          default: throw new Error(`ar harness: unknown mid ${mid}`);
+        }
+      } catch (e) {
+        r = [1, ...encS(e.message)];
+      }
+      res = [curTr.length, ...curTr, ...r];
+    }
+    played.push({ kind: k, args: args.map(uenc), res: res.map(uenc) });
+  }
+  arScenarios.push({ name: `${name}_${g3b1Idx++}`, ops: played });
+}
+
+function runAK(name, ops) {
+  const played = [];
+  let ak = null;
+  let curTr = [];
+  let players = [];
+  let gm = null;
+
+  const mkPlayer = (p, i) => {
+    const st = { ip: 0 };
+    const o = {
+      pid: p.pid,
+      _incomingAttacks: p.incoming.map((t) => (t === 0 ? null : { __akTok: t })),
+      _outgoingAttacks: p.outgoing.map((t) => (t === 0 ? null : { __akTok: t })),
+      isPlayer: () => {
+        const v = uiTake(st, p.is_player, "ip");
+        curTr.push(97, p.pid, v);
+        return v !== 0;
+      },
+    };
+    gTok.set(o, i);
+    return o;
+  };
+
+  const mkMg = () => ({
+    map: () => {
+      curTr.push(98);
+      return gm;
+    },
+    forEachNeighborWithDiag: (t, cb) => gm.forEachNeighborWithDiag(t, cb),
+  });
+
+  for (const [k, ...a] of ops) {
+    let args, res;
+    curTr = [];
+    if (k === 0) {
+      const [id, targetTok, attackerTok, troops, sourceTile, border, w, h, ps] = a;
+      players = ps.map(alP);
+      gm = new GameMapImpl(w, h, new Uint8Array(w * h).fill(0x85), w * h);
+      const mocks = players.map(mkPlayer);
+      ak = new AK_CLS.AttackImpl(
+        id,
+        mocks[targetTok],
+        mocks[attackerTok],
+        troops,
+        sourceTile,
+        new Set(border),
+        mkMg(),
+      );
+      for (const m of mocks) {
+        m._incomingAttacks = m._incomingAttacks.map((x) => (x === null ? ak : x));
+        m._outgoingAttacks = m._outgoingAttacks.map((x) => (x === null ? ak : x));
+      }
+      args = [
+        ...encS(id),
+        uenc(targetTok),
+        uenc(attackerTok),
+        ...akEnc(troops),
+        ...akEnc(sourceTile),
+        [border.length, ...border.map(uenc)],
+        uenc(w),
+        uenc(h),
+        ...akEncPlayers(players),
+      ].flat();
+      res = [curTr.length, ...curTr, 0];
+    } else {
+      const mid = a[0];
+      const rest = a.slice(1);
+      args = [uenc(mid)];
+      if (mid === 14 || mid === 15 || mid === 17 || mid === 18) {
+        for (const x of rest) args.push(uenc(x));
+      } else {
+        for (const x of rest) args.push(...akEnc(x));
+      }
+      let r;
+      try {
+        if (mid === 18) {
+          const p = players[rest[0]];
+          const m = gTokRev().get(rest[0]);
+          const enc = (arr) => [arr.length, ...arr.map((x) => (x === ak ? 0 : x.__akTok))];
+          r = [0, uenc(p.pid), ...enc(m._incomingAttacks), ...enc(m._outgoingAttacks)].flat();
+        } else {
+          let v;
+          switch (mid) {
+            case 0: v = ak.sourceTile(); break;
+            case 1: v = ak.target(); break;
+            case 2: v = ak.attacker(); break;
+            case 3: v = ak.troops(); break;
+            case 4: ak.setTroops(rest[0]); v = undefined; break;
+            case 5: v = ak.isActive(); break;
+            case 6: v = ak.id(); break;
+            case 7: ak.delete(); v = undefined; break;
+            case 8: ak.orderRetreat(); v = undefined; break;
+            case 9: ak.executeRetreat(); v = undefined; break;
+            case 10: v = ak.retreating(); break;
+            case 11: v = ak.retreated(); break;
+            case 12: v = ak.borderSize(); break;
+            case 13: ak.clearBorder(); v = undefined; break;
+            case 14: ak.addBorderTile(rest[0]); v = undefined; break;
+            case 15: ak.removeBorderTile(rest[0]); v = undefined; break;
+            case 16: v = ak.clusteredPositions(); break;
+            case 17: v = ak.clusterBorderTiles(rest[0], rest[1]); break;
+            default: throw new Error(`ak harness: unknown mid ${mid}`);
+          }
+          r = [0, ...akEnc(v)];
+        }
+      } catch (e) {
+        r = [1, ...encS(e.message)];
+      }
+      res = [curTr.length, ...curTr, ...r];
+    }
+    played.push({ kind: k, args: args.map(uenc), res: res.map(uenc) });
+  }
+  akScenarios.push({ name: `${name}_${g3b1Idx++}`, ops: played });
+}
+
+// ---- al_ / ar_ / ak_ scenarios ------------------------------------------------
+
+runAL("al_ctor", [
+  [0, 0, 1, 10, 7, [100], [500], [alP({ pid: 11 }), alP({ pid: 12 }), alP({ pid: 13 })]],
+  [1, 3], [1, 9], [1, 11], [1, 1], [1, 2],
+]);
+
+runAL("al_ctor_nan", [
+  [0, 0, 1, NaN, 0, [NaN], [], []],
+  [1, 11], [1, 3],
+]);
+
+runAL("al_other", [
+  [0, 0, 1, 10, 7, [100], [500], [alP({ pid: 11 }), alP({ pid: 12 }), alP({ pid: 13 })]],
+  [1, 0, 0], [1, 0, 1], [1, 0, 2],
+]);
+
+runAL("al_expire", [
+  [0, 0, 1, 10, 7, [100], [500], [alP({ pid: 11 }), alP({ pid: 12 })]],
+  [1, 4], [1, 4],
+]);
+
+runAL("al_extreq", [
+  [0, 0, 1, 10, 7, [100], [500], [alP({ pid: 11, small_id: [1] }), alP({ pid: 12, small_id: [2] }), alP({ pid: 13, small_id: [3] })]],
+  [1, 5, 0], [1, 6], [1, 7], [1, 8, 0], [1, 8, 1], [1, 8, 2],
+  [1, 5, 1], [1, 6], [1, 7], [1, 8, 1],
+  [1, 5, 2], [1, 6], [1, 7], [1, 8, 2], [1, 11],
+]);
+
+runAL("al_extend", [
+  [0, 0, 1, 10, 7, [100], [500], [alP({ pid: 11 }), alP({ pid: 12 })]],
+  [1, 5, 0], [1, 10], [1, 6], [1, 7], [1, 11],
+  [1, 10], [1, 11],
+]);
+
+runAR("ar_bag", [
+  [0, 0, 1, 3, [alP({ pid: 11, small_id: [1] }), alP({ pid: 12, small_id: [2] })]],
+  [1, 0], [1, 1], [1, 2], [1, 3], [1, 6],
+]);
+
+runAR("ar_accept", [
+  [0, 0, 1, 3, [alP({ pid: 11 }), alP({ pid: 12 })]],
+  [1, 4], [1, 0], [1, 4], [1, 6],
+]);
+
+runAR("ar_reject", [
+  [0, 0, 1, 5, [alP({ pid: 11 }), alP({ pid: 12 })]],
+  [1, 5], [1, 0], [1, 5],
+]);
+
+runAR("ar_overwrite", [
+  [0, 0, 1, 7, [alP({ pid: 11, small_id: [4, 5] }), alP({ pid: 12, small_id: [6] })]],
+  [1, 4], [1, 5], [1, 0], [1, 6],
+]);
+
+runAK("ak_ctor", [
+  [0, "a1", 0, 1, 5, 7, [6, 7, 11, 12], 5, 5,
+    [alP({ pid: 11, is_player: [1], incoming: [0, 5] }), alP({ pid: 12, is_player: [1], outgoing: [0, 9] })]],
+  [1, 6], [1, 3], [1, 5], [1, 12], [1, 16], [1, 1], [1, 2], [1, 0],
+]);
+
+runAK("ak_ctor_raw_troops", [
+  [0, "a2", 0, 1, "12", null, [], 3, 3, [alP({ pid: 11 }), alP({ pid: 12 })]],
+  [1, 3], [1, 4, undefined], [1, 3], [1, 16],
+]);
+
+runAK("ak_settroops", [
+  [0, "a3", 0, 1, 5, 0, [], 3, 3, [alP({ pid: 11 }), alP({ pid: 12 })]],
+  [1, 4, -3], [1, 3], [1, 4, NaN], [1, 3], [1, 4, -0], [1, 3],
+  [1, 4, "x"], [1, 3], [1, 4, Infinity], [1, 3], [1, 4, true], [1, 3],
+  [1, 4, null], [1, 3], [1, 4, {}], [1, 3], [1, 4, 7], [1, 3],
+]);
+
+runAK("ak_flags", [
+  [0, "a4", 0, 1, 1, null, [], 3, 3, [alP({ pid: 11 }), alP({ pid: 12 })]],
+  [1, 10], [1, 11], [1, 8], [1, 10], [1, 11], [1, 9], [1, 11], [1, 5],
+]);
+
+runAK("ak_border_set", [
+  [0, "a5", 0, 1, 1, 4, [0], 3, 3, [alP({ pid: 11 }), alP({ pid: 12 })]],
+  [1, 12], [1, 14, 0], [1, 12], [1, 14, -0], [1, 12], [1, 15, 0], [1, 12],
+  [1, 15, 99], [1, 12], [1, 13], [1, 12], [1, 16],
+]);
+
+runAK("ak_delete_player", [
+  [0, "a6", 0, 1, 1, null, [], 3, 3,
+    [alP({ pid: 11, is_player: [1, 1], incoming: [0, 5] }), alP({ pid: 12, is_player: [1], outgoing: [0, 9] })]],
+  [1, 7], [1, 5], [1, 18, 0], [1, 18, 1], [1, 7], [1, 18, 0], [1, 18, 1],
+]);
+
+runAK("ak_delete_tn", [
+  [0, "a7", 0, 1, 1, null, [], 3, 3,
+    [alP({ pid: 0, is_player: [0], incoming: [0, 5] }), alP({ pid: 12, is_player: [1], outgoing: [0, 9] })]],
+  [1, 7], [1, 18, 0], [1, 18, 1],
+]);
+
+runAK("ak_cluster_basic", [
+  [0, "a8", 0, 1, 1, null, [], 5, 5, [alP({ pid: 11 }), alP({ pid: 12 })]],
+  [1, 14, 6], [1, 14, 7], [1, 14, 11], [1, 14, 12], [1, 16],
+  [1, 17, 30, 2], [1, 17, 4, 2], [1, 17, 5, 2], [1, 17, NaN, 2],
+]);
+
+runAK("ak_cluster_multi", [
+  [0, "a9", 0, 1, 1, null, [], 5, 5, [alP({ pid: 11 }), alP({ pid: 12 })]],
+  [1, 14, 6], [1, 14, 7], [1, 14, 11], [1, 14, 12], [1, 14, 20], [1, 14, 21],
+  [1, 16], [1, 17, 2, 2], [1, 17, 3, 2], [1, 17, 2, 1], [1, 17, 2, 0],
+  [1, 17, 2, -1], [1, 17, 2, NaN], [1, 17, 2, Infinity],
+]);
+
+runAK("ak_cluster_ties", [
+  [0, "b0", 0, 1, 1, null, [], 5, 5, [alP({ pid: 11 }), alP({ pid: 12 })]],
+  [1, 14, 6], [1, 14, 7], [1, 14, 20], [1, 14, 21], [1, 16], [1, 17, 2, 2],
+]);
+
+runAK("ak_cluster_diag", [
+  [0, "b1", 0, 1, 1, null, [], 5, 5, [alP({ pid: 11 }), alP({ pid: 12 })]],
+  [1, 14, 6], [1, 14, 12], [1, 16], [1, 17, 2, 2],
+]);
+
+runAK("ak_cluster_edge", [
+  [0, "b2", 0, 1, 1, null, [], 5, 5, [alP({ pid: 11 }), alP({ pid: 12 })]],
+  [1, 14, 0], [1, 14, 5], [1, 14, 24], [1, 16], [1, 17, 3, 2],
+]);
+
+runAK("ak_empty_src", [
+  [0, "b3", 0, 1, 1, undefined, [], 3, 3, [alP({ pid: 11 }), alP({ pid: 12 })]],
+  [1, 16], [1, 0],
+]);
+
 const structures = {
   votetally: vtScenarios,
   rankedcheckin: rgScenarios,
@@ -21262,6 +21763,9 @@ const structures = {
   themeprovider: thScenarios,
   config: cfgScenarios,
   unitimpl: uiScenarios,
+  alliance: alScenarios,
+  alliancerequest: arScenarios,
+  attack: akScenarios,
 };
 
 // ================================================================ JSON
@@ -24732,6 +25236,36 @@ opStream(
     "/// returns (owner: 80 smallID, 81 id, 82 name; targetUnit.id: 84);\n" +
     "/// _units slots cross as tokens (0 = unit under test), targetUnit mocks\n" +
     "/// as reference-token numbers; bigints cross as Number(v).",
+);
+opStream(
+  "alliance",
+  "Al",
+  "/// One `core/game/AllianceImpl.ts` op (see `alliance_impl::AllianceHarness::run_op`\n" +
+    "/// docs). kind 0 construct [reqTok, recTok, createdAt, id, durScript,\n" +
+    "/// ticksScript, playersBlock] -> [traceLen,(trace)*,0]; kind 1 method\n" +
+    "/// [mid,...] -> [traceLen,(trace)*,[0,...encVal]]. Facade trace events\n" +
+    "/// 90 allianceDuration, 91 ticks, 92 expireAlliance, 93 addUpdate, 94\n" +
+    "/// smallID. Players cross as tokens (the `===` gates are token equality).",
+);
+opStream(
+  "alliancerequest",
+  "Ar",
+  "/// One `core/game/AllianceRequestImpl.ts` op (see\n" +
+    "/// `alliance_request_impl::AllianceRequestHarness::run_op` docs). kind 0\n" +
+    "/// construct [reqTok, recTok, tickCreated, playersBlock] -> [0]; kind 1\n" +
+    "/// method [mid,...] -> [traceLen,(trace)*,[0,...encVal]]. Trace events 94\n" +
+    "/// smallID, 95 acceptAllianceRequest, 96 rejectAllianceRequest.",
+);
+opStream(
+  "attack",
+  "Ak",
+  "/// One `core/game/AttackImpl.ts` op (see `attack_impl::AttackHarness::run_op`\n" +
+    "/// docs). kind 0 construct [encS id, targetTok, attackerTok, encVal\n" +
+    "/// troops, encVal sourceTile, nBorder, (tiles)*, w, h, playersBlock] ->\n" +
+    "/// [0] (the real GameMap(w,h) is built on both sides); kind 1 method\n" +
+    "/// [mid,...] -> [traceLen,(trace)*,[0,...encVal] | [1,encS]]. Trace events\n" +
+    "/// 97 isPlayer, 98 map. Attack-array slots cross as tokens (0 = the\n" +
+    "/// attack under test); mid 17 exposes the private clusterBorderTiles.",
 );
 
 const dataDir = join(root, "crates", "core", "tests", "data");

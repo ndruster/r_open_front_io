@@ -2631,6 +2631,9 @@ for (const [key, reset, arg, op, outAt] of [
   ["themeprovider", "probe_th_reset", "probe_th_arg", "probe_th_op", "probe_th_out_at"],
   ["config", "probe_cfg_reset", "probe_cfg_arg", "probe_cfg_op", "probe_cfg_out_at"],
   ["unitimpl", "probe_ui_reset", "probe_ui_arg", "probe_ui_op", "probe_ui_out_at"],
+  ["alliance", "probe_al_reset", "probe_al_arg", "probe_al_op", "probe_al_out_at"],
+  ["alliancerequest", "probe_ar_reset", "probe_ar_arg", "probe_ar_op", "probe_ar_out_at"],
+  ["attack", "probe_ak_reset", "probe_ak_arg", "probe_ak_op", "probe_ak_out_at"],
 ]) {
   for (const s of S[key]) {
     ex[reset]();

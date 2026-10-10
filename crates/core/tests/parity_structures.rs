@@ -4582,3 +4582,94 @@ fn replay_unitimpl_scenarios() {
         }
     }
 }
+
+// core/game/AllianceImpl.ts: the alliance entity over the scripted mg (Game)
+// and player facade mocks (trace events 90-94, players cross as tokens).
+// Stateful per scenario: kind 0 constructs, kind 1 runs one method.
+#[test]
+fn replay_alliance_scenarios() {
+    use openfront_core::alliance_impl::AllianceHarness;
+    for s in vectors::AL_SCENARIOS {
+        let mut h = AllianceHarness::default();
+        for op in s.ops {
+            let got = h.run_op(op.kind, op.args);
+            assert_eq!(
+                got.len(),
+                op.res.len(),
+                "{} op[{:?}] res len: got {got:?} want {:?}",
+                s.name,
+                op.kind,
+                op.res
+            );
+            for (j, (g, w)) in got.iter().zip(op.res.iter()).enumerate() {
+                assert!(
+                    obj_is(*g, *w),
+                    "{} op[{:?}] res[{j}]: got {g} want {w}",
+                    s.name,
+                    op.kind
+                );
+            }
+        }
+    }
+}
+
+// core/game/AllianceRequestImpl.ts: the pending alliance request over the
+// scripted game / player facade mocks (trace events 94-96). Stateful per
+// scenario: kind 0 constructs, kind 1 runs one method.
+#[test]
+fn replay_alliancerequest_scenarios() {
+    use openfront_core::alliance_request_impl::AllianceRequestHarness;
+    for s in vectors::AR_SCENARIOS {
+        let mut h = AllianceRequestHarness::default();
+        for op in s.ops {
+            let got = h.run_op(op.kind, op.args);
+            assert_eq!(
+                got.len(),
+                op.res.len(),
+                "{} op[{:?}] res len: got {got:?} want {:?}",
+                s.name,
+                op.kind,
+                op.res
+            );
+            for (j, (g, w)) in got.iter().zip(op.res.iter()).enumerate() {
+                assert!(
+                    obj_is(*g, *w),
+                    "{} op[{:?}] res[{j}]: got {g} want {w}",
+                    s.name,
+                    op.kind
+                );
+            }
+        }
+    }
+}
+
+// core/game/AttackImpl.ts: the attack entity over the scripted player facade
+// (trace events 97-98) and the REAL ported GameMap for the BFS clustering.
+// Stateful per scenario: kind 0 constructs (building the w x h map), kind 1
+// runs one method.
+#[test]
+fn replay_attack_scenarios() {
+    use openfront_core::attack_impl::AttackHarness;
+    for s in vectors::AK_SCENARIOS {
+        let mut h = AttackHarness::default();
+        for op in s.ops {
+            let got = h.run_op(op.kind, op.args);
+            assert_eq!(
+                got.len(),
+                op.res.len(),
+                "{} op[{:?}] res len: got {got:?} want {:?}",
+                s.name,
+                op.kind,
+                op.res
+            );
+            for (j, (g, w)) in got.iter().zip(op.res.iter()).enumerate() {
+                assert!(
+                    obj_is(*g, *w),
+                    "{} op[{:?}] res[{j}]: got {g} want {w}",
+                    s.name,
+                    op.kind
+                );
+            }
+        }
+    }
+}

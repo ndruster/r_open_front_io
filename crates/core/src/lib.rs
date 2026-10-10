@@ -283,6 +283,32 @@
 //!   and the level cluster over scripted `mg` / owner facades whose every
 //!   call is pinned into a flat trace; the owner `_units` /
 //!   `_myUnitsVersion` mutations ride as real harness state)
+//! * [`alliance_impl`] — `src/core/game/AllianceImpl.ts` (the alliance
+//!   entity: the ctor's `expiresAt_ = createdAt_ + allianceDuration()` facade
+//!   read, `other` / `addExtensionRequest` / `agreedToExtend` over player
+//!   reference-identity TOKENS, the unconditional `AllianceExtension` update
+//!   dump, the `bothAgreedToExtend` / `onlyOneAgreedToExtend` flag predicates
+//!   and `extend`'s ticks-before-config evaluation order over scripted `mg` /
+//!   player facades (trace events 90-94, 92 pins `expireAlliance(this)`)
+//! * [`alliance_request_impl`] — `src/core/game/AllianceRequestImpl.ts` (the
+//!   alliance request state bag: the `"pending"` / `"accepted"` /
+//!   `"rejected"` status string, `accept` / `reject` setting the status
+//!   BEFORE the `game.acceptAllianceRequest(this)` /
+//!   `rejectAllianceRequest(this)` facade (95/96 with the identity token),
+//!   and `toUpdate`'s declaration-order key dump with the requestor-then-
+//!   recipient `smallID()` facade order (94))
+//! * [`attack_impl`] — `src/core/game/AttackImpl.ts` (the attack entity: the
+//!   ctor's seven fields with the `_borderSize` NOT derived from the border
+//!   `Set`, `setTroops`' `Math.max(0, ·)` over the raw JsVal, `delete`'s
+//!   `isPlayer` gate (97) and the two identity `filter` passes over the
+//!   players' REAL `_incomingAttacks` / `_outgoingAttacks` token arrays
+//!   (token 0 = the attack under test — the `ui_` dumpOwner convention), the
+//!   retreat flags, the insertion-ordered border `Set` add/remove gates and
+//!   `clusteredPositions` / `clusterBorderTiles`' BFS clustering over the
+//!   REAL ported `GameMap` (`mg.map()` facade 98; `forEachNeighborWithDiag`
+//!   replays the ported neighbor order) with the centroid strict-`<`
+//!   tie-break, the subtraction-comparator stable sort and the switch /
+//!   filter / slice boundaries)
 //! * [`config_patch`] — `src/server/ConfigPatch.ts` (`applyGameConfigPatch`'s
 //!   `COPIED_KEYS` copy-if-`!== undefined` loop, the `NULLABLE_KEYS`
 //!   `value ?? undefined` clear-to-undefined loop and the unconditional
@@ -436,10 +462,13 @@
 pub mod account_identity;
 pub mod affiliation_palette;
 pub mod alliance_clusters;
+pub mod alliance_impl;
+pub mod alliance_request_impl;
 pub mod anon_names;
 pub mod api_schemas;
 pub mod asset_urls;
 pub mod atlas_data;
+pub mod attack_impl;
 pub mod attack_rings;
 pub mod base64_uuid;
 pub mod boot_interrupts;

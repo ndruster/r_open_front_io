@@ -164,6 +164,21 @@ rust/
 │   │   │                          SAM queue; GameImpl / PlayerImpl / Stats
 │   │   │                          facades scripted-mocked with a pinned
 │   │   │                          call trace — the arena lands with G6)
+│   │   ├── alliance_impl.rs       port of game/AllianceImpl.ts (the alliance
+│   │   │                          entity: expiresAt ctor math, extension
+│   │   │                          request flags, extend reset + ticks-before
+│   │   │                          -duration order; Game/Player facades
+│   │   │                          scripted-mocked with a pinned call trace)
+│   │   ├── alliance_request_impl.rs port of game/AllianceRequestImpl.ts
+│   │   │                          (pending/accepted/rejected status, accept/
+│   │   │                          reject facade order, toUpdate key order;
+│   │   │                          player tokens share the alliance identity
+│   │   │                          model)
+│   │   ├── attack_impl.rs         port of game/AttackImpl.ts (attack state:
+│   │   │                          border Set insert-order + identity-
+│   │   │                          filtered delete, clusteredPositions BFS
+│   │   │                          over the real GameMap, slice/centroid
+│   │   │                          JS-semantics; GameImpl facade scripted)
 │   │   ├── station_manager.rs     port of game/RailNetworkImpl.ts
 │   │   │                          (StationManagerImpl only; count()=nextId
 │   │   │                          quirk, sparse stationsById, Set order)
@@ -2239,6 +2254,53 @@ WebSockets — stays excluded, mirroring the `src/core` exclusions).
     config cap per level — the outer loop uses the captured value, the
     inner `increaseVeterancy` a fresh facade read). 17 scenarios (`ui_` 17,
     331 ops, 34,969 tokens), 862,353 wasm comparisons bit-identical.
+79. **`game/AllianceImpl.ts` + `game/AllianceRequestImpl.ts` + `game/AttackImpl.ts`**
+    (`alliance` / `alliancerequest` / `attack`) — the three small stateful
+    entities the Game simulation graph hangs off (G3b1, the second slice of
+    the graph after `unit_impl`; the arena still lands with G6's `GameImpl`).
+    All three replicate the TS private field block 1:1 and run every method as
+    a `kind` of their `*Harness::run_op` over the `js_json` codec (precedent
+    `unit_impl` / `config`). The `mg`/`game` (GameImpl) surface and the two
+    `Player`s are scripted facades whose every call rides a flat trace, so the
+    facade call ORDER and the `===` reference-identity gates are compared, not
+    just the return values.
+    *Facade event codes (G3b1 segment 90-98):* `90 config.allianceDuration`,
+    `91 mg.ticks`, `92 mg.expireAlliance(this→0)`, `93 mg.addUpdate` (full
+    codec dump), `94 player.smallID` (keyed by pid), `95 game.acceptAllianceRequest`,
+    `96 game.rejectAllianceRequest`, `97 player.isPlayer` (the `delete` gate),
+    `98 mg.map`. Players cross as TOKENS (indices into the harness `players`
+    table); the attack's `_incomingAttacks`/`_outgoingAttacks` are REAL harness
+    arrays with `0` = the attack under test (the `ui_` dumpOwner identity model
+    extended — G3b3 reuses it).
+    *Faithfulness:* `AllianceImpl` — ctor `expiresAt_ = createdAt_ +
+    allianceDuration()` (the config facade rides the construct trace); `extend()`
+    resets BOTH extension flags then `ticks()` BEFORE `allianceDuration()` (JS
+    left-to-right, pinned); `addExtensionRequest` sets the requestor/recipient
+    flag via the `if/else if` `===` chain (a non-member sets NEITHER) but fires
+    `addUpdate` UNCONDITIONALLY with the ARG's `smallID()`; `GameUpdateType.
+    AllianceExtension` = numeric member 9 (zero-based declaration order).
+    `AllianceRequestImpl` — `accept`/`reject` write the status string BEFORE the
+    facade call; `toUpdate` key order = declaration order (`type`=5,
+    `requestorID` smallID FIRST, `recipientID` SECOND, `createdAt`). `AttackImpl`
+    — the ctor does NOT derive `_borderSize` from the border `Set` (a fresh
+    attack over a non-empty set reports `borderSize()===0` and
+    `clusteredPositions()` returns `[sourceTile]`, the gate being `!== null`);
+    `setTroops` is `Math.max(0, ToNumber)` over the raw arg while the ctor
+    stores the raw `JsVal`; `delete` fires the `isPlayer` facade FIRST, then the
+    two `filter(a => a !== this)` identity passes (target incoming ONLY on the
+    true branch, attacker outgoing ALWAYS) modelled as `retain(token != 0)`,
+    then `_isActive=false`; the border `Set` keeps JS insertion order +
+    SameValueZero (`+0`/`-0` same key, `NaN` equals `NaN`) so the BFS start
+    order is observable through the cluster tie-breaks; `clusterBorderTiles`
+    replays `forEachNeighborWithDiag` over the REAL ported `GameMap` (GameImpl
+    delegates verbatim, callback touches only harness state), centroid `sumX/
+    count` is f64 division, best-tile scan uses strict `<` from `Infinity`
+    (first minimum wins ties), the sort is the subtraction comparator `b.size -
+    a.size` over a stable sort, and `slice(0, maxClusters)` reproduces JS
+    relative-end semantics (NaN/`-Infinity`→0, negative→len+end clamped to 0,
+    fractional→trunc, `+Infinity`/past-end→len). 23 scenarios (`alliance` 6 /
+    `alliancerequest` 4 / `attack` 13, 173 ops), 863,409 wasm comparisons
+    bit-identical.
 
 Regenerate whenever a ported source changes:
 

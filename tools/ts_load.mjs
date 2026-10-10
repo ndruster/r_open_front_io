@@ -1612,6 +1612,199 @@ function prepare(rel) {
     );
   }
 
+  if (rel.endsWith("game/AllianceImpl.ts")) {
+    // G3b1: the Game import block is type-only (Game / MutableAlliance /
+    // Player / Tick are interfaces / type aliases - grep-verified), so it is
+    // dropped; GameUpdateType is a *value* use redirected to the prepared
+    // GameUpdates copy. `implements MutableAlliance` dropped; the ctor's five
+    // parameter properties expanded (UnitImpl precedent). The private field
+    // annotations reference the dropped names - strip mode erases them.
+    out = must(
+      out,
+      'import { Game, MutableAlliance, Player, Tick } from "./Game";\n',
+      "",
+      "AllianceImpl Game import",
+    );
+    const alGuRel = "src/core/game/GameUpdates.ts";
+    if (!prepared.has(alGuRel)) prepare(alGuRel);
+    out = must(
+      out,
+      'import { GameUpdateType } from "./GameUpdates";\n',
+      `import { GameUpdateType } from "./${prepared.get(alGuRel)}";\n`,
+      "AllianceImpl GameUpdates import",
+    );
+    out = must(
+      out,
+      "export class AllianceImpl implements MutableAlliance {",
+      "export class AllianceImpl {",
+      "AllianceImpl implements clause",
+    );
+    out = must(
+      out,
+      "  constructor(\n" +
+        "    private readonly mg: Game,\n" +
+        "    readonly requestor_: Player,\n" +
+        "    readonly recipient_: Player,\n" +
+        "    private readonly createdAt_: Tick,\n" +
+        "    private readonly id_: number,\n" +
+        "  ) {",
+      "  private mg: Game;\n" +
+        "  readonly requestor_: Player;\n" +
+        "  readonly recipient_: Player;\n" +
+        "  private createdAt_: Tick;\n" +
+        "  private id_: number;\n\n" +
+        "  constructor(\n" +
+        "    mg: Game,\n" +
+        "    requestor_: Player,\n" +
+        "    recipient_: Player,\n" +
+        "    createdAt_: Tick,\n" +
+        "    id_: number,\n" +
+        "  ) {\n" +
+        "    this.mg = mg;\n" +
+        "    this.requestor_ = requestor_;\n" +
+        "    this.recipient_ = recipient_;\n" +
+        "    this.createdAt_ = createdAt_;\n" +
+        "    this.id_ = id_;",
+      "AllianceImpl ctor",
+    );
+  }
+
+  if (rel.endsWith("game/AllianceRequestImpl.ts")) {
+    // G3b1: Game (AllianceRequest / Player / Tick) and GameImpl are
+    // type-annotation-only -> dropped; GameUpdates keeps the
+    // GameUpdateType value (AllianceRequestUpdate type dropped).
+    // `implements AllianceRequest` dropped; ctor parameter properties
+    // expanded.
+    out = must(
+      out,
+      'import { AllianceRequest, Player, Tick } from "./Game";\n',
+      "",
+      "AllianceRequestImpl Game import",
+    );
+    out = must(
+      out,
+      'import { GameImpl } from "./GameImpl";\n',
+      "",
+      "AllianceRequestImpl GameImpl import",
+    );
+    const arGuRel = "src/core/game/GameUpdates.ts";
+    if (!prepared.has(arGuRel)) prepare(arGuRel);
+    out = must(
+      out,
+      'import { AllianceRequestUpdate, GameUpdateType } from "./GameUpdates";\n',
+      `import { GameUpdateType } from "./${prepared.get(arGuRel)}";\n`,
+      "AllianceRequestImpl GameUpdates import",
+    );
+    out = must(
+      out,
+      "export class AllianceRequestImpl implements AllianceRequest {",
+      "export class AllianceRequestImpl {",
+      "AllianceRequestImpl implements clause",
+    );
+    out = must(
+      out,
+      "  constructor(\n" +
+        "    private requestor_: Player,\n" +
+        "    private recipient_: Player,\n" +
+        "    private tickCreated: number,\n" +
+        "    private game: GameImpl,\n" +
+        "  ) {}",
+      "  private requestor_: Player;\n" +
+        "  private recipient_: Player;\n" +
+        "  private tickCreated: number;\n" +
+        "  private game: GameImpl;\n\n" +
+        "  constructor(\n" +
+        "    requestor_: Player,\n" +
+        "    recipient_: Player,\n" +
+        "    tickCreated: number,\n" +
+        "    game: GameImpl,\n" +
+        "  ) {\n" +
+        "    this.requestor_ = requestor_;\n" +
+        "    this.recipient_ = recipient_;\n" +
+        "    this.tickCreated = tickCreated;\n" +
+        "    this.game = game;\n" +
+        "  }",
+      "AllianceRequestImpl ctor",
+    );
+  }
+
+  if (rel.endsWith("game/AttackImpl.ts")) {
+    // G3b1: every import is type-annotation-only (Game's Attack / Player /
+    // TerraNullius interfaces, GameImpl, TileRef, the PlayerImpl cast) ->
+    // dropped; the capture scripts the mg facade (map /
+    // forEachNeighborWithDiag delegate to a REAL GameMapImpl) and models the
+    // players' _incomingAttacks / _outgoingAttacks as real mock arrays.
+    // `implements Attack` dropped; the ctor's seven parameter properties
+    // expanded.
+    out = must(
+      out,
+      'import { Attack, Player, TerraNullius } from "./Game";\n',
+      "",
+      "AttackImpl Game import",
+    );
+    out = must(
+      out,
+      'import { GameImpl } from "./GameImpl";\n',
+      "",
+      "AttackImpl GameImpl import",
+    );
+    out = must(
+      out,
+      'import { TileRef } from "./GameMap";\n',
+      "",
+      "AttackImpl GameMap import",
+    );
+    out = must(
+      out,
+      'import { PlayerImpl } from "./PlayerImpl";\n',
+      "",
+      "AttackImpl PlayerImpl import",
+    );
+    out = must(
+      out,
+      "export class AttackImpl implements Attack {",
+      "export class AttackImpl {",
+      "AttackImpl implements clause",
+    );
+    out = must(
+      out,
+      "  constructor(\n" +
+        "    private _id: string,\n" +
+        "    private _target: Player | TerraNullius,\n" +
+        "    private _attacker: Player,\n" +
+        "    private _troops: number,\n" +
+        "    private _sourceTile: TileRef | null,\n" +
+        "    private _border: Set<number>,\n" +
+        "    private _mg: GameImpl,\n" +
+        "  ) {}",
+      "  private _id: string;\n" +
+        "  private _target: Player | TerraNullius;\n" +
+        "  private _attacker: Player;\n" +
+        "  private _troops: number;\n" +
+        "  private _sourceTile: TileRef | null;\n" +
+        "  private _border: Set<number>;\n" +
+        "  private _mg: GameImpl;\n\n" +
+        "  constructor(\n" +
+        "    _id: string,\n" +
+        "    _target: Player | TerraNullius,\n" +
+        "    _attacker: Player,\n" +
+        "    _troops: number,\n" +
+        "    _sourceTile: TileRef | null,\n" +
+        "    _border: Set<number>,\n" +
+        "    _mg: GameImpl,\n" +
+        "  ) {\n" +
+        "    this._id = _id;\n" +
+        "    this._target = _target;\n" +
+        "    this._attacker = _attacker;\n" +
+        "    this._troops = _troops;\n" +
+        "    this._sourceTile = _sourceTile;\n" +
+        "    this._border = _border;\n" +
+        "    this._mg = _mg;\n" +
+        "  }",
+      "AttackImpl ctor",
+    );
+  }
+
   if (rel.endsWith("core/Schemas.ts")) {
     // The zod / zb schema declarations are wire-validation and are not
     // ported, but unlike ServerList / StatsSchemas the capture must *read*

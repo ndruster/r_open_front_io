@@ -5567,3 +5567,36 @@ pub extern "C" fn probe_ak_op(kind: u32) -> usize {
 pub extern "C" fn probe_ak_out_at(i: usize) -> f64 {
     AK_OUT.with(|o| o.borrow()[i])
 }
+
+// ============ S1: core/game/PlayerImpl.ts (player_impl) =======================
+
+thread_local! {
+    static PL_HARNESS: std::cell::RefCell<crate::player_impl::PlayerHarness> =
+        std::cell::RefCell::new(crate::player_impl::PlayerHarness::default());
+    static PL_ARGS: std::cell::RefCell<Vec<f64>> = const { std::cell::RefCell::new(Vec::new()) };
+    static PL_OUT: std::cell::RefCell<Vec<f64>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
+#[no_mangle]
+pub extern "C" fn probe_pl_reset() {
+    PL_HARNESS.with(|h| h.borrow_mut().reset());
+}
+
+#[no_mangle]
+pub extern "C" fn probe_pl_arg(v: f64) {
+    PL_ARGS.with(|t| t.borrow_mut().push(v));
+}
+
+#[no_mangle]
+pub extern "C" fn probe_pl_op(kind: u32) -> usize {
+    let a = PL_ARGS.with(|t| std::mem::take(&mut *t.borrow_mut()));
+    let out = PL_HARNESS.with(|h| h.borrow_mut().run_op(kind as u8, &a));
+    let len = out.len();
+    PL_OUT.with(|o| *o.borrow_mut() = out);
+    len
+}
+
+#[no_mangle]
+pub extern "C" fn probe_pl_out_at(i: usize) -> f64 {
+    PL_OUT.with(|o| o.borrow()[i])
+}

@@ -4673,3 +4673,32 @@ fn replay_attack_scenarios() {
         }
     }
 }
+
+// G3c1: the PlayerImpl harness — one construct op (kind 0), then one method
+// op (kind 1, mid first) per run.
+#[test]
+fn replay_player_scenarios() {
+    use openfront_core::player_impl::PlayerHarness;
+    for s in vectors::PL_SCENARIOS {
+        let mut h = PlayerHarness::default();
+        for op in s.ops {
+            let got = h.run_op(op.kind, op.args);
+            assert_eq!(
+                got.len(),
+                op.res.len(),
+                "{} op[{:?}] res len: got {got:?} want {:?}",
+                s.name,
+                op.kind,
+                op.res
+            );
+            for (j, (g, w)) in got.iter().zip(op.res.iter()).enumerate() {
+                assert!(
+                    obj_is(*g, *w),
+                    "{} op[{:?}] res[{j}]: got {g} want {w}",
+                    s.name,
+                    op.kind
+                );
+            }
+        }
+    }
+}

@@ -196,6 +196,7 @@ const UI = await loadTs("src/core/game/UnitImpl.ts");
 const AL_CLS = await loadTs("src/core/game/AllianceImpl.ts");
 const AR_CLS = await loadTs("src/core/game/AllianceRequestImpl.ts");
 const AK_CLS = await loadTs("src/core/game/AttackImpl.ts");
+const PL_CLS = await loadTs("src/core/game/PlayerImpl.ts");
 // S5: the Censor module initializer binds `profanityMatcher` to this
 // scripted obscenity facade at load time (the library is unresolvable in
 // the port repo), so it must exist BEFORE the import. The row table and
@@ -21620,6 +21621,342 @@ runAK("ak_empty_src", [
   [1, 16], [1, 0],
 ]);
 
+// ---- S1c: core/game/PlayerImpl.ts (pl_) --------------------------------------
+//
+// G3c1: the identity / info / troops / gold / team / disconnect cluster of
+// PlayerImpl over the same harness pattern as the ak_ block — the class under
+// test is the REAL TS, the `mg` (GameImpl) surface is a scripted facade whose
+// every call rides the per-op trace (PlayerImpl segment event codes 100-106,
+// documented in player_impl.rs), and the other players / alliance mocks cross
+// as TOKENS (indices into the players table; the `===` reference gates are
+// token equality, and one table slot may hold the REAL object under test —
+// `is_self` — so `other === this` fires the identity gate). bigints (gold)
+// cross as f64 in the |v| <= 2^53 domain (the config/stats precedent); the
+// capture converts a number arg to BigInt before the call, a non-number arg
+// reaches the real `bigint + other` TypeError. `_tiles` / `_borderTiles` are
+// REAL ported TileSets on both sides (the ts_ vectors prove the iteration
+// order); `_alliances` is a real harness array of {requestor, recipient}
+// token pairs.
+//
+// pl_ mid table (TS declaration order):
+// 0 smallID 1 name 2 displayName 3 clanTag 4 nationFlag 5 clientID 6 id
+// 7 type 8 info 9 isLobbyCreator 10 isAlive 11 hasSpawned 12 setSpawnTile
+// 13 spawnTile 14 troops 15 setTroops 16 addTroops 17 removeTroops 18 gold
+// 19 tradeGold 20 addTradeGold 21 trainGold 22 addTrainGold 23 piracyGold
+// 24 addPiracyGold 25 goldEarned 26 addGold 27 removeGold 28 tileChangeVersion
+// 29 lastTileChange 30 isDisconnected 31 markDisconnected 32 disconnectSnapshot
+// 33 disconnectedAtTick 34 team 35 isOnSameTeam 36 isFriendly 37 isAlliedWith
+// 38 allianceWith 39 alliances 40 numTilesOwned 41 dumpTiles 42 addTile
+// 43 removeTile 44 dumpBorderTiles 45 addBorderTile 46 removeBorderTile
+// 47 isPlayer.
+// Facade events: 100 config().startingGold [100,...encVal], 101 mg.addUpdate
+// [101,...encVal(u)], 102 mg.ticks [102,ret], 103 mg.teamTilesOwned
+// [103,...encVal(team),ret], 104 mg.totalLandTiles [104,ret], 105
+// other.isDisconnected [105,pid,ret01], 106 other.team [106,pid,...encVal].
+
+const plScenarios = [];
+let g3c1Idx = 0;
+
+const plEnc = (v) => (typeof v === "bigint" ? akEnc(Number(v)) : akEnc(v));
+
+// team value codec: 0 = null, 1 = string.
+const plTeamTok = (t) => (t === null ? [0] : [1, ...encS(t)]);
+
+// players block: [n, (pid, teamScript, discScript)*n]
+const plEncPlayers = (ps) =>
+  [
+    ps.length,
+    ...ps.flatMap((p) => [
+      uenc(p.pid),
+      [p.team.length, ...p.team.flatMap(plTeamTok)],
+      [p.disc.length, ...p.disc.map(uenc)],
+    ]),
+  ].flat();
+
+const plP = (o = {}) => ({
+  pid: o.pid ?? 1,
+  team: o.team ?? [null],
+  disc: o.disc ?? [0],
+});
+
+// playerInfo: a plain scripted object (missing keys read undefined).
+const plPI = (o = {}) => {
+  const pi = {};
+  for (const k of ["id", "name", "displayName", "clanTag", "nationFlag", "clientID", "playerType", "isLobbyCreator"]) {
+    if (k in o) pi[k] = o[k];
+  }
+  return pi;
+};
+
+function runPL(name, ops) {
+  const played = [];
+  let pl = null;
+  let curTr = [];
+  let players = [];
+  let mocks = [];
+
+  const mkPlayer = (p, i) => {
+    const st = { tk: 0, dc: 0 };
+    const o = {
+      pid: p.pid,
+      team: () => {
+        const v = uiTake(st, p.team, "tk");
+        curTr.push(106, p.pid, ...plEnc(v));
+        return v;
+      },
+      isDisconnected: () => {
+        const v = uiTake(st, p.disc, "dc");
+        curTr.push(105, p.pid, v ? 1 : 0);
+        return !!v;
+      },
+    };
+    gTok.set(o, i);
+    return o;
+  };
+
+  const mkMg = (m) => {
+    const st = { sg: 0, tk: 0, tt: 0, tl: 0 };
+    return {
+      config: () => ({
+        startingGold: () => {
+          const v = uiTake(st, m.sg, "sg");
+          const b = BigInt(v);
+          curTr.push(100, ...plEnc(b));
+          return b;
+        },
+      }),
+      addUpdate: (u) => {
+        curTr.push(101, ...plEnc(u));
+      },
+      ticks: () => {
+        const v = uiTake(st, m.ticks, "tk");
+        curTr.push(102, v);
+        return v;
+      },
+      teamTilesOwned: (t) => {
+        const v = uiTake(st, m.teamTiles, "tt");
+        curTr.push(103, ...plEnc(t), v);
+        return v;
+      },
+      totalLandTiles: () => {
+        const v = uiTake(st, m.totalLand, "tl");
+        curTr.push(104, v);
+        return v;
+      },
+    };
+  };
+
+  // number -> BigInt (the capture scripts gold as f64); other values pass
+  // through so the real `bigint + other` TypeError fires.
+  const big = (v) => (typeof v === "number" ? BigInt(v) : v);
+
+  for (const [k, ...a] of ops) {
+    let args, res;
+    curTr = [];
+    if (k === 0) {
+      const [pi, smallID, startTroops, team, alliances, tiles, borderTiles, mg, ps, selfTok] = a;
+      players = ps.map(plP);
+      mocks = players.map(mkPlayer);
+      args = [
+        ...plEnc(pi),
+        uenc(smallID),
+        ...plEnc(startTroops),
+        ...plEnc(team),
+        [alliances.length, ...alliances.flatMap(([r, c]) => [uenc(r), uenc(c)])],
+        [tiles.length, ...tiles.map(uenc)],
+        [borderTiles.length, ...borderTiles.map(uenc)],
+        [mg.sg.length, ...mg.sg.map(uenc)],
+        [mg.ticks.length, ...mg.ticks.map(uenc)],
+        [mg.teamTiles.length, ...mg.teamTiles.map(uenc)],
+        [mg.totalLand.length, ...mg.totalLand.map(uenc)],
+        ...plEncPlayers(players),
+        uenc(selfTok === undefined ? -1 : selfTok),
+      ].flat();
+      try {
+        pl = new PL_CLS.PlayerImpl(
+          mkMg(mg),
+          smallID,
+          pi,
+          startTroops,
+          team,
+        );
+        pl._tiles = new TileSet(tiles);
+        pl._borderTiles = new TileSet(borderTiles);
+        pl._alliances = alliances.map(([r, c]) => ({
+          req: r,
+          rec: c,
+          requestor: () => mocks[r],
+          recipient: () => mocks[c],
+          other: (p) => (p === mocks[r] ? mocks[c] : mocks[r]),
+        }));
+        if (selfTok !== undefined && selfTok >= 0) {
+          mocks[selfTok] = pl;
+        }
+        res = [curTr.length, ...curTr, 0];
+      } catch (e) {
+        res = [curTr.length, ...curTr, 1, ...encS(e.message)];
+      }
+    } else {
+      const mid = a[0];
+      const rest = a.slice(1);
+      args = [uenc(mid)];
+      for (const x of rest) args.push(...plEnc(x));
+      let r;
+      try {
+        let v;
+        switch (mid) {
+          case 0: v = pl.smallID(); break;
+          case 1: v = pl.name(); break;
+          case 2: v = pl.displayName(); break;
+          case 3: v = pl.clanTag(); break;
+          case 4: v = pl.nationFlag(); break;
+          case 5: v = pl.clientID(); break;
+          case 6: v = pl.id(); break;
+          case 7: v = pl.type(); break;
+          case 8: v = pl.info(); break;
+          case 9: v = pl.isLobbyCreator(); break;
+          case 10: v = pl.isAlive(); break;
+          case 11: v = pl.hasSpawned(); break;
+          case 12: pl.setSpawnTile(rest[0]); v = undefined; break;
+          case 13: v = pl.spawnTile(); break;
+          case 14: v = pl.troops(); break;
+          case 15: pl.setTroops(rest[0]); v = undefined; break;
+          case 16: pl.addTroops(rest[0]); v = undefined; break;
+          case 17: v = pl.removeTroops(rest[0]); break;
+          case 18: v = pl.gold(); break;
+          case 19: v = pl.tradeGold(); break;
+          case 20: pl.addTradeGold(big(rest[0])); v = undefined; break;
+          case 21: v = pl.trainGold(); break;
+          case 22: pl.addTrainGold(big(rest[0])); v = undefined; break;
+          case 23: v = pl.piracyGold(); break;
+          case 24: pl.addPiracyGold(big(rest[0])); v = undefined; break;
+          case 25: v = pl.goldEarned(); break;
+          case 26: pl.addGold(big(rest[0]), rest[1]); v = undefined; break;
+          case 27: v = pl.removeGold(big(rest[0])); break;
+          case 28: v = pl.tileChangeVersion(); break;
+          case 29: v = pl.lastTileChange(); break;
+          case 30: v = pl.isDisconnected(); break;
+          case 31: pl.markDisconnected(rest[0], rest.length > 1 ? rest[1] : undefined); v = undefined; break;
+          case 32: v = pl.disconnectSnapshot(); break;
+          case 33: v = pl.disconnectedAtTick(); break;
+          case 34: v = pl.team(); break;
+          case 35: v = pl.isOnSameTeam(mocks[rest[0]]); break;
+          case 36: v = rest.length > 1 ? pl.isFriendly(mocks[rest[0]], rest[1]) : pl.isFriendly(mocks[rest[0]]); break;
+          case 37: v = pl.isAlliedWith(mocks[rest[0]]); break;
+          case 38: v = pl.allianceWith(mocks[rest[0]]); break;
+          case 39: v = pl.alliances().map((al) => [al.requestor(), al.recipient()]); break;
+          case 40: v = pl.numTilesOwned(); break;
+          case 41: v = [...pl.tiles()]; break;
+          case 42: pl._tiles.add(rest[0]); v = undefined; break;
+          case 43: pl._tiles.delete(rest[0]); v = undefined; break;
+          case 44: v = [...pl.borderTiles()]; break;
+          case 45: pl._borderTiles.add(rest[0]); v = undefined; break;
+          case 46: pl._borderTiles.delete(rest[0]); v = undefined; break;
+          case 47: v = pl.isPlayer(); break;
+          default: throw new Error(`pl harness: unknown mid ${mid}`);
+        }
+        if (mid === 38) r = v === null ? [0, 2] : [0, 7, 2, 3, v.req, 3, v.rec];
+        else r = [0, ...plEnc(v)];
+      } catch (e) {
+        r = [1, ...encS(e.message)];
+      }
+      res = [curTr.length, ...curTr, ...r];
+    }
+    played.push({ kind: k, args: args.map(uenc), res: res.map(uenc) });
+  }
+  plScenarios.push({ name: `${name}_${g3c1Idx++}`, ops: played });
+}
+
+const PL_MG = (o = {}) => ({
+  sg: o.sg ?? [0],
+  ticks: o.ticks ?? [0],
+  teamTiles: o.teamTiles ?? [0],
+  totalLand: o.totalLand ?? [0],
+});
+
+runPL("pl_ctor", [
+  [0, plPI({ id: "p1", name: "alice", displayName: "Alice", clanTag: "AT", nationFlag: null, clientID: "c1", playerType: "HUMAN", isLobbyCreator: true }),
+    3, 100, "Red", [], [], [], PL_MG({ sg: [500] }),
+    [plP({ pid: 11 }), plP({ pid: 12 })], -1],
+  [1, 0], [1, 1], [1, 2], [1, 3], [1, 4], [1, 5], [1, 6], [1, 7], [1, 8], [1, 9], [1, 47], [1, 34], [1, 18], [1, 14],
+]);
+
+runPL("pl_ctor_nan_start", [
+  [0, plPI({ id: "p2", name: "bob", playerType: "BOT" }), 4, NaN, null, [], [], [], PL_MG({ sg: [0] }), [plP()], -1],
+  [1, 0],
+]);
+
+runPL("pl_ctor_missing_pi", [
+  [0, plPI({ id: "p3" }), 5, 10, null, [], [], [], PL_MG({}), [], -1],
+  [1, 1], [1, 2], [1, 3], [1, 4], [1, 5], [1, 7], [1, 9], [1, 8],
+]);
+
+runPL("pl_troops", [
+  [0, plPI({ id: "p4", name: "carol", playerType: "HUMAN" }), 6, 100, null, [], [], [], PL_MG({}), [plP()], -1],
+  [1, 14], [1, 15, 55], [1, 14], [1, 16, 5], [1, 14], [1, 16, -3], [1, 14], [1, 17, 10], [1, 14],
+  [1, 17, 0], [1, 17, -5], [1, 17, -0], [1, 16, 0], [1, 14],
+  [1, 15, Infinity], [1, 14], [1, 15, -Infinity], [1, 14], [1, 15, 7.9], [1, 14], [1, 15, -7.9], [1, 14],
+  [1, 15, "5"], [1, 14], [1, 15, true], [1, 14], [1, 15, null], [1, 14], [1, 15, "x"], [1, 14],
+  [1, 15, undefined], [1, 16, NaN], [1, 17, NaN], [1, 16, Infinity], [1, 14], [1, 17, Infinity], [1, 14],
+]);
+
+runPL("pl_gold", [
+  [0, plPI({ id: "p5", name: "dave", playerType: "HUMAN" }), 7, 10, "Blue", [], [], [], PL_MG({ sg: [1000] }), [plP()], -1],
+  [1, 18], [1, 25], [1, 26, 50, 42], [1, 18], [1, 25], [1, 26, 7], [1, 18], [1, 25],
+  [1, 26, 3, 0], [1, 26, 4, NaN], [1, 27, 200], [1, 18], [1, 27, 5000], [1, 18], [1, 27, 0], [1, 27, -5], [1, 27, "x"],
+  [1, 20, 10], [1, 19], [1, 22, 20], [1, 21], [1, 24, 30], [1, 23], [1, 25],
+  [1, 20, "y"], [1, 20, null], [1, 20, true], [1, 20, 1.5], [1, 19],
+]);
+
+runPL("pl_disconnect", [
+  [0, plPI({ id: "p6", name: "erin", playerType: "HUMAN" }), 8, 10, "Red", [], [1, 2, 3], [], PL_MG({ ticks: [77], teamTiles: [40], totalLand: [500] }), [plP()], -1],
+  [1, 30], [1, 32], [1, 33], [1, 31, true], [1, 30], [1, 32], [1, 33], [1, 31, true], [1, 32],
+  [1, 31, false], [1, 32], [1, 33], [1, 31, true, { currentTick: 1, teamTiles: 2, totalLand: 3, wasAlive: true }], [1, 32], [1, 33],
+]);
+
+runPL("pl_disconnect_no_team", [
+  [0, plPI({ id: "p7", name: "frank", playerType: "HUMAN" }), 9, 10, null, [], [], [], PL_MG({ ticks: [5], totalLand: [99] }), [plP()], -1],
+  [1, 31, true], [1, 32],
+]);
+
+runPL("pl_team", [
+  [0, plPI({ id: "p8", name: "gina", playerType: "HUMAN" }), 10, 10, "Red", [], [], [], PL_MG({}),
+    [plP({ pid: 21, team: ["Red"] }), plP({ pid: 22, team: ["Blue"] }), plP({ pid: 23, team: [null] }), plP({ pid: 24, team: ["Bot"] }), plP({ pid: 25, team: ["Red"] })], -1],
+  [1, 34], [1, 35, 0], [1, 35, 1], [1, 35, 2], [1, 35, 3], [1, 35, 4],
+]);
+
+runPL("pl_team_self", [
+  [0, plPI({ id: "p9", name: "hank", playerType: "HUMAN" }), 11, 10, "Teal", [], [], [], PL_MG({}),
+    [plP({ pid: 31 }), plP({ pid: 32, team: ["Teal"] })], 0],
+  [1, 35, 0], [1, 35, 1], [1, 36, 0], [1, 36, 1], [1, 36, 1, true],
+]);
+
+runPL("pl_friendly", [
+  [0, plPI({ id: "pa", name: "iris", playerType: "HUMAN" }), 12, 10, "Red", [[0, 1]], [], [], PL_MG({}),
+    [plP({ pid: 41, team: [null], disc: [0] }), plP({ pid: 42, team: ["Red"], disc: [0] }), plP({ pid: 43, team: [null], disc: [1] }), plP({ pid: 44, team: ["Blue"], disc: [0] })], -1],
+  [1, 36, 0], [1, 36, 1], [1, 36, 2], [1, 36, 2, true], [1, 36, 3], [1, 37, 0], [1, 37, 1], [1, 38, 0], [1, 38, 1], [1, 39],
+]);
+
+runPL("pl_alliance_gates", [
+  [0, plPI({ id: "pb", name: "jack", playerType: "HUMAN" }), 13, 10, null, [[1, 2]], [], [], PL_MG({}),
+    [plP({ pid: 51 }), plP({ pid: 52 }), plP({ pid: 53 })], -1],
+  [1, 37, 0], [1, 38, 0], [1, 37, 1], [1, 38, 1], [1, 37, 2], [1, 38, 2], [1, 39], [1, 36, 1],
+]);
+
+runPL("pl_tiles", [
+  [0, plPI({ id: "pc", name: "kim", playerType: "HUMAN" }), 14, 10, null, [], [5, 6, 7], [5], PL_MG({}), [plP()], -1],
+  [1, 10], [1, 40], [1, 41], [1, 44], [1, 42, 8], [1, 40], [1, 41], [1, 43, 6], [1, 40], [1, 41],
+  [1, 42, 5], [1, 41], [1, 42, NaN], [1, 41], [1, 43, NaN], [1, 41], [1, 45, 9], [1, 44], [1, 46, 5], [1, 44],
+  [1, 11], [1, 13], [1, 12, 77], [1, 11], [1, 13], [1, 10], [1, 28], [1, 29],
+]);
+
+runPL("pl_ctor_big_gold", [
+  [0, plPI({ id: "pd", name: "leo", playerType: "HUMAN" }), 15, 9007199254740991, "Blue", [], [], [], PL_MG({ sg: [9007199254740991] }), [plP()], -1],
+  [1, 14], [1, 18], [1, 16, 100], [1, 14], [1, 26, 10], [1, 18], [1, 27, 9007199254740981], [1, 18],
+]);
+
+// ---- pl_ scenarios end ------------------------------------------------------
+
 const structures = {
   votetally: vtScenarios,
   rankedcheckin: rgScenarios,
@@ -21766,6 +22103,7 @@ const structures = {
   alliance: alScenarios,
   alliancerequest: arScenarios,
   attack: akScenarios,
+  playerimpl: plScenarios,
 };
 
 // ================================================================ JSON
@@ -25266,6 +25604,22 @@ opStream(
     "/// [mid,...] -> [traceLen,(trace)*,[0,...encVal] | [1,encS]]. Trace events\n" +
     "/// 97 isPlayer, 98 map. Attack-array slots cross as tokens (0 = the\n" +
     "/// attack under test); mid 17 exposes the private clusterBorderTiles.",
+);
+opStream(
+  "playerimpl",
+  "Pl",
+  "/// One `core/game/PlayerImpl.ts` op (see\n" +
+    "/// `player_impl::PlayerHarness::run_op` docs). kind 0 construct [encVal\n" +
+    "/// playerInfo, smallID, encVal startTroops, encVal team, nAlliances,\n" +
+    "/// (req,rec)*, nTiles,(t)*, nBorder,(t)*, sgScript, ticksScript,\n" +
+    "/// teamTilesScript, totalLandScript, playersBlock, selfTok] -> [0] or\n" +
+    "/// [1,encS]; kind 1 method [mid,...] -> [traceLen,(trace)*,[0,...encVal]\n" +
+    "/// | [1,encS]]. Trace events 100 startingGold, 101 addUpdate (full\n" +
+    "/// codec dump), 102 ticks, 103 teamTilesOwned, 104 totalLandTiles, 105\n" +
+    "/// other.isDisconnected, 106 other.team. Players cross as TOKENS (indices\n" +
+    "/// into the harness players table; selfTok >= 0 puts the object under\n" +
+    "/// test into a slot so === identity gates fire). Gold/troops are bigint\n" +
+    "/// and cross as f64 in the |v| <= 2^53 domain.",
 );
 
 const dataDir = join(root, "crates", "core", "tests", "data");

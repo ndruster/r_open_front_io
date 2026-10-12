@@ -179,6 +179,14 @@ rust/
 │   │   │                          filtered delete, clusteredPositions BFS
 │   │   │                          over the real GameMap, slice/centroid
 │   │   │                          JS-semantics; GameImpl facade scripted)
+│   │   ├── player_impl.rs         port of game/PlayerImpl.ts (G3c1 slice:
+│   │   │                          identity/info/state/gold/troops/team/
+│   │   │                          disconnect cluster; the bigint gold
+│   │   │                          accumulators with JS +-concat semantics,
+│   │   │                          the facade-ordered ctor, the isOnSameTeam
+│   │   │                          call-count gates, the markDisconnected
+│   │   │                          snapshot build; GameImpl/player facades
+│   │   │                          scripted, players as tokens)
 │   │   ├── station_manager.rs     port of game/RailNetworkImpl.ts
 │   │   │                          (StationManagerImpl only; count()=nextId
 │   │   │                          quirk, sparse stationsById, Set order)
@@ -2301,6 +2309,54 @@ WebSockets — stays excluded, mirroring the `src/core` exclusions).
     fractional→trunc, `+Infinity`/past-end→len). 23 scenarios (`alliance` 6 /
     `alliancerequest` 4 / `attack` 13, 173 ops), 863,409 wasm comparisons
     bit-identical.
+80. **`game/PlayerImpl.ts`** (`playerimpl`) — the player entity, first bounded
+    slice (G3c1: the identity / info / state / gold / troops / team / disconnect
+    cluster; relations/donations/embargo/alliance-mgmt/traitor/targets/units
+    memos/spawn-family/toUpdate land in G3c2+). The harness replicates the
+    slice's private field block 1:1 and runs the ctor and every method as a
+    `kind` of `PlayerHarness::run_op` over the `js_json` codec (precedent
+    `unit_impl` / `attack_impl`). The `mg` (GameImpl) surface and the other
+    players are scripted facades whose every call rides a flat trace (G3c1
+    segment 100-106): `100 config().startingGold` (the scripted f64 crosses
+    `BigInt(v)` BEFORE the trace push — a non-integer throws first), `101
+    mg.addUpdate` (full BonusEvent codec dump, key order
+    type/player/tile/gold/troops), `102 mg.ticks`, `103 mg.teamTilesOwned`
+    (the team arg crosses in the trace), `104 mg.totalLandTiles`, `105
+    other.isDisconnected` (`!!`-normalised), `106 other.team`. Players cross
+    as TOKENS; `selfTok >= 0` puts the object under test into a table slot so
+    the `other === this` identity gates fire naturally.
+    *Faithfulness:* the ctor's class-field order — `_troops = toInt(startTroops)`
+    FIRST (a NaN startTroops throws BEFORE facade 100), then `_gold =
+    mg.config().startingGold(playerInfo)`, then `new PseudoRandom(simpleHash(
+    playerInfo.id))` whose only observable effect is the `str.length` TypeError
+    on a null/undefined id; a failed construct leaves `pl === null` so every
+    later method op throws `Cannot read properties of null (reading 'X')` with
+    an empty trace. The gold accumulators model JS `+=` over the bigint domain:
+    `bigint + string` is STRING CONCATENATION (`10n + "y" === "10y"` — the
+    accumulator becomes a string and stays one), only `bigint + null/bool/
+    object/undefined` throws the mix TypeError, and the cross-type relational
+    gates (`toRemove <= 0n`, `minInt`'s `a < b`) convert with ToNumber and
+    NEVER throw — so `removeGold("x")` passes the `NaN <= 0` gate (false),
+    `minInt` compares `_gold < "x"` → false and returns the RAW string, and
+    `_gold -= "x"` then throws the mix (pinned); `removeGold
+    (1.5)` throws the BigInt-conversion message BEFORE the method runs (the
+    capture's `big()` wrapper). `addGold` runs `_gold +=` then `_goldEarned +=`
+    before the `if (tile)` truthiness gate (0/NaN/undefined skip the BonusEvent
+    facade); `gold: Number(toAdd)` crosses as f64. `isOnSameTeam`'s facade
+    call COUNTS are observable: 0 (self / own-team null), 1 (other null), 2
+    (own Bot gate), 3 (the final `===`) — `ColoredTeams.Bot === "Bot"`.
+    `isFriendly`: self → true; `other.isDisconnected() && !treatAFKFriendly`
+    gate; then same-team OR allied (the alliance mocks' `requestor()`/
+    `recipient()` are untraced identity reads). `markDisconnected`: the flag
+    stores the RAW arg; on truthy + null snapshot the `snapshot ?? {built}`
+    gate — a non-nullish arg snapshot skips ALL facades; the built object
+    evaluates 102 → team-truthy gate → 103 → 104 → `isAlive()`; `
+    disconnectedAtTick` = `snapshot?.currentTick ?? null`. `_tiles`/
+    `_borderTiles` are REAL ported `TileSet`s (mids bypass `conquer`, so
+    `tileChangeVersion` stays 0). 13 scenarios (`pl_ctor` / NaN start /
+    missing-pi / troops / gold / disconnect / no-team disconnect / team /
+    team-self / friendly / alliance-gates / tiles / big-gold, 184 ops),
+    865,375 wasm comparisons bit-identical.
 
 Regenerate whenever a ported source changes:
 

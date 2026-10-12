@@ -1805,6 +1805,215 @@ function prepare(rel) {
     );
   }
 
+  if (rel.endsWith("game/PlayerImpl.ts")) {
+    // G3c1: the Util / Game / GameMap / GameUpdateUtils / GameUpdates /
+    // TileSet / TileTraversalScratch / AttackImpl / UnitImpl imports are all
+    // *value* uses that ride prepared copies (Game's enums and the
+    // AllPlayers / ColoredTeams / MAX_UPGRADE_AMOUNT / PlayerBuildable /
+    // Structures constants are exported by the prepared copy). Schemas
+    // (ClientID), GameImpl and the Game type names are annotation-only ->
+    // dropped. TransportShipUtils is NOT loadable (its SpatialQuery import
+    // pulls the pathfinding graph) and both functions are outside the G3c1
+    // surface -> stub consts. `implements Player` dropped; the Donation and
+    // PlayerImpl ctor parameter properties expanded (UnitImpl precedent).
+    const plPRel = "src/core/PseudoRandom.ts";
+    out = must(
+      out,
+      'import { PseudoRandom } from "../PseudoRandom";\n',
+      `import { PseudoRandom } from "${TS_URL}${plPRel}";\n`,
+      "PlayerImpl PseudoRandom import",
+    );
+    out = must(
+      out,
+      'import { ClientID } from "../Schemas";\n',
+      "",
+      "PlayerImpl Schemas import",
+    );
+    const plUtilRel = "src/core/Util.ts";
+    if (!prepared.has(plUtilRel)) prepare(plUtilRel);
+    out = must(
+      out,
+      '} from "../Util";\n',
+      `} from "./${prepared.get(plUtilRel)}";\n`,
+      "PlayerImpl Util import",
+    );
+    const plAtkRel = "src/core/game/AttackImpl.ts";
+    if (!prepared.has(plAtkRel)) prepare(plAtkRel);
+    out = must(
+      out,
+      'import { AttackImpl } from "./AttackImpl";\n',
+      `import { AttackImpl } from "./${prepared.get(plAtkRel)}";\n`,
+      "PlayerImpl AttackImpl import",
+    );
+    for (const t of [
+      "Alliance",
+      "AllianceInfo",
+      "AllianceRequest",
+      "Attack",
+      "BuildableUnit",
+      "Cell",
+      "DisconnectSnapshot",
+      "Embargo",
+      "EmojiMessage",
+      "Gold",
+      "MutableAlliance",
+      "Player",
+      "PlayerBuildableUnitType",
+      "PlayerID",
+      "PlayerInfo",
+      "PlayerProfile",
+      "Team",
+      "TerraNullius",
+      "Tick",
+      "Unit",
+      "UnitParams",
+    ]) {
+      out = must(out, `  ${t},\n`, "", `PlayerImpl Game type ${t}`);
+    }
+    if (!prepared.has("src/core/game/Game.ts")) prepare("src/core/game/Game.ts");
+    out = must(
+      out,
+      '} from "./Game";\n',
+      `} from "./${prepared.get("src/core/game/Game.ts")}";\n`,
+      "PlayerImpl Game import",
+    );
+    out = must(
+      out,
+      'import { GameImpl } from "./GameImpl";\n',
+      "",
+      "PlayerImpl GameImpl import",
+    );
+    const plGmRel = "src/core/game/GameMap.ts";
+    if (!prepared.has(plGmRel)) prepare(plGmRel);
+    out = must(
+      out,
+      'import { andFN, manhattanDistFN, TileRef } from "./GameMap";\n',
+      `import { andFN, manhattanDistFN } from "./${prepared.get(plGmRel)}";\n`,
+      "PlayerImpl GameMap import",
+    );
+    const plGiuRel = "src/core/game/GameUpdateUtils.ts";
+    if (!prepared.has(plGiuRel)) prepare(plGiuRel);
+    out = must(
+      out,
+      "import {\n" +
+        "  ATTACK_DELTA_INCOMING,\n" +
+        "  ATTACK_DELTA_OUTGOING,\n" +
+        "  diffPlayerUpdate,\n" +
+        "  packAttackTroopDeltas,\n" +
+        '} from "./GameUpdateUtils";\n',
+      `import {\n` +
+        "  ATTACK_DELTA_INCOMING,\n" +
+        "  ATTACK_DELTA_OUTGOING,\n" +
+        "  diffPlayerUpdate,\n" +
+        "  packAttackTroopDeltas,\n" +
+        `} from "./${prepared.get(plGiuRel)}";\n`,
+      "PlayerImpl GameUpdateUtils import",
+    );
+    const plGuRel = "src/core/game/GameUpdates.ts";
+    if (!prepared.has(plGuRel)) prepare(plGuRel);
+    out = must(
+      out,
+      "import {\n" +
+        "  AllianceView,\n" +
+        "  AttackUpdate,\n" +
+        "  GameUpdateType,\n" +
+        "  PlayerUpdate,\n" +
+        '} from "./GameUpdates";\n',
+      `import { GameUpdateType } from "./${prepared.get(plGuRel)}";\n`,
+      "PlayerImpl GameUpdates import",
+    );
+    const plTsRel = "src/core/game/TileSet.ts";
+    if (!prepared.has(plTsRel)) prepare(plTsRel);
+    out = must(
+      out,
+      'import { ReadonlyTileSet, TileSet } from "./TileSet";\n',
+      `import { TileSet } from "./${prepared.get(plTsRel)}";\n`,
+      "PlayerImpl TileSet import",
+    );
+    const plTtsRel = "src/core/game/TileTraversalScratch.ts";
+    if (!prepared.has(plTtsRel)) prepare(plTtsRel);
+    out = must(
+      out,
+      "import {\n" +
+        "  bumpTraversalGeneration,\n" +
+        "  tileTraversalScratch,\n" +
+        '} from "./TileTraversalScratch";\n',
+      `import {\n` +
+        "  bumpTraversalGeneration,\n" +
+        "  tileTraversalScratch,\n" +
+        `} from "./${prepared.get(plTtsRel)}";\n`,
+      "PlayerImpl TileTraversalScratch import",
+    );
+    out = must(
+      out,
+      "import {\n" +
+        "  bestShoreDeploymentSource,\n" +
+        "  canBuildTransportShip,\n" +
+        '} from "./TransportShipUtils";\n',
+      "const bestShoreDeploymentSource = () => null;\n" +
+        "const canBuildTransportShip = () => false;\n",
+      "PlayerImpl TransportShipUtils import",
+    );
+    const plUiRel = "src/core/game/UnitImpl.ts";
+    if (!prepared.has(plUiRel)) prepare(plUiRel);
+    out = must(
+      out,
+      'import { UnitImpl } from "./UnitImpl";\n',
+      `import { UnitImpl } from "./${prepared.get(plUiRel)}";\n`,
+      "PlayerImpl UnitImpl import",
+    );
+    out = must(
+      out,
+      "class Donation {\n" +
+        "  constructor(\n" +
+        "    public readonly recipient: Player,\n" +
+        "    public readonly tick: Tick,\n" +
+        "  ) {}\n" +
+        "}",
+      "class Donation {\n" +
+        "  recipient: Player;\n" +
+        "  tick: Tick;\n" +
+        "  constructor(recipient: Player, tick: Tick) {\n" +
+        "    this.recipient = recipient;\n" +
+        "    this.tick = tick;\n" +
+        "  }\n" +
+        "}",
+      "PlayerImpl Donation ctor",
+    );
+    out = must(
+      out,
+      "export class PlayerImpl implements Player {",
+      "export class PlayerImpl {",
+      "PlayerImpl implements clause",
+    );
+    out = must(
+      out,
+      "  constructor(\n" +
+        "    private mg: GameImpl,\n" +
+        "    private _smallID: number,\n" +
+        "    private readonly playerInfo: PlayerInfo,\n" +
+        "    startTroops: number,\n" +
+        "    private readonly _team: Team | null,\n" +
+        "  ) {",
+      "  private mg: GameImpl;\n" +
+        "  private _smallID: number;\n" +
+        "  private readonly playerInfo: PlayerInfo;\n" +
+        "  private readonly _team: Team | null;\n\n" +
+        "  constructor(\n" +
+        "    mg: GameImpl,\n" +
+        "    _smallID: number,\n" +
+        "    playerInfo: PlayerInfo,\n" +
+        "    startTroops: number,\n" +
+        "    _team: Team | null,\n" +
+        "  ) {\n" +
+        "    this.mg = mg;\n" +
+        "    this._smallID = _smallID;\n" +
+        "    this.playerInfo = playerInfo;\n" +
+        "    this._team = _team;",
+      "PlayerImpl ctor",
+    );
+  }
+
   if (rel.endsWith("core/Schemas.ts")) {
     // The zod / zb schema declarations are wire-validation and are not
     // ported, but unlike ServerList / StatsSchemas the capture must *read*

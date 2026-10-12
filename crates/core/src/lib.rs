@@ -309,6 +309,22 @@
 //!   replays the ported neighbor order) with the centroid strict-`<`
 //!   tie-break, the subtraction-comparator stable sort and the switch /
 //!   filter / slice boundaries)
+//! * [`player_impl`] — `src/core/game/PlayerImpl.ts` (G3c1 slice: the
+//!   identity / info / state / gold / troops / team / disconnect cluster.
+//!   The ctor's class-field order (`_troops = toInt(startTroops)` FIRST —
+//!   NaN throws before facade 100 — then `_gold = mg.config().startingGold`
+//!   100, then the PseudoRandom seed's `str.length` TypeError), the
+//!   `playerInfo` field reads, the REAL ported `TileSet` tiles /
+//!   borderTiles (`numTilesOwned` / `isAlive` / iteration order), the
+//!   alliance `===`-identity gates over player TOKENS (selfTok puts the
+//!   object under test in the table), `isOnSameTeam`'s facade call counts
+//!   (0/1/2/3 through the null / Bot / `===` gates), `isFriendly`'s
+//!   disconnect gate, the bigint gold cluster (`addGold`'s
+//!   `_gold`/`_goldEarned` order + the `if (tile)` truthy BonusEvent dump
+//!   101, `removeGold`'s cross-type `<= 0n` ToNumber relational and the
+//!   minInt raw-non-bigint mix throw), the troops cluster (`toInt` clamp
+//!   matrix), and the disconnect cluster (102/103/104 built-snapshot order,
+//!   the `snapshot ?? built` facade skip, `disconnectedAtTick`'s `?.`/`??`)
 //! * [`config_patch`] — `src/server/ConfigPatch.ts` (`applyGameConfigPatch`'s
 //!   `COPIED_KEYS` copy-if-`!== undefined` loop, the `NULLABLE_KEYS`
 //!   `value ?? undefined` clear-to-undefined loop and the unconditional
@@ -532,6 +548,7 @@ pub mod nuke_trajectory;
 pub mod pathfinding;
 pub mod pattern_decoder;
 pub mod page_pin;
+pub mod player_impl;
 pub mod player_name;
 pub mod player_profile_url;
 pub mod player_status;

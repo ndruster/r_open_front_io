@@ -2634,6 +2634,7 @@ for (const [key, reset, arg, op, outAt] of [
   ["alliance", "probe_al_reset", "probe_al_arg", "probe_al_op", "probe_al_out_at"],
   ["alliancerequest", "probe_ar_reset", "probe_ar_arg", "probe_ar_op", "probe_ar_out_at"],
   ["attack", "probe_ak_reset", "probe_ak_arg", "probe_ak_op", "probe_ak_out_at"],
+  ["playerimpl", "probe_pl_reset", "probe_pl_arg", "probe_pl_op", "probe_pl_out_at"],
 ]) {
   for (const s of S[key]) {
     ex[reset]();

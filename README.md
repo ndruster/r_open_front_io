@@ -181,7 +181,9 @@ rust/
 │   │   │                          JS-semantics; GameImpl facade scripted)
 │   │   ├── player_impl.rs         port of game/PlayerImpl.ts (G3c1 slice:
 │   │   │                          identity/info/state/gold/troops/team/
-│   │   │                          disconnect cluster; the bigint gold
+│   │   │                          disconnect cluster + G3c2: traitor/
+│   │   │                          doomsday-clock/decay/expired-alliances/
+│   │   │                          allies; the bigint gold
 │   │   │                          accumulators with JS +-concat semantics,
 │   │   │                          the facade-ordered ctor, the isOnSameTeam
 │   │   │                          call-count gates, the markDisconnected
@@ -2311,18 +2313,21 @@ WebSockets — stays excluded, mirroring the `src/core` exclusions).
     bit-identical.
 80. **`game/PlayerImpl.ts`** (`playerimpl`) — the player entity, first bounded
     slice (G3c1: the identity / info / state / gold / troops / team / disconnect
-    cluster; relations/donations/embargo/alliance-mgmt/traitor/targets/units
-    memos/spawn-family/toUpdate land in G3c2+). The harness replicates the
+    cluster + G3c2: the traitor / doomsday-clock / decay / expired-alliances /
+    allies cluster; relations/donations/embargo/alliance-request-mgmt/targets/
+    units memos/spawn-family/toUpdate land in G3c3+). The harness replicates the
     slice's private field block 1:1 and runs the ctor and every method as a
     `kind` of `PlayerHarness::run_op` over the `js_json` codec (precedent
     `unit_impl` / `attack_impl`). The `mg` (GameImpl) surface and the other
     players are scripted facades whose every call rides a flat trace (G3c1
-    segment 100-106): `100 config().startingGold` (the scripted f64 crosses
+    segment 100-106, G3c2 adds 107-108): `100 config().startingGold` (the scripted f64 crosses
     `BigInt(v)` BEFORE the trace push — a non-integer throws first), `101
     mg.addUpdate` (full BonusEvent codec dump, key order
     type/player/tile/gold/troops), `102 mg.ticks`, `103 mg.teamTilesOwned`
     (the team arg crosses in the trace), `104 mg.totalLandTiles`, `105
-    other.isDisconnected` (`!!`-normalised), `106 other.team`. Players cross
+    other.isDisconnected` (`!!`-normalised), `106 other.team`, `107
+    mg.stats().betray(this)` (the capture pushes `this.smallID()`), `108
+    config().traitorDuration`. Players cross
     as TOKENS; `selfTok >= 0` puts the object under test into a table slot so
     the `other === this` identity gates fire naturally.
     *Faithfulness:* the ctor's class-field order — `_troops = toInt(startTroops)`
@@ -2353,10 +2358,26 @@ WebSockets — stays excluded, mirroring the `src/core` exclusions).
     evaluates 102 → team-truthy gate → 103 → 104 → `isAlive()`; `
     disconnectedAtTick` = `snapshot?.currentTick ?? null`. `_tiles`/
     `_borderTiles` are REAL ported `TileSet`s (mids bypass `conquer`, so
-    `tileChangeVersion` stays 0). 13 scenarios (`pl_ctor` / NaN start /
+    `tileChangeVersion` stays 0). G3c2: `getTraitorRemainingTicks` fires the
+    `ticks()` facade (102) BEFORE `traitorDuration()` (108) — JS left-to-right
+    — and a never-marked player (`markedTraitorTick < 0`) fires NEITHER;
+    `markTraitor` stamps the tick, bumps `_betrayalCount` and calls
+    `stats().betray(this)` (107) in that order; `inDoomsdayClock` gates on
+    `isAlive()` (untraced) so a dead player's stuck mark never shows;
+    `enterDoomsdayClock` is idempotent (only stamps while unmarked);
+    `isDecaying` = `inDoomsdayClock() && rottedAtTick >= 0 && ticks() -
+    rottedAtTick <= 30` (the grace constant is a module-level literal, the
+    `ticks()` facade fires ONLY on that final gate); `allies()` maps each
+    alliance through the mock's `other(this)` — `p === requestor ? recipient :
+    requestor` — so the self slot at the REQUESTOR position flips to the
+    recipient, while the self at the recipient position (or a player under test
+    in neither seat) stays the requestor; `expiredAlliances()` returns a fresh
+    `[...]` copy of the field. 19 scenarios (`pl_ctor` / NaN start /
     missing-pi / troops / gold / disconnect / no-team disconnect / team /
-    team-self / friendly / alliance-gates / tiles / big-gold, 184 ops),
-    865,375 wasm comparisons bit-identical.
+    team-self / friendly / alliance-gates / tiles / big-gold / traitor /
+    doomsday / doomsday-dead / decay-edge / expired-allies /
+    expired-allies-noself, 227 ops),
+    865,613 wasm comparisons bit-identical.
 
 Regenerate whenever a ported source changes:
 

@@ -25,7 +25,14 @@
 //! (1282-1339) and `troops` / `setTroops` / `addTroops` / `removeTroops`
 //! (1341-1359); `tileChangeVersion` / `lastTileChange` (1788-1794) and the
 //! disconnect cluster `isDisconnected` / `markDisconnected` /
-//! `disconnectSnapshot` / `disconnectedAtTick` (1796-1826).
+//! `disconnectSnapshot` / `disconnectedAtTick` (1796-1826). G3c2 adds the
+//! `expiredAlliances` (746) / `allies` (750) reads and the traitor / doomsday
+//! cluster `isTraitor` / `getTraitorRemainingTicks` / `markTraitor` /
+//! `betrayals` (851-911) and `inDoomsdayClock` / `doomsdayClockTicks` /
+//! `enterDoomsdayClock` / `clearDoomsdayClock` / `markRotted` / `isDecaying`
+//! (874-907) over the `markedTraitorTick` / `markedDoomsdayClockTick` /
+//! `rottedAtTick` / `_betrayalCount` fields and the module-level
+//! `DECAY_CUE_GRACE_TICKS = 30` (71).
 //!
 //! Facade (mock) surface — the capture scripts these, every call traced
 //! (G3c1 event segment 100-106):
@@ -41,6 +48,9 @@
 //! * 105 `other.isDisconnected()` -> `[105, pid, ret01]` (the mock's
 //!   `!!v` normalisation).
 //! * 106 `other.team()` -> `[106, pid, ...encVal(v)]`.
+//! * 107 `mg.stats().betray(this)` -> `[107, smallID]` (the capture pushes
+//!   `this.smallID()`).
+//! * 108 `mg.config().traitorDuration()` -> `[108, ret]`.
 //! * Players cross as TOKENS (indices into the harness players table);
 //!   `selfTok >= 0` puts the object under test into a table slot so the
 //!   `other === this` identity gates fire naturally (the `ui_`/`ak_`
@@ -89,6 +99,8 @@ use crate::tile_set::TileSet;
 
 const MAX_SAFE: i64 = 9_007_199_254_740_991;
 const MIX_ERR: &str = "Cannot mix BigInt and other types, use explicit conversions";
+/// `DECAY_CUE_GRACE_TICKS` (PlayerImpl.ts:71).
+const DECAY_CUE_GRACE_TICKS: f64 = 30.0;
 
 /// FIFO script consumption with the capture's exhausted-repeat rule (the
 /// `ui_` rule; event codes 100-106 are documented above).
@@ -269,6 +281,18 @@ fn mid_property(mid: u8) -> &'static str {
         44 => "borderTiles",
         45 | 46 => "_borderTiles",
         47 => "isPlayer",
+        48 => "expiredAlliances",
+        49 => "allies",
+        50 => "isTraitor",
+        51 => "getTraitorRemainingTicks",
+        52 => "markTraitor",
+        53 => "inDoomsdayClock",
+        54 => "doomsdayClockTicks",
+        55 => "enterDoomsdayClock",
+        56 => "clearDoomsdayClock",
+        57 => "markRotted",
+        58 => "isDecaying",
+        59 => "betrayals",
         _ => "unknown",
     }
 }
@@ -387,6 +411,11 @@ struct Player {
     tiles: TileSet,
     border_tiles: TileSet,
     alliances: Vec<(usize, usize)>,
+    expired_alliances: Vec<(usize, usize)>,
+    marked_traitor_tick: f64,
+    marked_doomsday_clock_tick: f64,
+    rotted_at_tick: f64,
+    betrayal_count: f64,
     spawn_tile: JsVal,
     is_disconnected: JsVal,
     disconnect_snapshot: JsVal,
@@ -409,6 +438,11 @@ impl Default for Player {
             tiles: TileSet::new(None),
             border_tiles: TileSet::new(None),
             alliances: Vec::new(),
+            expired_alliances: Vec::new(),
+            marked_traitor_tick: -1.0,
+            marked_doomsday_clock_tick: -1.0,
+            rotted_at_tick: -1.0,
+            betrayal_count: 0.0,
             spawn_tile: JsVal::Undef,
             is_disconnected: JsVal::Bool(false),
             disconnect_snapshot: JsVal::Null,
@@ -432,6 +466,8 @@ pub struct PlayerHarness {
     team_tiles_i: usize,
     total_land: Vec<f64>,
     total_land_i: usize,
+    traitor_duration: Vec<f64>,
+    traitor_duration_i: usize,
 }
 
 impl PlayerHarness {
@@ -479,6 +515,20 @@ impl PlayerHarness {
     fn mg_add_update(&mut self, tr: &mut Vec<f64>, u: &JsVal) {
         tr.push(101.0);
         push_val(tr, u);
+    }
+
+    fn mg_traitor_duration(&mut self, tr: &mut Vec<f64>) -> f64 {
+        let v = take_f64(&self.traitor_duration, &mut self.traitor_duration_i);
+        tr.push(108.0);
+        tr.push(v);
+        v
+    }
+
+    /// `mg.stats().betray(this)` — the capture pushes `this.smallID()` into
+    /// the trace (event 107).
+    fn mg_betray(&mut self, tr: &mut Vec<f64>) {
+        tr.push(107.0);
+        tr.push(self.p.small_id);
     }
 
     /// `other.team()` — the mock facade (106); the self slot reads the REAL
@@ -593,6 +643,28 @@ impl PlayerHarness {
         Ok(actual as f64)
     }
 
+    /// `getTraitorRemainingTicks` (PlayerImpl.ts:855) — the `ticks()` facade
+    /// (102) runs BEFORE the `traitorDuration()` facade (108), JS
+    /// left-to-right; a never-marked player fires neither.
+    fn traitor_remaining(&mut self, tr: &mut Vec<f64>) -> f64 {
+        if self.p.marked_traitor_tick < 0.0 {
+            return 0.0;
+        }
+        let elapsed = self.mg_ticks(tr) - self.p.marked_traitor_tick;
+        let duration = self.mg_traitor_duration(tr);
+        let remaining = duration - elapsed;
+        if remaining > 0.0 {
+            remaining
+        } else {
+            0.0
+        }
+    }
+
+    /// `inDoomsdayClock` (PlayerImpl.ts:874) — `isAlive()` is untraced.
+    fn in_doomsday(&self) -> bool {
+        self.is_alive() && self.p.marked_doomsday_clock_tick >= 0.0
+    }
+
     // --- the op dispatcher ---
 
     /// Run one op. Kind table (mirrored by `tools/gen_vectors.mjs`):
@@ -611,7 +683,11 @@ impl PlayerHarness {
     /// markDisconnected 32 disconnectSnapshot 33 disconnectedAtTick 34 team
     /// 35 isOnSameTeam 36 isFriendly 37 isAlliedWith 38 allianceWith 39
     /// alliances 40 numTilesOwned 41 dumpTiles 42 addTile 43 removeTile 44
-    /// dumpBorderTiles 45 addBorderTile 46 removeBorderTile 47 isPlayer.
+    /// dumpBorderTiles 45 addBorderTile 46 removeBorderTile 47 isPlayer
+    /// (G3c2:) 48 expiredAlliances 49 allies 50 isTraitor 51
+    /// getTraitorRemainingTicks 52 markTraitor 53 inDoomsdayClock 54
+    /// doomsdayClockTicks 55 enterDoomsdayClock 56 clearDoomsdayClock 57
+    /// markRotted 58 isDecaying 59 betrayals.
     pub fn run_op(&mut self, kind: u8, args: &[f64]) -> Vec<f64> {
         let mut c = Cur(args, 0);
         let mut tr: Vec<f64> = Vec::new();
@@ -649,10 +725,15 @@ impl PlayerHarness {
                     })
                     .collect();
                 let self_tok = c.f();
+                let n_exp = c.u();
+                let expired_alliances: Vec<(usize, usize)> =
+                    (0..n_exp).map(|_| (c.u(), c.u())).collect();
+                let traitor_duration = c.list();
                 self.sg = sg;
                 self.ticks = ticks;
                 self.team_tiles = team_tiles;
                 self.total_land = total_land;
+                self.traitor_duration = traitor_duration;
                 self.players = players;
                 self.self_tok = if self_tok >= 0.0 {
                     Some(self_tok as usize)
@@ -691,6 +772,7 @@ impl PlayerHarness {
                             tiles: TileSet::new(Some(&tiles)),
                             border_tiles: TileSet::new(Some(&border)),
                             alliances,
+                            expired_alliances,
                             ..Default::default()
                         };
                         self.constructed = true;
@@ -1042,6 +1124,83 @@ impl PlayerHarness {
                         push_ok(&mut out, &JsVal::Undef);
                     }
                     47 => push_ok_bool(&mut out, true),
+                    48 => push_ok(
+                        &mut out,
+                        &JsVal::Arr(
+                            self.p
+                                .expired_alliances
+                                .iter()
+                                .map(|(req, rec)| {
+                                    JsVal::Arr(vec![JsVal::Num(*req as f64), JsVal::Num(*rec as f64)])
+                                })
+                                .collect(),
+                        ),
+                    ),
+                    49 => {
+                        // `alliances().map((a) => a.other(this))` — the mock's
+                        // `other(p)` is `p === mocks[req] ? mocks[rec] :
+                        // mocks[req]`, i.e. the self slot at the REQ position
+                        // flips to REC, everything else (self at REC, or a
+                        // player under test not in the alliance) stays REQ.
+                        let self_tok = self.self_tok;
+                        push_ok(
+                            &mut out,
+                            &JsVal::Arr(
+                                self.p
+                                    .alliances
+                                    .iter()
+                                    .map(|(req, rec)| {
+                                        let tok = if self_tok == Some(*req) { *rec } else { *req };
+                                        JsVal::Num(tok as f64)
+                                    })
+                                    .collect(),
+                            ),
+                        )
+                    }
+                    50 => push_ok_bool(&mut out, self.traitor_remaining(&mut tr) > 0.0),
+                    51 => {
+                        let r = self.traitor_remaining(&mut tr);
+                        push_ok_num(&mut out, r)
+                    }
+                    52 => {
+                        self.p.marked_traitor_tick = self.mg_ticks(&mut tr);
+                        self.p.betrayal_count += 1.0;
+                        self.mg_betray(&mut tr);
+                        push_ok(&mut out, &JsVal::Undef);
+                    }
+                    53 => push_ok_bool(&mut out, self.in_doomsday()),
+                    54 => {
+                        if self.in_doomsday() {
+                            let t = self.mg_ticks(&mut tr) - self.p.marked_doomsday_clock_tick;
+                            push_ok_num(&mut out, t)
+                        } else {
+                            push_ok_num(&mut out, 0.0)
+                        }
+                    }
+                    55 => {
+                        if self.p.marked_doomsday_clock_tick < 0.0 {
+                            self.p.marked_doomsday_clock_tick = self.mg_ticks(&mut tr);
+                        }
+                        push_ok(&mut out, &JsVal::Undef);
+                    }
+                    56 => {
+                        self.p.marked_doomsday_clock_tick = -1.0;
+                        self.p.rotted_at_tick = -1.0;
+                        push_ok(&mut out, &JsVal::Undef);
+                    }
+                    57 => {
+                        self.p.rotted_at_tick = self.mg_ticks(&mut tr);
+                        push_ok(&mut out, &JsVal::Undef);
+                    }
+                    58 => {
+                        let b = if !self.in_doomsday() || self.p.rotted_at_tick < 0.0 {
+                            false
+                        } else {
+                            (self.mg_ticks(&mut tr) - self.p.rotted_at_tick) <= DECAY_CUE_GRACE_TICKS
+                        };
+                        push_ok_bool(&mut out, b)
+                    }
+                    59 => push_ok_num(&mut out, self.p.betrayal_count),
                     k => unreachable!("player harness: unknown method id {k}"),
                 }
                 let mut full = Vec::with_capacity(1 + tr.len() + out.len());

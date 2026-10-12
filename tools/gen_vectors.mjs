@@ -21649,10 +21649,16 @@ runAK("ak_empty_src", [
 // 38 allianceWith 39 alliances 40 numTilesOwned 41 dumpTiles 42 addTile
 // 43 removeTile 44 dumpBorderTiles 45 addBorderTile 46 removeBorderTile
 // 47 isPlayer.
+// G3c2: 48 expiredAlliances 49 allies 50 isTraitor 51 getTraitorRemainingTicks
+// 52 markTraitor 53 inDoomsdayClock 54 doomsdayClockTicks 55
+// enterDoomsdayClock 56 clearDoomsdayClock 57 markRotted 58 isDecaying
+// 59 betrayals.
 // Facade events: 100 config().startingGold [100,...encVal], 101 mg.addUpdate
 // [101,...encVal(u)], 102 mg.ticks [102,ret], 103 mg.teamTilesOwned
 // [103,...encVal(team),ret], 104 mg.totalLandTiles [104,ret], 105
-// other.isDisconnected [105,pid,ret01], 106 other.team [106,pid,...encVal].
+// other.isDisconnected [105,pid,ret01], 106 other.team [106,pid,...encVal],
+// 107 mg.stats().betray(this) [107,smallID], 108
+// config().traitorDuration [108,ret].
 
 const plScenarios = [];
 let g3c1Idx = 0;
@@ -21715,7 +21721,7 @@ function runPL(name, ops) {
   };
 
   const mkMg = (m) => {
-    const st = { sg: 0, tk: 0, tt: 0, tl: 0 };
+    const st = { sg: 0, tk: 0, tt: 0, tl: 0, td: 0 };
     return {
       config: () => ({
         startingGold: () => {
@@ -21723,6 +21729,11 @@ function runPL(name, ops) {
           const b = BigInt(v);
           curTr.push(100, ...plEnc(b));
           return b;
+        },
+        traitorDuration: () => {
+          const v = uiTake(st, m.traitorDuration, "td");
+          curTr.push(108, v);
+          return v;
         },
       }),
       addUpdate: (u) => {
@@ -21743,6 +21754,11 @@ function runPL(name, ops) {
         curTr.push(104, v);
         return v;
       },
+      stats: () => ({
+        betray: (p) => {
+          curTr.push(107, p.smallID());
+        },
+      }),
     };
   };
 
@@ -21754,7 +21770,8 @@ function runPL(name, ops) {
     let args, res;
     curTr = [];
     if (k === 0) {
-      const [pi, smallID, startTroops, team, alliances, tiles, borderTiles, mg, ps, selfTok] = a;
+      const [pi, smallID, startTroops, team, alliances, tiles, borderTiles, mg, ps, selfTok, expired] = a;
+      const exp = expired ?? [];
       players = ps.map(plP);
       mocks = players.map(mkPlayer);
       args = [
@@ -21771,6 +21788,8 @@ function runPL(name, ops) {
         [mg.totalLand.length, ...mg.totalLand.map(uenc)],
         ...plEncPlayers(players),
         uenc(selfTok === undefined ? -1 : selfTok),
+        [exp.length, ...exp.flatMap(([r, c]) => [uenc(r), uenc(c)])],
+        [mg.traitorDuration.length, ...mg.traitorDuration.map(uenc)],
       ].flat();
       try {
         pl = new PL_CLS.PlayerImpl(
@@ -21789,8 +21808,15 @@ function runPL(name, ops) {
           recipient: () => mocks[c],
           other: (p) => (p === mocks[r] ? mocks[c] : mocks[r]),
         }));
+        pl._expiredAlliances = exp.map(([r, c]) => ({
+          req: r,
+          rec: c,
+          requestor: () => mocks[r],
+          recipient: () => mocks[c],
+        }));
         if (selfTok !== undefined && selfTok >= 0) {
           mocks[selfTok] = pl;
+          gTok.set(pl, selfTok);
         }
         res = [curTr.length, ...curTr, 0];
       } catch (e) {
@@ -21853,6 +21879,18 @@ function runPL(name, ops) {
           case 45: pl._borderTiles.add(rest[0]); v = undefined; break;
           case 46: pl._borderTiles.delete(rest[0]); v = undefined; break;
           case 47: v = pl.isPlayer(); break;
+          case 48: v = pl.expiredAlliances().map((al) => [al.requestor(), al.recipient()]); break;
+          case 49: v = pl.allies().map((p) => gTok.get(p)); break;
+          case 50: v = pl.isTraitor(); break;
+          case 51: v = pl.getTraitorRemainingTicks(); break;
+          case 52: pl.markTraitor(); v = undefined; break;
+          case 53: v = pl.inDoomsdayClock(); break;
+          case 54: v = pl.doomsdayClockTicks(); break;
+          case 55: pl.enterDoomsdayClock(); v = undefined; break;
+          case 56: pl.clearDoomsdayClock(); v = undefined; break;
+          case 57: pl.markRotted(); v = undefined; break;
+          case 58: v = pl.isDecaying(); break;
+          case 59: v = pl.betrayals(); break;
           default: throw new Error(`pl harness: unknown mid ${mid}`);
         }
         if (mid === 38) r = v === null ? [0, 2] : [0, 7, 2, 3, v.req, 3, v.rec];
@@ -21872,6 +21910,7 @@ const PL_MG = (o = {}) => ({
   ticks: o.ticks ?? [0],
   teamTiles: o.teamTiles ?? [0],
   totalLand: o.totalLand ?? [0],
+  traitorDuration: o.traitorDuration ?? [0],
 });
 
 runPL("pl_ctor", [
@@ -21953,6 +21992,36 @@ runPL("pl_tiles", [
 runPL("pl_ctor_big_gold", [
   [0, plPI({ id: "pd", name: "leo", playerType: "HUMAN" }), 15, 9007199254740991, "Blue", [], [], [], PL_MG({ sg: [9007199254740991] }), [plP()], -1],
   [1, 14], [1, 18], [1, 16, 100], [1, 14], [1, 26, 10], [1, 18], [1, 27, 9007199254740981], [1, 18],
+]);
+
+runPL("pl_traitor", [
+  [0, plPI({ id: "pe", name: "mia", playerType: "HUMAN" }), 16, 10, null, [], [1], [], PL_MG({ ticks: [10, 20, 30, 40, 50, 60], traitorDuration: [100, 5] }), [plP()], -1],
+  [1, 51], [1, 50], [1, 59], [1, 52], [1, 59], [1, 51], [1, 50], [1, 52], [1, 51], [1, 50],
+]);
+
+runPL("pl_doomsday", [
+  [0, plPI({ id: "pf", name: "noah", playerType: "HUMAN" }), 17, 10, null, [], [1, 2], [], PL_MG({ ticks: [10, 20, 30, 40, 50] }), [plP()], -1],
+  [1, 53], [1, 54], [1, 55], [1, 55], [1, 53], [1, 54], [1, 57], [1, 58], [1, 56], [1, 58], [1, 53], [1, 54],
+]);
+
+runPL("pl_doomsday_dead", [
+  [0, plPI({ id: "pg", name: "olga", playerType: "HUMAN" }), 18, 10, null, [], [], [], PL_MG({ ticks: [10, 20] }), [plP()], -1],
+  [1, 55], [1, 53], [1, 54], [1, 57], [1, 58],
+]);
+
+runPL("pl_decay_edge", [
+  [0, plPI({ id: "ph", name: "paul", playerType: "HUMAN" }), 19, 10, null, [], [3], [], PL_MG({ ticks: [10, 40, 41, 70, 71] }), [plP()], -1],
+  [1, 55], [1, 57], [1, 58], [1, 58], [1, 58],
+]);
+
+runPL("pl_expired_allies", [
+  [0, plPI({ id: "pi", name: "quinn", playerType: "HUMAN" }), 20, 10, null, [[0, 1], [2, 0]], [1], [], PL_MG({}), [plP({ pid: 61 }), plP({ pid: 62 }), plP({ pid: 63 })], 0, [[1, 2]]],
+  [1, 49], [1, 48], [1, 39],
+]);
+
+runPL("pl_expired_allies_noself", [
+  [0, plPI({ id: "pj", name: "rita", playerType: "HUMAN" }), 21, 10, null, [[1, 2]], [], [], PL_MG({}), [plP({ pid: 71 }), plP({ pid: 72 }), plP({ pid: 73 })], -1, []],
+  [1, 49], [1, 48],
 ]);
 
 // ---- pl_ scenarios end ------------------------------------------------------

@@ -49,7 +49,16 @@
 //! `tradingPartners` (1178-1253) over the `relations` / `targets_` /
 //! `outgoingEmojis_` / `outgoingQuickChats_` / `sentDonations` /
 //! `embargoes` / `lastDeleteUnitTick` / `lastEmbargoAllTick` fields and
-//! the scripted `pastOutgoingAllianceRequests` constant.
+//! the scripted `pastOutgoingAllianceRequests` constant. G3c4 adds the
+//! units-memo cluster `units` (4 overloads) / `unitsConstructed` /
+//! `unitCount` / `unitsOwned` / `recordUnitConstructed` (430-528, over the
+//! `myUnitsVersion`-keyed memos — the port always re-walks), the misc reads
+//! `playerProfile` / `toString` / `hash` (1828-1853), `conquer` /
+//! `relinquish` (685-709, the mg.owner self-token gate), `isImmune` /
+//! `canAttackPlayer` (715-724, 1893-1902) and `outgoingAttacks` /
+//! `incomingAttacks` (1876-1902), plus the `toUpdate` / `toFullUpdate`
+//! wire (222-401) over `lastSentUpdate` and the direct attack-mutation ops
+//! (116/117 setTroops / setRetreating on the attack mocks).
 //!
 //! G3c3 facade surface (event segment 109-130, all scripted):
 //!
@@ -73,6 +82,14 @@
 //! * 129 `other.addGold(n)` -> `[129, pid, n]` (n is the removed bigint,
 //!   crossing as a number).
 //! * 130 `mg.players()` -> `[130, n, (tok)*]` (the scripted token list).
+//! * G3c4 facade events: 131 `unit.hash()` -> `[131, hash]`; 132
+//!   `mg.conquer(tile)` -> `[132, tile]`; 133 `mg.owner(tile)` ->
+//!   `[133, tile, ...encVal(null | tok)]`; 134 `mg.relinquish(tile)` ->
+//!   `[134, tile]`; 135 `mg.isSpawnImmunityActive()` / 136
+//!   `mg.isNationSpawnImmunityActive()` -> `[135|136, rawV]` (the RAW f64
+//!   crosses; the return is `v != 0 && !isNaN(v)`); 137 `other.isImmune()`
+//!   -> `[137, pid, 01]`; 138 `mg.stats().getPlayerStats(this)` ->
+//!   `[138, ...encVal(null | {killedBy?, deathPosition?})]`.
 //! * `other.smallID()` / `other.id()` / `other.type()` /
 //!   `other.hasEmbargoAgainst(this)` / `other.targets()` and the alliance
 //!   mocks' `expiresAt()` / `agreedToExtend()` are untraced constant reads.
@@ -136,7 +153,56 @@
 //! * A failed construct leaves the JS harness `pl === null`: every later
 //!   method op throws "Cannot read properties of null (reading 'X')" with
 //!   an empty trace (property access precedes any facade call).
+//!
+//! G3c4 adds the units / update / misc surface (mids 95-117, facade events
+//! 131-138):
+//!
+//! * 95-99 `units()` overloads — the zero-arg and empty-array forms return
+//!   ALL units, 1-3 string args and the array form filter by type. The
+//!   `myUnitsMemo` / `myUnitCountMemo` / `myUnitsOwnedMemo` caches are keyed
+//!   on `_myUnitsVersion`; every harness mutation bumps that version, so a
+//!   cache hit and a recompute coincide and the port always recomputes.
+//! * 100 `unitsConstructed(type)` over the `numUnitsConstructed` partial
+//!   record (insertion-ordered upsert); 101 `unitCount` (Σ level); 102
+//!   `unitsOwned` (Σ `uc ? 1 : level`); 103 `recordUnitConstructed` (the
+//!   private method, called directly); 104 addUnit (a harness bookkeeping
+//!   op: push the unit mock + `_myUnitsVersion++`); 105 bumpUnitsVersion.
+//! * 106 `playerProfile` — `{relations: {smallID: relation}, alliances:
+//!   [smallID]}` over the [`PlayerHarness::all_relation_pairs`] body (one
+//!   127 facade per relations entry, ascending sort, `relationFromValue`).
+//! * 107 `toString` (the trailing `]` quirk and the `numTileOwned`
+//!   misspelling are pinned); 108 `hash` — `simpleHash(id) * (troops +
+//!   numTilesOwned) + Σ unit.hash()` with a `[131, h]` facade per unit.
+//! * 109 `conquer` -> `[132, tile]`; 110 `relinquish` — the `mg.owner(tile)
+//!   !== this` gate (`[133, tile, null|tok]`, the self-token identity gate)
+//!   throws before `[134, tile]`.
+//! * 111 `isImmune` — HUMAN -> `[135]` spawn immunity, NATION -> `[136]`,
+//!   else false; 112 `canAttackPlayer` — non-human attackers skip the
+//!   `other.isImmune()` facade (`[137, pid, 0|1]`, the self slot runs the
+//!   real body), then the isFriendly gates.
+//! * 113/114 attack token tuples `[attTok, tgtTok, troops, id, retreating]`
+//!   — 114 filters `attacker().isAlive()` (127 per attack, the self slot
+//!   untraced); 116/117 are harness ops mutating the attack mocks' troops /
+//!   retreating cells directly.
+//! * 115 `toUpdate(statsOut?, attackTroopsOut?)` — the full snapshot is
+//!   built in BOTH worlds: the typed `PlayerUpdate` the real
+//!   `diff_player_update` / `pack_attack_troop_deltas` run over, and the
+//!   wire `JsVal`s (the capture's normPU mirror: bigint gold -> Number, the
+//!   embargo Set -> array, `undefined`-valued keys dropped). Array refids
+//!   model JS identity for the pack gate: the EMPTY_* singletons share
+//!   fixed ids (outgoing/incoming share the attack singleton), materialized
+//!   arrays get fresh per-call ids. The result is
+//!   `[0, ...enc(v), soLen, ...so, aoLen, ...ao]`; the diff `JsVal` is
+//!   rebuilt from `diff_changed_indices` (the changed-field SET comes from
+//!   the real comparator run; field values come from the typed full).
+//! * Alliance mocks gain `id()` / `createdAt()` constants (legacy 5-field
+//!   construct tuples default `id = i`, `createdAt = 100 + i`).
 
+use crate::game_update_utils::{
+    diff_changed_indices, diff_player_update, pack_attack_troop_deltas, Arr, AttackUpdate,
+    AllianceView as TypedAllianceView, EmojiMessage as TypedEmoji, PlayerUpdate,
+    ATTACK_DELTA_INCOMING, ATTACK_DELTA_OUTGOING,
+};
 use crate::js_json::{push_str, push_val, read_str, read_val, val_field, JsVal};
 use crate::tile_set::TileSet;
 
@@ -380,6 +446,28 @@ fn mid_property(mid: u8) -> &'static str {
         92 => "stopEmbargo",
         93 => "endTemporaryEmbargo",
         94 => "tradingPartners",
+        // G3c4: the units / hash / toUpdate surface. 104/105/116/117 are
+        // harness bookkeeping ops (no TS property access); the names only
+        // shape the null-throw message parity, which never fires for them.
+        95..=99 => "units",
+        100 => "unitsConstructed",
+        101 => "unitCount",
+        102 => "unitsOwned",
+        103 => "recordUnitConstructed",
+        104 => "_units",
+        105 => "_myUnitsVersion",
+        106 => "playerProfile",
+        107 => "toString",
+        108 => "hash",
+        109 => "conquer",
+        110 => "relinquish",
+        111 => "isImmune",
+        112 => "canAttackPlayer",
+        113 => "outgoingAttacks",
+        114 => "incomingAttacks",
+        115 => "toUpdate",
+        116 => "troops",
+        117 => "retreating",
         _ => "unknown",
     }
 }
@@ -389,7 +477,7 @@ fn mid_property(mid: u8) -> &'static str {
 /// into the trace). G3c3 adds the constant `type()` string, the scripted
 /// `isAlive()` FIFO (event 127), the constant embargo id list
 /// (`hasEmbargoAgainst`, untraced) and the constant `targets()` token list
-/// (untraced).
+/// (untraced). G3c4 adds the scripted `isImmune()` FIFO (event 137).
 #[derive(Clone, Debug)]
 struct PlPlayer {
     pid: f64,
@@ -402,6 +490,8 @@ struct PlPlayer {
     alive_i: usize,
     emb: Vec<JsVal>,
     tgts: Vec<usize>,
+    immune: Vec<f64>,
+    immune_i: usize,
 }
 
 /// The bigint-or-string accumulator domain. The gold fields are typed
@@ -536,6 +626,40 @@ fn js_to_string_val(v: &JsVal) -> String {
     }
 }
 
+/// JS "array index" property test: a canonical numeric string (digits only,
+/// no leading zeros) in `[0, 2^32-1)`. Plain objects re-order these keys
+/// numerically ascending before the ordinary string keys, so anything an
+/// `Object.fromEntries` output feeds into `Object.entries` observes that
+/// order regardless of the insertion order.
+fn js_array_index_key(k: &str) -> Option<u64> {
+    if k.is_empty() || k.len() > 10 || !k.bytes().all(|b| b.is_ascii_digit()) {
+        return None;
+    }
+    if k.len() > 1 && k.starts_with('0') {
+        return None;
+    }
+    let n: u64 = k.parse().ok()?;
+    (n < u32::MAX as u64).then_some(n)
+}
+
+/// Re-order `(key, val)` entries the way a JS plain object stores them:
+/// array-index keys numerically ascending first, then the rest in their
+/// original (insertion) order.
+fn js_integer_key_order(mut entries: Vec<(String, JsVal)>) -> Vec<(String, JsVal)> {
+    let mut keyed: Vec<(Option<u64>, usize, (String, JsVal))> = entries
+        .drain(..)
+        .enumerate()
+        .map(|(i, e)| (js_array_index_key(&e.0), i, e))
+        .collect();
+    keyed.sort_by(|a, b| match (a.0, b.0) {
+        (Some(x), Some(y)) => x.cmp(&y),
+        (Some(_), None) => std::cmp::Ordering::Less,
+        (None, Some(_)) => std::cmp::Ordering::Greater,
+        (None, None) => a.1.cmp(&b.1),
+    });
+    keyed.into_iter().map(|(_, _, e)| e).collect()
+}
+
 /// JS `Math.sign`: NaN -> NaN, ±0 preserved.
 fn js_sign(v: f64) -> f64 {
     if v.is_nan() {
@@ -614,7 +738,9 @@ fn js_sort_asc(pairs: &mut [(usize, f64)]) {
 /// One alliance mock: the (req, rec) token pair plus the G3c3
 /// `expiresAt()` / `agreedToExtend()` constants (`req_agree` is
 /// `agreedToExtend(requestor())`; `agreedToExtend(p)` is
-/// `p === requestor() ? reqAgree : recAgree`).
+/// `p === requestor() ? reqAgree : recAgree`). G3c4 adds the `id()` /
+/// `createdAt()` constants toFullUpdate reads (legacy 5-field construct
+/// tuples default `id = i`, `createdAt = 100 + i`).
 #[derive(Clone, Copy, Debug)]
 struct AllianceMock {
     req: usize,
@@ -622,6 +748,29 @@ struct AllianceMock {
     expires_at: f64,
     req_agree: bool,
     rec_agree: bool,
+    id: f64,
+    created_at: f64,
+}
+
+/// One unit mock (`type()` / `level()` / `isUnderConstruction()` untraced
+/// constants, `hash()` traced as event 131).
+#[derive(Clone, Debug)]
+struct UnitMock {
+    typ: String,
+    level: f64,
+    uc: bool,
+    hash: f64,
+}
+
+/// One attack mock (`attacker()` / `target()` untraced identity reads); the
+/// troops / retreating cells are mutated by the 116/117 harness ops.
+#[derive(Clone, Debug)]
+struct AttackMock {
+    att: usize,
+    tgt: usize,
+    troops: f64,
+    id: String,
+    ret: bool,
 }
 
 /// One `embargoes` entry (PlayerImpl.ts:1225-1229 key order); the map is
@@ -632,6 +781,145 @@ struct Embargo {
     created_at: f64,
     is_temporary: JsVal,
     target: usize,
+}
+
+/// The EMPTY_* singleton refids (JS reference identity for the diff/pack
+/// gates): `allies` / `targets` share `EMPTY_NUMBER_ARRAY`, `outgoingAttacks`
+/// / `incomingAttacks` share `EMPTY_ATTACK_UPDATES`, every other collection
+/// has its own. Materialized arrays get fresh per-call ids (a fresh JS
+/// object per toFullUpdate call).
+const REF_EMPTY_NUM: f64 = -1.0;
+const REF_EMPTY_STR: f64 = -2.0;
+const REF_EMPTY_ATK: f64 = -3.0;
+const REF_EMPTY_ALV: f64 = -4.0;
+const REF_EMPTY_EMO: f64 = -5.0;
+const REF_EMPTY_EMB: f64 = -6.0;
+
+/// The `diffPlayerUpdate` field order (the game_update_utils `D_*` mirror):
+/// the diff JsVal key per emission index.
+const DIFF_FIELD_NAMES: [&str; 33] = [
+    "clientID",
+    "name",
+    "displayName",
+    "clanTag",
+    "nationFlag",
+    "team",
+    "smallID",
+    "playerType",
+    "isAlive",
+    "isDisconnected",
+    "killedBy",
+    "deathPosition",
+    "tradeGold",
+    "trainGold",
+    "piracyGold",
+    "isTraitor",
+    "traitorRemainingTicks",
+    "inDoomsdayClock",
+    "markedDoomsdayClockTick",
+    "isDecaying",
+    "hasSpawned",
+    "spawnTile",
+    "betrayals",
+    "lastDeleteUnitTick",
+    "isLobbyCreator",
+    "allies",
+    "targets",
+    "outgoingAllianceRequests",
+    "embargoes",
+    "outgoingEmojis",
+    "outgoingAttacks",
+    "incomingAttacks",
+    "alliances",
+];
+
+/// The full `PlayerUpdate` snapshot in both worlds (mid 115): the typed
+/// value the real `diff_player_update` / `pack_attack_troop_deltas` run
+/// over, and the per-field wire encodings — index = the `diffPlayerUpdate`
+/// emission order, `None` models a field whose JS value is `undefined`
+/// (the capture's normPU drops the key). `full` is the first-call wire
+/// form: the whole object in toFullUpdate's literal key order.
+struct FullParts {
+    typed: PlayerUpdate,
+    fields: Vec<Option<JsVal>>,
+    full: JsVal,
+}
+
+/// A `playerInfo` field on the wire: `undefined`/absent -> dropped by the
+/// capture's normPU, everything else crosses as-is.
+fn pi_wire(v: &JsVal) -> Option<JsVal> {
+    match v {
+        JsVal::Undef | JsVal::Absent => None,
+        other => Some(other.clone()),
+    }
+}
+
+/// The typed `Opt3<String>` for a playerInfo field.
+fn pi_opt3(v: &JsVal) -> Option<Option<String>> {
+    match v {
+        JsVal::Str(s) => Some(Some(s.clone())),
+        JsVal::Null => Some(None),
+        _ => None,
+    }
+}
+
+/// The typed `Opt3<bool>` for a playerInfo field (`isLobbyCreator`).
+fn pi_opt3_bool(v: &JsVal) -> Option<Option<bool>> {
+    match v {
+        JsVal::Bool(b) => Some(Some(*b)),
+        JsVal::Null => Some(None),
+        _ => None,
+    }
+}
+
+/// `Number(bigint-or-string)` for the typed gold fields (the diff never
+/// reads them and the quint runs `Number(...)`).
+fn acc_num(a: &Acc) -> f64 {
+    match a {
+        Acc::Big(b) => *b as f64,
+        Acc::Str(s) => crate::game_config_helpers::js_number(s),
+    }
+}
+
+/// The typed `EmojiMessage` for a stored outgoing-emoji object (the mid 75
+/// construction shape; `recipientID: "AllPlayers"` -> `None`).
+fn emoji_typed(e: &JsVal) -> TypedEmoji {
+    let g = |k: &str| val_field(e, k).cloned().unwrap_or(JsVal::Undef);
+    TypedEmoji {
+        message: match g("message") {
+            JsVal::Str(s) => s,
+            _ => String::new(),
+        },
+        sender_id: to_num(&g("senderID")),
+        recipient_id: match g("recipientID") {
+            JsVal::Num(n) => Some(n),
+            _ => None,
+        },
+        created_at: to_num(&g("createdAt")),
+    }
+}
+
+/// The typed `outgoingAllianceRequests` / alliance-view `other` item: `id()`
+/// is the pi id (string) for the self slot and the mock pid (number)
+/// otherwise. The typed `Arr<String>` needs an injective mapping — a string
+/// `"5"` must never equal the number 5, exactly like JS `!==` — so non-string
+/// values get a suffix no scenario id uses. The typed items only feed
+/// `stringArrayEqual` (the wire crosses the raw JsVal), so any injective
+/// encoding keeps the comparator bit-exact.
+fn oar_typed(v: &JsVal) -> String {
+    match v {
+        JsVal::Str(s) => s.clone(),
+        other => format!("{}\u{0}", js_to_string_val(other)),
+    }
+}
+
+/// The `f64` behind an `Option<Option<f64>>` typed field (the wire keeps the
+/// three-state form; the quint pushes the value).
+fn opt3_num(v: &Option<Option<f64>>) -> f64 {
+    match v {
+        Some(Some(n)) => *n,
+        _ => f64::NAN,
+    }
 }
 
 /// The `PlayerImpl` field block the G3c1 slice touches, replicated 1:1.
@@ -671,6 +959,19 @@ struct Player {
     embargoes: Vec<(JsVal, Embargo)>,
     last_delete_unit_tick: f64,
     last_embargo_all_tick: f64,
+    // G3c4: the units / update surface. `num_units_constructed` is the JS
+    // partial record (insertion-ordered upsert); `last_sent` is
+    // `lastSentUpdate` (the previous FULL snapshot, undefined on the first
+    // toUpdate). The per-type memos are recomputed (see the module doc).
+    units: Vec<UnitMock>,
+    my_units_version: f64,
+    num_units_constructed: Vec<(String, f64)>,
+    out_attacks: Vec<AttackMock>,
+    in_attacks: Vec<AttackMock>,
+    last_sent: Option<PlayerUpdate>,
+    /// The next fresh refid for materialized toFullUpdate arrays —
+    /// monotonic across calls (each is a new JS object per call).
+    next_refid: f64,
 }
 
 impl Default for Player {
@@ -706,6 +1007,13 @@ impl Default for Player {
             embargoes: Vec::new(),
             last_delete_unit_tick: -1.0,
             last_embargo_all_tick: -1.0,
+            units: Vec::new(),
+            my_units_version: 0.0,
+            num_units_constructed: Vec::new(),
+            out_attacks: Vec::new(),
+            in_attacks: Vec::new(),
+            last_sent: None,
+            next_refid: 1.0,
         }
     }
 }
@@ -760,6 +1068,16 @@ pub struct PlayerHarness {
     eac_i: usize,
     car: Vec<JsVal>,
     car_i: usize,
+    // G3c4: getPlayerStats (138), mg.owner (133 — `Null` | `Num(tok)`), the
+    // spawn-immunity flags (135/136).
+    gs: Vec<JsVal>,
+    gs_i: usize,
+    owner: Vec<JsVal>,
+    owner_i: usize,
+    sia: Vec<f64>,
+    sia_i: usize,
+    nsia: Vec<f64>,
+    nsia_i: usize,
 }
 
 impl PlayerHarness {
@@ -986,6 +1304,94 @@ impl PlayerHarness {
             tr.push(*t as f64);
         }
         self.players_list.clone()
+    }
+
+    // --- G3c4 facade plumbing ---
+
+    /// `mg.stats().getPlayerStats(this)` — event 138 (always fired by
+    /// toFullUpdate); the script is `null` or `{killedBy, deathPosition}`.
+    fn mg_get_player_stats(&mut self, tr: &mut Vec<f64>) -> JsVal {
+        let v = take_jsval(&self.gs, &mut self.gs_i);
+        tr.push(138.0);
+        push_val(tr, &v);
+        v
+    }
+
+    /// `mg.conquer(this, tile)` — event 132.
+    fn mg_conquer(&mut self, tr: &mut Vec<f64>, tile: f64) {
+        tr.push(132.0);
+        tr.push(tile);
+    }
+
+    /// `mg.owner(tile) !== this` — event 133 pushes the scripted owner
+    /// (`null` or the token number); the gate is the self-token identity
+    /// (`mocks[selfTok] = pl`).
+    fn mg_owner_is_self(&mut self, tr: &mut Vec<f64>, tile: f64) -> bool {
+        let v = take_jsval(&self.owner, &mut self.owner_i);
+        tr.push(133.0);
+        tr.push(tile);
+        push_val(tr, &v);
+        matches!(v, JsVal::Num(t) if self.self_tok == Some(t as usize))
+    }
+
+    /// `mg.relinquish(tile)` — event 134.
+    fn mg_relinquish(&mut self, tr: &mut Vec<f64>, tile: f64) {
+        tr.push(134.0);
+        tr.push(tile);
+    }
+
+    /// `mg.isSpawnImmunityActive()` / `isNationSpawnImmunityActive()` —
+    /// events 135 / 136.
+    fn mg_spawn_immunity(&mut self, tr: &mut Vec<f64>) -> bool {
+        let v = take_f64(&self.sia, &mut self.sia_i);
+        tr.push(135.0);
+        tr.push(v);
+        v != 0.0 && !v.is_nan()
+    }
+
+    fn mg_nation_spawn_immunity(&mut self, tr: &mut Vec<f64>) -> bool {
+        let v = take_f64(&self.nsia, &mut self.nsia_i);
+        tr.push(136.0);
+        tr.push(v);
+        v != 0.0 && !v.is_nan()
+    }
+
+    /// `isImmune()` (1883-1891) — the type gates read `playerInfo.playerType`
+    /// (untraced); the self-slot 137 caller runs this real body.
+    fn is_immune_body(&mut self, tr: &mut Vec<f64>) -> bool {
+        let t = self.pi_field("playerType");
+        if js_strict_eq(&t, &JsVal::Str("HUMAN".to_string())) {
+            self.mg_spawn_immunity(tr)
+        } else if js_strict_eq(&t, &JsVal::Str("NATION".to_string())) {
+            self.mg_nation_spawn_immunity(tr)
+        } else {
+            false
+        }
+    }
+
+    /// `other.isImmune()` — the mock facade (137) with the `!!v`
+    /// normalisation; the self slot runs the real body (untraced, mirroring
+    /// `mocks[selfTok] = pl`).
+    fn other_is_immune(&mut self, tr: &mut Vec<f64>, tok: usize) -> Result<bool, String> {
+        if self.self_tok == Some(tok) {
+            return Ok(self.is_immune_body(tr));
+        }
+        let p = self.players.get_mut(tok).ok_or_else(|| {
+            "Cannot read properties of undefined (reading 'isImmune')".to_string()
+        })?;
+        let v = take_f64(&p.immune, &mut p.immune_i);
+        let b = v != 0.0 && !v.is_nan();
+        tr.push(137.0);
+        tr.push(p.pid);
+        tr.push(if b { 1.0 } else { 0.0 });
+        Ok(b)
+    }
+
+    /// `unit.hash()` — event 131.
+    fn unit_hash(&mut self, tr: &mut Vec<f64>, h: f64) -> f64 {
+        tr.push(131.0);
+        tr.push(h);
+        h
     }
 
     // --- identity helpers ---
@@ -1308,6 +1714,17 @@ impl PlayerHarness {
     /// (insertion order, BEFORE the sort), then the stable ascending sort
     /// and the `relationFromValue` map. Encoded as `[[tok, relation], ...]`.
     fn all_relations_sorted(&mut self, tr: &mut Vec<f64>) -> Result<JsVal, String> {
+        Ok(JsVal::Arr(
+            self.all_relation_pairs(tr)?
+                .into_iter()
+                .map(|(tok, v)| JsVal::Arr(vec![JsVal::Num(tok as f64), JsVal::Num(v)]))
+                .collect(),
+        ))
+    }
+
+    /// The `allRelationsSorted` pair list (mid 68 and `playerProfile` share
+    /// it): `(token, relationFromValue(v))`, alive-filtered, ascending.
+    fn all_relation_pairs(&mut self, tr: &mut Vec<f64>) -> Result<Vec<(usize, f64)>, String> {
         let entries = self.p.relations.clone();
         let mut kept: Vec<(usize, f64)> = Vec::new();
         for (tok, v) in entries {
@@ -1316,13 +1733,10 @@ impl PlayerHarness {
             }
         }
         js_sort_asc(&mut kept);
-        Ok(JsVal::Arr(
-            kept.into_iter()
-                .map(|(tok, v)| {
-                    JsVal::Arr(vec![JsVal::Num(tok as f64), JsVal::Num(relation_from_value(v))])
-                })
-                .collect(),
-        ))
+        Ok(kept
+            .into_iter()
+            .map(|(tok, v)| (tok, relation_from_value(v)))
+            .collect())
     }
 
     /// `updateRelation` (951-958): `relation + delta` is the JS `+` — a
@@ -1594,6 +2008,681 @@ impl PlayerHarness {
         Ok(())
     }
 
+    // --- G3c4: units, hash, profile and the toUpdate surface ---
+
+    /// `isDecaying` — the mid 58 body (the toFullUpdate literal fires the
+    /// same 102 facade when armed).
+    fn is_decaying_body(&mut self, tr: &mut Vec<f64>) -> bool {
+        if !self.in_doomsday() || self.p.rotted_at_tick < 0.0 {
+            false
+        } else {
+            (self.mg_ticks(tr) - self.p.rotted_at_tick) <= DECAY_CUE_GRACE_TICKS
+        }
+    }
+
+    /// `units()` (430-490) — the match set. The three memos are version-
+    /// gated in TS: a hit returns exactly what a re-walk produces, so the
+    /// port always re-walks (see the module doc). `types` is `None` for the
+    /// no-arg / empty-array overloads (`this._units` verbatim).
+    fn units_filtered(&self, types: Option<&[String]>) -> Vec<usize> {
+        match types {
+            None => (0..self.p.units.len()).collect(),
+            Some(ts) => self
+                .p
+                .units
+                .iter()
+                .enumerate()
+                .filter(|(_, u)| ts.contains(&u.typ))
+                .map(|(i, _)| i)
+                .collect(),
+        }
+    }
+
+    /// The units wire form: each mock crosses as `[type, level, uc]`.
+    fn units_wire(&self, idxs: Vec<usize>) -> JsVal {
+        JsVal::Arr(
+            idxs.into_iter()
+                .map(|i| {
+                    let u = &self.p.units[i];
+                    JsVal::Arr(vec![
+                        JsVal::Str(u.typ.clone()),
+                        JsVal::Num(u.level),
+                        JsVal::Bool(u.uc),
+                    ])
+                })
+                .collect(),
+        )
+    }
+
+    /// `recordUnitConstructed` (493-499): the insertion-ordered upsert.
+    fn record_unit_constructed(&mut self, typ: String) {
+        match self
+            .p
+            .num_units_constructed
+            .iter_mut()
+            .find(|(t, _)| *t == typ)
+        {
+            Some((_, n)) => *n += 1.0,
+            None => self.p.num_units_constructed.push((typ, 1.0)),
+        }
+    }
+
+    /// `unitsConstructed` (505-507): `numUnitsConstructed[type] ?? 0`.
+    fn units_constructed(&self, typ: &str) -> f64 {
+        self.p
+            .num_units_constructed
+            .iter()
+            .find(|(t, _)| t == typ)
+            .map(|(_, n)| *n)
+            .unwrap_or(0.0)
+    }
+
+    /// `unitCount` (510-528): Σ `unit.level()` per matching type.
+    fn unit_count(&self, typ: &str) -> f64 {
+        self.p
+            .units
+            .iter()
+            .filter(|u| u.typ == typ)
+            .map(|u| u.level)
+            .sum()
+    }
+
+    /// `unitsOwned` (531-551): under-construction units count once,
+    /// otherwise `level()`.
+    fn units_owned(&self, typ: &str) -> f64 {
+        self.p
+            .units
+            .iter()
+            .filter(|u| u.typ == typ)
+            .map(|u| if u.uc { 1.0 } else { u.level })
+            .sum()
+    }
+
+    /// `hash()` (1828-1833): `simpleHash(this.id()) * (this.troops() +
+    /// this.numTilesOwned())` plus the units reduce (left fold from 0, each
+    /// `unit.hash()` traced as 131). The id read throws on null / undefined
+    /// exactly like the ctor's seed read.
+    fn hash_body(&mut self, tr: &mut Vec<f64>) -> Result<f64, String> {
+        let id = self.pi_field("id");
+        let base = match &id {
+            JsVal::Null => {
+                return Err("Cannot read properties of null (reading 'length')".to_string())
+            }
+            JsVal::Undef | JsVal::Absent => {
+                return Err("Cannot read properties of undefined (reading 'length')".to_string())
+            }
+            _ => crate::util::simple_hash(&js_to_string_val(&id)),
+        };
+        let mut acc = base * (self.p.troops as f64 + self.p.tiles.size());
+        for u in self.p.units.clone() {
+            acc += self.unit_hash(tr, u.hash);
+        }
+        Ok(acc)
+    }
+
+    /// `playerProfile()` (1842-1853): `Object.fromEntries` over
+    /// allRelationsSorted — key `String(player.smallID())`, value the mapped
+    /// relation — plus the alliance others' smallIDs (in alliance order).
+    fn player_profile(&mut self, tr: &mut Vec<f64>) -> Result<JsVal, String> {
+        let pairs = self.all_relation_pairs(tr)?;
+        let mut relations: Vec<(String, JsVal)> = Vec::new();
+        for (tok, v) in pairs {
+            let sid = self.other_small_id(tok)?;
+            relations.push((crate::js_fixed::js_to_string(sid), JsVal::Num(v)));
+        }
+        // `Object.fromEntries` builds a plain object: smallID keys are
+        // canonical array indices, so JS re-numbers them ascending ahead of
+        // any ordinary string keys — the allRelationsSorted order only
+        // survives for the string-key tail.
+        let relations = js_integer_key_order(relations);
+        let self_tok = self.self_tok;
+        let toks: Vec<usize> = self
+            .p
+            .alliances
+            .iter()
+            .map(|a| if self_tok == Some(a.req) { a.rec } else { a.req })
+            .collect();
+        let mut alliances: Vec<JsVal> = Vec::new();
+        for t in toks {
+            alliances.push(JsVal::Num(self.other_small_id(t)?));
+        }
+        Ok(JsVal::Obj(vec![
+            ("relations".to_string(), JsVal::Obj(relations)),
+            ("alliances".to_string(), JsVal::Arr(alliances)),
+        ]))
+    }
+
+    /// `canAttackPlayer` (1893-1902): non-human attackers skip the immunity
+    /// probe entirely; humans probe `player.isImmune()` FIRST (the
+    /// short-circuit pins the facade count) then isFriendly.
+    fn can_attack_player(
+        &mut self,
+        tr: &mut Vec<f64>,
+        tok: usize,
+        treat: bool,
+    ) -> Result<bool, String> {
+        let human = js_strict_eq(
+            &self.pi_field("playerType"),
+            &JsVal::Str("HUMAN".to_string()),
+        );
+        if !human {
+            return Ok(!self.is_friendly(tr, tok, treat)?);
+        }
+        Ok(!self.other_is_immune(tr, tok)? && !self.is_friendly(tr, tok, treat)?)
+    }
+
+    /// The attack wire/typed pair for one mock: `attacker().smallID()` /
+    /// `target().smallID()` (untraced identity reads), `troops()`, `id()`,
+    /// `retreating()`.
+    fn attack_parts(
+        &self,
+        a: &AttackMock,
+    ) -> Result<(JsVal, AttackUpdate), String> {
+        let att = self.other_small_id(a.att)?;
+        let tgt = self.other_small_id(a.tgt)?;
+        Ok((
+            JsVal::Obj(vec![
+                ("attackerID".to_string(), JsVal::Num(att)),
+                ("targetID".to_string(), JsVal::Num(tgt)),
+                ("troops".to_string(), JsVal::Num(a.troops)),
+                ("id".to_string(), JsVal::Str(a.id.clone())),
+                ("retreating".to_string(), JsVal::Bool(a.ret)),
+            ]),
+            AttackUpdate {
+                attacker_id: att,
+                target_id: tgt,
+                troops: a.troops,
+                id: a.id.clone(),
+                retreating: a.ret,
+            },
+        ))
+    }
+
+    /// `toFullUpdate` (PlayerImpl.ts:267-401) in all three worlds at once:
+    /// the typed snapshot (`diff_player_update` / `pack_attack_troop_deltas`
+    /// run over it verbatim), the per-field wire encodings indexed by the
+    /// diffPlayerUpdate emission order, and the full literal (the first-call
+    /// wire form). Facade order: the alliance cutoff (102 + 109, only when
+    /// alliances exist), `targets()` (102/113 per entry),
+    /// `outgoingEmojis()` (102/114 per entry), the incoming-attack alive
+    /// filter (127 per entry), `getPlayerStats` (138, always), then the
+    /// literal — `isTraitor` / `traitorRemainingTicks` each fire the traitor
+    /// facades when marked, `isDecaying` fires 102 when armed.
+    #[allow(clippy::wrong_self_convention)] // TS name (toFullUpdate); &mut self drives the facades
+    fn to_full_update_parts(&mut self, tr: &mut Vec<f64>) -> Result<FullParts, String> {
+        // Each materialized array is a fresh JS object per call, so ids must
+        // never repeat within a scenario (a repeated id would let a
+        // different-object pair hit a ref fast path).
+        let mut fresh = self.p.next_refid;
+        let self_tok = self.self_tok;
+
+        // outgoingAllianceRequests (273-281): `ar.requestor() === this`.
+        let mut oar: Option<Vec<JsVal>> = None;
+        for (req, rec) in self.alliance_requests.clone() {
+            if Some(req) == self_tok {
+                oar.get_or_insert_with(Vec::new).push(self.other_id(rec));
+            }
+        }
+        let oar_refid = match oar {
+            None => REF_EMPTY_STR,
+            Some(_) => {
+                let r = fresh;
+                fresh += 1.0;
+                r
+            }
+        };
+
+        // allies + alliance views (283-300): the cutoff facades only run
+        // when alliances exist.
+        let alliances = self.p.alliances.clone();
+        let others: Vec<usize> = alliances
+            .iter()
+            .map(|a| if self_tok == Some(a.req) { a.rec } else { a.req })
+            .collect();
+        let mut allies_items: Vec<f64> = Vec::new();
+        for t in &others {
+            allies_items.push(self.other_small_id(*t)?);
+        }
+        let mut alv_wire: Vec<JsVal> = Vec::new();
+        let mut views: Vec<TypedAllianceView> = Vec::new();
+        let (allies_refid, alv_refid) = if alliances.is_empty() {
+            (REF_EMPTY_NUM, REF_EMPTY_ALV)
+        } else {
+            let t = self.mg_ticks(tr);
+            let off = script_f64(&self.off, &mut self.off_i, tr, 109.0);
+            for (a, tok) in alliances.iter().zip(others.iter()) {
+                let oid = self.other_id(*tok);
+                views.push(TypedAllianceView {
+                    id: a.id,
+                    other: oar_typed(&oid),
+                    created_at: a.created_at,
+                    expires_at: a.expires_at,
+                    has_extension_request: a.expires_at <= t + off,
+                });
+                alv_wire.push(JsVal::Obj(vec![
+                    ("id".to_string(), JsVal::Num(a.id)),
+                    ("other".to_string(), oid),
+                    ("createdAt".to_string(), JsVal::Num(a.created_at)),
+                    ("expiresAt".to_string(), JsVal::Num(a.expires_at)),
+                    (
+                        "hasExtensionRequest".to_string(),
+                        JsVal::Bool(a.expires_at <= t + off),
+                    ),
+                ]));
+            }
+            let ar = fresh;
+            fresh += 1.0;
+            let vr = fresh;
+            fresh += 1.0;
+            (ar, vr)
+        };
+
+        // embargoes (302-308): the keys `toString()`ed into a Set.
+        let emb_items: Vec<String> = self
+            .p
+            .embargoes
+            .iter()
+            .map(|(k, _)| js_to_string_val(k))
+            .collect();
+        let emb_refid = if emb_items.is_empty() {
+            REF_EMPTY_EMB
+        } else {
+            let r = fresh;
+            fresh += 1.0;
+            r
+        };
+
+        // targets (310-316): the gate reads `targets_.length`, then the
+        // filtered view maps to smallIDs.
+        let mut targets_items: Vec<f64> = Vec::new();
+        if !self.p.targets_.is_empty() {
+            for t in self.targets_body(tr) {
+                targets_items.push(self.other_small_id(t)?);
+            }
+        }
+        let targets_refid = if targets_items.is_empty() {
+            REF_EMPTY_NUM
+        } else {
+            let r = fresh;
+            fresh += 1.0;
+            r
+        };
+
+        // outgoingEmojis (318-324): the stored objects pass through as-is.
+        let mut emojis_wire: Vec<JsVal> = Vec::new();
+        let mut emojis_typed: Vec<TypedEmoji> = Vec::new();
+        if !self.p.outgoing_emojis.is_empty() {
+            let e = self.outgoing_emojis_body(tr);
+            if let JsVal::Arr(items) = e {
+                if !items.is_empty() {
+                    for it in items {
+                        emojis_typed.push(emoji_typed(&it));
+                        emojis_wire.push(it);
+                    }
+                }
+            }
+        }
+        let emojis_refid = if emojis_wire.is_empty() {
+            REF_EMPTY_EMO
+        } else {
+            let r = fresh;
+            fresh += 1.0;
+            r
+        };
+
+        // outgoingAttacks (326-337): EMPTY vs the mapped array.
+        let mut oa_wire: Vec<JsVal> = Vec::new();
+        let mut oa_typed: Vec<AttackUpdate> = Vec::new();
+        for a in &self.p.out_attacks {
+            let (w, t) = self.attack_parts(a)?;
+            oa_wire.push(w);
+            oa_typed.push(t);
+        }
+        let oa_refid = if oa_wire.is_empty() {
+            REF_EMPTY_ATK
+        } else {
+            let r = fresh;
+            fresh += 1.0;
+            r
+        };
+
+        // incomingAttacks (339-353): the alive filter (127 per entry) runs
+        // over every stored attack, the map only over the kept ones.
+        let mut ia_wire: Vec<JsVal> = Vec::new();
+        let mut ia_typed: Vec<AttackUpdate> = Vec::new();
+        for a in self.p.in_attacks.clone() {
+            if self.other_is_alive(tr, a.att)? {
+                let (w, t) = self.attack_parts(&a)?;
+                ia_wire.push(w);
+                ia_typed.push(t);
+            }
+        }
+        let ia_refid = if ia_wire.is_empty() {
+            REF_EMPTY_ATK
+        } else {
+            let r = fresh;
+            fresh += 1.0;
+            r
+        };
+        self.p.next_refid = fresh;
+
+        // deathStats (358): `deathStats?.killedBy ?? null` /
+        // `deathStats?.deathPosition ?? null`.
+        let gs = self.mg_get_player_stats(tr);
+        let norm_stat = |v: Option<JsVal>| match v {
+            Some(JsVal::Undef) | Some(JsVal::Absent) | None => JsVal::Null,
+            Some(other) => other,
+        };
+        let (killed_by, death_position) = match &gs {
+            JsVal::Null | JsVal::Undef | JsVal::Absent => (JsVal::Null, JsVal::Null),
+            _ => (
+                norm_stat(val_field(&gs, "killedBy").cloned()),
+                norm_stat(val_field(&gs, "deathPosition").cloned()),
+            ),
+        };
+
+        // The literal's facade calls (364-399): isTraitor + traitor ticks
+        // probe the marked tick twice, isDecaying probes the rot.
+        let traitor = self.traitor_remaining(tr) > 0.0;
+        let trt = self.traitor_remaining(tr);
+        let doomsday = self.in_doomsday();
+        let decaying = self.is_decaying_body(tr);
+        let spawned = self.p.spawn_tile != JsVal::Undef;
+
+        let team_wire = match &self.p.team {
+            JsVal::Null | JsVal::Undef | JsVal::Absent => None,
+            v => Some(v.clone()),
+        };
+        let allies_wire = JsVal::Arr(allies_items.iter().map(|n| JsVal::Num(*n)).collect());
+        let emb_wire = JsVal::Arr(emb_items.iter().map(|s| JsVal::Str(s.clone())).collect());
+        let targets_wire = JsVal::Arr(targets_items.iter().map(|n| JsVal::Num(*n)).collect());
+        let oar_wire = JsVal::Arr(oar.unwrap_or_default());
+
+        let typed = PlayerUpdate {
+            id: match self.pi_field("id") {
+                JsVal::Str(s) => s,
+                _ => String::new(),
+            },
+            client_id: pi_opt3(&self.pi_field("clientID")),
+            name: pi_opt3(&self.pi_field("name")),
+            display_name: pi_opt3(&self.pi_field("displayName")),
+            clan_tag: pi_opt3(&self.pi_field("clanTag")),
+            nation_flag: pi_opt3(&self.pi_field("nationFlag")),
+            // `this.team() ?? undefined` — null folds to undefined.
+            team: match team_wire.clone() {
+                Some(JsVal::Str(s)) => Some(Some(s)),
+                _ => None,
+            },
+            small_id: Some(Some(self.p.small_id)),
+            player_type: pi_opt3(&self.pi_field("playerType")),
+            is_alive: Some(Some(self.is_alive())),
+            // markDisconnected stores the raw arg; the typed side folds
+            // truthiness (scenarios only pass booleans).
+            is_disconnected: Some(Some(js_truthy(&self.p.is_disconnected))),
+            killed_by: match &killed_by {
+                JsVal::Str(s) => Some(Some(s.clone())),
+                JsVal::Null => Some(None),
+                // `?? null` only folds null/undefined; the remaining shapes
+                // never reach a typed String in the scenario domain.
+                _ => Some(None),
+            },
+            death_position: match &death_position {
+                JsVal::Num(n) => Some(Some(*n)),
+                JsVal::Null => Some(None),
+                _ => Some(None),
+            },
+            tiles_owned: Some(Some(self.p.tiles.size())),
+            gold: Some(Some(acc_num(&self.p.gold))),
+            trade_gold: Some(Some(acc_num(&self.p.trade_gold))),
+            train_gold: Some(Some(acc_num(&self.p.train_gold))),
+            piracy_gold: Some(Some(acc_num(&self.p.piracy_gold))),
+            gold_earned: Some(Some(acc_num(&self.p.gold_earned))),
+            troops: Some(Some(self.p.troops as f64)),
+            allies: Some(Arr {
+                refid: allies_refid,
+                items: allies_items,
+            }),
+            embargoes: Some(Arr {
+                refid: emb_refid,
+                items: emb_items,
+            }),
+            is_traitor: Some(Some(traitor)),
+            traitor_remaining_ticks: Some(Some(trt)),
+            in_doomsday_clock: Some(Some(doomsday)),
+            is_decaying: Some(Some(decaying)),
+            marked_doomsday_clock_tick: Some(Some(self.p.marked_doomsday_clock_tick)),
+            targets: Some(Arr {
+                refid: targets_refid,
+                items: targets_items,
+            }),
+            outgoing_emojis: Some(Arr {
+                refid: emojis_refid,
+                items: emojis_typed,
+            }),
+            outgoing_attacks: Some(Arr {
+                refid: oa_refid,
+                items: oa_typed,
+            }),
+            incoming_attacks: Some(Arr {
+                refid: ia_refid,
+                items: ia_typed,
+            }),
+            outgoing_alliance_requests: match &oar_wire {
+                JsVal::Arr(items) => Some(Arr {
+                    refid: oar_refid,
+                    items: items.iter().map(oar_typed).collect(),
+                }),
+                _ => unreachable!(),
+            },
+            alliances: Some(Arr {
+                refid: alv_refid,
+                items: views,
+            }),
+            has_spawned: Some(Some(spawned)),
+            spawn_tile: match &self.p.spawn_tile {
+                JsVal::Num(n) => Some(Some(*n)),
+                JsVal::Null => Some(None),
+                _ => None,
+            },
+            betrayals: Some(Some(self.p.betrayal_count)),
+            last_delete_unit_tick: Some(Some(self.p.last_delete_unit_tick)),
+            is_lobby_creator: pi_opt3_bool(&self.pi_field("isLobbyCreator")),
+        };
+
+        // The literal (360-401) in key order; normPU drops undefined values.
+        let mut full: Vec<(String, JsVal)> = vec![("type".to_string(), JsVal::Num(2.0))];
+        let put = |keys: &mut Vec<(String, JsVal)>, k: &str, v: Option<JsVal>| {
+            if let Some(v) = v {
+                keys.push((k.to_string(), v));
+            }
+        };
+        put(&mut full, "clientID", pi_wire(&self.pi_field("clientID")));
+        put(&mut full, "name", pi_wire(&self.pi_field("name")));
+        put(
+            &mut full,
+            "displayName",
+            pi_wire(&self.pi_field("displayName")),
+        );
+        put(&mut full, "clanTag", pi_wire(&self.pi_field("clanTag")));
+        put(
+            &mut full,
+            "nationFlag",
+            pi_wire(&self.pi_field("nationFlag")),
+        );
+        put(&mut full, "id", pi_wire(&self.pi_field("id")));
+        put(&mut full, "team", team_wire.clone());
+        full.push(("smallID".to_string(), JsVal::Num(self.p.small_id)));
+        put(
+            &mut full,
+            "playerType",
+            pi_wire(&self.pi_field("playerType")),
+        );
+        full.push(("isAlive".to_string(), JsVal::Bool(self.is_alive())));
+        put(
+            &mut full,
+            "isDisconnected",
+            pi_wire(&self.p.is_disconnected),
+        );
+        full.push(("killedBy".to_string(), killed_by.clone()));
+        full.push(("deathPosition".to_string(), death_position.clone()));
+        full.push(("tilesOwned".to_string(), JsVal::Num(self.p.tiles.size())));
+        full.push(("gold".to_string(), self.p.gold.to_jsval()));
+        full.push(("tradeGold".to_string(), self.p.trade_gold.to_jsval()));
+        full.push(("trainGold".to_string(), self.p.train_gold.to_jsval()));
+        full.push(("piracyGold".to_string(), self.p.piracy_gold.to_jsval()));
+        full.push(("goldEarned".to_string(), self.p.gold_earned.to_jsval()));
+        full.push(("troops".to_string(), JsVal::Num(self.p.troops as f64)));
+        full.push(("allies".to_string(), allies_wire.clone()));
+        full.push(("embargoes".to_string(), emb_wire.clone()));
+        full.push(("isTraitor".to_string(), JsVal::Bool(traitor)));
+        full.push(("traitorRemainingTicks".to_string(), JsVal::Num(trt)));
+        full.push(("inDoomsdayClock".to_string(), JsVal::Bool(doomsday)));
+        full.push(("isDecaying".to_string(), JsVal::Bool(decaying)));
+        full.push((
+            "markedDoomsdayClockTick".to_string(),
+            JsVal::Num(self.p.marked_doomsday_clock_tick),
+        ));
+        full.push(("targets".to_string(), targets_wire.clone()));
+        full.push((
+            "outgoingEmojis".to_string(),
+            JsVal::Arr(emojis_wire.clone()),
+        ));
+        full.push(("outgoingAttacks".to_string(), JsVal::Arr(oa_wire.clone())));
+        full.push((
+            "incomingAttacks".to_string(),
+            JsVal::Arr(ia_wire.clone()),
+        ));
+        full.push(("outgoingAllianceRequests".to_string(), oar_wire.clone()));
+        full.push(("alliances".to_string(), JsVal::Arr(alv_wire.clone())));
+        full.push(("hasSpawned".to_string(), JsVal::Bool(spawned)));
+        put(&mut full, "spawnTile", pi_wire(&self.p.spawn_tile));
+        full.push(("betrayals".to_string(), JsVal::Num(self.p.betrayal_count)));
+        full.push((
+            "lastDeleteUnitTick".to_string(),
+            JsVal::Num(self.p.last_delete_unit_tick),
+        ));
+        put(
+            &mut full,
+            "isLobbyCreator",
+            pi_wire(&self.pi_field("isLobbyCreator")),
+        );
+
+        // The per-field wire encodings, indexed by the diffPlayerUpdate
+        // emission order (the diff never reads tilesOwned/gold/troops/
+        // goldEarned, so they are absent here).
+        let fields: Vec<Option<JsVal>> = vec![
+            pi_wire(&self.pi_field("clientID")),
+            pi_wire(&self.pi_field("name")),
+            pi_wire(&self.pi_field("displayName")),
+            pi_wire(&self.pi_field("clanTag")),
+            pi_wire(&self.pi_field("nationFlag")),
+            team_wire,
+            Some(JsVal::Num(self.p.small_id)),
+            pi_wire(&self.pi_field("playerType")),
+            Some(JsVal::Bool(self.is_alive())),
+            pi_wire(&self.p.is_disconnected),
+            Some(killed_by),
+            Some(death_position),
+            Some(self.p.trade_gold.to_jsval()),
+            Some(self.p.train_gold.to_jsval()),
+            Some(self.p.piracy_gold.to_jsval()),
+            Some(JsVal::Bool(traitor)),
+            Some(JsVal::Num(trt)),
+            Some(JsVal::Bool(doomsday)),
+            Some(JsVal::Num(self.p.marked_doomsday_clock_tick)),
+            Some(JsVal::Bool(decaying)),
+            Some(JsVal::Bool(spawned)),
+            pi_wire(&self.p.spawn_tile),
+            Some(JsVal::Num(self.p.betrayal_count)),
+            Some(JsVal::Num(self.p.last_delete_unit_tick)),
+            pi_wire(&self.pi_field("isLobbyCreator")),
+            Some(allies_wire),
+            Some(targets_wire),
+            Some(oar_wire),
+            Some(emb_wire),
+            Some(JsVal::Arr(emojis_wire)),
+            Some(JsVal::Arr(oa_wire)),
+            Some(JsVal::Arr(ia_wire)),
+            Some(JsVal::Arr(alv_wire)),
+        ];
+
+        Ok(FullParts {
+            typed,
+            fields,
+            full: JsVal::Obj(full),
+        })
+    }
+
+    /// `toUpdate` (222-265): the full snapshot always lands in
+    /// `lastSentUpdate`; the first call returns it verbatim (no quint, no
+    /// pack), later calls the real diff — recovered as a wire JsVal from the
+    /// changed indices so the changed-field set always comes from the real
+    /// comparator set — plus the stats quint and the attack-troop quads.
+    #[allow(clippy::wrong_self_convention)] // TS name (toUpdate); &mut self drives the facades
+    fn to_update(
+        &mut self,
+        tr: &mut Vec<f64>,
+        stats_en: bool,
+        atk_en: bool,
+    ) -> Result<(JsVal, Vec<f64>, Vec<f64>), String> {
+        let parts = self.to_full_update_parts(tr)?;
+        let prev = self.p.last_sent.replace(parts.typed.clone());
+        let Some(prev) = prev else {
+            return Ok((parts.full, Vec::new(), Vec::new()));
+        };
+        let mut so: Vec<f64> = Vec::new();
+        let mut ao: Vec<f64> = Vec::new();
+        // The quint gate compares the raw values with `!==`; the typed
+        // gold/goldEarned are the `Number(...)` folds, exact for the bigint
+        // domain the scenarios keep gold in.
+        if stats_en
+            && (prev.tiles_owned != parts.typed.tiles_owned
+                || prev.gold != parts.typed.gold
+                || prev.troops != parts.typed.troops
+                || prev.gold_earned != parts.typed.gold_earned)
+        {
+            so.extend([
+                self.p.small_id,
+                opt3_num(&parts.typed.tiles_owned),
+                opt3_num(&parts.typed.gold),
+                opt3_num(&parts.typed.troops),
+                opt3_num(&parts.typed.gold_earned),
+            ]);
+        }
+        if atk_en {
+            pack_attack_troop_deltas(
+                &prev.outgoing_attacks,
+                &parts.typed.outgoing_attacks,
+                self.p.small_id,
+                ATTACK_DELTA_OUTGOING,
+                &mut ao,
+            );
+            pack_attack_troop_deltas(
+                &prev.incoming_attacks,
+                &parts.typed.incoming_attacks,
+                self.p.small_id,
+                ATTACK_DELTA_INCOMING,
+                &mut ao,
+            );
+        }
+        let stream = diff_player_update(&prev, &parts.typed);
+        let v = if stream.first().is_some_and(|&m| m != 0.0) {
+            let mut keys: Vec<(String, JsVal)> = vec![("type".to_string(), JsVal::Num(2.0))];
+            if let Some(idv) = pi_wire(&self.pi_field("id")) {
+                keys.push(("id".to_string(), idv));
+            }
+            for i in diff_changed_indices(&stream) {
+                if let Some(w) = &parts.fields[i as usize] {
+                    keys.push((DIFF_FIELD_NAMES[i as usize].to_string(), w.clone()));
+                }
+            }
+            JsVal::Obj(keys)
+        } else {
+            JsVal::Null
+        };
+        Ok((v, so, ao))
+    }
+
     // --- the op dispatcher ---
 
     /// Run one op. Kind table (mirrored by `tools/gen_vectors.mjs`):
@@ -1652,6 +2741,9 @@ impl PlayerHarness {
                         expires_at: c.f(),
                         req_agree: c.f() != 0.0,
                         rec_agree: c.f() != 0.0,
+                        // G3c4: the alliance mock's id()/createdAt().
+                        id: c.f(),
+                        created_at: c.f(),
                     })
                     .collect();
                 let tiles = c.list();
@@ -1670,6 +2762,8 @@ impl PlayerHarness {
                         let alives = c.list();
                         let emb = c.val_list();
                         let tgts = (0..c.u()).map(|_| c.u()).collect();
+                        // G3c4: the mock's isImmune() FIFO (event 137).
+                        let immune = c.list();
                         PlPlayer {
                             pid,
                             teams,
@@ -1681,6 +2775,8 @@ impl PlayerHarness {
                             alive_i: 0,
                             emb,
                             tgts,
+                            immune,
+                            immune_i: 0,
                         }
                     })
                     .collect();
@@ -1707,6 +2803,41 @@ impl PlayerHarness {
                 let duc = c.list();
                 let eac = c.list();
                 let car = c.val_list();
+                // G3c4 tail: units, attacks, and the mg surfaces
+                // toFullUpdate reads (getPlayerStats / owner / the two
+                // spawn-immunity flags).
+                fn atk_block(c: &mut Cur) -> Vec<AttackMock> {
+                    (0..c.u())
+                        .map(|_| {
+                            let att = c.u();
+                            let tgt = c.u();
+                            let troops = c.f();
+                            let id = c.s();
+                            let ret = c.f() != 0.0;
+                            AttackMock {
+                                att,
+                                tgt,
+                                troops,
+                                id,
+                                ret,
+                            }
+                        })
+                        .collect()
+                }
+                let units: Vec<UnitMock> = (0..c.u())
+                    .map(|_| UnitMock {
+                        typ: c.s(),
+                        level: c.f(),
+                        uc: c.f() != 0.0,
+                        hash: c.f(),
+                    })
+                    .collect();
+                let out_attacks = atk_block(&mut c);
+                let in_attacks = atk_block(&mut c);
+                let gs = c.val_list();
+                let owner = c.val_list();
+                let sia = c.list();
+                let nsia = c.list();
                 self.sg = sg;
                 self.ticks = ticks;
                 self.team_tiles = team_tiles;
@@ -1730,6 +2861,10 @@ impl PlayerHarness {
                 self.duc = duc;
                 self.eac = eac;
                 self.car = car;
+                self.gs = gs;
+                self.owner = owner;
+                self.sia = sia;
+                self.nsia = nsia;
                 self.self_tok = if self_tok >= 0.0 {
                     Some(self_tok as usize)
                 } else {
@@ -1768,6 +2903,9 @@ impl PlayerHarness {
                             border_tiles: TileSet::new(Some(&border)),
                             alliances,
                             expired_alliances,
+                            units,
+                            out_attacks,
+                            in_attacks,
                             ..Default::default()
                         };
                         self.constructed = true;
@@ -2150,14 +3288,7 @@ impl PlayerHarness {
                         self.p.rotted_at_tick = self.mg_ticks(&mut tr);
                         push_ok(&mut out, &JsVal::Undef);
                     }
-                    58 => {
-                        let b = if !self.in_doomsday() || self.p.rotted_at_tick < 0.0 {
-                            false
-                        } else {
-                            (self.mg_ticks(&mut tr) - self.p.rotted_at_tick) <= DECAY_CUE_GRACE_TICKS
-                        };
-                        push_ok_bool(&mut out, b)
-                    }
+                    58 => push_ok_bool(&mut out, self.is_decaying_body(&mut tr)),
                     59 => push_ok_num(&mut out, self.p.betrayal_count),
                     // ---- G3c3: the player-to-player social surface ----
                     60 | 61 => {
@@ -2544,6 +3675,188 @@ impl PlayerHarness {
                                     .collect(),
                             ),
                         );
+                    }
+                    // ---- G3c4: units, hash, profile and toUpdate ----
+                    95 => push_ok(&mut out, &self.units_wire(self.units_filtered(None))),
+                    96 => {
+                        let t = c.s();
+                        push_ok(
+                            &mut out,
+                            &self.units_wire(self.units_filtered(Some(&[t]))),
+                        );
+                    }
+                    97 => {
+                        let t1 = c.s();
+                        let t2 = c.s();
+                        push_ok(
+                            &mut out,
+                            &self.units_wire(self.units_filtered(Some(&[t1, t2]))),
+                        );
+                    }
+                    98 => {
+                        let t1 = c.s();
+                        let t2 = c.s();
+                        let t3 = c.s();
+                        push_ok(
+                            &mut out,
+                            &self.units_wire(self.units_filtered(Some(&[t1, t2, t3]))),
+                        );
+                    }
+                    99 => {
+                        // units([...types]): an empty array returns _units
+                        // verbatim; a non-array falls into the single-type
+                        // path (only a Str first ever matches; the set holds
+                        // raw values so non-Str members match nothing).
+                        let arg = c.val();
+                        let f = match &arg {
+                            JsVal::Arr(items) if items.is_empty() => None,
+                            JsVal::Arr(items) => Some(
+                                items
+                                    .iter()
+                                    .filter_map(|v| match v {
+                                        JsVal::Str(s) => Some(s.clone()),
+                                        _ => None,
+                                    })
+                                    .collect::<Vec<String>>(),
+                            ),
+                            JsVal::Str(s) => Some(vec![s.clone()]),
+                            JsVal::Undef | JsVal::Absent => None,
+                            _ => Some(Vec::new()),
+                        };
+                        push_ok(
+                            &mut out,
+                            &self.units_wire(self.units_filtered(f.as_deref())),
+                        );
+                    }
+                    100 => push_ok_num(&mut out, self.units_constructed(&c.s())),
+                    101 => push_ok_num(&mut out, self.unit_count(&c.s())),
+                    102 => push_ok_num(&mut out, self.units_owned(&c.s())),
+                    103 => {
+                        let t = c.s();
+                        self.record_unit_constructed(t);
+                        push_ok(&mut out, &JsVal::Undef);
+                    }
+                    104 => {
+                        // addUnit(type, level, uc) — buildUnit bookkeeping
+                        // (the added mock's hash is the 0 default).
+                        let typ = c.s();
+                        let level = c.f();
+                        let uc = c.f() != 0.0;
+                        self.p.units.push(UnitMock {
+                            typ,
+                            level,
+                            uc,
+                            hash: 0.0,
+                        });
+                        self.p.my_units_version += 1.0;
+                        push_ok(&mut out, &JsVal::Undef);
+                    }
+                    105 => {
+                        self.p.my_units_version += 1.0;
+                        push_ok(&mut out, &JsVal::Undef);
+                    }
+                    106 => match self.player_profile(&mut tr) {
+                        Ok(v) => push_ok(&mut out, &v),
+                        Err(m) => push_err(&mut out, &m),
+                    },
+                    107 => push_ok(&mut out, &JsVal::Str(self.player_to_string())),
+                    108 => match self.hash_body(&mut tr) {
+                        Ok(h) => push_ok_num(&mut out, h),
+                        Err(m) => push_err(&mut out, &m),
+                    },
+                    109 => {
+                        self.mg_conquer(&mut tr, to_num(&c.val()));
+                        push_ok(&mut out, &JsVal::Undef);
+                    }
+                    110 => {
+                        let tile = to_num(&c.val());
+                        if self.mg_owner_is_self(&mut tr, tile) {
+                            self.mg_relinquish(&mut tr, tile);
+                            push_ok(&mut out, &JsVal::Undef);
+                        } else {
+                            push_err(&mut out, "Cannot relinquish tile not owned by this player");
+                        }
+                    }
+                    111 => push_ok_bool(&mut out, self.is_immune_body(&mut tr)),
+                    112 => {
+                        let tok = to_num(&c.val()) as usize;
+                        let treat = if c.has() { js_truthy(&c.val()) } else { false };
+                        match self.can_attack_player(&mut tr, tok, treat) {
+                            Ok(b) => push_ok_bool(&mut out, b),
+                            Err(m) => push_err(&mut out, &m),
+                        }
+                    }
+                    113 => push_ok(
+                        &mut out,
+                        &JsVal::Arr(
+                            (0..self.p.out_attacks.len())
+                                .map(|i| JsVal::Num(i as f64))
+                                .collect(),
+                        ),
+                    ),
+                    114 => {
+                        // incomingAttacks(): the alive filter (127 per entry)
+                        // over the stored attacks; tokens are the kept
+                        // entries' indices.
+                        let mut toks: Vec<JsVal> = Vec::new();
+                        let mut err = None;
+                        for (i, a) in self.p.in_attacks.clone().into_iter().enumerate() {
+                            match self.other_is_alive(&mut tr, a.att) {
+                                Ok(true) => toks.push(JsVal::Num(i as f64)),
+                                Ok(false) => {}
+                                Err(m) => {
+                                    err = Some(m);
+                                    break;
+                                }
+                            }
+                        }
+                        match err {
+                            Some(m) => push_err(&mut out, &m),
+                            None => push_ok(&mut out, &JsVal::Arr(toks)),
+                        }
+                    }
+                    115 => {
+                        let so_en = c.has() && c.f() != 0.0;
+                        let ao_en = c.has() && c.f() != 0.0;
+                        match self.to_update(&mut tr, so_en, ao_en) {
+                            Ok((v, so, ao)) => {
+                                out.push(0.0);
+                                push_val(&mut out, &v);
+                                out.push(so.len() as f64);
+                                out.extend(so.iter().copied());
+                                out.push(ao.len() as f64);
+                                out.extend(ao.iter().copied());
+                            }
+                            Err(m) => push_err(&mut out, &m),
+                        }
+                    }
+                    116 => {
+                        // setAttackTroops(which, idx, troops) — the direct
+                        // mock mutation the pack quads observe.
+                        let which = c.f();
+                        let idx = c.f() as usize;
+                        let v = c.f();
+                        if which == 0.0 {
+                            if let Some(a) = self.p.out_attacks.get_mut(idx) {
+                                a.troops = v;
+                            }
+                        } else if let Some(a) = self.p.in_attacks.get_mut(idx) {
+                            a.troops = v;
+                        }
+                        push_ok(&mut out, &JsVal::Undef);
+                    }
+                    117 => {
+                        let which = c.f();
+                        let idx = c.f() as usize;
+                        let v = c.f() != 0.0;
+                        if which == 0.0 {
+                            if let Some(a) = self.p.out_attacks.get_mut(idx) {
+                                a.ret = v;
+                            }
+                        } else if let Some(a) = self.p.in_attacks.get_mut(idx) {
+                            a.ret = v;
+                        }
+                        push_ok(&mut out, &JsVal::Undef);
                     }
                     k => unreachable!("player harness: unknown method id {k}"),
                 }

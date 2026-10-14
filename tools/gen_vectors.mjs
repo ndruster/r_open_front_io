@@ -21659,17 +21659,49 @@ runAK("ak_empty_src", [
 // other.isDisconnected [105,pid,ret01], 106 other.team [106,pid,...encVal],
 // 107 mg.stats().betray(this) [107,smallID], 108
 // config().traitorDuration [108,ret].
+// G3c4 mids: 95-99 units (0-3 string args / the array form) 100
+// unitsConstructed 101 unitCount 102 unitsOwned 103 recordUnitConstructed
+// 104 addUnit (harness op: push unit mock + _myUnitsVersion++; the type
+// crosses encS'd, level/uc RAW) 105 bumpUnitsVersion 106 playerProfile 107
+// toString 108 hash 109 conquer 110 relinquish 111 isImmune 112
+// canAttackPlayer 113 outgoingAttacks 114 incomingAttacks 115 toUpdate
+// (special result [0,...encVal(normPU),soLen,...so,aoLen,...ao]; the so/ao
+// markers cross RAW) 116 setAttackTroops 117 setAttackRetreating (115-117
+// args all RAW).
+// G3c4 facade events: 131 unit.hash [131,hash], 132 mg.conquer [132,tile],
+// 133 mg.owner [133,tile,...encVal(owner|null|tok)], 134 mg.relinquish
+// [134,tile], 135 mg.isSpawnImmunityActive [135,raw], 136
+// mg.isNationSpawnImmunityActive [136,raw], 137 other.isImmune [137,pid,01],
+// 138 mg.stats().getPlayerStats [138,...encVal].
 
 const plScenarios = [];
 let g3c1Idx = 0;
 
 const plEnc = (v) => (typeof v === "bigint" ? akEnc(Number(v)) : akEnc(v));
 
+// normPU mirrors the Rust toUpdate wire build: nested bigints fold to
+// Number, Sets to arrays, and keys whose value is undefined are dropped
+// (akEnc would otherwise turn a Set into an empty object).
+const normPU = (x) => {
+  if (typeof x === "bigint") return Number(x);
+  if (x === null || typeof x !== "object") return x;
+  if (x instanceof Set) return [...x].map(normPU);
+  const o = Array.isArray(x) ? [] : {};
+  for (const [k, v] of Object.entries(x)) {
+    if (v === undefined) continue;
+    o[k] = normPU(v);
+  }
+  return o;
+};
+
+// units() results cross as [type, level, isUnderConstruction] triples.
+const plUnitTriple = (u) => [u.type(), u.level(), u.isUnderConstruction()];
+
 // team value codec: 0 = null, 1 = string.
 const plTeamTok = (t) => (t === null ? [0] : [1, ...encS(t)]);
 
 // players block: [n, (pid, teamScript, discScript, encS type, aliveScript,
-// embVals, tgts)*n]
+// embVals, tgts, immuneScript)*n]
 const plEncPlayers = (ps) =>
   [
     ps.length,
@@ -21681,6 +21713,7 @@ const plEncPlayers = (ps) =>
       [p.alive.length, ...p.alive.map(uenc)],
       [p.emb.length, ...p.emb.flatMap(plEnc)],
       [p.tgts.length, ...p.tgts.map(uenc)],
+      [p.immune.length, ...p.immune.map(uenc)],
     ]),
   ].flat();
 
@@ -21692,6 +21725,7 @@ const plP = (o = {}) => ({
   alive: o.alive ?? [1],
   emb: o.emb ?? [],
   tgts: o.tgts ?? [],
+  immune: o.immune ?? [0],
 });
 
 // playerInfo: a plain scripted object (missing keys read undefined).
@@ -21711,7 +21745,7 @@ function runPL(name, ops) {
   let mocks = [];
 
   const mkPlayer = (p, i) => {
-    const st = { tk: 0, dc: 0, al: 0 };
+    const st = { tk: 0, dc: 0, al: 0, im: 0 };
     const o = {
       pid: p.pid,
       team: () => {
@@ -21735,6 +21769,12 @@ function runPL(name, ops) {
       },
       hasEmbargoAgainst: (other) => p.emb.some((e) => e === other.id()),
       targets: () => p.tgts.map((t) => mocks[t]),
+      isImmune: () => {
+        const v = uiTake(st, p.immune, "im");
+        const b = v !== 0 && !Number.isNaN(v);
+        curTr.push(137, p.pid, b ? 1 : 0);
+        return b;
+      },
       addTroops: (n) => {
         curTr.push(128, p.pid, ...plEnc(n));
       },
@@ -21751,6 +21791,7 @@ function runPL(name, ops) {
       sg: 0, tk: 0, tt: 0, tl: 0, td: 0,
       off: 0, da: 0, arc: 0, tc: 0, tdur: 0, emd: 0, emc: 0, qc: 0,
       dg: 0, dt: 0, dc: 0, duc: 0, eac: 0, car: 0,
+      gs: 0, ow: 0, sia: 0, nsia: 0,
     };
     const cf = (list, key, code) => () => {
       const v = uiTake(st, list, key);
@@ -21815,6 +21856,11 @@ function runPL(name, ops) {
         betray: (p) => {
           curTr.push(107, p.smallID());
         },
+        getPlayerStats: (p) => {
+          const v = uiTake(st, m.gs, "gs");
+          curTr.push(138, ...plEnc(v));
+          return v;
+        },
       }),
       createAllianceRequest: (from, to) => {
         const v = uiTake(st, m.car, "car");
@@ -21838,6 +21884,27 @@ function runPL(name, ops) {
         curTr.push(130, l.length, ...l);
         return l.map((t) => mocks[t]);
       },
+      conquer: (p, tile) => {
+        curTr.push(132, tile);
+      },
+      owner: (tile) => {
+        const v = uiTake(st, m.owner, "ow");
+        curTr.push(133, tile, ...plEnc(v));
+        return v === null ? null : mocks[v];
+      },
+      relinquish: (tile) => {
+        curTr.push(134, tile);
+      },
+      isSpawnImmunityActive: () => {
+        const v = uiTake(st, m.sia, "sia");
+        curTr.push(135, v);
+        return v !== 0 && !Number.isNaN(v);
+      },
+      isNationSpawnImmunityActive: () => {
+        const v = uiTake(st, m.nsia, "nsia");
+        curTr.push(136, v);
+        return v !== 0 && !Number.isNaN(v);
+      },
     };
   };
 
@@ -21849,13 +21916,17 @@ function runPL(name, ops) {
     let args, res;
     curTr = [];
     if (k === 0) {
-      const [pi, smallID, startTroops, team, alliances, tiles, borderTiles, mg, ps, selfTok, expired] = a;
+      const [pi, smallID, startTroops, team, alliances, tiles, borderTiles, mg, ps, selfTok, expired, units = [], atkOut = [], atkIn = []] = a;
       const exp = expired ?? [];
       players = ps.map(plP);
       mocks = players.map(mkPlayer);
-      // G3c3: alliance tuples are [req, rec, expiresAt, reqAgree, recAgree]
-      // (the 2-field legacy form defaults the extension constants).
-      const al5 = alliances.map((al) => [al[0], al[1], al[2] ?? 0, al[3] ? 1 : 0, al[4] ? 1 : 0]);
+      // G3c3: alliance tuples are [req, rec, expiresAt, reqAgree, recAgree];
+      // G3c4 adds (id, createdAt) — the 5-field legacy form defaults them
+      // per-position.
+      const al5 = alliances.map((al, i) => [
+        al[0], al[1], al[2] ?? 0, al[3] ? 1 : 0, al[4] ? 1 : 0,
+        al[5] ?? i, al[6] ?? 100 + i,
+      ]);
       const areq = mg.allianceRequests ?? [];
       const past = mg.pastOutgoing ?? [];
       const plist = mg.playersList ?? [];
@@ -21864,7 +21935,7 @@ function runPL(name, ops) {
         uenc(smallID),
         ...plEnc(startTroops),
         ...plEnc(team),
-        [al5.length, ...al5.flatMap(([r, c, e, ra, ca]) => [uenc(r), uenc(c), uenc(e), uenc(ra), uenc(ca)])],
+        [al5.length, ...al5.flatMap(([r, c, e, ra, ca, id, cr]) => [uenc(r), uenc(c), uenc(e), uenc(ra), uenc(ca), uenc(id), uenc(cr)])],
         [tiles.length, ...tiles.map(uenc)],
         [borderTiles.length, ...borderTiles.map(uenc)],
         [mg.sg.length, ...mg.sg.map(uenc)],
@@ -21893,6 +21964,15 @@ function runPL(name, ops) {
         [mg.duc.length, ...mg.duc.map(uenc)],
         [mg.eac.length, ...mg.eac.map(uenc)],
         [mg.car.length, ...mg.car.flatMap(plEnc)],
+        // G3c4 tail: the unit/attack mocks and the mg surfaces toFullUpdate
+        // reads (getPlayerStats / owner / the two spawn-immunity flags).
+        [units.length, ...units.flatMap(([typ, level, uc, h]) => [...encS(typ), uenc(level), uc ? 1 : 0, uenc(h)])],
+        [atkOut.length, ...atkOut.flatMap(([att, tgt, tr, id, ret]) => [uenc(att), uenc(tgt), uenc(tr), ...encS(id), ret ? 1 : 0])],
+        [atkIn.length, ...atkIn.flatMap(([att, tgt, tr, id, ret]) => [uenc(att), uenc(tgt), uenc(tr), ...encS(id), ret ? 1 : 0])],
+        [mg.gs.length, ...mg.gs.flatMap(plEnc)],
+        [mg.owner.length, ...mg.owner.flatMap(plEnc)],
+        [mg.sia.length, ...mg.sia.map(uenc)],
+        [mg.nsia.length, ...mg.nsia.map(uenc)],
       ].flat();
       try {
         pl = new PL_CLS.PlayerImpl(
@@ -21904,7 +21984,7 @@ function runPL(name, ops) {
         );
         pl._tiles = new TileSet(tiles);
         pl._borderTiles = new TileSet(borderTiles);
-        pl._alliances = al5.map(([r, c, e, ra, ca], i) => ({
+        pl._alliances = al5.map(([r, c, e, ra, ca, id, cr], i) => ({
           alIdx: i,
           req: r,
           rec: c,
@@ -21913,6 +21993,8 @@ function runPL(name, ops) {
           other: (p) => (p === mocks[r] ? mocks[c] : mocks[r]),
           expiresAt: () => e,
           agreedToExtend: (p) => (p === mocks[r] ? !!ra : !!ca),
+          id: () => id,
+          createdAt: () => cr,
         }));
         pl._expiredAlliances = exp.map(([r, c]) => ({
           req: r,
@@ -21925,6 +22007,36 @@ function runPL(name, ops) {
           recipient: () => mocks[r],
           createdAt: () => ca,
         }));
+        // G3c4: the unit/attack mocks. The unit surface is what units() and
+        // hash() read; the attack surface what toFullUpdate reads plus the
+        // direct setTroops/setRetreating mutation ops.
+        pl._units = units.map(([typ, level, uc, h]) => ({
+          type: () => typ,
+          level: () => level,
+          isUnderConstruction: () => !!uc,
+          hash: () => {
+            curTr.push(131, h);
+            return h;
+          },
+        }));
+        const mkAtk = ([att, tgt, troops, id, ret]) => {
+          const m = { tr: troops, rt: !!ret };
+          return {
+            attacker: () => mocks[att],
+            target: () => mocks[tgt],
+            troops: () => m.tr,
+            id: () => id,
+            retreating: () => m.rt,
+            setTroops: (v) => {
+              m.tr = v;
+            },
+            setRetreating: (v) => {
+              m.rt = !!v;
+            },
+          };
+        };
+        pl._outgoingAttacks = atkOut.map(mkAtk);
+        pl._incomingAttacks = atkIn.map(mkAtk);
         if (selfTok !== undefined && selfTok >= 0) {
           mocks[selfTok] = pl;
           gTok.set(pl, selfTok);
@@ -21937,8 +22049,21 @@ function runPL(name, ops) {
       const mid = a[0];
       const rest = a.slice(1);
       args = [uenc(mid)];
-      for (const x of rest) args.push(...plEnc(x));
-      let r;
+      // G3c4: mids 115-117 read RAW f64 args on the Rust side; 104 mixes an
+      // encS'd type with RAW level/uc; 96-103 take raw encS'd type strings
+      // (the harness `c.s()` reader). Everything else crosses as plEnc'd
+      // JsVals.
+      if (mid === 115 || mid === 116 || mid === 117) {
+        for (const x of rest) args.push(uenc(x));
+      } else if (mid === 104) {
+        args.push(...encS(rest[0]));
+        for (let i = 1; i < rest.length; i++) args.push(uenc(rest[i]));
+      } else if (mid === 96 || mid === 97 || mid === 98 || mid === 100 || mid === 101 || mid === 102 || mid === 103) {
+        for (const x of rest) args.push(...encS(x));
+      } else {
+        for (const x of rest) args.push(...plEnc(x));
+      }
+      let r, so, ao;
       try {
         let v;
         switch (mid) {
@@ -22038,10 +22163,75 @@ function runPL(name, ops) {
           case 92: pl.stopEmbargo(mocks[rest[0]]); v = undefined; break;
           case 93: pl.endTemporaryEmbargo(mocks[rest[0]]); v = undefined; break;
           case 94: v = pl.tradingPartners().map((p) => gTok.get(p)); break;
+          // ---- G3c4: units, hash, profile and toUpdate ----
+          case 95: v = pl.units().map(plUnitTriple); break;
+          case 96: v = pl.units(rest[0]).map(plUnitTriple); break;
+          case 97: v = pl.units(rest[0], rest[1]).map(plUnitTriple); break;
+          case 98: v = pl.units(rest[0], rest[1], rest[2]).map(plUnitTriple); break;
+          case 99: v = pl.units(rest[0]).map(plUnitTriple); break;
+          case 100: v = pl.unitsConstructed(rest[0]); break;
+          case 101: v = pl.unitCount(rest[0]); break;
+          case 102: v = pl.unitsOwned(rest[0]); break;
+          case 103: pl.recordUnitConstructed(rest[0]); v = undefined; break;
+          case 104: {
+            // Harness buildUnit bookkeeping: push the unit mock (hash 0) and
+            // bump the version — no mg, no recordUnitConstructed.
+            pl._units.push({
+              type: () => rest[0],
+              level: () => rest[1],
+              isUnderConstruction: () => !!rest[2],
+              hash: () => {
+                curTr.push(131, 0);
+                return 0;
+              },
+            });
+            pl._myUnitsVersion++;
+            v = undefined;
+            break;
+          }
+          case 105: pl._myUnitsVersion++; v = undefined; break;
+          case 106: v = pl.playerProfile(); break;
+          case 107: v = pl.toString(); break;
+          case 108: v = pl.hash(); break;
+          case 109: pl.conquer(rest[0]); v = undefined; break;
+          case 110: pl.relinquish(rest[0]); v = undefined; break;
+          case 111: v = pl.isImmune(); break;
+          case 112: v = rest.length > 1 ? pl.canAttackPlayer(mocks[rest[0]], rest[1]) : pl.canAttackPlayer(mocks[rest[0]]); break;
+          case 113: v = pl.outgoingAttacks().map((atk, i) => i); break;
+          case 114: v = pl.incomingAttacks().map((atk) => pl._incomingAttacks.indexOf(atk)); break;
+          case 115: {
+            so = rest[0] ? [] : undefined;
+            ao = rest[1] ? [] : undefined;
+            v = pl.toUpdate(so, ao);
+            break;
+          }
+          case 116: {
+            const arr = rest[0] === 0 ? pl._outgoingAttacks : pl._incomingAttacks;
+            if (arr[rest[1]]) arr[rest[1]].setTroops(rest[2]);
+            v = undefined;
+            break;
+          }
+          case 117: {
+            const arr = rest[0] === 0 ? pl._outgoingAttacks : pl._incomingAttacks;
+            if (arr[rest[1]]) arr[rest[1]].setRetreating(rest[2]);
+            v = undefined;
+            break;
+          }
           default: throw new Error(`pl harness: unknown mid ${mid}`);
         }
         if (mid === 38) r = v === null ? [0, 2] : [0, 7, 2, 3, v.req, 3, v.rec];
-        else r = [0, ...plEnc(v)];
+        else if (mid === 115) {
+          // [0, normPU(v), soLen, ...so, aoLen, ...ao] — the quint/quad
+          // arrays cross as RAW numbers (the Rust pushes them verbatim).
+          r = [
+            0,
+            ...plEnc(normPU(v)),
+            uenc(so ? so.length : 0),
+            ...(so ?? []).map(uenc),
+            uenc(ao ? ao.length : 0),
+            ...(ao ?? []).map(uenc),
+          ];
+        } else r = [0, ...plEnc(v)];
       } catch (e) {
         r = [1, ...encS(e.message)];
       }
@@ -22077,6 +22267,11 @@ const PL_MG = (o = {}) => ({
   duc: o.duc ?? [0],
   eac: o.eac ?? [0],
   car: o.car ?? [null],
+  // G3c4: the toFullUpdate mg surfaces.
+  gs: o.gs ?? [null],
+  owner: o.owner ?? [null],
+  sia: o.sia ?? [0],
+  nsia: o.nsia ?? [0],
 });
 
 runPL("pl_ctor", [
@@ -22358,6 +22553,126 @@ runPL("pl_alliance_info", [
   [1, 62, 0],
   [1, 64, 0],
   [1, 65],
+]);
+
+// G3c4: the units memos (version-gated), recordUnitConstructed, the harness
+// addUnit/version ops and hash.
+runPL("pl_units_memos", [
+  [0, plPI({ id: "um1", name: "uni", playerType: "HUMAN" }), 30, 100, null, [], [], [], PL_MG({ sg: [100] }), [plP()], -1, [],
+    [["Infantry", 1, 0, 11], ["Tank", 2, 0, 22], ["Infantry", 3, 1, 33], ["Warship", 1, 0, 44]]],
+  [1, 95], [1, 96, "Infantry"], [1, 96, "Infantry"], [1, 97, "Infantry", "Tank"],
+  [1, 98, "Infantry", "Tank", "Warship"], [1, 99, []], [1, 99, ["Tank"]],
+  [1, 100, "Infantry"], [1, 103, "Infantry"], [1, 103, "Infantry"], [1, 103, "Tank"],
+  [1, 100, "Infantry"], [1, 100, "Tank"], [1, 100, "Warship"],
+  [1, 101, "Infantry"], [1, 101, "Infantry"], [1, 102, "Infantry"], [1, 102, "Tank"],
+  [1, 104, "Tank", 5, 0], [1, 101, "Infantry"], [1, 96, "Infantry"], [1, 102, "Tank"],
+  [1, 105], [1, 96, "Infantry"], [1, 108],
+]);
+
+// G3c4: toUpdate full → diff transitions (gold/troops/tiles ride the quint,
+// isDisconnected/targets/emojis/embargoes the diff), with the markers on/off.
+runPL("pl_update_full_diff", [
+  [0, plPI({ id: "pu2", name: "upd", playerType: "HUMAN" }), 31, 100, null, [], [1], [], PL_MG({ sg: [0], ticks: [10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130, 140, 150, 160, 170, 180], gs: [null, null, null, null, null, null, null, null], tdur: [1000000], emd: [1000000], emc: [1000000] }),
+    [plP({ pid: 71 })], -1],
+  [1, 115, 1, 1],
+  [1, 26, 50],
+  [1, 115, 1, 1],
+  [1, 16, 5],
+  [1, 42, 7],
+  [1, 115, 1, 1],
+  [1, 31, true],
+  [1, 115],
+  [1, 72, 0],
+  [1, 75, 0, "wave"],
+  [1, 91, 0, 0],
+  [1, 115, 1, 1],
+  [1, 26, 7],
+  [1, 115, 1, 1],
+]);
+
+// G3c4: the social fields of the update — outgoingAllianceRequests, the
+// alliance view cutoff, embargo set diff, spawnTile, deathStats flips.
+runPL("pl_update_social", [
+  [0, plPI({ id: "ps3", name: "soc", playerType: "HUMAN" }), 32, 100, "Red", [[0, 1, 5000, 0, 1, 7, 42]], [1], [],
+    PL_MG({ sg: [0], ticks: [4500, 4501, 4502, 4503, 4504, 4505, 4506, 4507, 4508, 4509, 4510, 4511, 4512, 4513], off: [1000], gs: [null, null, null, { killedBy: "g1", deathPosition: 9 }, null, null], allianceRequests: [[0, 1]] }),
+    [plP({ pid: 71 }), plP({ pid: 72 })], 0],
+  [1, 115],
+  [1, 26, 30],
+  [1, 115, 1],
+  [1, 91, 1, 0],
+  [1, 115],
+  [1, 12, 33],
+  [1, 115],
+  [1, 115],
+  [1, 16, 3],
+  [1, 115, 1, 1],
+]);
+
+// G3c4: the quint gold edges — the 2^53 domain, gold falling back to the
+// previous value while goldEarned moved (the independent comparison), tiles.
+runPL("pl_update_gold_edge", [
+  [0, plPI({ id: "pg4", name: "gld", playerType: "HUMAN" }), 41, 100, null, [], [1], [], PL_MG({ sg: [0], gs: [null, null, null, null, null, null] }), [plP()], -1],
+  [1, 115, 1],
+  [1, 26, 9007199254740991],
+  [1, 115, 1],
+  [1, 27, 9007199254740991],
+  [1, 26, 30],
+  [1, 27, 30],
+  [1, 115, 1],
+  [1, 26, 50],
+  [1, 27, 50],
+  [1, 115, 1],
+  [1, 42, 9],
+  [1, 115, 1],
+]);
+
+// G3c4: the misc small methods — profile, toString, hash, conquer,
+// relinquish (owner gate + throw), the immunity paths and canAttackPlayer.
+runPL("pl_misc_small", [
+  [0, plPI({ id: "pm5", name: "misc", playerType: "HUMAN" }), 42, 100, null, [[3, 0, 9000, 0, 0, 5, 7]], [2, 3], [],
+    PL_MG({ sg: [100], sia: [1, 0], owner: [null, 3, null], gs: [null] }),
+    [plP({ pid: 81, typ: "NATION", immune: [0, 1] }), plP({ pid: 82 })], 3,
+    [], [["Infantry", 1, 0, 11]], [[0, 1, 400, "m1", 0]], [[1, 0, 250, "m2", 0]]],
+  [1, 69, 0, 3],
+  [1, 106],
+  [1, 107],
+  [1, 108],
+  [1, 109, 44],
+  [1, 110, 44],
+  [1, 110, 44],
+  [1, 110, 44],
+  [1, 111],
+  [1, 111],
+  [1, 112, 0],
+  [1, 112, 0, true],
+  [1, 112, 1],
+  [1, 113],
+  [1, 114],
+  [1, 69, 1, 2],
+  [1, 106],
+]);
+
+// G3c4: selfTok hits — self as the attack attacker/target, the NATION
+// canAttackPlayer branch (no immunity probe), incoming alive-filter drops
+// and the pack quads / membership diffs around them.
+runPL("pl_units_attack_self", [
+  [0, plPI({ id: "pa6", name: "self", playerType: "NATION" }), 43, 100, null, [], [1], [],
+    PL_MG({ sg: [100], nsia: [1, 0], owner: [0, null], gs: [null, null, null, null, null, null] }),
+    [plP({ pid: 91 }), plP({ pid: 92, alive: [1, 0] })], 0,
+    [], [["Tank", 2, 0, 21]], [[0, 1, 300, "s1", 0]], [[1, 0, 200, "s2", 0]]],
+  [1, 110, 60],
+  [1, 110, 60],
+  [1, 111],
+  [1, 112, 1],
+  [1, 113],
+  [1, 108],
+  [1, 115, 1, 1],
+  [1, 116, 1, 0, 77],
+  [1, 115, 1, 1],
+  [1, 117, 0, 0, 1],
+  [1, 115, 1, 1],
+  [1, 115, 1, 1],
+  [1, 111],
 ]);
 
 // ---- pl_ scenarios end ------------------------------------------------------
@@ -26040,7 +26355,16 @@ opStream(
     "/// 129 other.addGold [129,pid,n], 130 mg.players [130,n,(tok)*]. Players\n" +
     "/// cross as TOKENS (indices into the harness players table; selfTok >= 0\n" +
     "/// puts the object under test into a slot so === identity gates fire).\n" +
-    "/// Gold/troops are bigint and cross as f64 in the |v| <= 2^53 domain.",
+    "/// Gold/troops are bigint and cross as f64 in the |v| <= 2^53 domain.\n" +
+    "/// G3c4: the construct tail adds nUnits,(encS type, level, uc01, hash)*,\n" +
+    "/// nAtkOut,(attTok,tgtTok,troops,encS id,ret01)*, nAtkIn,(...)*, gsVals,\n" +
+    "/// ownerVals, siaScript, nsiaScript; the players block gains an immune\n" +
+    "/// script per player and the alliance tuples gain (id, createdAt).\n" +
+    "/// Mids 95-117 (see player_impl.rs); facade events 131 unit.hash, 132\n" +
+    "/// mg.conquer, 133 mg.owner, 134 mg.relinquish, 135/136 the spawn\n" +
+    "/// immunities (raw values), 137 other.isImmune [pid,01], 138\n" +
+    "/// getPlayerStats. Mids 115-117 cross RAW args; 115's result is\n" +
+    "/// [0,...encVal(normPU),soLen,...so,aoLen,...ao].",
 );
 
 const dataDir = join(root, "crates", "core", "tests", "data");

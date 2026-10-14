@@ -455,6 +455,141 @@ pub fn diff_player_update(prev: &PlayerUpdate, next: &PlayerUpdate) -> Vec<f64> 
     out
 }
 
+/// The field indices a [`diff_player_update`] stream reports, in emission
+/// order — recovered by skipping each field's value tokens (every layout is
+/// one of the `push_*` writers above). The player harness rebuilds the diff
+/// as a wire `JsVal` from these indices, so the changed-field set always
+/// comes from the real comparator set instead of a re-implementation.
+pub fn diff_changed_indices(stream: &[f64]) -> Vec<f64> {
+    let mut i = 0usize;
+    if stream.is_empty() || stream[i] == 0.0 {
+        return Vec::new(); // `[0]` — nothing changed
+    }
+    i += 1; // the `1` marker
+    let n = stream[i] as usize; // push_string(id) length prefix
+    i += 1 + n;
+    let mut out = Vec::new();
+    while i < stream.len() {
+        let idx = stream[i];
+        i += 1;
+        skip_diff_value(stream, &mut i, idx);
+        out.push(idx);
+    }
+    out
+}
+
+fn skip_units(a: &[f64], i: &mut usize) {
+    let n = a[*i] as usize;
+    *i += 1 + n;
+}
+
+fn skip_opt3_string(a: &[f64], i: &mut usize) {
+    let c = a[*i];
+    *i += 1;
+    if c == 2.0 {
+        skip_units(a, i);
+    }
+}
+
+fn skip_opt3_num(a: &[f64], i: &mut usize) {
+    let c = a[*i];
+    *i += 1;
+    if c == 2.0 {
+        *i += 1;
+    }
+}
+
+fn skip_arr_num(a: &[f64], i: &mut usize) {
+    let c = a[*i];
+    *i += 1;
+    if c != 0.0 {
+        let n = a[*i + 1] as usize; // refid, len
+        *i += 2 + n;
+    }
+}
+
+fn skip_arr_str(a: &[f64], i: &mut usize) {
+    let c = a[*i];
+    *i += 1;
+    if c != 0.0 {
+        let n = a[*i + 1] as usize;
+        *i += 2;
+        for _ in 0..n {
+            skip_units(a, i);
+        }
+    }
+}
+
+fn skip_arr_emoji(a: &[f64], i: &mut usize) {
+    let c = a[*i];
+    *i += 1;
+    if c != 0.0 {
+        let n = a[*i + 1] as usize;
+        *i += 2;
+        for _ in 0..n {
+            skip_units(a, i); // message
+            *i += 1; // senderID
+            if a[*i] == 1.0 {
+                *i += 2; // recipientID: [1, n]
+            } else {
+                *i += 1; // [0] = "AllPlayers"
+            }
+            *i += 1; // createdAt
+        }
+    }
+}
+
+fn skip_arr_attack(a: &[f64], i: &mut usize) {
+    let c = a[*i];
+    *i += 1;
+    if c != 0.0 {
+        let n = a[*i + 1] as usize;
+        *i += 2;
+        for _ in 0..n {
+            *i += 3; // attackerID, targetID, troops
+            skip_units(a, i); // id
+            *i += 1; // retreating
+        }
+    }
+}
+
+fn skip_arr_alliance(a: &[f64], i: &mut usize) {
+    let c = a[*i];
+    *i += 1;
+    if c != 0.0 {
+        let n = a[*i + 1] as usize;
+        *i += 2;
+        for _ in 0..n {
+            *i += 1; // id
+            skip_units(a, i); // other
+            *i += 2; // createdAt, expiresAt
+            *i += 1; // hasExtensionRequest
+        }
+    }
+}
+
+/// One `diffPlayerUpdate` field's value-token layout (the `D_*` mirror).
+fn skip_diff_value(a: &[f64], i: &mut usize, idx: f64) {
+    match idx as u32 {
+        // opt3 string: clientID name displayName clanTag nationFlag team
+        // playerType killedBy
+        0 | 1 | 2 | 3 | 4 | 5 | 7 | 10 => skip_opt3_string(a, i),
+        // opt3 num: smallID deathPosition tradeGold trainGold piracyGold
+        // traitorRemainingTicks markedDoomsdayClockTick spawnTile betrayals
+        // lastDeleteUnitTick
+        6 | 11 | 12 | 13 | 14 | 16 | 18 | 21 | 22 | 23 => skip_opt3_num(a, i),
+        // opt3 bool: isAlive isDisconnected isTraitor inDoomsdayClock
+        // isDecaying hasSpawned isLobbyCreator
+        8 | 9 | 15 | 17 | 19 | 20 | 24 => skip_opt3_num(a, i),
+        25 | 26 => skip_arr_num(a, i),
+        27 | 28 => skip_arr_str(a, i),
+        29 => skip_arr_emoji(a, i),
+        30 | 31 => skip_arr_attack(a, i),
+        32 => skip_arr_alliance(a, i),
+        _ => {}
+    }
+}
+
 // ---------------------------------------------------------------------------
 // applyStateUpdate
 // ---------------------------------------------------------------------------

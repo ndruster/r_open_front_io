@@ -2316,13 +2316,13 @@ WebSockets — stays excluded, mirroring the `src/core` exclusions).
     disconnect cluster + G3c2: the traitor / doomsday-clock / decay /
     expired-alliances / allies cluster + G3c3: the player-to-player social
     surface — alliance-request mgmt, relations, targets, emoji/quickchat,
-    donations, deleteUnit, embargo; units memos/spawn-family/toUpdate land in
-    G3c4+). The harness replicates the
+    donations, deleteUnit, embargo + G3c4: the units-memo / toUpdate / misc
+    cluster; spawn-family lands in G3c5). The harness replicates the
     slice's private field block 1:1 and runs the ctor and every method as a
     `kind` of `PlayerHarness::run_op` over the `js_json` codec (precedent
     `unit_impl` / `attack_impl`). The `mg` (GameImpl) surface and the other
     players are scripted facades whose every call rides a flat trace (G3c1
-    segment 100-106, G3c2 adds 107-108, G3c3 adds 109-130): `100 config().startingGold` (the scripted f64 crosses
+    segment 100-106, G3c2 adds 107-108, G3c3 adds 109-130, G3c4 adds 131-138): `100 config().startingGold` (the scripted f64 crosses
     `BigInt(v)` BEFORE the trace push — a non-integer throws first), `101
     mg.addUpdate` (full codec dump), `102 mg.ticks`, `103 mg.teamTilesOwned`
     (the team arg crosses in the trace), `104 mg.totalLandTiles`, `105
@@ -2419,14 +2419,52 @@ WebSockets — stays excluded, mirroring the `src/core` exclusions).
     THEN unconditionally fires 101-stop; `endTemporaryEmbargo` runs
     `stopEmbargo` even for a MISSING entry; `canEmbargoAll` scans `mg.players`
     (130) skipping self-by-id and `BOT` type (untraced) and same-team (106
-    counts). 33 scenarios (`pl_ctor` / NaN start /
+    counts). G3c4: the units cluster reads the `_myUnitsVersion`-keyed memos
+    observation-equivalently (the port always re-walks): `units()`' four
+    overloads (no-arg / `[...types]` with an EMPTY array returning `_units`
+    verbatim / 1-3 fixed types) filter the unit mocks, `unitCount` sums
+    levels, `unitsOwned` counts `uc ? +1 : level`, `unitsConstructed` reads
+    the insertion-ordered upsert `numUnitsConstructed` map that
+    `recordUnitConstructed` maintains. The unit mocks cross as
+    (type, level, uc01, hash) tuples; `hash()` reduces `simpleHash(id) *
+    (troops + numTilesOwned) + Σ unit.hash` with every unit's hash firing
+    131. `conquer` fires 132; `relinquish` gates on `mg.owner(tile)` (133)
+    hitting the self token (gTok identity) before 134, otherwise throws
+    `Cannot relinquish tile not owned by this player`; `isImmune` maps HUMAN
+    → 135 / NATION → 136 (the spawn-immunity scripts cross RAW f64 values,
+    `!!`-normalised) and anything else → false; `canAttackPlayer`
+    short-circuits — non-HUMAN attackers skip the immunity probe entirely,
+    HUMAN probes `other.isImmune()` (137) FIRST then isFriendly.
+    `outgoingAttacks` hands out the raw mock indices; `incomingAttacks` runs
+    the attacker-isAlive filter (127 per entry). `toUpdate` mirrors the
+    worker→main wire: the first call returns the full snapshot, later calls
+    the field-level diff (the real ported `diffPlayerUpdate` token stream
+    rebuilt into JsVals) with the `[smallID, tilesOwned, gold, troops,
+    goldEarned]` quint pushed to `statsOut` whenever any of the four moved
+    (goldEarned gets its own comparison — addGold-then-removeGold still
+    flushes) and `packAttackTroopDeltas` quads to `attackTroopsOut`;
+    `lastSentUpdate` is replaced by the full snapshot on EVERY call. The
+    direct mutation ops 116/117 (setTroops / setRetreating on the mock
+    attacks) drive the pack quads and the membership diffs. The construct
+    tail gains the unit/attack mock blocks and the toFullUpdate mg surfaces
+    (getPlayerStats 138 — the deathStats object crosses as a JsVal, owner
+    133, the two spawn immunities 135/136), the players block gains a
+    scripted `isImmune()` FIFO, and the alliance tuples gain (id, createdAt).
+    `playerProfile` pins the JS plain-object key order: `Object.fromEntries`'s
+    smallID keys are canonical array indices that JS re-numbers ascending —
+    the allRelationsSorted order only survives for string-key tails — so the
+    port re-orders the relations obj the same way. `toString`'s literal keeps
+    the trailing `]` and the `numTileOwned` spelling. 39 scenarios
+    (`pl_ctor` / NaN start /
     missing-pi / troops / gold / disconnect / no-team disconnect / team /
     team-self / friendly / alliance-gates / tiles / big-gold / traitor /
     doomsday / doomsday-dead / decay-edge / expired-allies /
     expired-allies-noself / relations / relations-self / targets / transitive /
     emoji / emoji-self / quickchat / donate / donate-self / delete-unit /
-    embargo / embargo-all / alliance-req / alliance-info, 343 ops),
-    867,820 wasm comparisons bit-identical.
+    embargo / embargo-all / alliance-req / alliance-info + G3c4: units-memos /
+    update-full-diff / update-social / update-gold-edge / misc-small /
+    units-attack-self, 440 ops),
+    871,652 wasm comparisons bit-identical.
 
 Regenerate whenever a ported source changes:
 

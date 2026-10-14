@@ -2311,23 +2311,34 @@ WebSockets — stays excluded, mirroring the `src/core` exclusions).
     fractional→trunc, `+Infinity`/past-end→len). 23 scenarios (`alliance` 6 /
     `alliancerequest` 4 / `attack` 13, 173 ops), 863,409 wasm comparisons
     bit-identical.
-80. **`game/PlayerImpl.ts`** (`playerimpl`) — the player entity, first bounded
-    slice (G3c1: the identity / info / state / gold / troops / team / disconnect
-    cluster + G3c2: the traitor / doomsday-clock / decay / expired-alliances /
-    allies cluster; relations/donations/embargo/alliance-request-mgmt/targets/
-    units memos/spawn-family/toUpdate land in G3c3+). The harness replicates the
+80. **`game/PlayerImpl.ts`** (`playerimpl`) — the player entity, bounded
+    slices (G3c1: the identity / info / state / gold / troops / team /
+    disconnect cluster + G3c2: the traitor / doomsday-clock / decay /
+    expired-alliances / allies cluster + G3c3: the player-to-player social
+    surface — alliance-request mgmt, relations, targets, emoji/quickchat,
+    donations, deleteUnit, embargo; units memos/spawn-family/toUpdate land in
+    G3c4+). The harness replicates the
     slice's private field block 1:1 and runs the ctor and every method as a
     `kind` of `PlayerHarness::run_op` over the `js_json` codec (precedent
     `unit_impl` / `attack_impl`). The `mg` (GameImpl) surface and the other
     players are scripted facades whose every call rides a flat trace (G3c1
-    segment 100-106, G3c2 adds 107-108): `100 config().startingGold` (the scripted f64 crosses
+    segment 100-106, G3c2 adds 107-108, G3c3 adds 109-130): `100 config().startingGold` (the scripted f64 crosses
     `BigInt(v)` BEFORE the trace push — a non-integer throws first), `101
-    mg.addUpdate` (full BonusEvent codec dump, key order
-    type/player/tile/gold/troops), `102 mg.ticks`, `103 mg.teamTilesOwned`
+    mg.addUpdate` (full codec dump), `102 mg.ticks`, `103 mg.teamTilesOwned`
     (the team arg crosses in the trace), `104 mg.totalLandTiles`, `105
     other.isDisconnected` (`!!`-normalised), `106 other.team`, `107
     mg.stats().betray(this)` (the capture pushes `this.smallID()`), `108
-    config().traitorDuration`. Players cross
+    config().traitorDuration`; G3c3: `109 allianceExtensionPromptOffset`, `110
+    disableAlliances` (JsVal truthy gate), `111 allianceRequestCooldown`, `112
+    targetCooldown`, `113 targetDuration`, `114 emojiMessageDuration`, `115
+    emojiMessageCooldown`, `116 quickChatCooldown`, `117 donateGold` / `118
+    donateTroops` (JsVal `=== false` gates), `119 donateCooldown`, `120
+    deleteUnitCooldown`, `121 embargoAllCooldown`, `122 createAllianceRequest`
+    (scripted return crosses in the trace), `123 breakAlliance` (the alliance
+    crosses as its `_alliances` index), `124
+    removeAlliancesByPlayerSilently`, `125 target`, `126 sendEmojiUpdate`,
+    `127 other.isAlive`, `128 other.addTroops`, `129 other.addGold`, `130
+    mg.players` (the returned list crosses as tokens). Players cross
     as TOKENS; `selfTok >= 0` puts the object under test into a table slot so
     the `other === this` identity gates fire naturally.
     *Faithfulness:* the ctor's class-field order — `_troops = toInt(startTroops)`
@@ -2372,12 +2383,50 @@ WebSockets — stays excluded, mirroring the `src/core` exclusions).
     requestor` — so the self slot at the REQUESTOR position flips to the
     recipient, while the self at the recipient position (or a player under test
     in neither seat) stays the requestor; `expiredAlliances()` returns a fresh
-    `[...]` copy of the field. 19 scenarios (`pl_ctor` / NaN start /
+    `[...]` copy of the field. G3c3: `allianceInfo` reads `expiresAt()` (untraced
+    constant) then fires 102 → 109 before the `canExtend` &&-chain (`this.
+    isDisconnected()` untraced → 105 → `this.isAlive()` untraced → 127), and the
+    returned object's key order is the TS literal's declaration order; the
+    alliance mocks are now FIVE-tuples (req, rec, expiresAt, reqAgree,
+    recAgree) with `agreedToExtend(p)` = `p === requestor ? reqAgree :
+    recAgree`. `canSendAllianceRequest` orders its gates 110-truthy → self →
+    105-pair → friendly/alive → pending/incoming scan → past-request cooldown
+    (102 then 111, `pastOutgoingAllianceRequests` filtered to the recipient and
+    sorted `createdAt` DESCENDING by the V8-stable sort); a `disableAlliances`
+    script of TRUTHY non-bool values (strings, numbers, objects) still blocks.
+    `updateRelation`'s `relation + delta` is the JS `+` — a STRING delta
+    concatenates (`0 + "5" === "05"` → 5, NaN propagates), then `within(v,
+    -100, 100)` = `min(max(v,-100),100)`; `decayRelations` replays
+    `-1*Math.sign(r)` with Map-insertion-order in-place sets;
+    `allRelationsSorted` sorts a COPY by relation ASCENDING (V8 stable, NaN
+    comparator → Equal) and maps NaN-containing values through
+    `relationFromValue` (NaN falls to Friendly). `canTarget`'s cooldown scan
+    fires 102+112 per existing target up to the first hit; `transitiveTargets`
+    = allies' `targets()` (untraced constant lists) then own, `[...new Set]`
+    first-occurrence dedup over tokens. `sendEmoji`'s msg key order is
+    message/senderID/recipientID/createdAt and the recipient crosses as the
+    literal `"AllPlayers"` string or the mock's `smallID()`;
+    `outgoingEmojis` filters 102+114 per message then sorts `createdAt`
+    descending; `canSendQuickChat`'s `lastSentAt === undefined` short-circuits
+    BOTH facades. Donations: the `117`/`118` config gates are `=== false`
+    (undefined passes), the DonateEvent update's `amount` is a BIGINT that the
+    capture codec falls into the object branch — `Object.keys(100n) === []` —
+    so it crosses as an EMPTY OBJECT, and `sentDonations` pushes BEFORE 101;
+    `donateTroops`' `troops <= 0` / `removeTroops === 0` gates and
+    `donateGold`'s `gold <= 0n` gate folded into `removeGold` are observation-
+    equivalent. Embargoes: `addEmbargo` on a live NON-temporary entry returns
+    early (no facades); otherwise 101-start then 102; `stopEmbargo` deletes
+    THEN unconditionally fires 101-stop; `endTemporaryEmbargo` runs
+    `stopEmbargo` even for a MISSING entry; `canEmbargoAll` scans `mg.players`
+    (130) skipping self-by-id and `BOT` type (untraced) and same-team (106
+    counts). 33 scenarios (`pl_ctor` / NaN start /
     missing-pi / troops / gold / disconnect / no-team disconnect / team /
     team-self / friendly / alliance-gates / tiles / big-gold / traitor /
     doomsday / doomsday-dead / decay-edge / expired-allies /
-    expired-allies-noself, 227 ops),
-    865,613 wasm comparisons bit-identical.
+    expired-allies-noself / relations / relations-self / targets / transitive /
+    emoji / emoji-self / quickchat / donate / donate-self / delete-unit /
+    embargo / embargo-all / alliance-req / alliance-info, 343 ops),
+    867,820 wasm comparisons bit-identical.
 
 Regenerate whenever a ported source changes:
 

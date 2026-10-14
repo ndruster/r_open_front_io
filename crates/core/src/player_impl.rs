@@ -32,7 +32,50 @@
 //! `enterDoomsdayClock` / `clearDoomsdayClock` / `markRotted` / `isDecaying`
 //! (874-907) over the `markedTraitorTick` / `markedDoomsdayClockTick` /
 //! `rottedAtTick` / `_betrayalCount` fields and the module-level
-//! `DECAY_CUE_GRACE_TICKS = 30` (71).
+//! `DECAY_CUE_GRACE_TICKS = 30` (71). G3c3 adds the player-to-player
+//! social surface: `incomingAllianceRequests` / `outgoingAllianceRequests`
+//! (734-740, over the mg `allianceRequests` property array),
+//! `allianceInfo` / `canSendAllianceRequest` (772-841), `breakAlliance` /
+//! `removeAllAlliances` / `createAllianceRequest` (843-849, 913-918),
+//! `relation` / `allRelationsSorted` / `updateRelation` / `decayRelations`
+//! (920-970), `canTarget` / `target` / `targets` / `transitiveTargets`
+//! (972-1006), `sendEmoji` / `outgoingEmojis` / `canSendEmoji` (1008-1050),
+//! `canSendQuickChat` / `recordQuickChat` (1052-1065), the donations
+//! cluster `canDonateGold` / `canDonateTroops` / `donateTroops` /
+//! `donateGold` (1067-1165), `canDeleteUnit` / `recordDeleteUnit`
+//! (1167-1176) and the embargo cluster `canEmbargoAll` /
+//! `recordEmbargoAll` / `hasEmbargoAgainst` / `canTrade` / `getEmbargoes` /
+//! `addEmbargo` / `stopEmbargo` / `endTemporaryEmbargo` /
+//! `tradingPartners` (1178-1253) over the `relations` / `targets_` /
+//! `outgoingEmojis_` / `outgoingQuickChats_` / `sentDonations` /
+//! `embargoes` / `lastDeleteUnitTick` / `lastEmbargoAllTick` fields and
+//! the scripted `pastOutgoingAllianceRequests` constant.
+//!
+//! G3c3 facade surface (event segment 109-130, all scripted):
+//!
+//! * 109-121 `mg.config().X()` — 109 allianceExtensionPromptOffset, 110
+//!   disableAlliances (codec value, truthy gate), 111
+//!   allianceRequestCooldown, 112 targetCooldown, 113 targetDuration, 114
+//!   emojiMessageDuration, 115 emojiMessageCooldown, 116 quickChatCooldown,
+//!   117 donateGold (codec value, `=== false` gate), 118 donateTroops
+//!   (same), 119 donateCooldown, 120 deleteUnitCooldown, 121
+//!   embargoAllCooldown. The f64 scripts trace `[code, ret]`, the codec
+//!   scripts `[code, ...encVal(v)]`.
+//! * 122 `mg.createAllianceRequest(this, recipient)` -> `[122, tok,
+//!   ...encVal(ret)]` (the return is scripted: null or a request token).
+//! * 123 `mg.breakAlliance(this, alliance)` -> `[123, alIdx]`.
+//! * 124 `mg.removeAlliancesByPlayerSilently(this)` -> `[124]`.
+//! * 125 `mg.target(this, other)` -> `[125, otherPid]`.
+//! * 126 `mg.sendEmojiUpdate(msg)` -> `[126, ...encVal(msg)]` (key order
+//!   message/senderID/recipientID/createdAt).
+//! * 127 `other.isAlive()` -> `[127, pid, ret01]` (`!!v` normalised).
+//! * 128 `other.addTroops(n)` -> `[128, pid, n]`.
+//! * 129 `other.addGold(n)` -> `[129, pid, n]` (n is the removed bigint,
+//!   crossing as a number).
+//! * 130 `mg.players()` -> `[130, n, (tok)*]` (the scripted token list).
+//! * `other.smallID()` / `other.id()` / `other.type()` /
+//!   `other.hasEmbargoAgainst(this)` / `other.targets()` and the alliance
+//!   mocks' `expiresAt()` / `agreedToExtend()` are untraced constant reads.
 //!
 //! Facade (mock) surface — the capture scripts these, every call traced
 //! (G3c1 event segment 100-106):
@@ -171,6 +214,14 @@ impl<'a> Cur<'a> {
     fn val(&mut self) -> JsVal {
         read_val(self.0, &mut self.1)
     }
+    fn s(&mut self) -> String {
+        read_str(self.0, &mut self.1)
+    }
+    /// `[n, (encVal)*n]` — the JsVal script blocks (da / dg / dt / car, emb).
+    fn val_list(&mut self) -> Vec<JsVal> {
+        let n = self.u();
+        (0..n).map(|_| self.val()).collect()
+    }
     /// The team script block `[n, (0 = null | 1 = string)*n]`.
     fn team_list(&mut self) -> Vec<JsVal> {
         let n = self.u();
@@ -293,13 +344,52 @@ fn mid_property(mid: u8) -> &'static str {
         57 => "markRotted",
         58 => "isDecaying",
         59 => "betrayals",
+        // G3c3: the player-to-player social surface.
+        60 => "incomingAllianceRequests",
+        61 => "outgoingAllianceRequests",
+        62 => "allianceInfo",
+        63 => "canSendAllianceRequest",
+        64 => "breakAlliance",
+        65 => "removeAllAlliances",
+        66 => "createAllianceRequest",
+        67 => "relation",
+        68 => "allRelationsSorted",
+        69 => "updateRelation",
+        70 => "decayRelations",
+        71 => "canTarget",
+        72 => "target",
+        73 => "targets",
+        74 => "transitiveTargets",
+        75 => "sendEmoji",
+        76 => "outgoingEmojis",
+        77 => "canSendEmoji",
+        78 => "canSendQuickChat",
+        79 => "recordQuickChat",
+        80 => "canDonateGold",
+        81 => "canDonateTroops",
+        82 => "donateTroops",
+        83 => "donateGold",
+        84 => "canDeleteUnit",
+        85 => "recordDeleteUnit",
+        86 => "canEmbargoAll",
+        87 => "recordEmbargoAll",
+        88 => "hasEmbargoAgainst",
+        89 => "canTrade",
+        90 => "getEmbargoes",
+        91 => "addEmbargo",
+        92 => "stopEmbargo",
+        93 => "endTemporaryEmbargo",
+        94 => "tradingPartners",
         _ => "unknown",
     }
 }
 
 /// One scripted player mock: pid, the `team()` script (codec values —
 /// `Null` / `Str`) and the `isDisconnected()` script (f64, `!!`-normalised
-/// into the trace).
+/// into the trace). G3c3 adds the constant `type()` string, the scripted
+/// `isAlive()` FIFO (event 127), the constant embargo id list
+/// (`hasEmbargoAgainst`, untraced) and the constant `targets()` token list
+/// (untraced).
 #[derive(Clone, Debug)]
 struct PlPlayer {
     pid: f64,
@@ -307,6 +397,11 @@ struct PlPlayer {
     team_i: usize,
     discs: Vec<f64>,
     disc_i: usize,
+    typ: String,
+    alives: Vec<f64>,
+    alive_i: usize,
+    emb: Vec<JsVal>,
+    tgts: Vec<usize>,
 }
 
 /// The bigint-or-string accumulator domain. The gold fields are typed
@@ -397,6 +492,148 @@ fn big_operand(v: &JsVal) -> Result<Op, String> {
     }
 }
 
+// ---- G3c3 helpers ----
+
+/// JS `===` over the codec domain (`SameValueZero` semantics for the
+/// scalar arm: NaN !== NaN, -0 === +0, cross-type always false). Obj/Arr
+/// compare by identity in JS; the social cluster never ===-compares them,
+/// so they simply never match here.
+fn js_strict_eq(a: &JsVal, b: &JsVal) -> bool {
+    match (a, b) {
+        (JsVal::Num(x), JsVal::Num(y)) => x == y,
+        (JsVal::Str(x), JsVal::Str(y)) => x == y,
+        (JsVal::Bool(x), JsVal::Bool(y)) => x == y,
+        (JsVal::Null, JsVal::Null) => true,
+        (JsVal::Undef, JsVal::Undef) | (JsVal::Absent, JsVal::Absent) => true,
+        _ => false,
+    }
+}
+
+/// JS `String(v)` (the template-literal interpolation): Arr ToPrimitives
+/// through `join(",")` (null/undefined elements -> "").
+fn js_to_string_val(v: &JsVal) -> String {
+    match v {
+        JsVal::Str(s) => s.clone(),
+        JsVal::Num(n) => crate::js_fixed::js_to_string(*n),
+        JsVal::Bool(b) => {
+            if *b {
+                "true".to_string()
+            } else {
+                "false".to_string()
+            }
+        }
+        JsVal::Null => "null".to_string(),
+        JsVal::Absent | JsVal::Undef => "undefined".to_string(),
+        JsVal::Obj(_) => "[object Object]".to_string(),
+        JsVal::Arr(items) => items
+            .iter()
+            .map(|x| match x {
+                JsVal::Null | JsVal::Absent | JsVal::Undef => String::new(),
+                other => js_to_string_val(other),
+            })
+            .collect::<Vec<_>>()
+            .join(","),
+    }
+}
+
+/// JS `Math.sign`: NaN -> NaN, ±0 preserved.
+fn js_sign(v: f64) -> f64 {
+    if v.is_nan() {
+        f64::NAN
+    } else if v > 0.0 {
+        1.0
+    } else if v < 0.0 {
+        -1.0
+    } else {
+        v
+    }
+}
+
+/// `relationFromValue` (PlayerImpl.ts:928): the Relation enum
+/// (Game.ts:327) — Hostile 0 / Distrustful 1 / Neutral 2 / Friendly 3; a
+/// NaN value fails all three `<` gates and lands on Friendly.
+fn relation_from_value(v: f64) -> f64 {
+    if v < -50.0 {
+        0.0
+    } else if v < 0.0 {
+        1.0
+    } else if v < 50.0 {
+        2.0
+    } else {
+        3.0
+    }
+}
+
+/// A scripted f64 facade read: FIFO with the exhausted-repeat rule, then
+/// `[code, ret]` on the trace (the 102/109/111-116/119-121 pattern).
+fn script_f64(list: &[f64], i: &mut usize, tr: &mut Vec<f64>, code: f64) -> f64 {
+    let v = take_f64(list, i);
+    tr.push(code);
+    tr.push(v);
+    v
+}
+
+/// Same for a codec-value script (`[code, ...encVal(v)]` — 110/117/118).
+fn script_val(list: &[JsVal], i: &mut usize, tr: &mut Vec<f64>, code: f64) -> JsVal {
+    let v = take_jsval(list, i);
+    tr.push(code);
+    push_val(tr, &v);
+    v
+}
+
+/// V8 `Array.prototype.sort` with a subtraction comparator: stable, and a
+/// NaN comparator result is treated as `+0` (Equal) — the
+/// `outgoingEmojis` / past-request descending ordering rule.
+fn js_sort_desc(pairs: &mut [(usize, f64)]) {
+    pairs.sort_by(|a, b| {
+        let d = b.1 - a.1;
+        if d.is_nan() || d == 0.0 {
+            std::cmp::Ordering::Equal
+        } else if d < 0.0 {
+            std::cmp::Ordering::Less
+        } else {
+            std::cmp::Ordering::Greater
+        }
+    });
+}
+
+/// Same rule ascending (`a.relation - b.relation`) — `allRelationsSorted`.
+fn js_sort_asc(pairs: &mut [(usize, f64)]) {
+    pairs.sort_by(|a, b| {
+        let d = a.1 - b.1;
+        if d.is_nan() || d == 0.0 {
+            std::cmp::Ordering::Equal
+        } else if d < 0.0 {
+            std::cmp::Ordering::Less
+        } else {
+            std::cmp::Ordering::Greater
+        }
+    });
+}
+
+/// One alliance mock: the (req, rec) token pair plus the G3c3
+/// `expiresAt()` / `agreedToExtend()` constants (`req_agree` is
+/// `agreedToExtend(requestor())`; `agreedToExtend(p)` is
+/// `p === requestor() ? reqAgree : recAgree`).
+#[derive(Clone, Copy, Debug)]
+struct AllianceMock {
+    req: usize,
+    rec: usize,
+    expires_at: f64,
+    req_agree: bool,
+    rec_agree: bool,
+}
+
+/// One `embargoes` entry (PlayerImpl.ts:1225-1229 key order); the map is
+/// keyed by `other.id()` (a JsVal — mock pids cross as `Num`) and keeps JS
+/// insertion order.
+#[derive(Clone, Debug)]
+struct Embargo {
+    created_at: f64,
+    is_temporary: JsVal,
+    target: usize,
+}
+
 /// The `PlayerImpl` field block the G3c1 slice touches, replicated 1:1.
 struct Player {
     small_id: f64,
@@ -410,7 +647,7 @@ struct Player {
     gold_earned: Acc,
     tiles: TileSet,
     border_tiles: TileSet,
-    alliances: Vec<(usize, usize)>,
+    alliances: Vec<AllianceMock>,
     expired_alliances: Vec<(usize, usize)>,
     marked_traitor_tick: f64,
     marked_doomsday_clock_tick: f64,
@@ -421,6 +658,19 @@ struct Player {
     disconnect_snapshot: JsVal,
     tile_change_version: f64,
     last_tile_change: f64,
+    // G3c3: the player-to-player social surface. `relations` /
+    // `quick_chats` / `embargoes` are JS Maps (insertion-ordered, set
+    // updates in place); `targets_` is `{tick, targetTok}`;
+    // `outgoing_emojis` stores the full EmojiMessage objects (the
+    // message/senderID/recipientID/createdAt key order is observable).
+    relations: Vec<(usize, f64)>,
+    targets_: Vec<(f64, usize)>,
+    outgoing_emojis: Vec<JsVal>,
+    quick_chats: Vec<(f64, f64)>,
+    sent_donations: Vec<(usize, f64)>,
+    embargoes: Vec<(JsVal, Embargo)>,
+    last_delete_unit_tick: f64,
+    last_embargo_all_tick: f64,
 }
 
 impl Default for Player {
@@ -448,6 +698,14 @@ impl Default for Player {
             disconnect_snapshot: JsVal::Null,
             tile_change_version: 0.0,
             last_tile_change: 0.0,
+            relations: Vec::new(),
+            targets_: Vec::new(),
+            outgoing_emojis: Vec::new(),
+            quick_chats: Vec::new(),
+            sent_donations: Vec::new(),
+            embargoes: Vec::new(),
+            last_delete_unit_tick: -1.0,
+            last_embargo_all_tick: -1.0,
         }
     }
 }
@@ -468,6 +726,40 @@ pub struct PlayerHarness {
     total_land_i: usize,
     traitor_duration: Vec<f64>,
     traitor_duration_i: usize,
+    // G3c3 mg surface: `allianceRequests` (property array of (req, rec)
+    // token pairs), `players()` (scripted token list), the config FIFO
+    // scripts and the `createAllianceRequest` return FIFO.
+    alliance_requests: Vec<(usize, usize)>,
+    past_outgoing: Vec<(usize, f64)>,
+    players_list: Vec<usize>,
+    off: Vec<f64>,
+    off_i: usize,
+    da: Vec<JsVal>,
+    da_i: usize,
+    arc: Vec<f64>,
+    arc_i: usize,
+    tc: Vec<f64>,
+    tc_i: usize,
+    tdur: Vec<f64>,
+    tdur_i: usize,
+    emd: Vec<f64>,
+    emd_i: usize,
+    emc: Vec<f64>,
+    emc_i: usize,
+    qc: Vec<f64>,
+    qc_i: usize,
+    dg: Vec<JsVal>,
+    dg_i: usize,
+    dt: Vec<JsVal>,
+    dt_i: usize,
+    dc: Vec<f64>,
+    dc_i: usize,
+    duc: Vec<f64>,
+    duc_i: usize,
+    eac: Vec<f64>,
+    eac_i: usize,
+    car: Vec<JsVal>,
+    car_i: usize,
 }
 
 impl PlayerHarness {
@@ -565,6 +857,137 @@ impl PlayerHarness {
         Ok(b)
     }
 
+    // --- G3c3 facade plumbing ---
+
+    /// `other.isAlive()` — the mock facade (127) with the `!!v`
+    /// normalisation; the self slot reads the REAL tile count (untraced),
+    /// mirroring `mocks[selfTok] = pl`.
+    fn other_is_alive(&mut self, tr: &mut Vec<f64>, tok: usize) -> Result<bool, String> {
+        if self.self_tok == Some(tok) {
+            return Ok(self.is_alive());
+        }
+        let p = self.players.get_mut(tok).ok_or_else(|| {
+            "Cannot read properties of undefined (reading 'isAlive')".to_string()
+        })?;
+        let v = take_f64(&p.alives, &mut p.alive_i);
+        let b = v != 0.0 && !v.is_nan();
+        tr.push(127.0);
+        tr.push(p.pid);
+        tr.push(if b { 1.0 } else { 0.0 });
+        Ok(b)
+    }
+
+    /// `other.smallID()` — the mock's constant pid (untraced); the self
+    /// slot reads the real field.
+    fn other_small_id(&self, tok: usize) -> Result<f64, String> {
+        if self.self_tok == Some(tok) {
+            return Ok(self.p.small_id);
+        }
+        self.players
+            .get(tok)
+            .map(|p| p.pid)
+            .ok_or_else(|| "Cannot read properties of undefined (reading 'smallID')".to_string())
+    }
+
+    /// `other.id()` — the mock's constant pid as `Num` (untraced); the self
+    /// slot reads `playerInfo.id`.
+    fn other_id(&self, tok: usize) -> JsVal {
+        if self.self_tok == Some(tok) {
+            return self.pi_field("id");
+        }
+        match self.players.get(tok) {
+            Some(p) => JsVal::Num(p.pid),
+            None => JsVal::Undef,
+        }
+    }
+
+    /// `other.type()` — the mock's constant type string (untraced); the self
+    /// slot reads `playerInfo.playerType`.
+    fn other_type(&self, tok: usize) -> JsVal {
+        if self.self_tok == Some(tok) {
+            return self.pi_field("playerType");
+        }
+        match self.players.get(tok) {
+            Some(p) => JsVal::Str(p.typ.clone()),
+            None => JsVal::Undef,
+        }
+    }
+
+    /// `other.hasEmbargoAgainst(this)` — the mock's constant embargo id
+    /// list (untraced); the self slot runs the REAL `hasEmbargoAgainst`.
+    fn other_has_embargo_against(&self, tok: usize) -> bool {
+        let my_id = self.pi_field("id");
+        if self.self_tok == Some(tok) {
+            return self.has_embargo_id(&my_id);
+        }
+        match self.players.get(tok) {
+            Some(p) => p.emb.iter().any(|e| js_strict_eq(e, &my_id)),
+            None => false,
+        }
+    }
+
+    /// `other.targets()` — the mock's constant token list (untraced); the
+    /// self slot is handled by the caller (the real `targets()` body needs
+    /// the facade trace).
+    fn other_targets(&self, tok: usize) -> Vec<usize> {
+        match self.players.get(tok) {
+            Some(p) => p.tgts.clone(),
+            None => Vec::new(),
+        }
+    }
+
+    /// `other.addTroops(n)` / `other.addGold(n)` — the traced mock writes
+    /// (128 / 129); the self slot runs the REAL method (unreachable from
+    /// the `donate*` self-gates, kept total).
+    fn other_add_troops(&mut self, tr: &mut Vec<f64>, tok: usize, n: f64) -> Result<(), String> {
+        if self.self_tok == Some(tok) {
+            if n < 0.0 {
+                self.remove_troops(-n)?;
+            } else {
+                self.p.troops += to_int_big(n)?;
+            }
+            return Ok(());
+        }
+        let pid = self
+            .players
+            .get(tok)
+            .map(|p| p.pid)
+            .ok_or_else(|| "Cannot read properties of undefined (reading 'addTroops')".to_string())?;
+        tr.push(128.0);
+        tr.push(pid);
+        push_val(tr, &JsVal::Num(n));
+        Ok(())
+    }
+
+    fn other_add_gold(&mut self, tr: &mut Vec<f64>, tok: usize, n: i64) -> Result<(), String> {
+        if self.self_tok == Some(tok) {
+            let o = Op::Big(n);
+            if let Ok(v) = acc_plus(&self.p.gold, &o) {
+                self.p.gold = v;
+            }
+            return Ok(());
+        }
+        let pid = self
+            .players
+            .get(tok)
+            .map(|p| p.pid)
+            .ok_or_else(|| "Cannot read properties of undefined (reading 'addGold')".to_string())?;
+        tr.push(129.0);
+        tr.push(pid);
+        push_val(tr, &JsVal::Num(n as f64));
+        Ok(())
+    }
+
+    /// `mg.players()` — event 130 dumps the scripted token list.
+    fn mg_players(&mut self, tr: &mut Vec<f64>) -> Vec<usize> {
+        tr.push(130.0);
+        tr.push(self.players_list.len() as f64);
+        for t in &self.players_list {
+            tr.push(*t as f64);
+        }
+        self.players_list.clone()
+    }
+
     // --- identity helpers ---
 
     fn pi_field(&self, key: &str) -> JsVal {
@@ -577,15 +1000,34 @@ impl PlayerHarness {
         self.p.tiles.size() > 0.0
     }
 
-    fn alliance_with(&self, tok: usize) -> Option<(usize, usize)> {
+    /// `hasEmbargoAgainst` (1200): the `embargoes` Map lookup by
+    /// `other.id()` — strict `===` on the key (`SameValueZero` agrees for
+    /// the string/number domain here).
+    fn has_embargo_id(&self, id: &JsVal) -> bool {
+        self.p.embargoes.iter().any(|(k, _)| js_strict_eq(k, id))
+    }
+
+    fn alliance_with(&self, tok: usize) -> Option<AllianceMock> {
         if self.self_tok == Some(tok) {
             return None;
         }
         self.p
             .alliances
             .iter()
-            .find(|(req, rec)| *rec == tok || *req == tok)
+            .find(|a| a.rec == tok || a.req == tok)
             .copied()
+    }
+
+    /// `agreedToExtend(p)` on an alliance mock:
+    /// `p === requestor() ? reqAgree : recAgree` — the this-arg matches
+    /// `requestor()` only when the self token sits at the req slot.
+    fn agreed_to_extend(&self, a: &AllianceMock, arg_self: bool, tok: usize) -> bool {
+        let at_req = if arg_self {
+            self.self_tok == Some(a.req)
+        } else {
+            tok == a.req
+        };
+        if at_req { a.req_agree } else { a.rec_agree }
     }
 
     /// `isOnSameTeam` (PlayerImpl.ts:1259) — the facade call counts are the
@@ -665,12 +1107,505 @@ impl PlayerHarness {
         self.is_alive() && self.p.marked_doomsday_clock_tick >= 0.0
     }
 
+    // --- G3c3 method bodies ---
+
+    /// `toString()` (1833-1839) — only observable through the self-throw
+    /// messages (`relation` / `updateRelation` / `sendEmoji`). `_troops` is
+    /// a bigint (`${10n}` -> "10"); `numTilesOwned` interpolates as a JS
+    /// number.
+    fn player_to_string(&self) -> String {
+        let name = js_to_string_val(&self.pi_field("name"));
+        let client = js_to_string_val(&self.pi_field("clientID"));
+        format!(
+            "Player:{{name:{},clientID:{},isAlive:{},troops:{},numTileOwned:{}}}]",
+            name,
+            client,
+            self.is_alive(),
+            self.p.troops,
+            crate::js_fixed::js_to_string(self.p.tiles.size())
+        )
+    }
+
+    /// `removeGold` (1332-1339) as a reusable body — mid 27 and
+    /// `donateGold` (1147) share it. The `toRemove <= 0n` gate (cross-type
+    /// relational, ToNumber, never throws), then `minInt(_gold, toRemove)`
+    /// (same rule) and `_gold -= actual` (the mix TypeError whenever both
+    /// sides are not bigints). Returns the removed amount.
+    fn remove_gold_body(&mut self, o: &Op) -> Result<i64, String> {
+        let le0 = match o {
+            Op::Big(b) => *b <= 0,
+            other => op_to_num(other) <= 0.0,
+        };
+        if le0 {
+            return Ok(0);
+        }
+        let gold_lt = match (&self.p.gold, o) {
+            (Acc::Big(a), Op::Big(b)) => *a < *b,
+            (Acc::Big(a), other) => (*a as f64) < op_to_num(other),
+            (Acc::Str(s), Op::Big(b)) => {
+                crate::game_config_helpers::js_number(s) < *b as f64
+            }
+            (Acc::Str(_), _) => false,
+        };
+        if gold_lt {
+            // actual = _gold (only ever a Big — the Str rows above are
+            // false); _gold -= actual -> 0n.
+            if let Acc::Big(a) = self.p.gold {
+                self.p.gold = Acc::Big(0);
+                return Ok(a);
+            }
+            unreachable!()
+        }
+        match (&self.p.gold, o) {
+            (Acc::Big(a), Op::Big(b)) => {
+                let r = *b;
+                self.p.gold = Acc::Big(a - b);
+                Ok(r)
+            }
+            _ => Err(MIX_ERR.to_string()),
+        }
+    }
+
+    /// `relations.get(other) ?? 0` — token-keyed insertion-ordered map.
+    fn relation_get(&self, tok: usize) -> f64 {
+        self.p
+            .relations
+            .iter()
+            .find(|(k, _)| *k == tok)
+            .map(|(_, v)| *v)
+            .unwrap_or(0.0)
+    }
+
+    /// `relations.set(other, v)` — an existing key updates in place (the
+    /// JS Map keeps its insertion position).
+    fn relation_set(&mut self, tok: usize, v: f64) {
+        if let Some(e) = self.p.relations.iter_mut().find(|(k, _)| *k == tok) {
+            e.1 = v;
+        } else {
+            self.p.relations.push((tok, v));
+        }
+    }
+
+    /// `targets()` (992-998) as a reusable body — mid 73 and
+    /// `transitiveTargets` (1000) share it. The `ticks()` (102) and
+    /// `targetDuration()` (113) facades fire PER element, in that order.
+    fn targets_body(&mut self, tr: &mut Vec<f64>) -> Vec<usize> {
+        let mut kept = Vec::new();
+        for (tick, tok) in self.p.targets_.clone() {
+            let t = script_f64(&self.ticks, &mut self.ticks_i, tr, 102.0) - tick;
+            if t < script_f64(&self.tdur, &mut self.tdur_i, tr, 113.0) {
+                kept.push(tok);
+            }
+        }
+        kept
+    }
+
+    /// `canTrade` (1204-1208): the `other.hasEmbargoAgainst(this) ||
+    /// this.hasEmbargoAgainst(other)` short-circuit, then the
+    /// `other.id() !== this.id()` strict gate.
+    fn can_trade(&self, tok: usize) -> bool {
+        let embargo = self.other_has_embargo_against(tok) || {
+            let oid = self.other_id(tok);
+            self.has_embargo_id(&oid)
+        };
+        !embargo && !js_strict_eq(&self.other_id(tok), &self.pi_field("id"))
+    }
+
+    /// `allianceInfo` (772-794): null without an alliance; otherwise the
+    /// 102 ticks + 109 offset facades, then the `canExtend` `&&` chain —
+    /// `!this.isDisconnected()` (untraced field read), `!other.isDisconnected()`
+    /// (105), `this.isAlive()` (untraced), `other.isAlive()` (127),
+    /// `inExtensionWindow`, `!agreedToExtend(this)` — each short-circuit
+    /// pinning the facade count. The returned object evaluates
+    /// `expiresAt()` / `agreedToExtend(...)` again (untraced constants),
+    /// key order expiresAt/inExtensionWindow/myPlayerAgreedToExtend/
+    /// otherAgreedToExtend/canExtend.
+    fn alliance_info(&mut self, tr: &mut Vec<f64>, tok: usize) -> Result<JsVal, String> {
+        let a = match self.alliance_with(tok) {
+            None => return Ok(JsVal::Null),
+            Some(a) => a,
+        };
+        let t = self.mg_ticks(tr);
+        let off = script_f64(&self.off, &mut self.off_i, tr, 109.0);
+        let in_window = a.expires_at <= t + off;
+        let can_extend = !js_truthy(&self.p.is_disconnected)
+            && !self.other_is_disconnected(tr, tok)?
+            && self.is_alive()
+            && self.other_is_alive(tr, tok)?
+            && in_window
+            && !self.agreed_to_extend(&a, true, tok);
+        Ok(JsVal::Obj(vec![
+            ("expiresAt".to_string(), JsVal::Num(a.expires_at)),
+            ("inExtensionWindow".to_string(), JsVal::Bool(in_window)),
+            (
+                "myPlayerAgreedToExtend".to_string(),
+                JsVal::Bool(self.agreed_to_extend(&a, true, tok)),
+            ),
+            (
+                "otherAgreedToExtend".to_string(),
+                JsVal::Bool(self.agreed_to_extend(&a, false, tok)),
+            ),
+            ("canExtend".to_string(), JsVal::Bool(can_extend)),
+        ]))
+    }
+
+    /// `canSendAllianceRequest` (796-841). The `recent` list is the
+    /// harness-scripted `pastOutgoingAllianceRequests` filtered to the
+    /// recipient and sorted by createdAt descending (stable, NaN → Equal);
+    /// the cooldown gate reads 102 then 111 only when `recent` is non-empty.
+    fn can_send_alliance_request(
+        &mut self,
+        tr: &mut Vec<f64>,
+        tok: usize,
+    ) -> Result<bool, String> {
+        let da = script_val(&self.da, &mut self.da_i, tr, 110.0);
+        if js_truthy(&da) {
+            return Ok(false);
+        }
+        if self.self_tok == Some(tok) {
+            return Ok(false);
+        }
+        // `this.isDisconnected() || other.isDisconnected()` — this-side is
+        // the untraced field read; the 105 facade fires only on a
+        // non-disconnected this.
+        if js_truthy(&self.p.is_disconnected) || self.other_is_disconnected(tr, tok)? {
+            return Ok(false);
+        }
+        if self.is_friendly(tr, tok, false)? || !self.is_alive() {
+            return Ok(false);
+        }
+        let st = self.self_tok;
+        let has_pending = self
+            .alliance_requests
+            .iter()
+            .any(|(req, rec)| Some(*req) == st && *rec == tok);
+        if has_pending {
+            return Ok(false);
+        }
+        let has_incoming = self
+            .alliance_requests
+            .iter()
+            .any(|(req, rec)| Some(*rec) == st && *req == tok);
+        if has_incoming {
+            return Ok(true);
+        }
+        let mut recent: Vec<(usize, f64)> = self
+            .past_outgoing
+            .iter()
+            .copied()
+            .filter(|(rec, _)| *rec == tok)
+            .collect();
+        js_sort_desc(&mut recent);
+        if recent.is_empty() {
+            return Ok(true);
+        }
+        let delta = self.mg_ticks(tr) - recent[0].1;
+        let cd = script_f64(&self.arc, &mut self.arc_i, tr, 111.0);
+        Ok(delta >= cd)
+    }
+
+    /// `allRelationsSorted` (941-949): one 127 facade per relations entry
+    /// (insertion order, BEFORE the sort), then the stable ascending sort
+    /// and the `relationFromValue` map. Encoded as `[[tok, relation], ...]`.
+    fn all_relations_sorted(&mut self, tr: &mut Vec<f64>) -> Result<JsVal, String> {
+        let entries = self.p.relations.clone();
+        let mut kept: Vec<(usize, f64)> = Vec::new();
+        for (tok, v) in entries {
+            if self.other_is_alive(tr, tok)? {
+                kept.push((tok, v));
+            }
+        }
+        js_sort_asc(&mut kept);
+        Ok(JsVal::Arr(
+            kept.into_iter()
+                .map(|(tok, v)| {
+                    JsVal::Arr(vec![JsVal::Num(tok as f64), JsVal::Num(relation_from_value(v))])
+                })
+                .collect(),
+        ))
+    }
+
+    /// `updateRelation` (951-958): `relation + delta` is the JS `+` — a
+    /// string-primitive delta (Str / Obj / Arr) concatenates, everything
+    /// else adds numerically. `within(v, -100, 100)` = Math.min(Math.max(v,
+    /// -100), 100) with NaN propagation.
+    fn update_relation(&mut self, tok: usize, delta: &JsVal) {
+        let relation = self.relation_get(tok);
+        let sum = match delta {
+            JsVal::Str(_) | JsVal::Obj(_) | JsVal::Arr(_) => JsVal::Str(format!(
+                "{}{}",
+                crate::js_fixed::js_to_string(relation),
+                js_to_string_val(delta)
+            )),
+            other => JsVal::Num(relation + to_num(other)),
+        };
+        let v = crate::jsnum::js_min(
+            crate::jsnum::js_max(to_num(&sum), -100.0),
+            100.0,
+        );
+        self.relation_set(tok, v);
+    }
+
+    /// `decayRelations` (960-970): `-1 * Math.sign(r)` (NaN → NaN, ±0
+    /// preserved), `r += sign * 0.05`, then the `|r| < 0.1` zero snap; the
+    /// Map updates in place during the forEach (insertion order).
+    fn decay_relations(&mut self) {
+        let keys: Vec<usize> = self.p.relations.iter().map(|(k, _)| *k).collect();
+        for k in keys {
+            let r0 = self.relation_get(k);
+            let delta = 0.05;
+            let mut r = r0 + -js_sign(r0) * delta;
+            if r.abs() < delta * 2.0 {
+                r = 0.0;
+            }
+            self.relation_set(k, r);
+        }
+    }
+
+    /// `canTarget` (972-985): self gate, `isFriendly` gate, then the
+    /// targets_ scan — 102 ticks + 112 targetCooldown per element until the
+    /// first cooldown hit.
+    fn can_target(&mut self, tr: &mut Vec<f64>, tok: usize) -> Result<bool, String> {
+        if self.self_tok == Some(tok) {
+            return Ok(false);
+        }
+        if self.is_friendly(tr, tok, false)? {
+            return Ok(false);
+        }
+        for (tick, _) in self.p.targets_.clone() {
+            let t = self.mg_ticks(tr) - tick;
+            if t < script_f64(&self.tc, &mut self.tc_i, tr, 112.0) {
+                return Ok(false);
+            }
+        }
+        Ok(true)
+    }
+
+    /// `transitiveTargets` (1000-1006): allies via `a.other(this)` (the mid
+    /// 49 token flip), their `targets()` are the mocks' constant lists
+    /// (untraced), then the real `targets()` body; `[...new Set(ts)]`
+    /// dedups by first occurrence.
+    fn transitive_targets(&mut self, tr: &mut Vec<f64>) -> Vec<usize> {
+        let self_tok = self.self_tok;
+        let mut ts: Vec<usize> = Vec::new();
+        for a in self.p.alliances.clone() {
+            let ally = if self_tok == Some(a.req) { a.rec } else { a.req };
+            ts.extend(self.other_targets(ally));
+        }
+        ts.extend(self.targets_body(tr));
+        let mut seen: Vec<usize> = Vec::new();
+        for t in ts {
+            if !seen.contains(&t) {
+                seen.push(t);
+            }
+        }
+        seen
+    }
+
+    /// `outgoingEmojis` (1022-1030): 102 ticks + 114 emojiMessageDuration
+    /// per stored message, then the stable createdAt-descending sort.
+    fn outgoing_emojis_body(&mut self, tr: &mut Vec<f64>) -> JsVal {
+        let mut kept: Vec<JsVal> = Vec::new();
+        for e in self.p.outgoing_emojis.clone() {
+            let created = to_num(&val_field(&e, "createdAt").cloned().unwrap_or(JsVal::Undef));
+            let t = self.mg_ticks(tr) - created;
+            if t < script_f64(&self.emd, &mut self.emd_i, tr, 114.0) {
+                kept.push(e);
+            }
+        }
+        let mut pairs: Vec<(usize, f64)> = kept
+            .iter()
+            .enumerate()
+            .map(|(i, e)| {
+                (
+                    i,
+                    to_num(&val_field(e, "createdAt").cloned().unwrap_or(JsVal::Undef)),
+                )
+            })
+            .collect();
+        js_sort_desc(&mut pairs);
+        JsVal::Arr(pairs.into_iter().map(|(i, _)| kept[i].clone()).collect())
+    }
+
+    /// `canSendEmoji` (1032-1050): the `recipient === this` gate (a
+    /// `"AllPlayers"` string never ===), the recipientID compute (untraced),
+    /// then per matching message 102 ticks + 115 emojiMessageCooldown until
+    /// the first hit.
+    fn can_send_emoji(&mut self, tr: &mut Vec<f64>, recip: &JsVal) -> Result<bool, String> {
+        if let JsVal::Num(t) = recip {
+            if self.self_tok == Some(*t as usize) {
+                return Ok(false);
+            }
+        }
+        let rid = self.emoji_recipient_id(recip)?;
+        for m in self.p.outgoing_emojis.clone() {
+            let mrid = val_field(&m, "recipientID").cloned().unwrap_or(JsVal::Undef);
+            if js_strict_eq(&mrid, &rid) {
+                let created = to_num(&val_field(&m, "createdAt").cloned().unwrap_or(JsVal::Undef));
+                let t = self.mg_ticks(tr) - created;
+                if t < script_f64(&self.emc, &mut self.emc_i, tr, 115.0) {
+                    return Ok(false);
+                }
+            }
+        }
+        Ok(true)
+    }
+
+    /// `recipient === AllPlayers ? recipient : recipient.smallID()` — the
+    /// AllPlayers string crosses as `Str("AllPlayers")` (Game.ts:61).
+    fn emoji_recipient_id(&self, recip: &JsVal) -> Result<JsVal, String> {
+        match recip {
+            JsVal::Str(s) if s == "AllPlayers" => Ok(JsVal::Str(s.clone())),
+            JsVal::Num(t) => Ok(JsVal::Num(self.other_small_id(*t as usize)?)),
+            _ => Ok(JsVal::Undef),
+        }
+    }
+
+    /// `canDonateGold` / `canDonateTroops` (1067-1125): self gate, then
+    /// `!this.isAlive() || !recipient.isAlive() || !this.isFriendly(...)`
+    /// (127 once, then the isFriendly facades), then the
+    /// `type() === Human && config === false` gate (117 gold / 118 troops,
+    /// read only for humans), then the sentDonations scan (102 + 119 per
+    /// matching donation until the first hit).
+    fn can_donate(&mut self, tr: &mut Vec<f64>, tok: usize, gold: bool) -> Result<bool, String> {
+        if self.self_tok == Some(tok) {
+            return Ok(false);
+        }
+        if !self.is_alive() || !self.other_is_alive(tr, tok)? || !self.is_friendly(tr, tok, false)?
+        {
+            return Ok(false);
+        }
+        if js_strict_eq(&self.other_type(tok), &JsVal::Str("HUMAN".to_string())) {
+            let v = if gold {
+                take_jsval(&self.dg, &mut self.dg_i)
+            } else {
+                take_jsval(&self.dt, &mut self.dt_i)
+            };
+            tr.push(if gold { 117.0 } else { 118.0 });
+            push_val(tr, &v);
+            if js_strict_eq(&v, &JsVal::Bool(false)) {
+                return Ok(false);
+            }
+        }
+        for (rec, tick) in self.p.sent_donations.clone() {
+            if rec == tok {
+                let t = self.mg_ticks(tr) - tick;
+                if t < script_f64(&self.dc, &mut self.dc_i, tr, 119.0) {
+                    return Ok(false);
+                }
+            }
+        }
+        Ok(true)
+    }
+
+    /// The DonateEvent update (GameUpdateType.DonateEvent === 23, zero-based
+    /// declaration order), key order type/donationType/senderId/recipientId/
+    /// amount. `amount` is a bigint (`BigInt(removed)` / `removed`): the
+    /// capture codec has no bigint branch, so it falls into the object branch
+    /// and `Object.keys(100n) === []` crosses as an empty object [6,0].
+    fn donate_update(&self, kind: &str, tok: usize) -> JsVal {
+        JsVal::Obj(vec![
+            ("type".to_string(), JsVal::Num(23.0)),
+            ("donationType".to_string(), JsVal::Str(kind.to_string())),
+            ("senderId".to_string(), self.pi_field("id")),
+            ("recipientId".to_string(), self.other_id(tok)),
+            ("amount".to_string(), JsVal::Obj(vec![])),
+        ])
+    }
+
+    /// `canEmbargoAll` (1178-1194): 102 + 121 cooldown gate, then the
+    /// `mg.players()` scan (130 once) — `p.id() === this.id()` and
+    /// `p.type() === PlayerType.Bot` are untraced constant reads, the
+    /// `isOnSameTeam(p)` continue carries the 106 facade counts.
+    fn can_embargo_all(&mut self, tr: &mut Vec<f64>) -> Result<bool, String> {
+        let t = self.mg_ticks(tr) - self.p.last_embargo_all_tick;
+        if t < script_f64(&self.eac, &mut self.eac_i, tr, 121.0) {
+            return Ok(false);
+        }
+        let players = self.mg_players(tr);
+        let my_id = self.pi_field("id");
+        for tok in players {
+            if js_strict_eq(&self.other_id(tok), &my_id) {
+                continue;
+            }
+            if js_strict_eq(&self.other_type(tok), &JsVal::Str("BOT".to_string())) {
+                continue;
+            }
+            if self.same_team(tr, tok)? {
+                continue;
+            }
+            return Ok(true);
+        }
+        Ok(false)
+    }
+
+    /// `addEmbargo` (1214-1230): a non-temporary existing entry returns
+    /// BEFORE the facade; otherwise the EmbargoEvent "start" update (101)
+    /// fires FIRST, then `createdAt: mg.ticks()` (102) inside the stored
+    /// object. GameUpdateType.EmbargoEvent === 20.
+    fn add_embargo(&mut self, tr: &mut Vec<f64>, tok: usize, temp: JsVal) -> Result<(), String> {
+        let oid = self.other_id(tok);
+        if let Some((_, e)) = self.p.embargoes.iter().find(|(k, _)| js_strict_eq(k, &oid)) {
+            if !js_truthy(&e.is_temporary) {
+                return Ok(());
+            }
+        }
+        let u = JsVal::Obj(vec![
+            ("type".to_string(), JsVal::Num(20.0)),
+            ("event".to_string(), JsVal::Str("start".to_string())),
+            ("playerID".to_string(), JsVal::Num(self.p.small_id)),
+            (
+                "embargoedID".to_string(),
+                JsVal::Num(self.other_small_id(tok)?),
+            ),
+        ]);
+        self.mg_add_update(tr, &u);
+        let created = self.mg_ticks(tr);
+        let e = Embargo {
+            created_at: created,
+            is_temporary: temp,
+            target: tok,
+        };
+        if let Some(slot) = self.p.embargoes.iter_mut().find(|(k, _)| js_strict_eq(k, &oid)) {
+            slot.1 = e;
+        } else {
+            self.p.embargoes.push((oid, e));
+        }
+        Ok(())
+    }
+
+    /// `stopEmbargo` (1232-1240): the Map delete THEN the unconditional
+    /// EmbargoEvent "stop" update (101).
+    fn stop_embargo(&mut self, tr: &mut Vec<f64>, tok: usize) -> Result<(), String> {
+        let oid = self.other_id(tok);
+        if let Some(pos) = self.p.embargoes.iter().position(|(k, _)| js_strict_eq(k, &oid)) {
+            self.p.embargoes.remove(pos);
+        }
+        let u = JsVal::Obj(vec![
+            ("type".to_string(), JsVal::Num(20.0)),
+            ("event".to_string(), JsVal::Str("stop".to_string())),
+            ("playerID".to_string(), JsVal::Num(self.p.small_id)),
+            (
+                "embargoedID".to_string(),
+                JsVal::Num(self.other_small_id(tok)?),
+            ),
+        ]);
+        self.mg_add_update(tr, &u);
+        Ok(())
+    }
+
     // --- the op dispatcher ---
 
     /// Run one op. Kind table (mirrored by `tools/gen_vectors.mjs`):
     /// 0 construct `[encVal playerInfo, smallID, encVal startTroops, encVal
-    /// team, nAlliances, (req,rec)*, nTiles,(t)*, nBorder,(t)*, sgScript,
-    /// ticksScript, teamTilesScript, totalLandScript, playersBlock, selfTok]`
+    /// team, nAlliances, (req,rec,expiresAt,reqAgree,recAgree)*, nTiles,(t)*,
+    /// nBorder,(t)*, sgScript, ticksScript, teamTilesScript, totalLandScript,
+    /// playersBlock(pid, teamList, discList, encS type, aliveList, embVals,
+    /// tgts)*, selfTok, nExpired, (req,rec)*, traitorDurationScript,
+    /// nAllianceReqs, (req,rec)*, nPastOutgoing, (rec,createdAt)*,
+    /// playersList, offScript, daScript, arcScript, tcScript, tdurScript,
+    /// emdScript, emcScript, qcScript, dgScript, dtScript, dcScript,
+    /// ducScript, eacScript, carScript]`
     /// -> `[traceLen,(trace)*,0]` or `[traceLen,(trace)*,1,encS]`; kind 1
     /// method `[mid,...]` -> `[traceLen,(trace)*,[0,...encVal] | [1,encS]]`.
     /// mid follows the TS declaration order: 0 smallID 1 name 2 displayName
@@ -687,7 +1622,17 @@ impl PlayerHarness {
     /// (G3c2:) 48 expiredAlliances 49 allies 50 isTraitor 51
     /// getTraitorRemainingTicks 52 markTraitor 53 inDoomsdayClock 54
     /// doomsdayClockTicks 55 enterDoomsdayClock 56 clearDoomsdayClock 57
-    /// markRotted 58 isDecaying 59 betrayals.
+    /// markRotted 58 isDecaying 59 betrayals. (G3c3:) 60
+    /// incomingAllianceRequests 61 outgoingAllianceRequests 62 allianceInfo
+    /// 63 canSendAllianceRequest 64 breakAlliance 65 removeAllAlliances 66
+    /// createAllianceRequest 67 relation 68 allRelationsSorted 69
+    /// updateRelation 70 decayRelations 71 canTarget 72 target 73 targets 74
+    /// transitiveTargets 75 sendEmoji 76 outgoingEmojis 77 canSendEmoji 78
+    /// canSendQuickChat 79 recordQuickChat 80 canDonateGold 81
+    /// canDonateTroops 82 donateTroops 83 donateGold 84 canDeleteUnit 85
+    /// recordDeleteUnit 86 canEmbargoAll 87 recordEmbargoAll 88
+    /// hasEmbargoAgainst 89 canTrade 90 getEmbargoes 91 addEmbargo 92
+    /// stopEmbargo 93 endTemporaryEmbargo 94 tradingPartners.
     pub fn run_op(&mut self, kind: u8, args: &[f64]) -> Vec<f64> {
         let mut c = Cur(args, 0);
         let mut tr: Vec<f64> = Vec::new();
@@ -700,8 +1645,14 @@ impl PlayerHarness {
                 let start_troops = c.val();
                 let team = c.val();
                 let n_all = c.u();
-                let alliances: Vec<(usize, usize)> = (0..n_all)
-                    .map(|_| (c.u(), c.u()))
+                let alliances: Vec<AllianceMock> = (0..n_all)
+                    .map(|_| AllianceMock {
+                        req: c.u(),
+                        rec: c.u(),
+                        expires_at: c.f(),
+                        req_agree: c.f() != 0.0,
+                        rec_agree: c.f() != 0.0,
+                    })
                     .collect();
                 let tiles = c.list();
                 let border = c.list();
@@ -715,12 +1666,21 @@ impl PlayerHarness {
                         let pid = c.f();
                         let teams = c.team_list();
                         let discs = c.list();
+                        let typ = c.s();
+                        let alives = c.list();
+                        let emb = c.val_list();
+                        let tgts = (0..c.u()).map(|_| c.u()).collect();
                         PlPlayer {
                             pid,
                             teams,
                             team_i: 0,
                             discs,
                             disc_i: 0,
+                            typ,
+                            alives,
+                            alive_i: 0,
+                            emb,
+                            tgts,
                         }
                     })
                     .collect();
@@ -729,12 +1689,47 @@ impl PlayerHarness {
                 let expired_alliances: Vec<(usize, usize)> =
                     (0..n_exp).map(|_| (c.u(), c.u())).collect();
                 let traitor_duration = c.list();
+                // G3c3 tail: the mg social surface and the config scripts.
+                let alliance_requests = (0..c.u()).map(|_| (c.u(), c.u())).collect();
+                let past_outgoing = (0..c.u()).map(|_| (c.u(), c.f())).collect();
+                let players_list = (0..c.u()).map(|_| c.u()).collect();
+                let off = c.list();
+                let da = c.val_list();
+                let arc = c.list();
+                let tc = c.list();
+                let tdur = c.list();
+                let emd = c.list();
+                let emc = c.list();
+                let qc = c.list();
+                let dg = c.val_list();
+                let dt = c.val_list();
+                let dc = c.list();
+                let duc = c.list();
+                let eac = c.list();
+                let car = c.val_list();
                 self.sg = sg;
                 self.ticks = ticks;
                 self.team_tiles = team_tiles;
                 self.total_land = total_land;
                 self.traitor_duration = traitor_duration;
                 self.players = players;
+                self.alliance_requests = alliance_requests;
+                self.past_outgoing = past_outgoing;
+                self.players_list = players_list;
+                self.off = off;
+                self.da = da;
+                self.arc = arc;
+                self.tc = tc;
+                self.tdur = tdur;
+                self.emd = emd;
+                self.emc = emc;
+                self.qc = qc;
+                self.dg = dg;
+                self.dt = dt;
+                self.dc = dc;
+                self.duc = duc;
+                self.eac = eac;
+                self.car = car;
                 self.self_tok = if self_tok >= 0.0 {
                     Some(self_tok as usize)
                 } else {
@@ -927,58 +1922,14 @@ impl PlayerHarness {
                     }
                     27 => {
                         // `big()` operand conversion throws BEFORE the call
-                        // (a non-integer number); the method body then runs
-                        // the cross-type relational gates (ToNumber, never
-                        // throws) and the `_gold -= actual` subtraction.
+                        // (a non-integer number); the body is shared with
+                        // `donateGold` — see `remove_gold_body`.
                         match big_operand(&c.val()) {
                             Err(m) => push_err(&mut out, &m),
-                            Ok(o) => {
-                                let le0 = match &o {
-                                    Op::Big(b) => *b <= 0,
-                                    other => op_to_num(other) <= 0.0,
-                                };
-                                if le0 {
-                                    push_ok_num(&mut out, 0.0);
-                                } else {
-                                    // minInt(_gold, toRemove): cross-type
-                                    // relational converts the non-bigint
-                                    // side with ToNumber (NaN -> false).
-                                    let gold_lt = match (&self.p.gold, &o) {
-                                        (Acc::Big(a), Op::Big(b)) => *a < *b,
-                                        (Acc::Big(a), other) => {
-                                            (*a as f64) < op_to_num(other)
-                                        }
-                                        (Acc::Str(s), Op::Big(b)) => {
-                                            crate::game_config_helpers::js_number(s) < *b as f64
-                                        }
-                                        (Acc::Str(_), _) => false,
-                                    };
-                                    if gold_lt {
-                                        // actual = _gold (only ever a Big —
-                                        // the Str rows above are false);
-                                        // _gold -= actual -> 0n.
-                                        if let Acc::Big(a) = self.p.gold {
-                                            self.p.gold = Acc::Big(0);
-                                            push_ok_num(&mut out, a as f64);
-                                        } else {
-                                            unreachable!()
-                                        }
-                                    } else {
-                                        // actual = toRemove; the subtraction
-                                        // `_gold - actual` throws the mix
-                                        // TypeError whenever actual is not a
-                                        // bigint (or _gold is a Str).
-                                        match (&self.p.gold, &o) {
-                                            (Acc::Big(a), Op::Big(b)) => {
-                                                let r = *b;
-                                                self.p.gold = Acc::Big(a - b);
-                                                push_ok_num(&mut out, r as f64);
-                                            }
-                                            _ => push_err(&mut out, MIX_ERR),
-                                        }
-                                    }
-                                }
-                            }
+                            Ok(o) => match self.remove_gold_body(&o) {
+                                Ok(r) => push_ok_num(&mut out, r as f64),
+                                Err(m) => push_err(&mut out, &m),
+                            },
                         }
                     }
                     28 => push_ok_num(&mut out, self.p.tile_change_version),
@@ -1064,11 +2015,11 @@ impl PlayerHarness {
                     38 => {
                         let tok = to_num(&c.val()) as usize;
                         match self.alliance_with(tok) {
-                            Some((req, rec)) => push_ok(
+                            Some(a) => push_ok(
                                 &mut out,
                                 &JsVal::Arr(vec![
-                                    JsVal::Num(req as f64),
-                                    JsVal::Num(rec as f64),
+                                    JsVal::Num(a.req as f64),
+                                    JsVal::Num(a.rec as f64),
                                 ]),
                             ),
                             None => push_ok(&mut out, &JsVal::Null),
@@ -1080,8 +2031,11 @@ impl PlayerHarness {
                             self.p
                                 .alliances
                                 .iter()
-                                .map(|(req, rec)| {
-                                    JsVal::Arr(vec![JsVal::Num(*req as f64), JsVal::Num(*rec as f64)])
+                                .map(|a| {
+                                    JsVal::Arr(vec![
+                                        JsVal::Num(a.req as f64),
+                                        JsVal::Num(a.rec as f64),
+                                    ])
                                 })
                                 .collect(),
                         ),
@@ -1149,8 +2103,12 @@ impl PlayerHarness {
                                 self.p
                                     .alliances
                                     .iter()
-                                    .map(|(req, rec)| {
-                                        let tok = if self_tok == Some(*req) { *rec } else { *req };
+                                    .map(|a| {
+                                        let tok = if self_tok == Some(a.req) {
+                                            a.rec
+                                        } else {
+                                            a.req
+                                        };
                                         JsVal::Num(tok as f64)
                                     })
                                     .collect(),
@@ -1201,6 +2159,392 @@ impl PlayerHarness {
                         push_ok_bool(&mut out, b)
                     }
                     59 => push_ok_num(&mut out, self.p.betrayal_count),
+                    // ---- G3c3: the player-to-player social surface ----
+                    60 | 61 => {
+                        // incoming: ar.recipient() === this; outgoing:
+                        // ar.requestor() === this. `this` is the mocks table
+                        // slot selfTok, so the filter is a token compare.
+                        let st = self.self_tok;
+                        push_ok(
+                            &mut out,
+                            &JsVal::Arr(
+                                self.alliance_requests
+                                    .iter()
+                                    .filter(|(req, rec)| {
+                                        Some(if mid == 60 { *rec } else { *req }) == st
+                                    })
+                                    .map(|(req, rec)| {
+                                        JsVal::Arr(vec![
+                                            JsVal::Num(*req as f64),
+                                            JsVal::Num(*rec as f64),
+                                        ])
+                                    })
+                                    .collect(),
+                            ),
+                        )
+                    }
+                    62 => {
+                        let tok = to_num(&c.val()) as usize;
+                        match self.alliance_info(&mut tr, tok) {
+                            Ok(v) => push_ok(&mut out, &v),
+                            Err(m) => push_err(&mut out, &m),
+                        }
+                    }
+                    63 => {
+                        let tok = to_num(&c.val()) as usize;
+                        match self.can_send_alliance_request(&mut tr, tok) {
+                            Ok(b) => push_ok_bool(&mut out, b),
+                            Err(m) => push_err(&mut out, &m),
+                        }
+                    }
+                    64 => {
+                        // mg.breakAlliance(this, alliance) — the alliance
+                        // crosses as its index into the _alliances array.
+                        let al = to_num(&c.val());
+                        tr.push(123.0);
+                        tr.push(al);
+                        push_ok(&mut out, &JsVal::Undef);
+                    }
+                    65 => {
+                        // mg.removeAlliancesByPlayerSilently(this)
+                        tr.push(124.0);
+                        push_ok(&mut out, &JsVal::Undef);
+                    }
+                    66 => {
+                        let tok = to_num(&c.val()) as usize;
+                        if self.alliance_with(tok).is_some() {
+                            push_err(
+                                &mut out,
+                                "cannot create alliance request, already allies",
+                            );
+                        } else {
+                            let v = take_jsval(&self.car, &mut self.car_i);
+                            tr.push(122.0);
+                            tr.push(tok as f64);
+                            push_val(&mut tr, &v);
+                            push_ok(&mut out, &v);
+                        }
+                    }
+                    67 => {
+                        let tok = to_num(&c.val()) as usize;
+                        if self.self_tok == Some(tok) {
+                            let m = format!(
+                                "cannot get relation with self: {}",
+                                self.player_to_string()
+                            );
+                            push_err(&mut out, &m);
+                        } else {
+                            let r = relation_from_value(self.relation_get(tok));
+                            push_ok_num(&mut out, r);
+                        }
+                    }
+                    68 => match self.all_relations_sorted(&mut tr) {
+                        Ok(v) => push_ok(&mut out, &v),
+                        Err(m) => push_err(&mut out, &m),
+                    },
+                    69 => {
+                        let tok = to_num(&c.val()) as usize;
+                        let delta = c.val();
+                        if self.self_tok == Some(tok) {
+                            let m = format!(
+                                "cannot update relation with self: {}",
+                                self.player_to_string()
+                            );
+                            push_err(&mut out, &m);
+                        } else {
+                            self.update_relation(tok, &delta);
+                            push_ok(&mut out, &JsVal::Undef);
+                        }
+                    }
+                    70 => {
+                        self.decay_relations();
+                        push_ok(&mut out, &JsVal::Undef);
+                    }
+                    71 => {
+                        let tok = to_num(&c.val()) as usize;
+                        match self.can_target(&mut tr, tok) {
+                            Ok(b) => push_ok_bool(&mut out, b),
+                            Err(m) => push_err(&mut out, &m),
+                        }
+                    }
+                    72 => {
+                        // targets_.push({tick: mg.ticks(), target: other})
+                        // THEN mg.target(this, other).
+                        let tok = to_num(&c.val()) as usize;
+                        let t = self.mg_ticks(&mut tr);
+                        self.p.targets_.push((t, tok));
+                        match self.other_small_id(tok) {
+                            Ok(pid) => {
+                                tr.push(125.0);
+                                tr.push(pid);
+                                push_ok(&mut out, &JsVal::Undef);
+                            }
+                            Err(m) => push_err(&mut out, &m),
+                        }
+                    }
+                    73 => {
+                        let ts = self.targets_body(&mut tr);
+                        push_ok(
+                            &mut out,
+                            &JsVal::Arr(ts.into_iter().map(|t| JsVal::Num(t as f64)).collect()),
+                        );
+                    }
+                    74 => {
+                        let ts = self.transitive_targets(&mut tr);
+                        push_ok(
+                            &mut out,
+                            &JsVal::Arr(ts.into_iter().map(|t| JsVal::Num(t as f64)).collect()),
+                        );
+                    }
+                    75 => {
+                        let recip = c.val();
+                        let emoji = c.val();
+                        let is_self =
+                            matches!(&recip, JsVal::Num(t) if self.self_tok == Some(*t as usize));
+                        if is_self {
+                            let m = format!(
+                                "Cannot send emoji to oneself: {}",
+                                self.player_to_string()
+                            );
+                            push_err(&mut out, &m);
+                        } else {
+                            match self.emoji_recipient_id(&recip) {
+                                Err(m) => push_err(&mut out, &m),
+                                Ok(rid) => {
+                                    let created = self.mg_ticks(&mut tr);
+                                    let msg = JsVal::Obj(vec![
+                                        ("message".to_string(), emoji),
+                                        (
+                                            "senderID".to_string(),
+                                            JsVal::Num(self.p.small_id),
+                                        ),
+                                        ("recipientID".to_string(), rid),
+                                        ("createdAt".to_string(), JsVal::Num(created)),
+                                    ]);
+                                    self.p.outgoing_emojis.push(msg.clone());
+                                    // mg.sendEmojiUpdate(msg)
+                                    tr.push(126.0);
+                                    push_val(&mut tr, &msg);
+                                    push_ok(&mut out, &JsVal::Undef);
+                                }
+                            }
+                        }
+                    }
+                    76 => {
+                        let v = self.outgoing_emojis_body(&mut tr);
+                        push_ok(&mut out, &v);
+                    }
+                    77 => {
+                        let recip = c.val();
+                        match self.can_send_emoji(&mut tr, &recip) {
+                            Ok(b) => push_ok_bool(&mut out, b),
+                            Err(m) => push_err(&mut out, &m),
+                        }
+                    }
+                    78 => {
+                        // lastSentAt === undefined short-circuits BOTH
+                        // facades (102 ticks + 116 quickChatCooldown).
+                        let tok = to_num(&c.val()) as usize;
+                        if self.self_tok == Some(tok) {
+                            push_ok_bool(&mut out, false);
+                        } else {
+                            match self.other_small_id(tok) {
+                                Err(m) => push_err(&mut out, &m),
+                                Ok(sid) => {
+                                    let last = self
+                                        .p
+                                        .quick_chats
+                                        .iter()
+                                        .find(|(k, _)| *k == sid)
+                                        .map(|(_, v)| *v);
+                                    match last {
+                                        None => push_ok_bool(&mut out, true),
+                                        Some(l) => {
+                                            let t = self.mg_ticks(&mut tr) - l;
+                                            let cd = script_f64(
+                                                &self.qc,
+                                                &mut self.qc_i,
+                                                &mut tr,
+                                                116.0,
+                                            );
+                                            push_ok_bool(&mut out, t >= cd);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    79 => {
+                        // Map.set(k, v): the key (untraced smallID) evaluates
+                        // before the 102 ticks.
+                        let tok = to_num(&c.val()) as usize;
+                        match self.other_small_id(tok) {
+                            Err(m) => push_err(&mut out, &m),
+                            Ok(sid) => {
+                                let t = self.mg_ticks(&mut tr);
+                                if let Some(e) =
+                                    self.p.quick_chats.iter_mut().find(|(k, _)| *k == sid)
+                                {
+                                    e.1 = t;
+                                } else {
+                                    self.p.quick_chats.push((sid, t));
+                                }
+                                push_ok(&mut out, &JsVal::Undef);
+                            }
+                        }
+                    }
+                    80 | 81 => {
+                        let tok = to_num(&c.val()) as usize;
+                        match self.can_donate(&mut tr, tok, mid == 80) {
+                            Ok(b) => push_ok_bool(&mut out, b),
+                            Err(m) => push_err(&mut out, &m),
+                        }
+                    }
+                    82 => {
+                        let tok = to_num(&c.val()) as usize;
+                        let troops = to_num(&c.val());
+                        if self.self_tok == Some(tok) || troops <= 0.0 {
+                            push_ok_bool(&mut out, false);
+                        } else {
+                            match self.remove_troops(troops) {
+                                Err(m) => push_err(&mut out, &m),
+                                Ok(0.0) => {
+                                    push_ok_bool(&mut out, false)
+                                }
+                                Ok(removed) => match self.other_add_troops(&mut tr, tok, removed)
+                                {
+                                    Err(m) => push_err(&mut out, &m),
+                                    Ok(()) => {
+                                        let t = self.mg_ticks(&mut tr);
+                                        self.p.sent_donations.push((tok, t));
+                                        let u = self.donate_update("troops", tok);
+                                        self.mg_add_update(&mut tr, &u);
+                                        push_ok_bool(&mut out, true);
+                                    }
+                                },
+                            }
+                        }
+                    }
+                    83 => {
+                        // The capture wraps the Gold arg in big() (the
+                        // removeGold precedent); the `gold <= 0n` gate and
+                        // removeGold's own `toRemove <= 0n` are observably
+                        // identical, both folding into remove_gold_body.
+                        let tok = to_num(&c.val()) as usize;
+                        let gold_v = c.val();
+                        if self.self_tok == Some(tok) {
+                            push_ok_bool(&mut out, false);
+                        } else {
+                            match big_operand(&gold_v) {
+                                Err(m) => push_err(&mut out, &m),
+                                Ok(o) => match self.remove_gold_body(&o) {
+                                    Err(m) => push_err(&mut out, &m),
+                                    Ok(0) => push_ok_bool(&mut out, false),
+                                    Ok(removed) => {
+                                        match self.other_add_gold(&mut tr, tok, removed) {
+                                            Err(m) => push_err(&mut out, &m),
+                                            Ok(()) => {
+                                                let t = self.mg_ticks(&mut tr);
+                                                self.p.sent_donations.push((tok, t));
+                                                let u =
+                                                    self.donate_update("gold", tok);
+                                                self.mg_add_update(&mut tr, &u);
+                                                push_ok_bool(&mut out, true);
+                                            }
+                                        }
+                                    }
+                                },
+                            }
+                        }
+                    }
+                    84 => {
+                        let t = self.mg_ticks(&mut tr) - self.p.last_delete_unit_tick;
+                        let cd = script_f64(&self.duc, &mut self.duc_i, &mut tr, 120.0);
+                        push_ok_bool(&mut out, t >= cd);
+                    }
+                    85 => {
+                        self.p.last_delete_unit_tick = self.mg_ticks(&mut tr);
+                        push_ok(&mut out, &JsVal::Undef);
+                    }
+                    86 => match self.can_embargo_all(&mut tr) {
+                        Ok(b) => push_ok_bool(&mut out, b),
+                        Err(m) => push_err(&mut out, &m),
+                    },
+                    87 => {
+                        self.p.last_embargo_all_tick = self.mg_ticks(&mut tr);
+                        push_ok(&mut out, &JsVal::Undef);
+                    }
+                    88 => {
+                        let tok = to_num(&c.val()) as usize;
+                        let oid = self.other_id(tok);
+                        push_ok_bool(&mut out, self.has_embargo_id(&oid));
+                    }
+                    89 => {
+                        let tok = to_num(&c.val()) as usize;
+                        push_ok_bool(&mut out, self.can_trade(tok));
+                    }
+                    90 => push_ok(
+                        &mut out,
+                        &JsVal::Arr(
+                            self.p
+                                .embargoes
+                                .iter()
+                                .map(|(_, e)| {
+                                    JsVal::Obj(vec![
+                                        ("createdAt".to_string(), JsVal::Num(e.created_at)),
+                                        ("isTemporary".to_string(), e.is_temporary.clone()),
+                                        ("target".to_string(), JsVal::Num(e.target as f64)),
+                                    ])
+                                })
+                                .collect(),
+                        ),
+                    ),
+                    91 => {
+                        let tok = to_num(&c.val()) as usize;
+                        let temp = c.val();
+                        match self.add_embargo(&mut tr, tok, temp) {
+                            Ok(()) => push_ok(&mut out, &JsVal::Undef),
+                            Err(m) => push_err(&mut out, &m),
+                        }
+                    }
+                    92 => match self.stop_embargo(&mut tr, to_num(&c.val()) as usize) {
+                        Ok(()) => push_ok(&mut out, &JsVal::Undef),
+                        Err(m) => push_err(&mut out, &m),
+                    },
+                    93 => {
+                        // endTemporaryEmbargo: a missing entry still runs
+                        // stopEmbargo (the addUpdate is unconditional).
+                        let tok = to_num(&c.val()) as usize;
+                        let oid = self.other_id(tok);
+                        let blocked = self
+                            .p
+                            .embargoes
+                            .iter()
+                            .find(|(k, _)| js_strict_eq(k, &oid))
+                            .is_some_and(|(_, e)| !js_truthy(&e.is_temporary));
+                        if blocked {
+                            push_ok(&mut out, &JsVal::Undef);
+                        } else {
+                            match self.stop_embargo(&mut tr, tok) {
+                                Ok(()) => push_ok(&mut out, &JsVal::Undef),
+                                Err(m) => push_err(&mut out, &m),
+                            }
+                        }
+                    }
+                    94 => {
+                        let players = self.mg_players(&mut tr);
+                        let st = self.self_tok;
+                        push_ok(
+                            &mut out,
+                            &JsVal::Arr(
+                                players
+                                    .into_iter()
+                                    .filter(|tok| Some(*tok) != st && self.can_trade(*tok))
+                                    .map(|t| JsVal::Num(t as f64))
+                                    .collect(),
+                            ),
+                        );
+                    }
                     k => unreachable!("player harness: unknown method id {k}"),
                 }
                 let mut full = Vec::with_capacity(1 + tr.len() + out.len());

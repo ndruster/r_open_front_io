@@ -21668,7 +21668,8 @@ const plEnc = (v) => (typeof v === "bigint" ? akEnc(Number(v)) : akEnc(v));
 // team value codec: 0 = null, 1 = string.
 const plTeamTok = (t) => (t === null ? [0] : [1, ...encS(t)]);
 
-// players block: [n, (pid, teamScript, discScript)*n]
+// players block: [n, (pid, teamScript, discScript, encS type, aliveScript,
+// embVals, tgts)*n]
 const plEncPlayers = (ps) =>
   [
     ps.length,
@@ -21676,6 +21677,10 @@ const plEncPlayers = (ps) =>
       uenc(p.pid),
       [p.team.length, ...p.team.flatMap(plTeamTok)],
       [p.disc.length, ...p.disc.map(uenc)],
+      encS(p.typ),
+      [p.alive.length, ...p.alive.map(uenc)],
+      [p.emb.length, ...p.emb.flatMap(plEnc)],
+      [p.tgts.length, ...p.tgts.map(uenc)],
     ]),
   ].flat();
 
@@ -21683,6 +21688,10 @@ const plP = (o = {}) => ({
   pid: o.pid ?? 1,
   team: o.team ?? [null],
   disc: o.disc ?? [0],
+  typ: o.typ ?? "HUMAN",
+  alive: o.alive ?? [1],
+  emb: o.emb ?? [],
+  tgts: o.tgts ?? [],
 });
 
 // playerInfo: a plain scripted object (missing keys read undefined).
@@ -21702,7 +21711,7 @@ function runPL(name, ops) {
   let mocks = [];
 
   const mkPlayer = (p, i) => {
-    const st = { tk: 0, dc: 0 };
+    const st = { tk: 0, dc: 0, al: 0 };
     const o = {
       pid: p.pid,
       team: () => {
@@ -21715,14 +21724,49 @@ function runPL(name, ops) {
         curTr.push(105, p.pid, v ? 1 : 0);
         return !!v;
       },
+      // G3c3: constant identity reads (untraced) and the scripted isAlive.
+      smallID: () => p.pid,
+      id: () => p.pid,
+      type: () => p.typ,
+      isAlive: () => {
+        const v = uiTake(st, p.alive, "al");
+        curTr.push(127, p.pid, v ? 1 : 0);
+        return !!v;
+      },
+      hasEmbargoAgainst: (other) => p.emb.some((e) => e === other.id()),
+      targets: () => p.tgts.map((t) => mocks[t]),
+      addTroops: (n) => {
+        curTr.push(128, p.pid, ...plEnc(n));
+      },
+      addGold: (n) => {
+        curTr.push(129, p.pid, ...plEnc(n));
+      },
     };
     gTok.set(o, i);
     return o;
   };
 
   const mkMg = (m) => {
-    const st = { sg: 0, tk: 0, tt: 0, tl: 0, td: 0 };
+    const st = {
+      sg: 0, tk: 0, tt: 0, tl: 0, td: 0,
+      off: 0, da: 0, arc: 0, tc: 0, tdur: 0, emd: 0, emc: 0, qc: 0,
+      dg: 0, dt: 0, dc: 0, duc: 0, eac: 0, car: 0,
+    };
+    const cf = (list, key, code) => () => {
+      const v = uiTake(st, list, key);
+      curTr.push(code, v);
+      return v;
+    };
+    const cv = (list, key, code) => () => {
+      const v = uiTake(st, list, key);
+      curTr.push(code, ...plEnc(v));
+      return v;
+    };
     return {
+      allianceRequests: (m.allianceRequests ?? []).map(([r, c]) => ({
+        requestor: () => mocks[r],
+        recipient: () => mocks[c],
+      })),
       config: () => ({
         startingGold: () => {
           const v = uiTake(st, m.sg, "sg");
@@ -21735,6 +21779,19 @@ function runPL(name, ops) {
           curTr.push(108, v);
           return v;
         },
+        allianceExtensionPromptOffset: cf(m.off, "off", 109),
+        disableAlliances: cv(m.da, "da", 110),
+        allianceRequestCooldown: cf(m.arc, "arc", 111),
+        targetCooldown: cf(m.tc, "tc", 112),
+        targetDuration: cf(m.tdur, "tdur", 113),
+        emojiMessageDuration: cf(m.emd, "emd", 114),
+        emojiMessageCooldown: cf(m.emc, "emc", 115),
+        quickChatCooldown: cf(m.qc, "qc", 116),
+        donateGold: cv(m.dg, "dg", 117),
+        donateTroops: cv(m.dt, "dt", 118),
+        donateCooldown: cf(m.dc, "dc", 119),
+        deleteUnitCooldown: cf(m.duc, "duc", 120),
+        embargoAllCooldown: cf(m.eac, "eac", 121),
       }),
       addUpdate: (u) => {
         curTr.push(101, ...plEnc(u));
@@ -21759,6 +21816,28 @@ function runPL(name, ops) {
           curTr.push(107, p.smallID());
         },
       }),
+      createAllianceRequest: (from, to) => {
+        const v = uiTake(st, m.car, "car");
+        curTr.push(122, gTok.get(to), ...plEnc(v));
+        return v;
+      },
+      breakAlliance: (p, al) => {
+        curTr.push(123, al.alIdx);
+      },
+      removeAlliancesByPlayerSilently: (p) => {
+        curTr.push(124);
+      },
+      target: (p, o) => {
+        curTr.push(125, o.smallID());
+      },
+      sendEmojiUpdate: (msg) => {
+        curTr.push(126, ...plEnc(msg));
+      },
+      players: () => {
+        const l = m.playersList ?? [];
+        curTr.push(130, l.length, ...l);
+        return l.map((t) => mocks[t]);
+      },
     };
   };
 
@@ -21774,12 +21853,18 @@ function runPL(name, ops) {
       const exp = expired ?? [];
       players = ps.map(plP);
       mocks = players.map(mkPlayer);
+      // G3c3: alliance tuples are [req, rec, expiresAt, reqAgree, recAgree]
+      // (the 2-field legacy form defaults the extension constants).
+      const al5 = alliances.map((al) => [al[0], al[1], al[2] ?? 0, al[3] ? 1 : 0, al[4] ? 1 : 0]);
+      const areq = mg.allianceRequests ?? [];
+      const past = mg.pastOutgoing ?? [];
+      const plist = mg.playersList ?? [];
       args = [
         ...plEnc(pi),
         uenc(smallID),
         ...plEnc(startTroops),
         ...plEnc(team),
-        [alliances.length, ...alliances.flatMap(([r, c]) => [uenc(r), uenc(c)])],
+        [al5.length, ...al5.flatMap(([r, c, e, ra, ca]) => [uenc(r), uenc(c), uenc(e), uenc(ra), uenc(ca)])],
         [tiles.length, ...tiles.map(uenc)],
         [borderTiles.length, ...borderTiles.map(uenc)],
         [mg.sg.length, ...mg.sg.map(uenc)],
@@ -21790,6 +21875,24 @@ function runPL(name, ops) {
         uenc(selfTok === undefined ? -1 : selfTok),
         [exp.length, ...exp.flatMap(([r, c]) => [uenc(r), uenc(c)])],
         [mg.traitorDuration.length, ...mg.traitorDuration.map(uenc)],
+        // G3c3 tail: the mg social surface and the config scripts.
+        [areq.length, ...areq.flatMap(([r, c]) => [uenc(r), uenc(c)])],
+        [past.length, ...past.flatMap(([r, ca]) => [uenc(r), uenc(ca)])],
+        [plist.length, ...plist.map(uenc)],
+        [mg.off.length, ...mg.off.map(uenc)],
+        [mg.da.length, ...mg.da.flatMap(plEnc)],
+        [mg.arc.length, ...mg.arc.map(uenc)],
+        [mg.tc.length, ...mg.tc.map(uenc)],
+        [mg.tdur.length, ...mg.tdur.map(uenc)],
+        [mg.emd.length, ...mg.emd.map(uenc)],
+        [mg.emc.length, ...mg.emc.map(uenc)],
+        [mg.qc.length, ...mg.qc.map(uenc)],
+        [mg.dg.length, ...mg.dg.flatMap(plEnc)],
+        [mg.dt.length, ...mg.dt.flatMap(plEnc)],
+        [mg.dc.length, ...mg.dc.map(uenc)],
+        [mg.duc.length, ...mg.duc.map(uenc)],
+        [mg.eac.length, ...mg.eac.map(uenc)],
+        [mg.car.length, ...mg.car.flatMap(plEnc)],
       ].flat();
       try {
         pl = new PL_CLS.PlayerImpl(
@@ -21801,18 +21904,26 @@ function runPL(name, ops) {
         );
         pl._tiles = new TileSet(tiles);
         pl._borderTiles = new TileSet(borderTiles);
-        pl._alliances = alliances.map(([r, c]) => ({
+        pl._alliances = al5.map(([r, c, e, ra, ca], i) => ({
+          alIdx: i,
           req: r,
           rec: c,
           requestor: () => mocks[r],
           recipient: () => mocks[c],
           other: (p) => (p === mocks[r] ? mocks[c] : mocks[r]),
+          expiresAt: () => e,
+          agreedToExtend: (p) => (p === mocks[r] ? !!ra : !!ca),
         }));
         pl._expiredAlliances = exp.map(([r, c]) => ({
           req: r,
           rec: c,
           requestor: () => mocks[r],
           recipient: () => mocks[c],
+        }));
+        pl.pastOutgoingAllianceRequests = past.map(([r, ca]) => ({
+          requestor: () => pl,
+          recipient: () => mocks[r],
+          createdAt: () => ca,
         }));
         if (selfTok !== undefined && selfTok >= 0) {
           mocks[selfTok] = pl;
@@ -21891,6 +22002,42 @@ function runPL(name, ops) {
           case 57: pl.markRotted(); v = undefined; break;
           case 58: v = pl.isDecaying(); break;
           case 59: v = pl.betrayals(); break;
+          // ---- G3c3: the player-to-player social surface ----
+          case 60: v = pl.incomingAllianceRequests().map((ar) => [ar.requestor(), ar.recipient()]); break;
+          case 61: v = pl.outgoingAllianceRequests().map((ar) => [ar.requestor(), ar.recipient()]); break;
+          case 62: v = pl.allianceInfo(mocks[rest[0]]); break;
+          case 63: v = pl.canSendAllianceRequest(mocks[rest[0]]); break;
+          case 64: pl.breakAlliance(pl._alliances[rest[0]]); v = undefined; break;
+          case 65: pl.removeAllAlliances(); v = undefined; break;
+          case 66: v = pl.createAllianceRequest(mocks[rest[0]]); break;
+          case 67: v = pl.relation(mocks[rest[0]]); break;
+          case 68: v = pl.allRelationsSorted().map((r) => [gTok.get(r.player), r.relation]); break;
+          case 69: pl.updateRelation(mocks[rest[0]], rest[1]); v = undefined; break;
+          case 70: pl.decayRelations(); v = undefined; break;
+          case 71: v = pl.canTarget(mocks[rest[0]]); break;
+          case 72: pl.target(mocks[rest[0]]); v = undefined; break;
+          case 73: v = pl.targets().map((p) => gTok.get(p)); break;
+          case 74: v = pl.transitiveTargets().map((p) => gTok.get(p)); break;
+          case 75: pl.sendEmoji(typeof rest[0] === "string" ? rest[0] : mocks[rest[0]], rest[1]); v = undefined; break;
+          case 76: v = pl.outgoingEmojis(); break;
+          case 77: v = pl.canSendEmoji(typeof rest[0] === "string" ? rest[0] : mocks[rest[0]]); break;
+          case 78: v = pl.canSendQuickChat(mocks[rest[0]]); break;
+          case 79: pl.recordQuickChat(mocks[rest[0]]); v = undefined; break;
+          case 80: v = pl.canDonateGold(mocks[rest[0]]); break;
+          case 81: v = pl.canDonateTroops(mocks[rest[0]]); break;
+          case 82: v = pl.donateTroops(mocks[rest[0]], rest[1]); break;
+          case 83: v = pl.donateGold(mocks[rest[0]], big(rest[1])); break;
+          case 84: v = pl.canDeleteUnit(); break;
+          case 85: pl.recordDeleteUnit(); v = undefined; break;
+          case 86: v = pl.canEmbargoAll(); break;
+          case 87: pl.recordEmbargoAll(); v = undefined; break;
+          case 88: v = pl.hasEmbargoAgainst(mocks[rest[0]]); break;
+          case 89: v = pl.canTrade(mocks[rest[0]]); break;
+          case 90: v = pl.getEmbargoes().map((e) => ({ createdAt: e.createdAt, isTemporary: e.isTemporary, target: gTok.get(e.target) })); break;
+          case 91: pl.addEmbargo(mocks[rest[0]], rest[1]); v = undefined; break;
+          case 92: pl.stopEmbargo(mocks[rest[0]]); v = undefined; break;
+          case 93: pl.endTemporaryEmbargo(mocks[rest[0]]); v = undefined; break;
+          case 94: v = pl.tradingPartners().map((p) => gTok.get(p)); break;
           default: throw new Error(`pl harness: unknown mid ${mid}`);
         }
         if (mid === 38) r = v === null ? [0, 2] : [0, 7, 2, 3, v.req, 3, v.rec];
@@ -21911,6 +22058,25 @@ const PL_MG = (o = {}) => ({
   teamTiles: o.teamTiles ?? [0],
   totalLand: o.totalLand ?? [0],
   traitorDuration: o.traitorDuration ?? [0],
+  // G3c3: the social surface. allianceRequests / pastOutgoing / playersList
+  // are property/method constants (not FIFO scripts).
+  allianceRequests: o.allianceRequests ?? [],
+  pastOutgoing: o.pastOutgoing ?? [],
+  playersList: o.playersList ?? [],
+  off: o.off ?? [0],
+  da: o.da ?? [false],
+  arc: o.arc ?? [0],
+  tc: o.tc ?? [0],
+  tdur: o.tdur ?? [0],
+  emd: o.emd ?? [0],
+  emc: o.emc ?? [0],
+  qc: o.qc ?? [0],
+  dg: o.dg ?? [false],
+  dt: o.dt ?? [false],
+  dc: o.dc ?? [0],
+  duc: o.duc ?? [0],
+  eac: o.eac ?? [0],
+  car: o.car ?? [null],
 });
 
 runPL("pl_ctor", [
@@ -22022,6 +22188,176 @@ runPL("pl_expired_allies", [
 runPL("pl_expired_allies_noself", [
   [0, plPI({ id: "pj", name: "rita", playerType: "HUMAN" }), 21, 10, null, [[1, 2]], [], [], PL_MG({}), [plP({ pid: 71 }), plP({ pid: 72 }), plP({ pid: 73 })], -1, []],
   [1, 49], [1, 48],
+]);
+
+// ---- G3c3: the player-to-player social surface -------------------------
+
+runPL("pl_relations", [
+  [0, plPI({ id: "q1", name: "uma", playerType: "HUMAN" }), 41, 100, null, [], [1], [], PL_MG({}),
+    [plP({ pid: 41, alive: [1, 1, 0] }), plP({ pid: 42, alive: [1] }), plP({ pid: 43, alive: [0] })], -1],
+  [1, 69, 0, 30], [1, 69, 1, -80], [1, 69, 2, 60],
+  [1, 67, 0], [1, 67, 1], [1, 67, 2],
+  [1, 69, 0, "5"], [1, 67, 0],
+  [1, 69, 1, -40], [1, 67, 1],
+  [1, 68],
+  [1, 70], [1, 67, 0], [1, 67, 1], [1, 67, 2],
+  [1, 69, 2, -200], [1, 67, 2],
+  [1, 69, 0, NaN], [1, 67, 0],
+  [1, 70], [1, 67, 0],
+]);
+
+runPL("pl_relations_self", [
+  [0, plPI({ id: "q2", name: "sam", clientID: "c2", playerType: "HUMAN" }), 42, 100, null, [], [1], [], PL_MG({}),
+    [plP({ pid: 44 })], 0],
+  [1, 67, 0], [1, 69, 0, 5],
+]);
+
+runPL("pl_targets", [
+  [0, plPI({ id: "q3", name: "ted", playerType: "HUMAN" }), 43, 100, null, [], [1], [],
+    PL_MG({ ticks: [10, 20, 30, 40, 50], tc: [100], tdur: [15, 5] }),
+    [plP({ pid: 51, disc: [0], team: [null] }), plP({ pid: 52 })], -1],
+  [1, 71, 0],
+  [1, 72, 0],
+  [1, 71, 0],
+  [1, 73],
+  [1, 73],
+  [1, 72, 1],
+  [1, 73],
+  [1, 71, 1],
+]);
+
+runPL("pl_transitive", [
+  [0, plPI({ id: "q4", name: "una", playerType: "HUMAN" }), 44, 100, null, [[0, 1], [2, 0]], [1], [],
+    PL_MG({ ticks: [7], tdur: [100] }),
+    [plP({ pid: 61 }), plP({ pid: 62, tgts: [2, 3] }), plP({ pid: 63, tgts: [3] }), plP({ pid: 64 })], 0],
+  [1, 72, 3],
+  [1, 74],
+]);
+
+runPL("pl_emoji", [
+  [0, plPI({ id: "q5", name: "vic", playerType: "HUMAN" }), 30, 100, null, [], [1], [],
+    PL_MG({ ticks: [100, 110, 120, 130, 140, 150], emd: [50], emc: [40] }),
+    [plP({ pid: 71 }), plP({ pid: 72 })], -1],
+  [1, 75, 0, "hi"],
+  [1, 75, "AllPlayers", "all"],
+  [1, 76],
+  [1, 77, 0],
+  [1, 77, 0],
+  [1, 77, "AllPlayers"],
+  [1, 77, 1],
+]);
+
+runPL("pl_emoji_self", [
+  [0, plPI({ id: "q6", name: "tom", clientID: "c6", playerType: "HUMAN" }), 45, 50, null, [], [1], [],
+    PL_MG({ ticks: [1] }), [plP({ pid: 73 })], 0],
+  [1, 75, 0, "x"],
+  [1, 77, 0],
+  [1, 75, "AllPlayers", "ok"],
+]);
+
+runPL("pl_quickchat", [
+  [0, plPI({ id: "q7", name: "wes", playerType: "HUMAN" }), 46, 100, null, [], [1], [],
+    PL_MG({ ticks: [10, 20, 30], qc: [15] }),
+    [plP({ pid: 81 }), plP({ pid: 82 })], -1],
+  [1, 78, 0],
+  [1, 79, 0],
+  [1, 78, 0],
+  [1, 78, 0],
+  [1, 78, 1],
+  [1, 79, 0],
+  [1, 78, 0],
+]);
+
+runPL("pl_donate", [
+  [0, plPI({ id: "q8", name: "xan", playerType: "HUMAN" }), 47, 200, "Red", [], [1], [],
+    PL_MG({ sg: [1000], ticks: [1000, 1010], dc: [50], dg: [false, true], dt: [true] }),
+    [plP({ pid: 91, team: ["Red"], alive: [1] }), plP({ pid: 92, team: ["Blue"], alive: [1, 0] }), plP({ pid: 93, typ: "BOT", team: [null], alive: [1] })], -1],
+  [1, 80, 0],
+  [1, 80, 0],
+  [1, 82, 0, 100],
+  [1, 81, 0],
+  [1, 81, 1],
+  [1, 80, 2],
+  [1, 83, 0, 500],
+  [1, 83, 0, 0],
+  [1, 82, 0, 0],
+  [1, 82, 0, 5000],
+]);
+
+runPL("pl_donate_self", [
+  [0, plPI({ id: "q9", name: "yul", playerType: "HUMAN" }), 48, 100, null, [], [1], [], PL_MG({}),
+    [plP({ pid: 94 })], 0],
+  [1, 80, 0], [1, 81, 0], [1, 82, 0, 10], [1, 83, 0, 10],
+]);
+
+runPL("pl_delete_unit", [
+  [0, plPI({ id: "qa", name: "zoe", playerType: "HUMAN" }), 49, 100, null, [], [1], [],
+    PL_MG({ ticks: [100, 120, 130, 200], duc: [50] }), [plP()], -1],
+  [1, 84], [1, 85], [1, 84], [1, 84],
+]);
+
+runPL("pl_embargo", [
+  [0, plPI({ id: "qb", name: "amy", playerType: "HUMAN" }), 40, 100, null, [], [1], [],
+    PL_MG({ ticks: [10, 20, 30] }),
+    [plP({ pid: 95 }), plP({ pid: 96, emb: ["qb"] })], -1],
+  [1, 88, 0],
+  [1, 91, 0, false],
+  [1, 88, 0],
+  [1, 90],
+  [1, 91, 0, true],
+  [1, 93, 0],
+  [1, 91, 1, true],
+  [1, 90],
+  [1, 93, 1],
+  [1, 93, 1],
+  [1, 89, 0],
+  [1, 89, 1],
+  [1, 92, 0],
+  [1, 89, 0],
+]);
+
+runPL("pl_embargo_all", [
+  [0, plPI({ id: "qc", name: "ben", playerType: "HUMAN" }), 50, 100, "Red", [], [1], [],
+    PL_MG({ ticks: [100, 200, 260, 300], eac: [50], playersList: [0, 1, 2, 3] }),
+    [plP({ pid: 97 }), plP({ pid: 98, typ: "BOT", team: [null] }), plP({ pid: 99, team: ["Red"] }), plP({ pid: 100, team: ["Blue"] })], 0],
+  [1, 87],
+  [1, 86],
+  [1, 87],
+  [1, 86],
+]);
+
+runPL("pl_alliance_req", [
+  [0, plPI({ id: "qd", name: "cal", playerType: "HUMAN" }), 51, 100, null, [], [1], [],
+    PL_MG({
+      ticks: [600], off: [1000], arc: [100, 300],
+      da: [false, false, false, false, true, false, false],
+      allianceRequests: [[1, 0], [0, 3]],
+      pastOutgoing: [[1, 500], [4, 400]],
+      car: [null, null],
+    }),
+    [plP({ pid: 31 }), plP({ pid: 32, disc: [0], team: [null] }), plP({ pid: 33, disc: [1], team: [null] }), plP({ pid: 34, disc: [0], team: [null] }), plP({ pid: 35, disc: [0], team: [null] })], 0],
+  [1, 60],
+  [1, 61],
+  [1, 63, 1],
+  [1, 63, 3],
+  [1, 63, 2],
+  [1, 63, 0],
+  [1, 63, 1],
+  [1, 63, 4],
+  [1, 63, 4],
+  [1, 66, 2],
+  [1, 66, 1],
+]);
+
+runPL("pl_alliance_info", [
+  [0, plPI({ id: "qe", name: "dot", playerType: "HUMAN" }), 52, 100, null, [[0, 1, 5000, 0, 1]], [1], [],
+    PL_MG({ ticks: [4500], off: [1000] }),
+    [plP({ pid: 36 }), plP({ pid: 37, disc: [0, 1], alive: [1, 0] })], 0],
+  [1, 62, 1],
+  [1, 62, 1],
+  [1, 62, 0],
+  [1, 64, 0],
+  [1, 65],
 ]);
 
 // ---- pl_ scenarios end ------------------------------------------------------
@@ -25680,15 +26016,31 @@ opStream(
   "/// One `core/game/PlayerImpl.ts` op (see\n" +
     "/// `player_impl::PlayerHarness::run_op` docs). kind 0 construct [encVal\n" +
     "/// playerInfo, smallID, encVal startTroops, encVal team, nAlliances,\n" +
-    "/// (req,rec)*, nTiles,(t)*, nBorder,(t)*, sgScript, ticksScript,\n" +
-    "/// teamTilesScript, totalLandScript, playersBlock, selfTok] -> [0] or\n" +
-    "/// [1,encS]; kind 1 method [mid,...] -> [traceLen,(trace)*,[0,...encVal]\n" +
-    "/// | [1,encS]]. Trace events 100 startingGold, 101 addUpdate (full\n" +
-    "/// codec dump), 102 ticks, 103 teamTilesOwned, 104 totalLandTiles, 105\n" +
-    "/// other.isDisconnected, 106 other.team. Players cross as TOKENS (indices\n" +
-    "/// into the harness players table; selfTok >= 0 puts the object under\n" +
-    "/// test into a slot so === identity gates fire). Gold/troops are bigint\n" +
-    "/// and cross as f64 in the |v| <= 2^53 domain.",
+    "/// (req,rec,expiresAt,reqAgree,recAgree)*, nTiles,(t)*, nBorder,(t)*,\n" +
+    "/// sgScript, ticksScript, teamTilesScript, totalLandScript, playersBlock\n" +
+    "/// [n,(pid,teamScript,discScript,encS typ,aliveScript,embVals,tgts)*n],\n" +
+    "/// selfTok, nExpired,(req,rec)*, traitorDurScript, then the G3c3 tail:\n" +
+    "/// nAllianceRequests,(req,rec)*, nPastOutgoing,(rec,createdAt)*,\n" +
+    "/// playersList, offScript, daVals, arcScript, tcScript, tdurScript,\n" +
+    "/// emdScript, emcScript, qcScript, dgVals, dtVals, dcScript, ducScript,\n" +
+    "/// eacScript, carVals] -> [0] or [1,encS]; kind 1 method [mid,...] ->\n" +
+    "/// [traceLen,(trace)*,[0,...encVal] | [1,encS]]. Trace events: 100\n" +
+    "/// startingGold, 101 addUpdate (full codec dump), 102 ticks, 103\n" +
+    "/// teamTilesOwned, 104 totalLandTiles, 105 other.isDisconnected, 106\n" +
+    "/// other.team, 107 betray, 108 traitorDuration; G3c3: 109\n" +
+    "/// allianceExtensionPromptOffset, 110 disableAlliances (JsVal truthy\n" +
+    "/// gate), 111 allianceRequestCooldown, 112 targetCooldown, 113\n" +
+    "/// targetDuration, 114 emojiMessageDuration, 115 emojiMessageCooldown,\n" +
+    "/// 116 quickChatCooldown, 117 donateGold / 118 donateTroops (JsVal\n" +
+    "/// `=== false` gates), 119 donateCooldown, 120 deleteUnitCooldown, 121\n" +
+    "/// embargoAllCooldown, 122 createAllianceRequest [122,tok,...encVal(ret)],\n" +
+    "/// 123 breakAlliance [123,alIdx], 124 removeAlliancesByPlayerSilently,\n" +
+    "/// 125 target [125,otherPid], 126 sendEmojiUpdate [126,...encVal(msg)],\n" +
+    "/// 127 other.isAlive [127,pid,ret01], 128 other.addTroops [128,pid,n],\n" +
+    "/// 129 other.addGold [129,pid,n], 130 mg.players [130,n,(tok)*]. Players\n" +
+    "/// cross as TOKENS (indices into the harness players table; selfTok >= 0\n" +
+    "/// puts the object under test into a slot so === identity gates fire).\n" +
+    "/// Gold/troops are bigint and cross as f64 in the |v| <= 2^53 domain.",
 );
 
 const dataDir = join(root, "crates", "core", "tests", "data");

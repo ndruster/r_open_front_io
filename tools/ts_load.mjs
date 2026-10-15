@@ -35,9 +35,103 @@ function must(src, from, to, label) {
 /** rel -> basename of the prepared copy, so dependents can import it. */
 const prepared = new Map();
 
+/**
+ * G5d synthetic modules: source text for files that do NOT exist in the TS
+ * repo, kept here so the capture can redirect heavy import graphs (the air
+ * pathfinder, the un-ported downstream executions of `PortExecution` /
+ * `ConstructionExecution`) to faithful stubs. The stub class names must equal
+ * the real class names so the `mg.addExecution` recorder can tag them.
+ */
+const EL_STUBS = {
+  "__stub/pathfinding.ts": `export const PathStatus = { NEXT: 0, COMPLETE: 2, NOT_FOUND: 3 };
+
+export class PathFinding {
+  static Air(game) {
+    return game.__pathFinder;
+  }
+}
+`,
+  "__stub/downstream.ts": `export class NukeExecution {
+  constructor(nukeType, player, dst, src, speed, waitTicks, rocketDirectionUp) {
+    this.nukeType = nukeType;
+    this.player = player;
+    this.dst = dst;
+    this.src = src;
+    this.speed = speed;
+    this.waitTicks = waitTicks;
+    this.rocketDirectionUp = rocketDirectionUp;
+  }
+}
+
+export class MirvExecution {
+  constructor(player, tile) {
+    this.player = player;
+    this.tile = tile;
+  }
+}
+
+export class WarshipExecution {
+  constructor(input) {
+    this.input = input;
+  }
+}
+
+export class PortExecution {
+  constructor(port) {
+    this.port = port;
+  }
+}
+
+export class MissileSiloExecution {
+  constructor(silo) {
+    this.silo = silo;
+  }
+}
+
+export class DefensePostExecution {
+  constructor(post) {
+    this.post = post;
+  }
+}
+
+export class SAMLauncherExecution {
+  constructor(player, tile, sam = null) {
+    this.player = player;
+    this.tileArg = tile;
+    this.sam = sam;
+    if (sam !== null) {
+      this.tile = sam.tile();
+    }
+  }
+}
+
+export class CityExecution {
+  constructor(city) {
+    this.city = city;
+  }
+}
+
+export class FactoryExecution {
+  constructor(factory) {
+    this.factory = factory;
+  }
+}
+
+export class TradeShipExecution {
+  constructor(origOwner, srcPort, dstPort) {
+    this.origOwner = origOwner;
+    this.srcPort = srcPort;
+    this.dstPort = dstPort;
+  }
+}
+`,
+};
+
 /** Rewrites one file and returns the path of the loadable .ts copy. */
 function prepare(rel) {
-  const src = readFileSync(join(TS_ROOT, rel), "utf8");
+  const src = Object.prototype.hasOwnProperty.call(EL_STUBS, rel)
+    ? EL_STUBS[rel]
+    : readFileSync(join(TS_ROOT, rel), "utf8");
   let out = src;
 
   if (rel.endsWith("FlatBinaryHeap.ts")) {
@@ -1149,6 +1243,240 @@ function prepare(rel) {
       "export class TrainStationExecution implements Execution {",
       "export class TrainStationExecution {",
       "TrainStationExecution implements",
+    );
+  }
+
+  // ------------------------------------------------------------------ G5d
+  const elPfRel = "__stub/pathfinding.ts";
+  const elDownRel = "__stub/downstream.ts";
+  const elPsrRel = "src/core/PseudoRandom.ts";
+  if (rel.endsWith("execution/WinCheckExecution.ts")) {
+    // GameEvent is type-only; the four Game values actually read are redirected
+    // to the prepared Game.ts copy. The unused `WinEvent` class (whose only
+    // parameter property strip mode rejects) is dropped whole.
+    if (!prepared.has(elGameRel)) prepare(elGameRel);
+    out = must(
+      out,
+      'import { GameEvent } from "../EventBus";\n' +
+        "import {\n" +
+        "  ColoredTeams,\n" +
+        "  Execution,\n" +
+        "  Game,\n" +
+        "  GameMode,\n" +
+        "  Player,\n" +
+        "  PlayerType,\n" +
+        "  RankedType,\n" +
+        "  Team,\n" +
+        '} from "../game/Game";\n' +
+        "\n" +
+        "export class WinEvent implements GameEvent {\n" +
+        "  constructor(public readonly winner: Player) {}\n" +
+        "}\n\n",
+      `import { ColoredTeams, GameMode, PlayerType, RankedType } from "./${prepared.get(elGameRel)}";\n\n`,
+      "WinCheck imports",
+    );
+    out = must(
+      out,
+      "export class WinCheckExecution implements Execution {",
+      "export class WinCheckExecution {",
+      "WinCheck implements",
+    );
+  }
+  if (rel.endsWith("execution/ShellExecution.ts")) {
+    if (!prepared.has(elGameRel)) prepare(elGameRel);
+    if (!prepared.has(elPfRel)) prepare(elPfRel);
+    if (!prepared.has(elPsrRel)) prepare(elPsrRel);
+    out = must(
+      out,
+      'import { Execution, Game, Player, Unit, UnitType } from "../game/Game";\n' +
+        'import { TileRef } from "../game/GameMap";\n' +
+        'import { PathFinding } from "../pathfinding/PathFinder";\n' +
+        'import { PathStatus, SteppingPathFinder } from "../pathfinding/types";\n' +
+        'import { PseudoRandom } from "../PseudoRandom";\n',
+      `import { UnitType } from "./${prepared.get(elGameRel)}";\n` +
+        `import { PathFinding, PathStatus } from "./${prepared.get(elPfRel)}";\n` +
+        `import { PseudoRandom } from "./${prepared.get(elPsrRel)}";\n`,
+      "Shell imports",
+    );
+    out = must(
+      out,
+      "export class ShellExecution implements Execution {\n" +
+        "  private active = true;\n" +
+        "  private pathFinder: SteppingPathFinder<TileRef>;\n" +
+        "  private shell: Unit | undefined;\n" +
+        "  private mg: Game;\n" +
+        "  private destroyAtTick: number = -1;\n" +
+        "  private random: PseudoRandom;\n\n" +
+        "  constructor(\n" +
+        "    private spawn: TileRef,\n" +
+        "    private _owner: Player,\n" +
+        "    private ownerUnit: Unit,\n" +
+        "    private target: Unit,\n" +
+        "  ) {}",
+      "export class ShellExecution {\n" +
+        "  private active = true;\n" +
+        "  private pathFinder: SteppingPathFinder<TileRef>;\n" +
+        "  private shell: Unit | undefined;\n" +
+        "  private mg: Game;\n" +
+        "  private destroyAtTick: number = -1;\n" +
+        "  private random: PseudoRandom;\n\n" +
+        "  constructor(\n" +
+        "    spawn: TileRef,\n" +
+        "    _owner: Player,\n" +
+        "    ownerUnit: Unit,\n" +
+        "    target: Unit,\n" +
+        "  ) {\n" +
+        "    this.spawn = spawn;\n" +
+        "    this._owner = _owner;\n" +
+        "    this.ownerUnit = ownerUnit;\n" +
+        "    this.target = target;\n" +
+        "  }",
+      "Shell ctor",
+    );
+  }
+  if (rel.endsWith("execution/SAMMissileExecution.ts")) {
+    if (!prepared.has(elGameRel)) prepare(elGameRel);
+    if (!prepared.has(elPfRel)) prepare(elPfRel);
+    out = must(
+      out,
+      "import {\n" +
+        "  Execution,\n" +
+        "  Game,\n" +
+        "  MessageType,\n" +
+        "  Player,\n" +
+        "  Unit,\n" +
+        "  UnitType,\n" +
+        '} from "../game/Game";\n' +
+        'import { TileRef } from "../game/GameMap";\n' +
+        'import { PathFinding } from "../pathfinding/PathFinder";\n' +
+        'import { PathStatus, SteppingPathFinder } from "../pathfinding/types";\n' +
+        'import { NukeType } from "../StatsSchemas";\n',
+      `import { MessageType, UnitType } from "./${prepared.get(elGameRel)}";\n` +
+        `import { PathFinding, PathStatus } from "./${prepared.get(elPfRel)}";\n`,
+      "SAM imports",
+    );
+    out = must(
+      out,
+      "export class SAMMissileExecution implements Execution {\n" +
+        "  private active = true;\n" +
+        "  private pathFinder: SteppingPathFinder<TileRef>;\n" +
+        "  private SAMMissile: Unit | undefined;\n" +
+        "  private mg: Game;\n" +
+        "  private speed: number = 0;\n\n" +
+        "  constructor(\n" +
+        "    private spawn: TileRef,\n" +
+        "    private _owner: Player,\n" +
+        "    private ownerUnit: Unit,\n" +
+        "    private target: Unit,\n" +
+        "    private targetTile: TileRef,\n" +
+        "  ) {}",
+      "export class SAMMissileExecution {\n" +
+        "  private active = true;\n" +
+        "  private pathFinder: SteppingPathFinder<TileRef>;\n" +
+        "  private SAMMissile: Unit | undefined;\n" +
+        "  private mg: Game;\n" +
+        "  private speed: number = 0;\n\n" +
+        "  constructor(\n" +
+        "    spawn: TileRef,\n" +
+        "    _owner: Player,\n" +
+        "    ownerUnit: Unit,\n" +
+        "    target: Unit,\n" +
+        "    targetTile: TileRef,\n" +
+        "  ) {\n" +
+        "    this.spawn = spawn;\n" +
+        "    this._owner = _owner;\n" +
+        "    this.ownerUnit = ownerUnit;\n" +
+        "    this.target = target;\n" +
+        "    this.targetTile = targetTile;\n" +
+        "  }",
+      "SAM ctor",
+    );
+  }
+  if (rel.endsWith("execution/PortExecution.ts")) {
+    if (!prepared.has(elGameRel)) prepare(elGameRel);
+    if (!prepared.has(elPsrRel)) prepare(elPsrRel);
+    if (!prepared.has(elDownRel)) prepare(elDownRel);
+    if (!prepared.has(elTseRel)) prepare(elTseRel);
+    out = must(
+      out,
+      'import { Execution, Game, Unit, UnitType } from "../game/Game";\n' +
+        'import { PseudoRandom } from "../PseudoRandom";\n' +
+        'import { TradeShipExecution } from "./TradeShipExecution";\n' +
+        'import { TrainStationExecution } from "./TrainStationExecution";\n',
+      `import { UnitType } from "./${prepared.get(elGameRel)}";\n` +
+        `import { PseudoRandom } from "./${prepared.get(elPsrRel)}";\n` +
+        `import { TradeShipExecution } from "./${prepared.get(elDownRel)}";\n` +
+        `import { TrainStationExecution } from "./${prepared.get(elTseRel)}";\n`,
+      "Port imports",
+    );
+    out = must(
+      out,
+      "export class PortExecution implements Execution {",
+      "export class PortExecution {",
+      "Port implements",
+    );
+  }
+  if (rel.endsWith("execution/ConstructionExecution.ts")) {
+    if (!prepared.has(elGameRel)) prepare(elGameRel);
+    if (!prepared.has(elDownRel)) prepare(elDownRel);
+    out = must(
+      out,
+      'import { Execution, Game, Player, Tick, Unit, UnitType } from "../game/Game";\n' +
+        'import { TileRef } from "../game/GameMap";\n' +
+        'import { CityExecution } from "./CityExecution";\n' +
+        'import { DefensePostExecution } from "./DefensePostExecution";\n' +
+        'import { FactoryExecution } from "./FactoryExecution";\n' +
+        'import { MirvExecution } from "./MIRVExecution";\n' +
+        'import { MissileSiloExecution } from "./MissileSiloExecution";\n' +
+        'import { NukeExecution } from "./NukeExecution";\n' +
+        'import { PortExecution } from "./PortExecution";\n' +
+        'import { SAMLauncherExecution } from "./SAMLauncherExecution";\n' +
+        'import { WarshipExecution } from "./WarshipExecution";\n',
+      `import { UnitType } from "./${prepared.get(elGameRel)}";\n` +
+        `import { CityExecution } from "./${prepared.get(elDownRel)}";\n` +
+        `import { DefensePostExecution } from "./${prepared.get(elDownRel)}";\n` +
+        `import { FactoryExecution } from "./${prepared.get(elDownRel)}";\n` +
+        `import { MirvExecution } from "./${prepared.get(elDownRel)}";\n` +
+        `import { MissileSiloExecution } from "./${prepared.get(elDownRel)}";\n` +
+        `import { NukeExecution } from "./${prepared.get(elDownRel)}";\n` +
+        `import { PortExecution } from "./${prepared.get(elDownRel)}";\n` +
+        `import { SAMLauncherExecution } from "./${prepared.get(elDownRel)}";\n` +
+        `import { WarshipExecution } from "./${prepared.get(elDownRel)}";\n`,
+      "Construction imports",
+    );
+    out = must(
+      out,
+      "export class ConstructionExecution implements Execution {\n" +
+        "  private structure: Unit | null = null;\n" +
+        "  private active: boolean = true;\n" +
+        "  private mg: Game;\n\n" +
+        "  private ticksUntilComplete: Tick;\n\n" +
+        "  constructor(\n" +
+        "    private player: Player,\n" +
+        "    private constructionType: UnitType,\n" +
+        "    private tile: TileRef,\n" +
+        "    private rocketDirectionUp?: boolean,\n" +
+        "    private amount?: number,\n" +
+        "  ) {}",
+      "export class ConstructionExecution {\n" +
+        "  private structure: Unit | null = null;\n" +
+        "  private active: boolean = true;\n" +
+        "  private mg: Game;\n\n" +
+        "  private ticksUntilComplete: Tick;\n\n" +
+        "  constructor(\n" +
+        "    player: Player,\n" +
+        "    constructionType: UnitType,\n" +
+        "    tile: TileRef,\n" +
+        "    rocketDirectionUp?: boolean,\n" +
+        "    amount?: number,\n" +
+        "  ) {\n" +
+        "    this.player = player;\n" +
+        "    this.constructionType = constructionType;\n" +
+        "    this.tile = tile;\n" +
+        "    this.rocketDirectionUp = rocketDirectionUp;\n" +
+        "    this.amount = amount;\n" +
+        "  }",
+      "Construction ctor",
     );
   }
 

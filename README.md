@@ -2665,6 +2665,38 @@ WebSockets — stays excluded, mirroring the `src/core` exclusions).
     replicated. 30 new scenarios (`el_emoji*` / `el_donatetroop*` /
     `el_donategold*`, 107 ops), 117 scenarios / 478 ops and 900,236 wasm
     comparisons in total.
+85. **`execution/` layer, part 4** (`execution`, G5d) — the win-condition,
+    projectile and construction executions added to the same `exec_layer.rs`
+    harness (class ids 25…29): `WinCheckExecution` (25), `ShellExecution` (26),
+    `SAMMissileExecution` (27), `PortExecution` (28), `ConstructionExecution`
+    (29). Facade trace codes pick up where G5c stopped: mg 500-525 (`allPlayers`
+    / `numLandTiles` / `numTilesWithFallout` / `elapsedGameSeconds` /
+    `stats().stats()` / `setWinner` / `unitCount` / `neighbors` / `isWater` /
+    `manhattanDist` / `percentageTilesOwnedToWin` / `isUnitDisabled` / `unitInfo`
+    / `config().unitInfo` / `shellLifetime` / `warshipVeterancyShellDamageBonus` /
+    `defaultSamMissileSpeed` / `tradeShipSpawnRate` / `tradeShipShortRangeDebuff` /
+    `proximityBonusPortsNb` / `gameConfig().gameMode` / `gameConfig().rankedType`
+    / `gameConfig().maxPlayers` / `gameConfig().maxTimerValue` / `bombIntercept`,
+    plus `525` the Shell / SAM stepper `PathFinding.Air(mg).next(from, to)`),
+    player 530-535 (`hasSpawned` / `isDisconnected` / `numTilesOwned` /
+    `canTrade` / `canBuild` / `buildUnit`) and unit 540-547 (`level` /
+    `veterancy` / `recordKill` / `modifyHealth` / `setReachedTarget` / `move` /
+    `setUnderConstruction` / `setTargetedBySAM`). The `PathFinding.Air` stepper is
+    a scripted facade object (`__stub/pathfinding.ts` reads `game.__pathFinder`)
+    replayed with `{status, node}` returns; `PseudoRandom` is the REAL ported
+    sfc32 seeded from `mg.ticks()`, so `chance(1)` (always true) and the
+    port-trade sampling are exact. The un-ported downstream executions built by
+    `ConstructionExecution.completeConstruction` (`NukeExecution` /
+    `MirvExecution` / `WarshipExecution` / `PortExecution` / `MissileSiloExecution`
+    / `DefensePostExecution` / `SAMLauncherExecution` / `CityExecution` /
+    `FactoryExecution`) are modelled as construction-recorder tags 3…11 on
+    `mg.addExecution` (307), and `PortExecution`'s own `TradeShipExecution` as tag
+    12. `WinCheckExecution`'s `mg === null` "Not initialized" throw is reachable
+    (its `mg` IS `= null`) and replicated, while the `private mg: Game` guards of
+    `ConstructionExecution` / `PortExecution` are dead code (undefined, not null)
+    and omitted. 47 new scenarios (`el_wincheck_*` / `el_shell_*` / `el_sam_*` /
+    `el_port_*` / `el_constr_*`, 192 ops), 164 scenarios / 670 ops and 904,374
+    wasm comparisons in total.
 
 Regenerate whenever a ported source changes:
 

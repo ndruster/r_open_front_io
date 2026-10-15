@@ -26506,7 +26506,39 @@ const elRespondToEmoji = (
 ).respondToEmoji;
 // `mg.addExecution(exec)` records the construction of one of these un-ported
 // executions; the tag is looked up by the constructed instance's class name.
-const elExecTags = { TrainStationExecution: 0, ShellExecution: 1, EmojiExecution: 2 };
+const elExecTags = {
+  TrainStationExecution: 0,
+  ShellExecution: 1,
+  EmojiExecution: 2,
+  NukeExecution: 3,
+  MirvExecution: 4,
+  WarshipExecution: 5,
+  PortExecution: 6,
+  MissileSiloExecution: 7,
+  DefensePostExecution: 8,
+  SAMLauncherExecution: 9,
+  CityExecution: 10,
+  FactoryExecution: 11,
+  TradeShipExecution: 12,
+};
+// G5d classes. `WinCheckExecution` / `ShellExecution` / `SAMMissileExecution` /
+// `PortExecution` / `ConstructionExecution` are the REAL (prepared-copy)
+// sources; the downstream classes they construct are stubs (`__stub/…`)
+// redirected by `ts_load.mjs`, except `TrainStationExecution` whose ctor side
+// effect must be faithful (it is the real prepared class).
+const elWinCheckC = (
+  await loadTs("src/core/execution/WinCheckExecution.ts")
+).WinCheckExecution;
+const elShellC = (await loadTs("src/core/execution/ShellExecution.ts"))
+  .ShellExecution;
+const elSamMissileC = (
+  await loadTs("src/core/execution/SAMMissileExecution.ts")
+).SAMMissileExecution;
+const elPortC = (await loadTs("src/core/execution/PortExecution.ts"))
+  .PortExecution;
+const elConstrC = (
+  await loadTs("src/core/execution/ConstructionExecution.ts")
+).ConstructionExecution;
 // A `Unit` ctor argument that is resolved to `elC.units[token]` by `elDef`.
 const elUnitRef = (t) => ({ __elu: t });
 // A `null` ctor argument (`DonateTroopsExecution.troops` / `DonateGoldExecution`
@@ -26559,6 +26591,30 @@ const elEvRecipient = (o) =>
       : o === "AllPlayers"
         ? elEvs("AllPlayers")
         : [3, o._tok];
+// G5d: `mg.setWinner(winner, stats)` — `winner` is a `Player`, a `Team` (plain
+// string) or `null`. A `Player` encodes as its token (like `elEvTok`).
+const elWinArg = (w) =>
+  w === null
+    ? [2]
+    : typeof w === "string"
+      ? elEvs(w)
+      : w === undefined
+        ? [1]
+        : [3, w._tok];
+// G5d: a `UnitParams` object whose values may be `Unit` references (the
+// `buildUnit` third argument). Unit values encode as their token; everything
+// else via `encVal`.
+const elEvParams = (p) => {
+  const keys = Object.keys(p);
+  const o = [6, keys.length];
+  for (const k of keys) {
+    o.push(...encS(k));
+    const v = p[k];
+    if (v != null && v._tok != null) o.push(...elEvTok(v));
+    else o.push(...encVal(v));
+  }
+  return o;
+};
 function elRet(m, slot, code, prefix) {
   const v = elTake(m, slot);
   elT.push(code, ...prefix, ...encVal(v));
@@ -26645,6 +26701,21 @@ function elPlayerObj(tok, slots) {
     },
     troops: () => elRet(m, 41, 418, [tok]),
     name: () => elRet(m, 42, 419, [tok]),
+    // G5d.
+    hasSpawned: () => elRet(m, 43, 530, [tok]),
+    isDisconnected: () => elRet(m, 44, 531, [tok]),
+    numTilesOwned: () => elRet(m, 45, 532, [tok]),
+    canTrade: (o) => elRet(m, 46, 533, [tok, ...elEvTok(o)]),
+    canBuild: (ty, tile) => elRet(m, 47, 534, [tok, ...elEvs(ty), ...elEv1(tile)]),
+    buildUnit: (ty, tile, params) => {
+      const t = elRet(m, 48, 535, [
+        tok,
+        ...elEvs(ty),
+        ...elEv1(tile),
+        ...elEvParams(params),
+      ]);
+      return elC.units[t];
+    },
   };
 }
 function elAllianceObj(tok, slots) {
@@ -26702,6 +26773,15 @@ function elUnitObj(tok, slots) {
     reloadMissile: () => elVoid(347, [tok]),
     markForDeletion: () => elVoid(348, [tok]),
     setTrainStation: (flag) => elVoid(351, [tok, ...elEvb(flag)]),
+    // G5d.
+    level: () => elRet(m, 20, 540, [tok]),
+    veterancy: () => elRet(m, 21, 541, [tok]),
+    recordKill: (ty) => elVoid(542, [tok, ...elEvs(ty)]),
+    modifyHealth: (d, o) => elVoid(543, [tok, ...elEv1(d), ...elEvTok(o)]),
+    setReachedTarget: () => elVoid(544, [tok]),
+    move: (node) => elVoid(545, [tok, ...encVal(node)]),
+    setUnderConstruction: (flag) => elVoid(546, [tok, ...elEvb(flag)]),
+    setTargetedBySAM: (flag) => elVoid(547, [tok, ...elEvb(flag)]),
   };
 }
 function elNeighborObj(tok, slots) {
@@ -26730,6 +26810,18 @@ function elMgObj(slots) {
       get difficulty() {
         return elRet(m, 33, 402, []);
       },
+      get gameMode() {
+        return elRet(m, 54, 520, []);
+      },
+      get rankedType() {
+        return elRet(m, 55, 521, []);
+      },
+      get maxPlayers() {
+        return elRet(m, 56, 522, []);
+      },
+      get maxTimerValue() {
+        return elRet(m, 57, 523, []);
+      },
     }),
     trainStationMaxRange: () => elRet(m, 28, 309, []),
     SiloCooldown: () => elRet(m, 29, 310, []),
@@ -26737,6 +26829,17 @@ function elMgObj(slots) {
     // G5c.
     defaultDonationAmount: (p) => elRet(m, 31, 400, elEvRecipient(p)),
     maxTroops: (p) => elRet(m, 32, 401, elEvRecipient(p)),
+    // G5d.
+    percentageTilesOwnedToWin: (t) => elRet(m, 44, 510, elEv1(t)),
+    isUnitDisabled: (ty) => elRet(m, 45, 511, elEvs(ty)),
+    unitInfo: (ty) => elRet(m, 47, 513, elEvs(ty)),
+    shellLifetime: () => elRet(m, 48, 514, []),
+    warshipVeterancyShellDamageBonus: () => elRet(m, 49, 515, []),
+    defaultSamMissileSpeed: () => elRet(m, 50, 516, []),
+    tradeShipSpawnRate: (r, n) =>
+      elRet(m, 51, 517, [...elEv1(r), ...elEv1(n)]),
+    tradeShipShortRangeDebuff: () => elRet(m, 52, 518, []),
+    proximityBonusPortsNb: (n) => elRet(m, 53, 519, elEv1(n)),
   };
   return {
     config: () => cfg,
@@ -26805,7 +26908,8 @@ function elMgObj(slots) {
       return (ts || []).map((t) => ({ unit: elC.units[t] }));
     },
     addExecution: (exec) => {
-      if (exec.constructor.name === "EmojiExecution") {
+      const cn = exec.constructor.name;
+      if (cn === "EmojiExecution") {
         // G5c: the ctor args are the requestor Player, the recipientID string
         // and the emoji id (`exec.recipientID` is `sender.id()`).
         elT.push(
@@ -26818,9 +26922,87 @@ function elMgObj(slots) {
         );
         return;
       }
-      const tag = elExecTags[exec.constructor.name];
+      // G5d downstream-execution recorders: `tag, ...encoded ctor args`.
+      if (cn === "NukeExecution") {
+        elT.push(
+          307,
+          3,
+          ...encVal(exec.nukeType),
+          ...elEvTok(exec.player),
+          ...encVal(exec.dst),
+          ...encVal(exec.src),
+          ...encVal(exec.speed),
+          ...encVal(exec.waitTicks),
+          ...encVal(exec.rocketDirectionUp),
+          ...encVal(undefined),
+        );
+        return;
+      }
+      if (cn === "MirvExecution") {
+        elT.push(
+          307,
+          4,
+          ...elEvTok(exec.player),
+          ...encVal(exec.tile),
+          ...encVal(undefined),
+        );
+        return;
+      }
+      if (cn === "WarshipExecution") {
+        elT.push(
+          307,
+          5,
+          ...elEvTok(exec.input.owner),
+          ...encVal(exec.input.patrolTile),
+          ...encVal(undefined),
+        );
+        return;
+      }
+      if (cn === "PortExecution") {
+        elT.push(307, 6, ...encVal(exec.port._tok), ...encVal(undefined));
+        return;
+      }
+      if (cn === "MissileSiloExecution") {
+        elT.push(307, 7, ...encVal(exec.silo._tok), ...encVal(undefined));
+        return;
+      }
+      if (cn === "DefensePostExecution") {
+        elT.push(307, 8, ...encVal(exec.post._tok), ...encVal(undefined));
+        return;
+      }
+      if (cn === "SAMLauncherExecution") {
+        elT.push(
+          307,
+          9,
+          ...elEvTok(exec.player),
+          ...encVal(exec.tileArg),
+          ...elEvTok(exec.sam),
+          ...encVal(undefined),
+        );
+        return;
+      }
+      if (cn === "CityExecution") {
+        elT.push(307, 10, ...encVal(exec.city._tok), ...encVal(undefined));
+        return;
+      }
+      if (cn === "FactoryExecution") {
+        elT.push(307, 11, ...encVal(exec.factory._tok), ...encVal(undefined));
+        return;
+      }
+      if (cn === "TradeShipExecution") {
+        elT.push(
+          307,
+          12,
+          ...elEvTok(exec.origOwner),
+          ...encVal(exec.srcPort._tok),
+          ...encVal(exec.dstPort._tok),
+          ...encVal(undefined),
+        );
+        return;
+      }
+      const tag = elExecTags[cn];
       if (tag === undefined) {
-        throw new Error(`el: unknown execution ${exec.constructor.name}`);
+        throw new Error(`el: unknown execution ${cn}`);
       }
       elT.push(
         307,
@@ -26840,27 +27022,52 @@ function elMgObj(slots) {
         ...elEvStrOpt(recipient),
       ]);
     },
+    // G5d.
+    allPlayers: () => {
+      const ts = elRet(m, 34, 500, []);
+      return (ts || []).map((t) => elC.players[t]);
+    },
+    numLandTiles: () => elRet(m, 35, 501, []),
+    numTilesWithFallout: () => elRet(m, 36, 502, []),
+    elapsedGameSeconds: () => elRet(m, 37, 503, []),
+    stats: () => ({
+      stats: () => elRet(m, 38, 504, []),
+      bombIntercept: (p, ty, n) =>
+        elVoid(524, [...elEvTok(p), ...elEvs(ty), ...elEv1(n)]),
+    }),
+    setWinner: (w, s) => elVoid(505, [...elWinArg(w), ...encVal(s)]),
+    unitCount: (ty) => elRet(m, 40, 506, elEvs(ty)),
+    neighbors: (tile) => elRet(m, 41, 507, elEv1(tile)),
+    isWater: (tile) => elRet(m, 42, 508, elEv1(tile)),
+    manhattanDist: (a, b) => elRet(m, 43, 509, [...elEv1(a), ...elEv1(b)]),
+    unitInfo: (ty) => elRet(m, 46, 512, elEvs(ty)),
+    // `PathFinding.Air(mg)` returns this object (the `__stub/pathfinding.ts`
+    // stub reads `game.__pathFinder`); `next(from, to)` replays the scripted
+    // `{status, node}` results.
+    __pathFinder: {
+      next: (from, to) => elRet(m, 59, 525, [...elEv1(from), ...elEv1(to)]),
+    },
   };
 }
 
 function elDef(name, classId, cls, args, spec, ops) {
   elT = [];
   elC = {};
-  elC.players = (spec.players || []).map((mm, i) => elPlayerObj(i, elSlots(43, mm)));
+  elC.players = (spec.players || []).map((mm, i) => elPlayerObj(i, elSlots(49, mm)));
   elC.alliances = (spec.alliances || []).map((mm, i) => elAllianceObj(i, elSlots(4, mm)));
   elC.requests = (spec.requests || []).map((mm, i) => elRequestObj(i, elSlots(5, mm)));
-  elC.units = (spec.units || []).map((mm, i) => elUnitObj(i, elSlots(20, mm)));
+  elC.units = (spec.units || []).map((mm, i) => elUnitObj(i, elSlots(28, mm)));
   elC.neighbors = (spec.neighbors || []).map((mm, i) => elNeighborObj(i, elSlots(3, mm)));
-  elC.mg = elMgObj(elSlots(34, spec.mg));
+  elC.mg = elMgObj(elSlots(61, spec.mg));
 
   const setup = {
     c: classId,
     a: spec.a || [],
-    mg: elSlots(34, spec.mg),
-    players: (spec.players || []).map((mm) => elSlots(43, mm)),
+    mg: elSlots(61, spec.mg),
+    players: (spec.players || []).map((mm) => elSlots(49, mm)),
     alliances: (spec.alliances || []).map((mm) => elSlots(4, mm)),
     requests: (spec.requests || []).map((mm) => elSlots(5, mm)),
-    units: (spec.units || []).map((mm) => elSlots(20, mm)),
+    units: (spec.units || []).map((mm) => elSlots(28, mm)),
     neighbors: (spec.neighbors || []).map((mm) => elSlots(3, mm)),
   };
 
@@ -27511,6 +27718,498 @@ elGoldDef(
   [[0], [1, 0], [3], [2, 0]],
 );
 elGoldDef("el_donategold_assertnever", 15000, "Weird", [{ 38: [true], 39: [true] }, {}], {}, [[0], [1, 0], [2, 0]]);
+
+// -- 25 WinCheckExecution ----------------------------------------------------
+elDef("el_wincheck_skip", 25, elWinCheckC, [], { mg: {}, a: [] }, [[0], [1, 10], [2, 5], [3], [4]]);
+elDef("el_wincheck_uninit", 25, elWinCheckC, [], { mg: {}, a: [] }, [[0], [2, 10]]);
+elDef(
+  "el_wincheck_ffa_win",
+  25,
+  elWinCheckC,
+  [],
+  {
+    players: [{ 45: [6000], 42: ["P0"] }],
+    mg: { 11: [[0]], 55: [null], 54: ["Free For All"], 37: [0], 57: [null], 35: [100], 36: [0], 44: [5000], 38: [7] },
+    a: [],
+  },
+  [[0], [1, 10], [2, 10], [3], [4]],
+);
+elDef(
+  "el_wincheck_ffa_nowin",
+  25,
+  elWinCheckC,
+  [],
+  {
+    players: [{ 45: [1000] }],
+    mg: { 11: [[0]], 55: [null], 54: ["Free For All"], 37: [0], 57: [null], 35: [100], 36: [0], 44: [5000] },
+    a: [],
+  },
+  [[0], [1, 10], [2, 10], [3], [4]],
+);
+elDef(
+  "el_wincheck_ffa_timer",
+  25,
+  elWinCheckC,
+  [],
+  {
+    players: [{ 45: [1], 42: ["P0"] }],
+    mg: { 11: [[0]], 55: [null], 54: ["Free For All"], 37: [120], 57: [2], 38: [7] },
+    a: [],
+  },
+  [[0], [1, 10], [2, 10], [3]],
+);
+elDef(
+  "el_wincheck_1v1_win",
+  25,
+  elWinCheckC,
+  [],
+  {
+    players: [{ 21: ["HUMAN"], 44: [false], 42: ["P0"] }],
+    mg: { 11: [[0]], 55: ["1v1"], 54: ["Free For All"], 38: [7] },
+    a: [],
+  },
+  [[0], [1, 10], [2, 10], [3], [4]],
+);
+elDef(
+  "el_wincheck_2v2_cancel",
+  25,
+  elWinCheckC,
+  [],
+  {
+    players: [{ 21: ["HUMAN"], 43: [false] }],
+    mg: { 34: [[0]], 55: ["2v2"], 56: [4], 38: [7] },
+    a: [],
+  },
+  [[0], [1, 10], [2, 10], [3], [4]],
+);
+elDef(
+  "el_wincheck_2v2_ok",
+  25,
+  elWinCheckC,
+  [],
+  {
+    players: [
+      { 21: ["HUMAN"], 43: [true], 45: [1000] },
+      { 21: ["HUMAN"], 43: [true] },
+      { 21: ["HUMAN"], 43: [true] },
+      { 21: ["HUMAN"], 43: [true] },
+    ],
+    mg: { 34: [[0, 1, 2, 3]], 55: ["2v2"], 56: [4], 54: ["Free For All"], 11: [[0]], 37: [0], 57: [null], 35: [100], 36: [0], 44: [5000] },
+    a: [],
+  },
+  [[0], [1, 10], [2, 10], [3]],
+);
+elDef(
+  "el_wincheck_team_win",
+  25,
+  elWinCheckC,
+  [],
+  {
+    players: [{ 18: ["Red"], 45: [6000], 42: ["Red"] }],
+    mg: { 11: [[0]], 55: [null], 54: ["Team"], 37: [0], 57: [null], 35: [100], 36: [0], 44: [5000], 38: [7] },
+    a: [],
+  },
+  [[0], [1, 10], [2, 10], [3], [4]],
+);
+elDef(
+  "el_wincheck_team_bot",
+  25,
+  elWinCheckC,
+  [],
+  {
+    players: [{ 18: ["Bot"], 45: [6000] }],
+    mg: { 11: [[0]], 55: [null], 54: ["Team"], 37: [0], 57: [null], 35: [100], 36: [0], 44: [5000] },
+    a: [],
+  },
+  [[0], [1, 10], [2, 10], [3]],
+);
+
+// -- 26 ShellExecution -------------------------------------------------------
+elDef(
+  "el_shell_inactive",
+  26,
+  elShellC,
+  [50, null, elUnitRef(0), elUnitRef(1)],
+  { players: [{ 48: [2] }], units: [{}, {}, { 0: [false] }], a: [50, 0, 0, 1], mg: { 2: [10] } },
+  [[0], [1, 10], [2, 10], [3]],
+);
+elDef(
+  "el_shell_target_dead",
+  26,
+  elShellC,
+  [50, null, elUnitRef(0), elUnitRef(1)],
+  { players: [{ 48: [2] }], units: [{}, { 0: [false] }, { 0: [true] }], a: [50, 0, 0, 1], mg: { 2: [10] } },
+  [[0], [1, 10], [2, 10], [3]],
+);
+elDef(
+  "el_shell_owner_same",
+  26,
+  elShellC,
+  [50, null, elUnitRef(0), elUnitRef(1)],
+  { players: [{ 48: [2] }], units: [{}, { 0: [true], 6: [0] }, { 0: [true], 6: [0] }], a: [50, 0, 0, 1], mg: { 2: [10] } },
+  [[0], [1, 10], [2, 10], [3]],
+);
+elDef(
+  "el_shell_hit_kill",
+  26,
+  elShellC,
+  [50, null, elUnitRef(0), elUnitRef(1)],
+  {
+    players: [{ 48: [2] }, {}],
+    units: [
+      { 0: [true, true], 3: ["Warship"], 21: [0] },
+      { 0: [true, true, false], 3: ["Warship"], 6: [1], 11: [100] },
+      { 0: [true], 6: [0], 11: [200] },
+    ],
+    a: [50, 0, 0, 1],
+    mg: { 2: [10], 47: [{ damage: 250 }], 59: [{ status: 2, node: 0 }] },
+  },
+  [[0], [1, 10], [2, 10], [3], [4]],
+);
+elDef(
+  "el_shell_hit_vet",
+  26,
+  elShellC,
+  [50, null, elUnitRef(0), elUnitRef(1)],
+  {
+    players: [{ 48: [2] }, {}],
+    units: [
+      { 0: [true], 3: ["Warship"], 21: [2] },
+      { 0: [true, true, false], 3: ["Transport"], 6: [1], 11: [100] },
+      { 0: [true], 6: [0], 11: [200] },
+    ],
+    a: [50, 0, 0, 1],
+    mg: { 2: [10], 47: [{ damage: 500 }], 49: [10], 59: [{ status: 2, node: 0 }] },
+  },
+  [[0], [1, 10], [2, 10], [3]],
+);
+elDef(
+  "el_shell_next",
+  26,
+  elShellC,
+  [50, null, elUnitRef(0), elUnitRef(1)],
+  {
+    players: [{ 48: [2] }],
+    units: [{ 0: [true] }, { 0: [true], 6: [1], 11: [100] }, { 0: [true], 6: [0], 11: [200] }],
+    a: [50, 0, 0, 1],
+    mg: { 2: [10], 59: [{ status: 0, node: 77 }] },
+  },
+  [[0], [1, 10], [2, 10], [2, 10], [3]],
+);
+elDef(
+  "el_shell_expire",
+  26,
+  elShellC,
+  [50, null, elUnitRef(0), elUnitRef(1)],
+  {
+    players: [{ 48: [2] }],
+    units: [{ 0: [false] }, { 0: [true], 6: [1], 11: [100] }, { 0: [true], 6: [0], 11: [200] }],
+    a: [50, 0, 0, 1],
+    mg: { 2: [10, 10, 20], 48: [5], 59: [{ status: 0, node: 77 }] },
+  },
+  [[0], [1, 10], [2, 10], [2, 20], [3]],
+);
+
+// -- 27 SAMMissileExecution --------------------------------------------------
+elDef(
+  "el_sam_inactive",
+  27,
+  elSamMissileC,
+  [10, null, elUnitRef(0), elUnitRef(1), 100],
+  { players: [{ 48: [2] }], units: [{}, {}, { 0: [false] }], a: [10, 0, 0, 1, 100], mg: { 50: [3] } },
+  [[0], [1, 0], [3]],
+);
+elDef(
+  "el_sam_bail_deadtarget",
+  27,
+  elSamMissileC,
+  [10, null, elUnitRef(0), elUnitRef(1), 100],
+  { players: [{ 48: [2] }], units: [{}, { 0: [false] }, { 0: [true] }], a: [10, 0, 0, 1, 100], mg: { 50: [3] } },
+  [[0], [1, 0], [3]],
+);
+elDef(
+  "el_sam_bail_owner",
+  27,
+  elSamMissileC,
+  [10, null, elUnitRef(0), elUnitRef(1), 100],
+  { players: [{ 48: [2] }], units: [{ 0: [true] }, { 0: [true], 6: [0] }, { 0: [true], 6: [0] }], a: [10, 0, 0, 1, 100], mg: { 50: [3] } },
+  [[0], [1, 0], [3]],
+);
+elDef(
+  "el_sam_bail_wrongtype",
+  27,
+  elSamMissileC,
+  [10, null, elUnitRef(0), elUnitRef(1), 100],
+  {
+    players: [{ 48: [2] }, {}],
+    units: [{ 0: [true] }, { 0: [true], 6: [1], 3: ["Warship"] }, { 0: [true], 6: [0] }],
+    a: [10, 0, 0, 1, 100],
+    mg: { 50: [3] },
+  },
+  [[0], [1, 0], [3]],
+);
+elDef(
+  "el_sam_hit",
+  27,
+  elSamMissileC,
+  [10, null, elUnitRef(0), elUnitRef(1), 100],
+  {
+    players: [{ 1: ["P0"], 48: [2] }, {}],
+    units: [{ 0: [true] }, { 0: [true], 6: [1], 3: ["Atom Bomb"], 11: [100] }, { 0: [true], 6: [0], 11: [200] }],
+    a: [10, 0, 0, 1, 100],
+    mg: { 50: [1], 59: [{ status: 2, node: 0 }] },
+  },
+  [[0], [1, 0], [3], [4]],
+);
+elDef(
+  "el_sam_next",
+  27,
+  elSamMissileC,
+  [10, null, elUnitRef(0), elUnitRef(1), 100],
+  {
+    players: [{ 48: [2] }, {}],
+    units: [{ 0: [true] }, { 0: [true], 6: [1], 3: ["Hydrogen Bomb"] }, { 0: [true], 6: [0], 11: [200] }],
+    a: [10, 0, 0, 1, 100],
+    mg: { 50: [2], 59: [{ status: 0, node: 9 }] },
+  },
+  [[0], [1, 0], [3]],
+);
+
+// -- 28 PortExecution --------------------------------------------------------
+elDef("el_port_inactive", 28, elPortC, [elUnitRef(0)], { units: [{ 0: [false] }], a: [0], mg: { 2: [10] } }, [[0], [1, 10], [2, 10], [3]]);
+elDef(
+  "el_port_uninit",
+  28,
+  elPortC,
+  [elUnitRef(0)],
+  { units: [{ 0: [false] }], a: [0], mg: {} },
+  [[0], [2, 10]],
+);
+elDef(
+  "el_port_underconstruction",
+  28,
+  elPortC,
+  [elUnitRef(0)],
+  { units: [{ 0: [true], 12: [true] }], a: [0], mg: { 2: [10] } },
+  [[0], [1, 10], [2, 10], [3]],
+);
+elDef(
+  "el_port_station",
+  28,
+  elPortC,
+  [elUnitRef(0)],
+  {
+    units: [{ 0: [true], 12: [false], 17: [false], 11: [50] }],
+    a: [0],
+    mg: { 2: [10, 10, 11], 28: [34], 24: [true] },
+  },
+  [[0], [1, 10], [2, 11], [3]],
+);
+elDef(
+  "el_port_station_nospawn",
+  28,
+  elPortC,
+  [elUnitRef(0)],
+  {
+    units: [{ 0: [true], 12: [false], 17: [false], 11: [50], 20: [0] }],
+    a: [0],
+    mg: { 2: [10, 10, 10], 28: [34], 24: [true], 40: [0] },
+  },
+  [[0], [1, 10], [2, 10], [3]],
+);
+elDef(
+  "el_port_nospawn",
+  28,
+  elPortC,
+  [elUnitRef(0)],
+  {
+    units: [{ 0: [true], 12: [false], 17: [true], 20: [0] }],
+    a: [0],
+    mg: { 2: [10, 10, 10], 40: [0] },
+  },
+  [[0], [1, 10], [2, 10], [3]],
+);
+elDef(
+  "el_port_trade",
+  28,
+  elPortC,
+  [elUnitRef(0)],
+  {
+    players: [{ 12: [true] }, { 46: [true], 11: [[1]] }],
+    units: [
+      { 0: [true], 12: [false], 17: [true], 11: [700], 6: [0], 20: [1] },
+      { 6: [1], 11: [800], 20: [1] },
+    ],
+    a: [0],
+    mg: {
+      2: [10, 10, 10],
+      40: [0],
+      51: [1],
+      41: [[1000]],
+      42: [true],
+      20: [5],
+      11: [[0, 1]],
+      21: [true],
+      43: [5],
+      52: [1],
+      53: [1],
+    },
+  },
+  [[0], [1, 10], [2, 10], [3], [4]],
+);
+
+// -- 29 ConstructionExecution ------------------------------------------------
+const elConstrArgs = (type, tile, extra) => (extra ? [null, type, tile, ...extra.args] : [null, type, tile]);
+const elConstrA = (type, tile, extra) => (extra ? [0, type, tile, ...extra.a] : [0, type, tile]);
+
+elDef("el_constr_disabled", 29, elConstrC, elConstrArgs("Port", 50), { players: [{}], a: elConstrA("Port", 50), mg: { 45: [true] } }, [[0], [1, 0], [3]]);
+elDef(
+  "el_constr_invalid_tile",
+  29,
+  elConstrC,
+  elConstrArgs("Port", 50),
+  { players: [{}], a: elConstrA("Port", 50), mg: { 45: [false], 19: [false] } },
+  [[0], [1, 0], [3]],
+);
+elDef(
+  "el_constr_uninit",
+  29,
+  elConstrC,
+  elConstrArgs("Port", 50),
+  { players: [{}], a: elConstrA("Port", 50), mg: { 45: [false], 19: [true] } },
+  [[0], [2, 0]],
+);
+elDef(
+  "el_constr_nuke",
+  29,
+  elConstrC,
+  elConstrArgs("Atom Bomb", 50),
+  { players: [{}], a: elConstrA("Atom Bomb", 50), mg: { 45: [false], 19: [true], 46: [{}] } },
+  [[0], [1, 0], [2, 0], [3]],
+);
+elDef(
+  "el_constr_nuke_amount",
+  29,
+  elConstrC,
+  elConstrArgs("Hydrogen Bomb", 50, { args: [true, 2], a: [true, 2] }),
+  { players: [{}], a: elConstrA("Hydrogen Bomb", 50, { a: [true, 2] }), mg: { 45: [false], 19: [true], 46: [{}] } },
+  [[0], [1, 0], [2, 0], [3]],
+);
+elDef(
+  "el_constr_mirv",
+  29,
+  elConstrC,
+  elConstrArgs("MIRV", 50),
+  { players: [{}], a: elConstrA("MIRV", 50), mg: { 45: [false], 19: [true], 46: [{}] } },
+  [[0], [1, 0], [2, 0], [3]],
+);
+elDef(
+  "el_constr_warship",
+  29,
+  elConstrC,
+  elConstrArgs("Warship", 50),
+  { players: [{}], a: elConstrA("Warship", 50), mg: { 45: [false], 19: [true], 46: [{}] } },
+  [[0], [1, 0], [2, 0], [3]],
+);
+elDef(
+  "el_constr_port_nowait",
+  29,
+  elConstrC,
+  elConstrArgs("Port", 50),
+  { players: [{ 47: [51], 48: [0] }], units: [{}], a: elConstrA("Port", 50), mg: { 45: [false], 19: [true], 46: [{ constructionDuration: 0 }] } },
+  [[0], [1, 0], [2, 0], [3]],
+);
+elDef(
+  "el_constr_silo",
+  29,
+  elConstrC,
+  elConstrArgs("Missile Silo", 50),
+  { players: [{ 47: [51], 48: [0] }], units: [{}], a: elConstrA("Missile Silo", 50), mg: { 45: [false], 19: [true], 46: [{ constructionDuration: 0 }] } },
+  [[0], [1, 0], [2, 0], [3]],
+);
+elDef(
+  "el_constr_defpost",
+  29,
+  elConstrC,
+  elConstrArgs("Defense Post", 50),
+  { players: [{ 47: [51], 48: [0] }], units: [{}], a: elConstrA("Defense Post", 50), mg: { 45: [false], 19: [true], 46: [{ constructionDuration: 0 }] } },
+  [[0], [1, 0], [2, 0], [3]],
+);
+elDef(
+  "el_constr_samlauncher",
+  29,
+  elConstrC,
+  elConstrArgs("SAM Launcher", 50),
+  { players: [{ 47: [51], 48: [0] }], units: [{ 11: [70] }], a: elConstrA("SAM Launcher", 50), mg: { 45: [false], 19: [true], 46: [{ constructionDuration: 0 }] } },
+  [[0], [1, 0], [2, 0], [3]],
+);
+elDef(
+  "el_constr_city",
+  29,
+  elConstrC,
+  elConstrArgs("City", 50),
+  { players: [{ 47: [51], 48: [0] }], units: [{}], a: elConstrA("City", 50), mg: { 45: [false], 19: [true], 46: [{ constructionDuration: 0 }] } },
+  [[0], [1, 0], [2, 0], [3]],
+);
+elDef(
+  "el_constr_factory",
+  29,
+  elConstrC,
+  elConstrArgs("Factory", 50),
+  { players: [{ 47: [51], 48: [0] }], units: [{}], a: elConstrA("Factory", 50), mg: { 45: [false], 19: [true], 46: [{ constructionDuration: 0 }] } },
+  [[0], [1, 0], [2, 0], [3]],
+);
+elDef(
+  "el_constr_duration_ticks",
+  29,
+  elConstrC,
+  elConstrArgs("Port", 50),
+  {
+    players: [{ 47: [51], 48: [0] }],
+    units: [{ 0: [true], 6: [0], 11: [51] }],
+    a: elConstrA("Port", 50),
+    mg: { 45: [false], 19: [true], 46: [{ constructionDuration: 2 }] },
+  },
+  [[0], [1, 0], [2, 0], [2, 0], [2, 0], [2, 0], [3]],
+);
+elDef(
+  "el_constr_owner_reassign",
+  29,
+  elConstrC,
+  elConstrArgs("Port", 50),
+  {
+    players: [{ 47: [51], 48: [0] }, {}],
+    units: [{ 0: [true], 6: [1], 11: [51] }],
+    a: elConstrA("Port", 50),
+    mg: { 45: [false], 19: [true], 46: [{ constructionDuration: 3 }] },
+  },
+  [[0], [1, 0], [2, 0], [2, 0], [3]],
+);
+elDef(
+  "el_constr_structure_dead",
+  29,
+  elConstrC,
+  elConstrArgs("Port", 50),
+  {
+    players: [{ 47: [51], 48: [0] }],
+    units: [{ 0: [false], 6: [0] }],
+    a: elConstrA("Port", 50),
+    mg: { 45: [false], 19: [true], 46: [{ constructionDuration: 3 }] },
+  },
+  [[0], [1, 0], [2, 0], [2, 0], [3]],
+);
+elDef(
+  "el_constr_disable_then_active",
+  29,
+  elConstrC,
+  elConstrArgs("Port", 50),
+  {
+    players: [{ 47: [false] }],
+    a: elConstrA("Port", 50),
+    mg: { 45: [false], 19: [true], 46: [{ constructionDuration: 0 }] },
+  },
+  [[0], [1, 0], [2, 0], [3]],
+);
 
 const structures = {
   votetally: vtScenarios,
@@ -31254,7 +31953,9 @@ opStream(
     "/// TargetPlayer, 8 AllianceRequest, 9 AllianceExtension, 10 BreakAlliance,\n" +
     "/// 11 AllianceReject, 12 Retreat, 13 BoatRetreat, 14 MoveWarship, 15\n" +
     "/// DeleteUnit, 16 QuickChat, 17 MissileSilo, 18 UpgradeStructure, 19 City,\n" +
-    "/// 20 Factory, 21 DefensePost. Facade trace events: mg 210 hasPlayer, 211 player,\n" +
+    "/// 20 Factory, 21 DefensePost, 22 Emoji, 23 DonateTroop, 24 DonateGold, 25\n" +
+    "/// WinCheck, 26 Shell, 27 SAMMissile, 28 Port, 29 Construction. Facade trace\n" +
+    "/// events: mg 210 hasPlayer, 211 player,\n" +
     "/// 212 ticks, 213 allianceRequestDuration, 214 gameType, 215\n" +
     "/// numSpawnPhaseTurns, 216 inSpawnPhase, 217 endSpawnPhase, 218 setPaused,\n" +
     "/// 219 teamTilesOwned, 220 totalLandTiles, 221 players, 222 owner, 223\n" +
@@ -31282,7 +31983,22 @@ opStream(
     "/// updateTransportShipState, 342 updateWarshipState, 343 setTargetTile, 344\n" +
     "/// tile, 345 isUnderConstruction, 346 missileTimerQueue, 347 reloadMissile,\n" +
     "/// 348 markForDeletion, 349 isOverdueDeletion, 350 hasTrainStation, 351\n" +
-    "/// setTrainStation, 352 hasHealth. Objects cross as TOKENS (indices\n" +
+    "/// setTrainStation, 352 hasHealth. G5d: mg 500 allPlayers, 501\n" +
+    "/// numLandTiles, 502 numTilesWithFallout, 503 elapsedGameSeconds, 504\n" +
+    "/// stats().stats, 505 setWinner, 506 unitCount, 507 neighbors, 508 isWater,\n" +
+    "/// 509 manhattanDist, 510 config.pctTilesToWin, 511 config.isUnitDisabled,\n" +
+    "/// 512 mg.unitInfo, 513 config.unitInfo, 514 shellLifetime, 515\n" +
+    "/// warshipVeterancyShellDamageBonus, 516 defaultSamMissileSpeed, 517\n" +
+    "/// tradeShipSpawnRate, 518 tradeShipShortRangeDebuff, 519\n" +
+    "/// proximityBonusPortsNb, 520 gameMode, 521 rankedType, 522 maxPlayers, 523\n" +
+    "/// maxTimerValue, 524 stats().bombIntercept, 525 pathfinder.next; player 530\n" +
+    "/// hasSpawned, 531 isDisconnected, 532 numTilesOwned, 533 canTrade, 534\n" +
+    "/// canBuild, 535 buildUnit; unit 540 level, 541 veterancy, 542 recordKill,\n" +
+    "/// 543 modifyHealth, 544 setReachedTarget, 545 move, 546 setUnderConstruction,\n" +
+    "/// 547 setTargetedBySAM. Construction-record tags on 307: 0 TrainStation, 1\n" +
+    "/// Shell, 2 Emoji, 3 Nuke, 4 MIRV, 5 Warship, 6 Port, 7 MissileSilo, 8\n" +
+    "/// DefensePost, 9 SAMLauncher, 10 City, 11 Factory, 12 TradeShip. Objects\n" +
+    "/// cross as TOKENS (indices\n" +
     "/// into the harness tables). Scripted returns are consumed FIFO per\n" +
     "/// scenario; an exhausted list repeats its last value, an empty list\n" +
     "/// throws on the first call.",

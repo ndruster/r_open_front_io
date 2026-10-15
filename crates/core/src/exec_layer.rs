@@ -57,6 +57,10 @@
 //! (`DonateTroopsExecution` / `DonateGoldExecution` also exercise the
 //! module-level `respondToEmoji` from `nation/NationEmojiBehavior.ts`).
 //!
+//! G5d appends `25` WinCheck, `26` Shell, `27` SAMMissile, `28` Port,
+//! `29` Construction (`WinCheckExecution`, `ShellExecution`,
+//! `SAMMissileExecution`, `PortExecution`, `ConstructionExecution`).
+//!
 //! # G5b facade additions (codes ≥ 300)
 //!
 //! `mg`: `300` isValidRef, `301` getWaterComponent, `302` hasWaterComponent,
@@ -91,6 +95,35 @@
 //! record on code `307` with tag `2` (ctor args: requestor token, recipientID
 //! string, emoji id).
 //!
+//! # G5d facade additions (codes ≥ 500)
+//!
+//! `mg`: `500` allPlayers(), `501` numLandTiles(), `502` numTilesWithFallout(),
+//! `503` elapsedGameSeconds(), `504` stats().stats(), `505` setWinner(winner,
+//! stats), `506` unitCount(type), `507` neighbors(tile), `508` isWater(tile),
+//! `509` manhattanDist(a, b), `510` config().percentageTilesOwnedToWin(t),
+//! `511` config().isUnitDisabled(type), `512` unitInfo(type),
+//! `513` config().unitInfo(type), `514` config().shellLifetime(),
+//! `515` config().warshipVeterancyShellDamageBonus(),
+//! `516` config().defaultSamMissileSpeed(),
+//! `517` config().tradeShipSpawnRate(rejections, n),
+//! `518` config().tradeShipShortRangeDebuff(),
+//! `519` config().proximityBonusPortsNb(n),
+//! `520` config().gameConfig().gameMode, `521` config().gameConfig().rankedType,
+//! `522` config().gameConfig().maxPlayers,
+//! `523` config().gameConfig().maxTimerValue,
+//! `524` stats().bombIntercept(player, type, n),
+//! `525` `PathFinding.Air(mg).next(from, to)` (the Shell / SAM stepper).
+//! `mg.setWinner`'s `winner` is a Player token (`[3, tok]`), a Team string
+//! (`[5, …]`) or `null` (`[2]`). The pathfinder is a scripted facade object
+//! replayed by `__stub/pathfinding.ts` (`PathFinding.Air(mg)` reads
+//! `game.__pathFinder`); `PseudoRandom` is the real ported sfc32.
+//! `player`: `530` hasSpawned(), `531` isDisconnected(), `532` numTilesOwned(),
+//! `533` canTrade(other), `534` canBuild(type, tile),
+//! `535` buildUnit(type, tile, params) (returns a Unit token).
+//! `unit`: `540` level(), `541` veterancy(), `542` recordKill(type),
+//! `543` modifyHealth(delta, owner), `544` setReachedTarget(), `545` move(node),
+//! `546` setUnderConstruction(flag), `547` setTargetedBySAM(flag).
+//!
 //! # Constructing un-ported downstream executions
 //!
 //! `TrainStationExecution` (and `ShellExecution`) are intentionally NOT ported.
@@ -106,6 +139,19 @@
 //! record). `ShellExecution` is likewise un-ported; its only construction site
 //! is the unreachable `DefensePost.shoot`, so it is modelled by
 //! `mg_add_execution_shell` (tag 1) but is never exercised by any scenario.
+//!
+//! G5d extends the construction-record tag space (allocated from `3` upward):
+//! `3` Nuke `(nukeType, player, dst, src, speed, waitTicks, rocketDirectionUp)`,
+//! `4` MIRV `(player, tile)`, `5` Warship `({owner, patrolTile})`,
+//! `6` Port `(port)`, `7` MissileSilo `(silo)`, `8` DefensePost `(post)`,
+//! `9` SAMLauncher `(player, tileArg, sam)`, `10` City `(city)`,
+//! `11` Factory `(factory)`, `12` TradeShip `(origOwner, srcPort, dstPort)`.
+//! These downstream classes are stubs (`__stub/downstream.ts`); their
+//! `addExecution` recorder records the ctor args, and the Rust side emits the
+//! same record (see `mg_add_nuke` / `mg_add_mirv` / `mg_add_warship` /
+//! `mg_add_unit_exec` / `mg_add_sam_launcher` / `mg_add_trade_ship`). The one
+//! exception is `SAMLauncherExecution`, whose ctor side effect `sam.tile()`
+//! (code 344) fires before the record when the `sam` argument is non-null.
 //!
 //! # Facade (mock) surface — the capture scripts these, every call traced
 //!
@@ -150,6 +196,24 @@
 //! | 29 | 310 | `config().SiloCooldown()` |
 //! | 30 | 311 | `config().defensePostShellAttackRate()` (unreachable) |
 //!
+//! G5d mg slots (codes ≥ 500): `34` 500 `allPlayers()`, `35` 501
+//! `numLandTiles()`, `36` 502 `numTilesWithFallout()`, `37` 503
+//! `elapsedGameSeconds()`, `38` 504 `stats().stats()`, `39` 505
+//! `setWinner(winner, stats)`, `40` 506 `unitCount(type)`, `41` 507
+//! `neighbors(tile)`, `42` 508 `isWater(tile)`, `43` 509 `manhattanDist(a, b)`,
+//! `44` 510 `config().percentageTilesOwnedToWin(t)`, `45` 511
+//! `config().isUnitDisabled(type)`, `46` 512 `unitInfo(type)`, `47` 513
+//! `config().unitInfo(type)`, `48` 514 `config().shellLifetime()`, `49` 515
+//! `config().warshipVeterancyShellDamageBonus()`, `50` 516
+//! `config().defaultSamMissileSpeed()`, `51` 517
+//! `config().tradeShipSpawnRate(rejections, n)`, `52` 518
+//! `config().tradeShipShortRangeDebuff()`, `53` 519
+//! `config().proximityBonusPortsNb(n)`, `54` 520
+//! `config().gameConfig().gameMode`, `55` 521 `config().gameConfig().rankedType`,
+//! `56` 522 `config().gameConfig().maxPlayers`, `57` 523
+//! `config().gameConfig().maxTimerValue`, `59` 525 `next(from, to)` (the
+//! pathfinder object; code 524 `stats().bombIntercept(...)` is void).
+//!
 //! `307` `addExecution(...)` (construction record) and `308` `displayChat(...)`
 //! are synthetic events: they consume no script slot on either side.
 //!
@@ -178,6 +242,10 @@
 //! `323` recordQuickChat, `325` recordDeleteUnit, `327` upgradeUnit) consume
 //! no slot.
 //!
+//! G5d player slots (codes ≥ 530): `43` 530 `hasSpawned()`, `44` 531
+//! `isDisconnected()`, `45` 532 `numTilesOwned()`, `46` 533 `canTrade(other)`,
+//! `47` 534 `canBuild(type, tile)`, `48` 535 `buildUnit(type, tile, params)`.
+//!
 //! ## `alliance` facade — slots 0..3
 //!
 //! `0` 260 `onlyOneAgreedToExtend()`, `1` 261 `addExtensionRequest(player)`,
@@ -199,6 +267,11 @@
 //! (`341` updateTransportShipState, `342` updateWarshipState,
 //! `343` setTargetTile, `347` reloadMissile, `348` markForDeletion,
 //! `351` setTrainStation) consume no slot.
+//!
+//! G5d unit slots (codes ≥ 540): `20` 540 `level()`, `21` 541 `veterancy()`,
+//! `22` 542 `recordKill(type)`, `23` 543 `modifyHealth(delta, owner)`,
+//! `24` 544 `setReachedTarget()`, `25` 545 `move(node)`, `26` 546
+//! `setUnderConstruction(flag)`, `27` 547 `setTargetedBySAM(flag)`.
 //!
 //! ## `neighbor` facade — slots 0..2
 //!
@@ -262,6 +335,74 @@ const RETREAT_CANCEL_DELAY: f64 = 20.0;
 const TAG_TRAIN_STATION: f64 = 0.0;
 const TAG_SHELL: f64 = 1.0;
 const TAG_EMOJI: f64 = 2.0;
+// G5d downstream-execution tags (`mg.addExecution(new XxxExecution(...))`).
+const TAG_NUKE: f64 = 3.0;
+const TAG_MIRV: f64 = 4.0;
+const TAG_WARSHIP: f64 = 5.0;
+const TAG_PORT_EXEC: f64 = 6.0;
+const TAG_MISSILE_SILO: f64 = 7.0;
+const TAG_DEFENSE_POST: f64 = 8.0;
+const TAG_SAM_LAUNCHER: f64 = 9.0;
+const TAG_CITY: f64 = 10.0;
+const TAG_FACTORY: f64 = 11.0;
+const TAG_TRADE_SHIP: f64 = 12.0;
+
+/// G5d `UnitType` string members (`Game.ts`).
+const UNIT_SHELL: &str = "Shell";
+const UNIT_SAM_MISSILE: &str = "SAMMissile";
+const UNIT_TRADE_SHIP: &str = "Trade Ship";
+const UNIT_ATOM_BOMB: &str = "Atom Bomb";
+const UNIT_HYDROGEN_BOMB: &str = "Hydrogen Bomb";
+/// `GameMode.FFA`.
+const GAME_MODE_FFA: &str = "Free For All";
+/// `RankedType` members.
+const RANKED_ONE_V_ONE: &str = "1v1";
+const RANKED_TWO_V_TWO: &str = "2v2";
+/// `PlayerType.Human`.
+const PLAYER_TYPE_HUMAN: &str = "HUMAN";
+/// `ColoredTeams.Bot`.
+const COLORED_TEAMS_BOT: &str = "Bot";
+/// `MessageType.SAM_HIT` (numeric enum member 10).
+const MSG_SAM_HIT: f64 = 10.0;
+/// `WinCheckExecution.HARD_TIME_LIMIT_SECONDS`.
+const WIN_HARD_TIME_LIMIT_SECONDS: f64 = 170.0 * 60.0;
+/// `SAMMissileExecution` nukes whitelist.
+const NUKES_WHITELIST: [&str; 3] = [UNIT_ATOM_BOMB, UNIT_HYDROGEN_BOMB, UNIT_MIRV_WARHEAD];
+
+/// The first argument of `Game.setWinner` / `WinCheckExecution`'s winner.
+#[derive(Clone, Debug)]
+enum WinArg {
+    Null,
+    Team(String),
+    Player(usize),
+}
+
+fn ev_win(a: &WinArg) -> Vec<f64> {
+    match a {
+        WinArg::Null => vec![2.0],
+        WinArg::Team(s) => evs(s),
+        WinArg::Player(t) => vec![3.0, *t as f64],
+    }
+}
+
+/// `SAMMissileExecution`'s `INTERCEPTED_UNIT_TRANSLATION_KEYS` lookup with the
+/// `?? this.target.type()` fallback.
+fn intercepted_key(ty: &str) -> String {
+    match ty {
+        "Atom Bomb" => "unit_type.atom_bomb".to_string(),
+        "Hydrogen Bomb" => "unit_type.hydrogen_bomb".to_string(),
+        "MIRV Warhead" => "unit_type.mirv".to_string(),
+        _ => ty.to_string(),
+    }
+}
+
+/// `ConstructionExecution.isStructure`.
+fn is_structure_type(ty: &str) -> bool {
+    matches!(
+        ty,
+        "Port" | "Missile Silo" | "Defense Post" | "SAM Launcher" | "City" | "Factory"
+    )
+}
 
 // ---- codec / script helpers ------------------------------------------------
 
@@ -574,6 +715,23 @@ pub struct ExecHarness {
     gold: Option<i64>,
     random: Option<PseudoRandom>,
 
+    // G5d state.
+    spawn: f64,
+    owner_unit: Option<usize>,
+    shell_tok: Option<usize>,
+    destroy_at_tick: f64,
+    sam_tok: Option<usize>,
+    sam_speed: f64,
+    target_tile: f64,
+    check_offset: f64,
+    trade_ship_rejections: f64,
+    ticks_until_complete: f64,
+    construction_type: String,
+    rocket_direction_up: Option<bool>,
+    el_amount: Option<f64>,
+    #[allow(dead_code)]
+    checked_ranked_spawns: bool,
+
     mg: Mock,
     players: Vec<Mock>,
     alliances: Vec<Mock>,
@@ -612,6 +770,31 @@ const MG_DEFENSE_POST_SHELL_ATTACK_RATE: usize = 30;
 const MG_DEFAULT_DONATION_AMOUNT: usize = 31;
 const MG_MAX_TROOPS: usize = 32;
 const MG_DIFFICULTY: usize = 33;
+// G5d mg slots.
+const MG_ALL_PLAYERS: usize = 34;
+const MG_NUM_LAND_TILES: usize = 35;
+const MG_NUM_TILES_WITH_FALLOUT: usize = 36;
+const MG_ELAPSED_GAME_SECONDS: usize = 37;
+const MG_STATS: usize = 38;
+const MG_UNIT_COUNT: usize = 40;
+const MG_NEIGHBORS: usize = 41;
+const MG_IS_WATER: usize = 42;
+const MG_MANHATTAN_DIST: usize = 43;
+const MG_PCT_TILES_TO_WIN: usize = 44;
+const MG_IS_UNIT_DISABLED: usize = 45;
+const MG_UNIT_INFO: usize = 46;
+const MG_CONFIG_UNIT_INFO: usize = 47;
+const MG_SHELL_LIFETIME: usize = 48;
+const MG_WARSHIP_VET_SHELL_DMG: usize = 49;
+const MG_DEFAULT_SAM_SPEED: usize = 50;
+const MG_TRADE_SHIP_SPAWN_RATE: usize = 51;
+const MG_TRADE_SHIP_SHORT_RANGE_DEBUFF: usize = 52;
+const MG_PROXIMITY_BONUS_PORTS_NB: usize = 53;
+const MG_GAME_MODE: usize = 54;
+const MG_RANKED_TYPE: usize = 55;
+const MG_MAX_PLAYERS: usize = 56;
+const MG_MAX_TIMER_VALUE: usize = 57;
+const MG_PATH_NEXT: usize = 59;
 
 // player slot indices.
 const PL_SMALL_ID: usize = 0;
@@ -645,6 +828,13 @@ const PL_DONATE_GOLD: usize = 39;
 const PL_GOLD: usize = 40;
 const PL_TROOPS: usize = 41;
 const PL_NAME: usize = 42;
+// G5d player slots.
+const PL_HAS_SPAWNED: usize = 43;
+const PL_IS_DISCONNECTED: usize = 44;
+const PL_NUM_TILES_OWNED: usize = 45;
+const PL_CAN_TRADE: usize = 46;
+const PL_CAN_BUILD: usize = 47;
+const PL_BUILD_UNIT: usize = 48;
 
 // alliance slot indices.
 const AL_ONLY_ONE_AGREED: usize = 0;
@@ -669,6 +859,10 @@ const UN_MISSILE_TIMER_QUEUE: usize = 13;
 const UN_IS_OVERDUE_DELETION: usize = 16;
 const UN_HAS_TRAIN_STATION: usize = 17;
 const UN_HAS_HEALTH: usize = 19;
+// G5d unit slots (void mock methods consume no slot, so only the value-returning
+// ones below are referenced from the Rust side).
+const UN_LEVEL: usize = 20;
+const UN_VETERANCY: usize = 21;
 
 // neighbor slot indices.
 const NB_IS_PLAYER: usize = 0;
@@ -916,6 +1110,216 @@ impl ExecHarness {
         push_val(tr, &JsVal::Num(requestor as f64));
         push_val(tr, &JsVal::Str(recipient_id.to_string()));
         push_val(tr, &JsVal::Num(emoji));
+        push_val(tr, &JsVal::Undef);
+    }
+
+    // ---- G5d mg facade ----
+    fn mg_all_players(&mut self, tr: &mut Vec<f64>) -> Vec<usize> {
+        let v = mk_take(&mut self.mg, MG_ALL_PLAYERS, tr, 500.0, &[]);
+        as_tok_list(&v)
+    }
+    fn mg_num_land_tiles(&mut self, tr: &mut Vec<f64>) -> f64 {
+        let v = mk_take(&mut self.mg, MG_NUM_LAND_TILES, tr, 501.0, &[]);
+        as_num(&v)
+    }
+    fn mg_num_tiles_with_fallout(&mut self, tr: &mut Vec<f64>) -> f64 {
+        let v = mk_take(&mut self.mg, MG_NUM_TILES_WITH_FALLOUT, tr, 502.0, &[]);
+        as_num(&v)
+    }
+    fn mg_elapsed_game_seconds(&mut self, tr: &mut Vec<f64>) -> f64 {
+        let v = mk_take(&mut self.mg, MG_ELAPSED_GAME_SECONDS, tr, 503.0, &[]);
+        as_num(&v)
+    }
+    fn mg_stats_stats(&mut self, tr: &mut Vec<f64>) -> JsVal {
+        mk_take(&mut self.mg, MG_STATS, tr, 504.0, &[])
+    }
+    fn mg_set_winner(&mut self, tr: &mut Vec<f64>, arg: WinArg, stats: &JsVal) {
+        let mut prefix = ev_win(&arg);
+        prefix.extend_from_slice(&ev_enc(stats));
+        mk_void(tr, 505.0, &prefix);
+    }
+    fn mg_unit_count(&mut self, tr: &mut Vec<f64>, ty: &str) -> f64 {
+        let v = mk_take(&mut self.mg, MG_UNIT_COUNT, tr, 506.0, &evs(ty));
+        as_num(&v)
+    }
+    fn mg_neighbors(&mut self, tr: &mut Vec<f64>, tile: f64) -> Vec<f64> {
+        let v = mk_take(&mut self.mg, MG_NEIGHBORS, tr, 507.0, &ev1(tile));
+        as_num_list(&v)
+    }
+    fn mg_is_water(&mut self, tr: &mut Vec<f64>, tile: f64) -> bool {
+        let v = mk_take(&mut self.mg, MG_IS_WATER, tr, 508.0, &ev1(tile));
+        as_bool(&v)
+    }
+    fn mg_manhattan_dist(&mut self, tr: &mut Vec<f64>, a: f64, b: f64) -> f64 {
+        let mut prefix = ev1(a);
+        prefix.extend_from_slice(&ev1(b));
+        let v = mk_take(&mut self.mg, MG_MANHATTAN_DIST, tr, 509.0, &prefix);
+        as_num(&v)
+    }
+    fn mg_pct_tiles_to_win(&mut self, tr: &mut Vec<f64>, elapsed: f64) -> f64 {
+        let v = mk_take(&mut self.mg, MG_PCT_TILES_TO_WIN, tr, 510.0, &ev1(elapsed));
+        as_num(&v)
+    }
+    fn mg_is_unit_disabled(&mut self, tr: &mut Vec<f64>, ty: &str) -> bool {
+        let v = mk_take(&mut self.mg, MG_IS_UNIT_DISABLED, tr, 511.0, &evs(ty));
+        as_bool(&v)
+    }
+    fn mg_unit_info(&mut self, tr: &mut Vec<f64>, ty: &str) -> JsVal {
+        mk_take(&mut self.mg, MG_UNIT_INFO, tr, 512.0, &evs(ty))
+    }
+    fn mg_config_unit_info(&mut self, tr: &mut Vec<f64>, ty: &str) -> JsVal {
+        mk_take(&mut self.mg, MG_CONFIG_UNIT_INFO, tr, 513.0, &evs(ty))
+    }
+    fn mg_shell_lifetime(&mut self, tr: &mut Vec<f64>) -> f64 {
+        let v = mk_take(&mut self.mg, MG_SHELL_LIFETIME, tr, 514.0, &[]);
+        as_num(&v)
+    }
+    fn mg_warship_vet_shell_dmg(&mut self, tr: &mut Vec<f64>) -> f64 {
+        let v = mk_take(&mut self.mg, MG_WARSHIP_VET_SHELL_DMG, tr, 515.0, &[]);
+        as_num(&v)
+    }
+    fn mg_default_sam_speed(&mut self, tr: &mut Vec<f64>) -> f64 {
+        let v = mk_take(&mut self.mg, MG_DEFAULT_SAM_SPEED, tr, 516.0, &[]);
+        as_num(&v)
+    }
+    fn mg_trade_ship_spawn_rate(&mut self, tr: &mut Vec<f64>, rejections: f64, num: f64) -> f64 {
+        let mut prefix = ev1(rejections);
+        prefix.extend_from_slice(&ev1(num));
+        let v = mk_take(&mut self.mg, MG_TRADE_SHIP_SPAWN_RATE, tr, 517.0, &prefix);
+        as_num(&v)
+    }
+    fn mg_trade_ship_short_range_debuff(&mut self, tr: &mut Vec<f64>) -> f64 {
+        let v = mk_take(
+            &mut self.mg,
+            MG_TRADE_SHIP_SHORT_RANGE_DEBUFF,
+            tr,
+            518.0,
+            &[],
+        );
+        as_num(&v)
+    }
+    fn mg_proximity_bonus_ports_nb(&mut self, tr: &mut Vec<f64>, n: f64) -> f64 {
+        let v = mk_take(&mut self.mg, MG_PROXIMITY_BONUS_PORTS_NB, tr, 519.0, &ev1(n));
+        as_num(&v)
+    }
+    fn mg_game_mode(&mut self, tr: &mut Vec<f64>) -> String {
+        let v = mk_take(&mut self.mg, MG_GAME_MODE, tr, 520.0, &[]);
+        as_str(&v)
+    }
+    fn mg_ranked_type(&mut self, tr: &mut Vec<f64>) -> String {
+        let v = mk_take(&mut self.mg, MG_RANKED_TYPE, tr, 521.0, &[]);
+        as_str(&v)
+    }
+    fn mg_max_players(&mut self, tr: &mut Vec<f64>) -> Option<f64> {
+        let v = mk_take(&mut self.mg, MG_MAX_PLAYERS, tr, 522.0, &[]);
+        match v {
+            JsVal::Num(n) => Some(n),
+            _ => None,
+        }
+    }
+    fn mg_max_timer_value(&mut self, tr: &mut Vec<f64>) -> JsVal {
+        mk_take(&mut self.mg, MG_MAX_TIMER_VALUE, tr, 523.0, &[])
+    }
+    fn mg_bomb_intercept(&mut self, tr: &mut Vec<f64>, player: usize, ty: &str, n: f64) {
+        let mut prefix = evtok(Some(player));
+        prefix.extend_from_slice(&evs(ty));
+        prefix.extend_from_slice(&ev1(n));
+        mk_void(tr, 524.0, &prefix);
+    }
+    fn mg_path_next(&mut self, tr: &mut Vec<f64>, from: f64, to: f64) -> JsVal {
+        let mut prefix = ev1(from);
+        prefix.extend_from_slice(&ev1(to));
+        mk_take(&mut self.mg, MG_PATH_NEXT, tr, 525.0, &prefix)
+    }
+
+    // ---- G5d construction-record adders (`mg.addExecution`) ----
+    #[allow(clippy::too_many_arguments)]
+    fn mg_add_nuke(
+        &mut self,
+        tr: &mut Vec<f64>,
+        nuke_type: &str,
+        player: usize,
+        dst: f64,
+        src: Option<f64>,
+        speed: f64,
+        wait_ticks: f64,
+        rocket_up: Option<bool>,
+    ) {
+        tr.push(307.0);
+        tr.push(TAG_NUKE);
+        push_val(tr, &JsVal::Str(nuke_type.to_string()));
+        push_val(tr, &JsVal::Num(player as f64));
+        push_val(tr, &JsVal::Num(dst));
+        push_val(
+            tr,
+            &match src {
+                Some(s) => JsVal::Num(s),
+                None => JsVal::Null,
+            },
+        );
+        push_val(tr, &JsVal::Num(speed));
+        push_val(tr, &JsVal::Num(wait_ticks));
+        push_val(
+            tr,
+            &match rocket_up {
+                Some(b) => JsVal::Bool(b),
+                None => JsVal::Undef,
+            },
+        );
+        push_val(tr, &JsVal::Undef);
+    }
+    fn mg_add_mirv(&mut self, tr: &mut Vec<f64>, player: usize, tile: f64) {
+        tr.push(307.0);
+        tr.push(TAG_MIRV);
+        push_val(tr, &JsVal::Num(player as f64));
+        push_val(tr, &JsVal::Num(tile));
+        push_val(tr, &JsVal::Undef);
+    }
+    fn mg_add_warship(&mut self, tr: &mut Vec<f64>, player: usize, patrol_tile: f64) {
+        tr.push(307.0);
+        tr.push(TAG_WARSHIP);
+        push_val(tr, &JsVal::Num(player as f64));
+        push_val(tr, &JsVal::Num(patrol_tile));
+        push_val(tr, &JsVal::Undef);
+    }
+    fn mg_add_unit_exec(&mut self, tr: &mut Vec<f64>, tag: f64, unit_tok: usize) {
+        tr.push(307.0);
+        tr.push(tag);
+        push_val(tr, &JsVal::Num(unit_tok as f64));
+        push_val(tr, &JsVal::Undef);
+    }
+    fn mg_add_sam_launcher(
+        &mut self,
+        tr: &mut Vec<f64>,
+        player: usize,
+        tile_arg: JsVal,
+        sam_tok: usize,
+    ) {
+        tr.push(307.0);
+        tr.push(TAG_SAM_LAUNCHER);
+        push_val(tr, &JsVal::Num(player as f64));
+        push_val(tr, &tile_arg);
+        push_val(tr, &JsVal::Num(sam_tok as f64));
+        push_val(tr, &JsVal::Undef);
+    }
+    fn mg_add_trade_ship(
+        &mut self,
+        tr: &mut Vec<f64>,
+        owner: Option<usize>,
+        src_port: usize,
+        dst_port: usize,
+    ) {
+        tr.push(307.0);
+        tr.push(TAG_TRADE_SHIP);
+        push_val(
+            tr,
+            &match owner {
+                Some(o) => JsVal::Num(o as f64),
+                None => JsVal::Undef,
+            },
+        );
+        push_val(tr, &JsVal::Num(src_port as f64));
+        push_val(tr, &JsVal::Num(dst_port as f64));
         push_val(tr, &JsVal::Undef);
     }
 
@@ -1172,6 +1576,42 @@ impl ExecHarness {
         let v = self.pl(tok, PL_NAME, tr, 419.0, &[]);
         as_str(&v)
     }
+    // G5d player facade.
+    fn pl_has_spawned(&mut self, tr: &mut Vec<f64>, tok: usize) -> bool {
+        let v = self.pl(tok, PL_HAS_SPAWNED, tr, 530.0, &[]);
+        as_bool(&v)
+    }
+    fn pl_is_disconnected(&mut self, tr: &mut Vec<f64>, tok: usize) -> bool {
+        let v = self.pl(tok, PL_IS_DISCONNECTED, tr, 531.0, &[]);
+        as_bool(&v)
+    }
+    fn pl_num_tiles_owned(&mut self, tr: &mut Vec<f64>, tok: usize) -> f64 {
+        let v = self.pl(tok, PL_NUM_TILES_OWNED, tr, 532.0, &[]);
+        as_num(&v)
+    }
+    fn pl_can_trade(&mut self, tr: &mut Vec<f64>, tok: usize, other: Option<usize>) -> bool {
+        let v = self.pl(tok, PL_CAN_TRADE, tr, 533.0, &evtok(other));
+        as_bool(&v)
+    }
+    fn pl_can_build(&mut self, tr: &mut Vec<f64>, tok: usize, ty: &str, tile: f64) -> JsVal {
+        let mut extra = evs(ty);
+        extra.extend_from_slice(&ev1(tile));
+        self.pl(tok, PL_CAN_BUILD, tr, 534.0, &extra)
+    }
+    fn pl_build_unit(
+        &mut self,
+        tr: &mut Vec<f64>,
+        tok: usize,
+        ty: &str,
+        tile: f64,
+        params: &JsVal,
+    ) -> Option<usize> {
+        let mut extra = evs(ty);
+        extra.extend_from_slice(&ev1(tile));
+        extra.extend_from_slice(&ev_enc(params));
+        let v = self.pl(tok, PL_BUILD_UNIT, tr, 535.0, &extra);
+        as_opt_tok(&v)
+    }
 
     // alliance facade
     fn al(&mut self, aid: usize, slot: usize, tr: &mut Vec<f64>, code: f64, extra: &[f64]) -> JsVal {
@@ -1323,6 +1763,44 @@ impl ExecHarness {
     fn un_has_health(&mut self, tr: &mut Vec<f64>, uid: usize) -> bool {
         let v = self.un(uid, UN_HAS_HEALTH, tr, 352.0, &[]);
         as_bool(&v)
+    }
+    // G5d unit facade.
+    fn un_level(&mut self, tr: &mut Vec<f64>, uid: usize) -> f64 {
+        let v = self.un(uid, UN_LEVEL, tr, 540.0, &[]);
+        as_num(&v)
+    }
+    fn un_veterancy(&mut self, tr: &mut Vec<f64>, uid: usize) -> f64 {
+        let v = self.un(uid, UN_VETERANCY, tr, 541.0, &[]);
+        as_num(&v)
+    }
+    fn un_record_kill(&mut self, tr: &mut Vec<f64>, uid: usize, ty: &str) {
+        let mut prefix = vec![uid as f64];
+        prefix.extend_from_slice(&evs(ty));
+        mk_void(tr, 542.0, &prefix);
+    }
+    fn un_modify_health(&mut self, tr: &mut Vec<f64>, uid: usize, d: f64, owner: Option<usize>) {
+        let mut prefix = vec![uid as f64];
+        prefix.extend_from_slice(&ev1(d));
+        prefix.extend_from_slice(&evtok(owner));
+        mk_void(tr, 543.0, &prefix);
+    }
+    fn un_set_reached_target(&mut self, tr: &mut Vec<f64>, uid: usize) {
+        mk_void(tr, 544.0, &[uid as f64]);
+    }
+    fn un_move(&mut self, tr: &mut Vec<f64>, uid: usize, node: &JsVal) {
+        let mut prefix = vec![uid as f64];
+        prefix.extend_from_slice(&ev_enc(node));
+        mk_void(tr, 545.0, &prefix);
+    }
+    fn un_set_under_construction(&mut self, tr: &mut Vec<f64>, uid: usize, flag: bool) {
+        let mut prefix = vec![uid as f64];
+        prefix.extend_from_slice(&evb(flag));
+        mk_void(tr, 546.0, &prefix);
+    }
+    fn un_set_targeted_by_sam(&mut self, tr: &mut Vec<f64>, uid: usize, flag: bool) {
+        let mut prefix = vec![uid as f64];
+        prefix.extend_from_slice(&evb(flag));
+        mk_void(tr, 547.0, &prefix);
     }
 
     // neighbor facade
@@ -1695,6 +2173,49 @@ impl ExecHarness {
                 // DonateGoldExecution: `private active = true`.
                 self.flag = true;
             }
+            25 => {
+                // WinCheckExecution: `private active = true`.
+                self.flag = true;
+            }
+            26 => {
+                // ShellExecution(spawn, _owner, ownerUnit, target).
+                self.spawn = n(0);
+                self.a_tok = n(1) as usize;
+                self.owner_unit = Some(n(2) as usize);
+                self.target = Some(n(3) as usize);
+                self.destroy_at_tick = -1.0;
+                // `private active = true`.
+                self.flag = true;
+            }
+            27 => {
+                // SAMMissileExecution(spawn, _owner, ownerUnit, target, targetTile).
+                self.spawn = n(0);
+                self.a_tok = n(1) as usize;
+                self.owner_unit = Some(n(2) as usize);
+                self.target = Some(n(3) as usize);
+                self.target_tile = n(4);
+                // `private active = true`.
+                self.flag = true;
+            }
+            28 => {
+                // PortExecution(port): `private active = true`.
+                self.a_tok = n(0) as usize;
+                self.flag = true;
+            }
+            29 => {
+                // ConstructionExecution(player, constructionType, tile,
+                // rocketDirectionUp?, amount?).
+                self.a_tok = n(0) as usize;
+                self.construction_type = ctor.get(1).map(as_str).unwrap_or_default();
+                self.spawn = n(2);
+                self.rocket_direction_up = ctor.get(3).and_then(|v| match v {
+                    JsVal::Bool(b) => Some(*b),
+                    _ => None,
+                });
+                self.el_amount = as_opt_num(ctor.get(4));
+                // `private active = true`.
+                self.flag = true;
+            }
             _ => {}
         }
     }
@@ -1755,6 +2276,11 @@ impl ExecHarness {
             22 => self.emoji(kind, tr),
             23 => self.donate_troops_exec(kind, tr),
             24 => self.donate_gold_exec(kind, ticks, tr),
+            25 => self.win_check(kind, ticks, tr),
+            26 => self.shell(kind, tr),
+            27 => self.sam_missile(kind, tr),
+            28 => self.port(kind, tr),
+            29 => self.construction(kind, tr),
             k => unreachable!("exec harness: unknown class id {k}"),
         }
     }
@@ -2983,6 +3509,738 @@ impl ExecHarness {
             self.mg_add_execution_emoji(tr, rt, &sid, e);
         }
         Ok(())
+    }
+
+    // 25 WinCheck
+    fn win_check(&mut self, kind: u8, ticks: f64, tr: &mut Vec<f64>) -> Result<JsVal, String> {
+        match kind {
+            3 => Ok(JsVal::Bool(self.flag)),
+            4 => Ok(JsVal::Bool(false)),
+            1 => {
+                self.mg_ready = true;
+                Ok(JsVal::Undef)
+            }
+            2 => {
+                if ticks % 10.0 != 0.0 {
+                    return Ok(JsVal::Undef);
+                }
+                // TS: `if (this.mg === null) throw new Error("Not initialized")`.
+                if !self.mg_ready {
+                    return Err("Not initialized".into());
+                }
+                if self.check_ranked_2v2_cancelled(tr)? {
+                    return Ok(JsVal::Undef);
+                }
+                if self.mg_game_mode(tr) == GAME_MODE_FFA {
+                    self.check_winner_ffa(tr)?;
+                } else {
+                    self.check_winner_team(tr)?;
+                }
+                Ok(JsVal::Undef)
+            }
+            _ => unreachable!(),
+        }
+    }
+
+    /// `WinCheckExecution.checkRanked2v2Cancelled`.
+    fn check_ranked_2v2_cancelled(&mut self, tr: &mut Vec<f64>) -> Result<bool, String> {
+        if self.checked_ranked_spawns {
+            return Ok(false);
+        }
+        self.checked_ranked_spawns = true;
+        if self.mg_ranked_type(tr) != RANKED_TWO_V_TWO {
+            return Ok(false);
+        }
+        let players = self.mg_all_players(tr);
+        let mut spawned = 0.0;
+        for p in players {
+            if self.pl_type(tr, p) == PLAYER_TYPE_HUMAN && self.pl_has_spawned(tr, p) {
+                spawned += 1.0;
+            }
+        }
+        let expected = self.mg_max_players(tr).unwrap_or(0.0);
+        if spawned >= expected {
+            return Ok(false);
+        }
+        let s = self.mg_stats_stats(tr);
+        self.mg_set_winner(tr, WinArg::Null, &s);
+        self.flag = false;
+        Ok(true)
+    }
+
+    /// `WinCheckExecution.checkWinnerFFA`.
+    fn check_winner_ffa(&mut self, tr: &mut Vec<f64>) -> Result<(), String> {
+        let players = self.mg_players(tr);
+        let sorted = self.sort_players_by_tiles(tr, players);
+        if sorted.is_empty() {
+            return Ok(());
+        }
+        if self.mg_ranked_type(tr) == RANKED_ONE_V_ONE {
+            let mut humans = Vec::new();
+            for p in &sorted {
+                if self.pl_type(tr, *p) == PLAYER_TYPE_HUMAN && !self.pl_is_disconnected(tr, *p) {
+                    humans.push(*p);
+                }
+            }
+            if humans.len() == 1 {
+                let s = self.mg_stats_stats(tr);
+                self.mg_set_winner(tr, WinArg::Player(humans[0]), &s);
+                let _ = self.pl_name(tr, humans[0]);
+                self.flag = false;
+                return Ok(());
+            }
+        }
+        let max = sorted[0];
+        let tiles = self.pl_num_tiles_owned(tr, max);
+        if self.has_won(tr, tiles)? {
+            let s = self.mg_stats_stats(tr);
+            self.mg_set_winner(tr, WinArg::Player(max), &s);
+            let _ = self.pl_name(tr, max);
+            self.flag = false;
+        }
+        Ok(())
+    }
+
+    /// `WinCheckExecution.checkWinnerTeam`.
+    fn check_winner_team(&mut self, tr: &mut Vec<f64>) -> Result<(), String> {
+        if self.mg_ranked_type(tr) == RANKED_TWO_V_TWO {
+            let players = self.mg_players(tr);
+            let mut teams: Vec<String> = Vec::new();
+            for p in players {
+                if self.pl_type(tr, p) != PLAYER_TYPE_HUMAN || self.pl_is_disconnected(tr, p) {
+                    continue;
+                }
+                let team = self.pl_team(tr, p);
+                if !matches!(team, JsVal::Null) {
+                    let s = as_str(&team);
+                    if !teams.contains(&s) {
+                        teams.push(s);
+                    }
+                }
+            }
+            if teams.len() == 1 {
+                let s = self.mg_stats_stats(tr);
+                self.mg_set_winner(tr, WinArg::Team(teams[0].clone()), &s);
+                self.flag = false;
+                return Ok(());
+            }
+        }
+        let players = self.mg_players(tr);
+        let mut team_to_tiles: Vec<(String, f64)> = Vec::new();
+        for p in players {
+            let team = self.pl_team(tr, p);
+            if matches!(team, JsVal::Null) {
+                continue;
+            }
+            let key = as_str(&team);
+            let tiles = self.pl_num_tiles_owned(tr, p);
+            match team_to_tiles.iter_mut().find(|(k, _)| *k == key) {
+                Some(e) => e.1 += tiles,
+                None => team_to_tiles.push((key, tiles)),
+            }
+        }
+        // `Array.from(teamToTiles.entries()).sort((a, b) => b[1] - a[1])` — the
+        // comparator only reads plain numbers, so the trace is order-independent
+        // and sorting by tile count descending picks the same maximum.
+        team_to_tiles.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+        if team_to_tiles.is_empty() {
+            return Ok(());
+        }
+        let (team, tiles) = team_to_tiles[0].clone();
+        if self.has_won(tr, tiles)? {
+            // `ColoredTeams.Bot` never wins.
+            if team == COLORED_TEAMS_BOT {
+                return Ok(());
+            }
+            let s = self.mg_stats_stats(tr);
+            self.mg_set_winner(tr, WinArg::Team(team), &s);
+            self.flag = false;
+        }
+        Ok(())
+    }
+
+    /// `WinCheckExecution.hasWon`.
+    fn has_won(&mut self, tr: &mut Vec<f64>, tiles_owned: f64) -> Result<bool, String> {
+        let time_elapsed = self.mg_elapsed_game_seconds(tr);
+        // `maxTimerValue !== undefined && maxTimerValue !== null`.
+        let max_timer = self.mg_max_timer_value(tr);
+        if !matches!(max_timer, JsVal::Undef | JsVal::Null | JsVal::Absent) {
+            let mt = as_num(&max_timer);
+            if time_elapsed >= mt * 60.0 {
+                return Ok(true);
+            }
+        }
+        if time_elapsed >= WIN_HARD_TIME_LIMIT_SECONDS {
+            return Ok(true);
+        }
+        let num_tiles_without_fallout =
+            self.mg_num_land_tiles(tr) - self.mg_num_tiles_with_fallout(tr);
+        let pct = self.mg_pct_tiles_to_win(tr, time_elapsed);
+        Ok(tiles_owned * 100.0 > num_tiles_without_fallout * pct)
+    }
+
+    /// V8's binary insertion sort (`Array.prototype.sort` for arrays up to
+    /// length 7). The comparator `(a, b) => b.numTilesOwned() - a.numTilesOwned()`
+    /// is invoked as `Compare(element, mid)`, so `mid`'s tile count is read
+    /// before the element's. Scenario lists are kept to a single element, for
+    /// which sort makes no comparator calls.
+    fn sort_players_by_tiles(&mut self, tr: &mut Vec<f64>, mut arr: Vec<usize>) -> Vec<usize> {
+        let n = arr.len();
+        if n <= 1 {
+            return arr;
+        }
+        for i in 1..n {
+            let element = arr[i];
+            let (mut lo, mut hi) = (0usize, i);
+            while lo < hi {
+                let mid = (lo + hi) / 2;
+                let mt = self.pl_num_tiles_owned(tr, arr[mid]);
+                let et = self.pl_num_tiles_owned(tr, element);
+                if mt - et < 0.0 {
+                    hi = mid;
+                } else {
+                    lo = mid + 1;
+                }
+            }
+            if lo < i {
+                arr.remove(i);
+                arr.insert(lo, element);
+            }
+        }
+        arr
+    }
+
+    // 26 Shell
+    fn shell(&mut self, kind: u8, tr: &mut Vec<f64>) -> Result<JsVal, String> {
+        match kind {
+            3 => Ok(JsVal::Bool(self.flag)),
+            4 => Ok(JsVal::Bool(false)),
+            1 => {
+                self.mg_ready = true;
+                let seed = self.mg_ticks(tr);
+                self.random = Some(PseudoRandom::new(seed));
+                Ok(JsVal::Undef)
+            }
+            2 => {
+                if self.shell_tok.is_none() {
+                    let params = JsVal::Obj(vec![]);
+                    self.shell_tok =
+                        self.pl_build_unit(tr, self.a_tok, UNIT_SHELL, self.spawn, &params);
+                }
+                let sh = match self.shell_tok {
+                    Some(t) => t,
+                    None => {
+                        return Err(
+                            "Cannot read properties of undefined (reading 'isActive')".into()
+                        )
+                    }
+                };
+                if !self.un_is_active(tr, sh) {
+                    self.flag = false;
+                    return Ok(JsVal::Undef);
+                }
+                let target = self.target.unwrap();
+                let owner_unit = self.owner_unit.unwrap();
+                // `!target.isActive() || target.owner() === shell.owner() ||
+                //  (destroyAtTick !== -1 && mg.ticks() >= destroyAtTick)`.
+                let mut bail = !self.un_is_active(tr, target);
+                if !bail {
+                    let a = self.un_owner(tr, target);
+                    let b = self.un_owner(tr, sh);
+                    bail = a == b;
+                }
+                if !bail && self.destroy_at_tick != -1.0 {
+                    bail = self.mg_ticks(tr) >= self.destroy_at_tick;
+                }
+                if bail {
+                    self.un_delete(tr, sh, false);
+                    self.flag = false;
+                    return Ok(JsVal::Undef);
+                }
+                if self.destroy_at_tick == -1.0 && !self.un_is_active(tr, owner_unit) {
+                    let t = self.mg_ticks(tr);
+                    let life = self.mg_shell_lifetime(tr);
+                    self.destroy_at_tick = t + life;
+                }
+                let mut i = 0.0;
+                while i < 3.0 {
+                    let from = self.un_tile(tr, sh);
+                    let to = self.un_tile(tr, target);
+                    let result = self.mg_path_next(tr, from, to);
+                    let status = val_field(&result, "status").map(as_num).unwrap_or(f64::NAN);
+                    if status == 2.0 {
+                        self.flag = false;
+                        let target_type = self.un_type(tr, target);
+                        let target_was_active = self.un_is_active(tr, target);
+                        let eff = self.effect_on_target(tr, owner_unit);
+                        self.un_modify_health(tr, target, -eff, Some(self.a_tok));
+                        let mut record = target_was_active && !self.un_is_active(tr, target);
+                        if record {
+                            record = self.un_is_active(tr, owner_unit);
+                        }
+                        if record {
+                            record = self.un_type(tr, owner_unit) == UNIT_WARSHIP;
+                        }
+                        if record {
+                            self.un_record_kill(tr, owner_unit, &target_type);
+                        }
+                        self.un_set_reached_target(tr, sh);
+                        self.un_delete(tr, sh, false);
+                        return Ok(JsVal::Undef);
+                    } else if status == 0.0 {
+                        let node = val_field(&result, "node").cloned().unwrap_or(JsVal::Undef);
+                        self.un_move(tr, sh, &node);
+                    }
+                    i += 1.0;
+                }
+                Ok(JsVal::Undef)
+            }
+            _ => unreachable!(),
+        }
+    }
+
+    /// `ShellExecution.effectOnTarget`.
+    fn effect_on_target(&mut self, tr: &mut Vec<f64>, owner_unit: usize) -> f64 {
+        let info = self.mg_config_unit_info(tr, UNIT_SHELL);
+        let base_damage = match val_field(&info, "damage") {
+            Some(JsVal::Num(n)) => *n,
+            _ => 250.0,
+        };
+        let roll = {
+            let mut rng = self.random.take().unwrap_or_else(|| PseudoRandom::new(0.0));
+            let r = rng.next_int(1.0, 6.0) as f64;
+            self.random = Some(rng);
+            r
+        };
+        let mut damage_multiplier = (roll - 1.0) * 25.0 + 200.0;
+        let veterancy = self.un_veterancy(tr, owner_unit);
+        if veterancy > 0.0 {
+            let bonus = self.mg_warship_vet_shell_dmg(tr);
+            damage_multiplier =
+                ((damage_multiplier * (100.0 + veterancy * bonus)) / 100.0).floor();
+        }
+        js_round((base_damage / 250.0) * damage_multiplier)
+    }
+
+    // 27 SAMMissile
+    fn sam_missile(&mut self, kind: u8, tr: &mut Vec<f64>) -> Result<JsVal, String> {
+        match kind {
+            3 => Ok(JsVal::Bool(self.flag)),
+            4 => Ok(JsVal::Bool(false)),
+            1 => {
+                self.mg_ready = true;
+                self.sam_speed = self.mg_default_sam_speed(tr);
+                self.sam_missile_tick(tr)
+            }
+            2 => self.sam_missile_tick(tr),
+            _ => unreachable!(),
+        }
+    }
+
+    fn sam_missile_tick(&mut self, tr: &mut Vec<f64>) -> Result<JsVal, String> {
+        if self.sam_tok.is_none() {
+            let tgt = self.target.unwrap();
+            let params = JsVal::Obj(vec![("targetUnit".to_string(), JsVal::Num(tgt as f64))]);
+            self.sam_tok =
+                self.pl_build_unit(tr, self.a_tok, UNIT_SAM_MISSILE, self.spawn, &params);
+        }
+        let sm = match self.sam_tok {
+            Some(t) => t,
+            None => {
+                return Err("Cannot read properties of undefined (reading 'isActive')".into())
+            }
+        };
+        if !self.un_is_active(tr, sm) {
+            self.flag = false;
+            return Ok(JsVal::Undef);
+        }
+        let target = self.target.unwrap();
+        let owner_unit = self.owner_unit.unwrap();
+        // `!target.isActive() || !ownerUnit.isActive() ||
+        //  target.owner() === SAMMissile.owner() ||
+        //  !nukesWhitelist.includes(target.type())`.
+        let mut not_in = !self.un_is_active(tr, target);
+        if !not_in {
+            not_in = !self.un_is_active(tr, owner_unit);
+        }
+        if !not_in {
+            let a = self.un_owner(tr, target);
+            let b = self.un_owner(tr, sm);
+            not_in = a == b;
+        }
+        if !not_in {
+            let ty = self.un_type(tr, target);
+            not_in = !NUKES_WHITELIST.contains(&ty.as_str());
+        }
+        if not_in {
+            if self.un_is_active(tr, target) {
+                self.un_set_targeted_by_sam(tr, target, false);
+            }
+            self.un_delete(tr, sm, false);
+            self.flag = false;
+            return Ok(JsVal::Undef);
+        }
+        let speed = self.sam_speed;
+        let mut i = 0.0;
+        while i < speed {
+            let from = self.un_tile(tr, sm);
+            let result = self.mg_path_next(tr, from, self.target_tile);
+            let status = val_field(&result, "status").map(as_num).unwrap_or(f64::NAN);
+            if status == 2.0 {
+                let oid = self.pl_id(tr, self.a_tok);
+                let ttype = self.un_type(tr, target);
+                let key = intercepted_key(&ttype);
+                self.mg_display_message(
+                    tr,
+                    &[
+                        JsVal::Str("events_display.missile_intercepted".into()),
+                        JsVal::Num(MSG_SAM_HIT),
+                        JsVal::Str(oid),
+                        JsVal::Undef,
+                        JsVal::Obj(vec![("unit".to_string(), JsVal::Str(key))]),
+                    ],
+                );
+                self.flag = false;
+                self.un_delete(tr, target, true);
+                self.un_delete(tr, sm, false);
+                // `this.mg.stats().bombIntercept(...)` — `stats()` itself is not
+                // traced; only the `bombIntercept` call (code 524) is.
+                let ttype2 = self.un_type(tr, target);
+                self.mg_bomb_intercept(tr, self.a_tok, &ttype2, 1.0);
+                return Ok(JsVal::Undef);
+            } else if status == 0.0 {
+                let node = val_field(&result, "node").cloned().unwrap_or(JsVal::Undef);
+                self.un_move(tr, sm, &node);
+            }
+            i += 1.0;
+        }
+        Ok(JsVal::Undef)
+    }
+
+    // 28 Port
+    fn port(&mut self, kind: u8, tr: &mut Vec<f64>) -> Result<JsVal, String> {
+        match kind {
+            3 => Ok(JsVal::Bool(self.flag)),
+            4 => Ok(JsVal::Bool(false)),
+            1 => {
+                self.mg_ready = true;
+                let t1 = self.mg_ticks(tr);
+                self.random = Some(PseudoRandom::new(t1));
+                let t2 = self.mg_ticks(tr);
+                self.check_offset = t2 % 10.0;
+                Ok(JsVal::Undef)
+            }
+            2 => {
+                // TS: `if (this.mg === null || this.random === null ||
+                // this.checkOffset === null) throw new Error("Not initialized")`.
+                // `mg`/`random`/`checkOffset` are declared without an initialiser
+                // (`private mg: Game;`), so before `init` they are `undefined`
+                // — never `null` — and this guard is dead code.
+                if !self.un_is_active(tr, self.a_tok) {
+                    self.flag = false;
+                    return Ok(JsVal::Undef);
+                }
+                if self.un_is_under_construction(tr, self.a_tok) {
+                    return Ok(JsVal::Undef);
+                }
+                if !self.un_has_train_station(tr, self.a_tok) {
+                    self.create_station(tr);
+                }
+                let t = self.mg_ticks(tr);
+                if (t + self.check_offset) % 10.0 != 0.0 {
+                    return Ok(JsVal::Undef);
+                }
+                if !self.should_spawn_trade_ship(tr) {
+                    return Ok(JsVal::Undef);
+                }
+                let ports = self.trading_ports(tr);
+                if ports.is_empty() {
+                    return Ok(JsVal::Undef);
+                }
+                let chosen = {
+                    let mut rng = self.random.take().unwrap_or_else(|| PseudoRandom::new(0.0));
+                    let c = rng.rand_element(&ports).copied().unwrap_or(usize::MAX);
+                    self.random = Some(rng);
+                    c
+                };
+                let owner = self.un_owner(tr, self.a_tok);
+                self.mg_add_trade_ship(tr, owner, self.a_tok, chosen);
+                Ok(JsVal::Undef)
+            }
+            _ => unreachable!(),
+        }
+    }
+
+    /// `PortExecution.createStation`.
+    fn create_station(&mut self, tr: &mut Vec<f64>) {
+        let tile = self.un_tile(tr, self.a_tok);
+        let range = self.mg_train_station_max_range(tr);
+        if self.mg_has_unit_nearby(tr, tile, range, UNIT_FACTORY) {
+            self.mg_add_train_station(tr, self.a_tok, None);
+        }
+    }
+
+    /// `PortExecution.shouldSpawnTradeShip`.
+    fn should_spawn_trade_ship(&mut self, tr: &mut Vec<f64>) -> bool {
+        let num = self.mg_unit_count(tr, UNIT_TRADE_SHIP);
+        let mut i = 0.0;
+        // TS: `for (let i = 0; i < this.port!.level(); i++)` — the loop
+        // condition re-reads `level()` on every iteration (and once more when
+        // it fails), so the facade call must happen inside the condition.
+        while i < self.un_level(tr, self.a_tok) {
+            let rate = self.mg_trade_ship_spawn_rate(tr, self.trade_ship_rejections, num);
+            let chance = {
+                let mut rng = self.random.take().unwrap_or_else(|| PseudoRandom::new(0.0));
+                let c = rng.chance(rate);
+                self.random = Some(rng);
+                c
+            };
+            if chance {
+                self.trade_ship_rejections = 0.0;
+                return true;
+            }
+            self.trade_ship_rejections += 1.0;
+            i += 1.0;
+        }
+        false
+    }
+
+    /// `PortExecution.tradingPorts`.
+    fn trading_ports(&mut self, tr: &mut Vec<f64>) -> Vec<usize> {
+        let mut comps: Vec<f64> = Vec::new();
+        let port_tile = self.un_tile(tr, self.a_tok);
+        let neighbors = self.mg_neighbors(tr, port_tile);
+        for nb in neighbors {
+            if !self.mg_is_water(tr, nb) {
+                continue;
+            }
+            let comp = self.mg_get_water_component(tr, nb);
+            // `comp !== null` (SameValueZero set dedup).
+            if !matches!(comp, JsVal::Null) {
+                let c = as_num(&comp);
+                if !comps.iter().any(|x| svz(*x, c)) {
+                    comps.push(c);
+                }
+            }
+        }
+        let players = self.mg_players(tr);
+        // `.filter((p) => p !== port.owner() && p.canTrade(port.owner()))`.
+        let mut passing: Vec<usize> = Vec::new();
+        for p in players {
+            let o1 = self.un_owner(tr, self.a_tok);
+            if Some(p) == o1 {
+                continue;
+            }
+            let o2 = self.un_owner(tr, self.a_tok);
+            if self.pl_can_trade(tr, p, o2) {
+                passing.push(p);
+            }
+        }
+        // `.flatMap((p) => p.units(UnitType.Port))`.
+        let types = vec![UNIT_PORT.to_string()];
+        let mut ports: Vec<usize> = Vec::new();
+        for p in passing {
+            ports.extend(self.pl_units(tr, p, &types));
+        }
+        // `.filter((p) => sourceComponents.some(c => hasWaterComponent(p.tile(), c)))`.
+        let mut filtered: Vec<usize> = Vec::new();
+        for p in ports {
+            let mut keep = false;
+            for c in &comps {
+                let tile = self.un_tile(tr, p);
+                if self.mg_has_water_component(tr, tile, &JsVal::Num(*c)) {
+                    keep = true;
+                    break;
+                }
+            }
+            if keep {
+                filtered.push(p);
+            }
+        }
+        let sorted = self.sort_ports_by_dist(tr, filtered);
+        let n = sorted.len();
+        let mut weighted: Vec<usize> = Vec::new();
+        for (i, other) in sorted.iter().enumerate() {
+            let level = self.un_level(tr, *other);
+            // `new Array(otherPort.level()).fill(otherPort)`.
+            let expanded: Vec<usize> = vec![*other; level as usize];
+            weighted.extend_from_slice(&expanded);
+            let too_close = {
+                let t1 = self.un_tile(tr, self.a_tok);
+                let t2 = self.un_tile(tr, *other);
+                let d = self.mg_manhattan_dist(tr, t1, t2);
+                d < self.mg_trade_ship_short_range_debuff(tr)
+            };
+            let close_bonus = (i as f64) < self.mg_proximity_bonus_ports_nb(tr, n as f64);
+            if !too_close && close_bonus {
+                weighted.extend_from_slice(&expanded);
+            }
+            if !too_close {
+                let o1 = self.un_owner(tr, self.a_tok);
+                let o2 = self.un_owner(tr, *other);
+                if self.pl_is_friendly(tr, o1.unwrap_or(usize::MAX), o2) {
+                    weighted.extend_from_slice(&expanded);
+                }
+            }
+        }
+        weighted
+    }
+
+    /// V8 binary insertion sort for
+    /// `.sort((p1, p2) => manhattanDist(port.tile(), p1.tile()) - manhattanDist(port.tile(), p2.tile()))`,
+    /// with `element` as the first comparator argument.
+    fn sort_ports_by_dist(&mut self, tr: &mut Vec<f64>, mut arr: Vec<usize>) -> Vec<usize> {
+        let n = arr.len();
+        if n <= 1 {
+            return arr;
+        }
+        for i in 1..n {
+            let element = arr[i];
+            let (mut lo, mut hi) = (0usize, i);
+            while lo < hi {
+                let mid = (lo + hi) / 2;
+                if self.port_dist_cmp(tr, element, arr[mid]) < 0.0 {
+                    hi = mid;
+                } else {
+                    lo = mid + 1;
+                }
+            }
+            if lo < i {
+                arr.remove(i);
+                arr.insert(lo, element);
+            }
+        }
+        arr
+    }
+
+    fn port_dist_cmp(&mut self, tr: &mut Vec<f64>, p1: usize, p2: usize) -> f64 {
+        let a1 = self.un_tile(tr, self.a_tok);
+        let b1 = self.un_tile(tr, p1);
+        let d1 = self.mg_manhattan_dist(tr, a1, b1);
+        let a2 = self.un_tile(tr, self.a_tok);
+        let b2 = self.un_tile(tr, p2);
+        let d2 = self.mg_manhattan_dist(tr, a2, b2);
+        d1 - d2
+    }
+
+    // 29 Construction
+    fn construction(&mut self, kind: u8, tr: &mut Vec<f64>) -> Result<JsVal, String> {
+        match kind {
+            3 => Ok(JsVal::Bool(self.flag)),
+            4 => Ok(JsVal::Bool(false)),
+            1 => {
+                self.mg_ready = true;
+                let ty = self.construction_type.clone();
+                if self.mg_is_unit_disabled(tr, &ty) {
+                    self.flag = false;
+                    return Ok(JsVal::Undef);
+                }
+                if !self.mg_is_valid_ref(tr, self.spawn) {
+                    self.flag = false;
+                    return Ok(JsVal::Undef);
+                }
+                Ok(JsVal::Undef)
+            }
+            2 => {
+                if !self.mg_ready {
+                    return Err("Cannot read properties of undefined (reading 'unitInfo')".into());
+                }
+                if self.structure.is_none() {
+                    let ty = self.construction_type.clone();
+                    let info = self.mg_unit_info(tr, &ty);
+                    if !is_structure_type(&ty) {
+                        // Defer to the specialized execution.
+                        self.complete_construction(tr);
+                        self.flag = false;
+                        return Ok(JsVal::Undef);
+                    }
+                    let spawn = self.pl_can_build(tr, self.a_tok, &ty, self.spawn);
+                    if matches!(spawn, JsVal::Bool(false)) {
+                        self.flag = false;
+                        return Ok(JsVal::Undef);
+                    }
+                    let spawn_tile = as_num(&spawn);
+                    let params = JsVal::Obj(vec![]);
+                    let built = self.pl_build_unit(tr, self.a_tok, &ty, spawn_tile, &params);
+                    self.structure = built;
+                    let duration = match val_field(&info, "constructionDuration") {
+                        Some(JsVal::Num(n)) => *n,
+                        _ => 0.0,
+                    };
+                    if duration > 0.0 {
+                        self.un_set_under_construction(tr, built.unwrap_or(usize::MAX), true);
+                        self.ticks_until_complete = duration;
+                        return Ok(JsVal::Undef);
+                    }
+                    self.complete_construction(tr);
+                    self.flag = false;
+                    return Ok(JsVal::Undef);
+                }
+                let st = self.structure.unwrap();
+                if !self.un_is_active(tr, st) {
+                    self.flag = false;
+                    return Ok(JsVal::Undef);
+                }
+                let o1 = self.un_owner(tr, st);
+                if Some(self.a_tok) != o1 {
+                    self.a_tok = self.un_owner(tr, st).unwrap_or(usize::MAX);
+                }
+                if self.ticks_until_complete == 0.0 {
+                    self.a_tok = self.un_owner(tr, st).unwrap_or(usize::MAX);
+                    self.complete_construction(tr);
+                    self.flag = false;
+                    return Ok(JsVal::Undef);
+                }
+                self.ticks_until_complete -= 1.0;
+                Ok(JsVal::Undef)
+            }
+            _ => unreachable!(),
+        }
+    }
+
+    /// `ConstructionExecution.completeConstruction`.
+    fn complete_construction(&mut self, tr: &mut Vec<f64>) {
+        if let Some(st) = self.structure {
+            self.un_set_under_construction(tr, st, false);
+        }
+        let player = self.a_tok;
+        let ty = self.construction_type.clone();
+        match ty.as_str() {
+            "Atom Bomb" | "Hydrogen Bomb" => {
+                let count = self.el_amount.unwrap_or(1.0);
+                let mut i = 0.0;
+                while i < count {
+                    self.mg_add_nuke(
+                        tr,
+                        &ty,
+                        player,
+                        self.spawn,
+                        None,
+                        -1.0,
+                        0.0,
+                        self.rocket_direction_up,
+                    );
+                    i += 1.0;
+                }
+            }
+            "MIRV" => self.mg_add_mirv(tr, player, self.spawn),
+            "Warship" => self.mg_add_warship(tr, player, self.spawn),
+            "Port" => self.mg_add_unit_exec(tr, TAG_PORT_EXEC, self.structure.unwrap()),
+            "Missile Silo" => self.mg_add_unit_exec(tr, TAG_MISSILE_SILO, self.structure.unwrap()),
+            "Defense Post" => {
+                self.mg_add_unit_exec(tr, TAG_DEFENSE_POST, self.structure.unwrap())
+            }
+            "SAM Launcher" => {
+                let st = self.structure.unwrap();
+                // `new SAMLauncherExecution(player, null, structure)` runs the
+                // ctor side effect `sam.tile()` (code 344) before the record.
+                let _ = self.un_tile(tr, st);
+                self.mg_add_sam_launcher(tr, player, JsVal::Null, st);
+            }
+            "City" => self.mg_add_unit_exec(tr, TAG_CITY, self.structure.unwrap()),
+            "Factory" => self.mg_add_unit_exec(tr, TAG_FACTORY, self.structure.unwrap()),
+            _ => {}
+        }
     }
 }
 

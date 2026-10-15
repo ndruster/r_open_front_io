@@ -26433,8 +26433,17 @@ runGFA(
 //   0 NoOp 1 Pause 2 SpawnTimer 3 RecomputeRailCluster 4 MarkDisconnected
 //   5 Embargo 6 EmbargoAll 7 TargetPlayer 8 AllianceRequest
 //   9 AllianceExtension 10 BreakAlliance 11 AllianceReject
+// G5b appends: 12 Retreat 13 BoatRetreat 14 MoveWarship 15 DeleteUnit
+//   16 QuickChat 17 MissileSilo 18 UpgradeStructure 19 City 20 Factory
+//   21 DefensePost
 // Facade event codes: mg 210-228, `player.*` 230-259, `alliance.*` 260-263,
-// `AllianceRequest.*` 270-274, `unit.*` 280-286, neighbor 256-258, rail 290.
+// `AllianceRequest.*` 270-274, `unit.*` 280-286, neighbor 256-258, rail 290,
+// G5b mg 300-311, `player.*` 320-327, `unit.*` 340-352. `307 addExecution`
+// records a construction (tag + encoded ctor args) of an un-ported execution:
+// the REAL `TrainStationExecution` ctor is imported and runs, so
+// `unit.setTrainStation(true)` (351) fires first; `mg_add_train_station` in
+// exec_layer.rs mirrors it. `ShellExecution` is similarly un-ported but only
+// constructed from the unreachable `DefensePost.shoot`, so it never appears.
 // ===========================================================================
 const elNoOpC = (await loadTs("src/core/execution/NoOpExecution.ts")).NoOpExecution;
 const elPauseC = (await loadTs("src/core/execution/PauseExecution.ts")).PauseExecution;
@@ -26460,6 +26469,30 @@ const elBreakC = (await loadTs("src/core/execution/alliance/BreakAllianceExecuti
   .BreakAllianceExecution;
 const elRejectC = (await loadTs("src/core/execution/alliance/AllianceRejectExecution.ts"))
   .AllianceRejectExecution;
+const elRetreatC = (await loadTs("src/core/execution/RetreatExecution.ts"))
+  .RetreatExecution;
+const elBoatRetreatC = (await loadTs("src/core/execution/BoatRetreatExecution.ts"))
+  .BoatRetreatExecution;
+const elMoveWarshipC = (await loadTs("src/core/execution/MoveWarshipExecution.ts"))
+  .MoveWarshipExecution;
+const elDeleteUnitC = (await loadTs("src/core/execution/DeleteUnitExecution.ts"))
+  .DeleteUnitExecution;
+const elQuickChatC = (await loadTs("src/core/execution/QuickChatExecution.ts"))
+  .QuickChatExecution;
+const elMissileSiloC = (await loadTs("src/core/execution/MissileSiloExecution.ts"))
+  .MissileSiloExecution;
+const elUpgradeC = (await loadTs("src/core/execution/UpgradeStructureExecution.ts"))
+  .UpgradeStructureExecution;
+const elCityC = (await loadTs("src/core/execution/CityExecution.ts")).CityExecution;
+const elFactoryC = (await loadTs("src/core/execution/FactoryExecution.ts"))
+  .FactoryExecution;
+const elDefensePostC = (await loadTs("src/core/execution/DefensePostExecution.ts"))
+  .DefensePostExecution;
+// `mg.addExecution(exec)` records the construction of one of these un-ported
+// executions; the tag is looked up by the constructed instance's class name.
+const elExecTags = { TrainStationExecution: 0, ShellExecution: 1 };
+// A `Unit` ctor argument that is resolved to `elC.units[token]` by `elDef`.
+const elUnitRef = (t) => ({ __elu: t });
 
 const elScenarios = [];
 let elT = [];
@@ -26525,7 +26558,10 @@ function elPlayerObj(tok, slots) {
       return t == null ? null : elC.requests[t];
     },
     units: (types) => {
-      const ts = elRet(m, 11, 241, [tok, ...elEvStrs(types)]);
+      // `units()` (no arg) and `units(type)` (single) are the G5b shapes; the
+      // existing scenarios pass an array. Normalise to a string list.
+      const arr = types === undefined ? [] : Array.isArray(types) ? types : [types];
+      const ts = elRet(m, 11, 241, [tok, ...elEvStrs(arr)]);
       return (ts || []).map((t) => elC.units[t]);
     },
     isFriendly: (o) => elRet(m, 12, 242, [tok, ...elEvTok(o)]),
@@ -26552,6 +26588,14 @@ function elPlayerObj(tok, slots) {
     recordEmbargoAll: () => elVoid(255, [tok]),
     markDisconnected: (flag, obj) =>
       elVoid(249, [tok, ...elEvb(flag), ...encVal(obj)]),
+    canSendQuickChat: (o) => elRet(m, 29, 322, [tok, ...elEvTok(o)]),
+    canDeleteUnit: () => elRet(m, 31, 324, [tok]),
+    canUpgradeUnit: (u) => elRet(m, 33, 326, [tok, ...elEvTok(u)]),
+    orderRetreat: (id) => elVoid(320, [tok, ...elEvs(id)]),
+    executeRetreat: (id) => elVoid(321, [tok, ...elEvs(id)]),
+    recordQuickChat: (o) => elVoid(323, [tok, ...elEvTok(o)]),
+    recordDeleteUnit: () => elVoid(325, [tok]),
+    upgradeUnit: (u) => elVoid(327, [tok, ...elEvTok(u)]),
   };
 }
 function elAllianceObj(tok, slots) {
@@ -26595,6 +26639,20 @@ function elUnitObj(tok, slots) {
       return t == null ? null : elC.players[t];
     },
     delete: (flag) => elVoid(285, [tok, ...elEvb(flag)]),
+    id: () => elRet(m, 7, 340, [tok]),
+    tile: () => elRet(m, 11, 344, [tok]),
+    isUnderConstruction: () => elRet(m, 12, 345, [tok]),
+    missileTimerQueue: () => elRet(m, 13, 346, [tok]),
+    isOverdueDeletion: () => elRet(m, 16, 349, [tok]),
+    hasTrainStation: () => elRet(m, 17, 350, [tok]),
+    hasHealth: () => elRet(m, 19, 352, [tok]),
+    updateTransportShipState: (state) =>
+      elVoid(341, [tok, ...encVal(state)]),
+    updateWarshipState: (state) => elVoid(342, [tok, ...encVal(state)]),
+    setTargetTile: (t) => elVoid(343, [tok, ...encVal(t)]),
+    reloadMissile: () => elVoid(347, [tok]),
+    markForDeletion: () => elVoid(348, [tok]),
+    setTrainStation: (flag) => elVoid(351, [tok, ...elEvb(flag)]),
   };
 }
 function elNeighborObj(tok, slots) {
@@ -26614,6 +26672,9 @@ function elMgObj(slots) {
     nukeMagnitudes: (ty) => elRet(m, 14, 224, elEvs(ty)),
     nukeAllianceBreakThreshold: () => elRet(m, 15, 225, []),
     gameConfig: () => ({ gameType: elRet(m, 4, 214, []) }),
+    trainStationMaxRange: () => elRet(m, 28, 309, []),
+    SiloCooldown: () => elRet(m, 29, 310, []),
+    defensePostShellAttackRate: () => elRet(m, 30, 311, []),
   };
   return {
     config: () => cfg,
@@ -26662,35 +26723,87 @@ function elMgObj(slots) {
       for (const [t, d2] of pairs) if (!cb(t, d2)) break;
       elT.push(...encVal(undefined));
     },
+    isValidRef: (tile) => elRet(m, 19, 300, elEv1(tile)),
+    getWaterComponent: (tile) => elRet(m, 20, 301, elEv1(tile)),
+    hasWaterComponent: (tile, comp) =>
+      elRet(m, 21, 302, [...elEv1(tile), ...encVal(comp)]),
+    unit: (id) => {
+      const t = elRet(m, 22, 303, elEv1(id));
+      return t == null ? undefined : elC.units[t];
+    },
+    isLand: (tile) => elRet(m, 23, 304, elEv1(tile)),
+    hasUnitNearby: (tile, outer, ty) =>
+      elRet(m, 24, 305, [...elEv1(tile), ...elEv1(outer), ...elEvs(ty)]),
+    nearbyUnits: (tile, outer, types) => {
+      const ts = elRet(m, 25, 306, [
+        ...elEv1(tile),
+        ...elEv1(outer),
+        ...elEvStrs(types),
+      ]);
+      return (ts || []).map((t) => ({ unit: elC.units[t] }));
+    },
+    addExecution: (exec) => {
+      const tag = elExecTags[exec.constructor.name];
+      if (tag === undefined) {
+        throw new Error(`el: unknown execution ${exec.constructor.name}`);
+      }
+      elT.push(
+        307,
+        tag,
+        ...encVal(exec.unit._tok),
+        ...encVal(exec.spawnTrains),
+        ...encVal(undefined),
+      );
+    },
+    displayChat: (message, category, target, playerID, isFrom, recipient) => {
+      elVoid(308, [
+        ...elEvStrOpt(message),
+        ...elEvStrOpt(category),
+        ...elEvStrOpt(target),
+        ...elEvStrOpt(playerID),
+        ...elEvb(isFrom),
+        ...elEvStrOpt(recipient),
+      ]);
+    },
   };
 }
 
 function elDef(name, classId, cls, args, spec, ops) {
   elT = [];
   elC = {};
-  elC.players = (spec.players || []).map((mm, i) => elPlayerObj(i, elSlots(27, mm)));
+  elC.players = (spec.players || []).map((mm, i) => elPlayerObj(i, elSlots(34, mm)));
   elC.alliances = (spec.alliances || []).map((mm, i) => elAllianceObj(i, elSlots(4, mm)));
   elC.requests = (spec.requests || []).map((mm, i) => elRequestObj(i, elSlots(5, mm)));
-  elC.units = (spec.units || []).map((mm, i) => elUnitObj(i, elSlots(7, mm)));
+  elC.units = (spec.units || []).map((mm, i) => elUnitObj(i, elSlots(20, mm)));
   elC.neighbors = (spec.neighbors || []).map((mm, i) => elNeighborObj(i, elSlots(3, mm)));
-  elC.mg = elMgObj(elSlots(19, spec.mg));
+  elC.mg = elMgObj(elSlots(31, spec.mg));
 
   const setup = {
     c: classId,
     a: spec.a || [],
-    mg: elSlots(19, spec.mg),
-    players: (spec.players || []).map((mm) => elSlots(27, mm)),
+    mg: elSlots(31, spec.mg),
+    players: (spec.players || []).map((mm) => elSlots(34, mm)),
     alliances: (spec.alliances || []).map((mm) => elSlots(4, mm)),
     requests: (spec.requests || []).map((mm) => elSlots(5, mm)),
-    units: (spec.units || []).map((mm) => elSlots(7, mm)),
+    units: (spec.units || []).map((mm) => elSlots(20, mm)),
     neighbors: (spec.neighbors || []).map((mm) => elSlots(3, mm)),
   };
 
   // Constructor args: a `null` entry is the `spec.a` player-token reference at
   // the same index (the real TS ctors take a `Player`, the Rust ctor table a
-  // token); any non-null entry (rail mock / id string / bool / action) is kept.
+  // token); an `elUnitRef(t)` entry resolves to `elC.units[t]` (the Rust ctor
+  // table reads the token `t`); any other entry (rail mock / id string / bool /
+  // action / number) is kept.
   const aList = spec.a || [];
-  const inst = new cls(...args.map((x, i) => (x === null ? elC.players[aList[i]] : x)));
+  const inst = new cls(
+    ...args.map((x, i) => {
+      if (x === null) return elC.players[aList[i]];
+      if (x !== null && typeof x === "object" && x.__elu !== undefined) {
+        return elC.units[x.__elu];
+      }
+      return x;
+    }),
+  );
   const played = [];
 
   for (const [kind, ...rest] of ops) {
@@ -26977,6 +27090,159 @@ elDef(
   [[0], [3], [1, 0], [2, 0]],
 );
 elDef("el_reject_missing", 11, elRejectC, ["reqid", null], { players: [{}], mg: { 0: [false] }, a: ["reqid", 1] }, [[0], [1, 0], [2, 0], [3]]);
+
+// -- 12 RetreatExecution -----------------------------------------------------
+// init stores startTick = mg.ticks(); the first tick fires orderRetreat (320);
+// any later tick whose mg.ticks() has reached startTick + 20 fires
+// executeRetreat (321) and deactivates.
+elDef("el_retreat_basic", 12, elRetreatC, [null, "atk1"], { players: [{}], mg: { 2: [5, 10, 30] }, a: [0, "atk1"] }, [[0], [1, 0], [3], [4], [2, 0], [2, 0], [3], [2, 0], [3]]);
+// delay never reached (mg.ticks repeats the single scripted value 5).
+elDef("el_retreat_nodelay", 12, elRetreatC, [null, "atk1"], { players: [{}], mg: { 2: [5] }, a: [0, "atk1"] }, [[0], [1, 0], [2, 0], [2, 40], [3]]);
+// tick before init reads `this.mg.ticks()` on undefined.
+elDef("el_retreat_noinit", 12, elRetreatC, [null, "atk1"], { players: [{}], a: [0, "atk1"] }, [[0], [2, 0], [3]]);
+
+// -- 13 BoatRetreatExecution -------------------------------------------------
+// tick scans `player.units()` for the outgoing transport with the ctor's id.
+elDef("el_boatretreat_found", 13, elBoatRetreatC, [null, 7], { players: [{ 11: [[0]] }], units: [{ 7: [7], 3: ["Transport"] }], a: [0, 7] }, [[0], [1, 0], [3], [4], [2, 0], [3]]);
+// id mismatch short-circuits before type() is read.
+elDef("el_boatretreat_idmismatch", 13, elBoatRetreatC, [null, 7], { players: [{ 11: [[0]] }], units: [{ 7: [9] }], a: [0, 7] }, [[0], [1, 0], [2, 0], [3]]);
+// id matches but the type is not Transport.
+elDef("el_boatretreat_typemismatch", 13, elBoatRetreatC, [null, 7], { players: [{ 11: [[0]] }], units: [{ 7: [7], 3: ["Warship"] }], a: [0, 7] }, [[0], [1, 0], [2, 0], [3]]);
+elDef("el_boatretreat_empty", 13, elBoatRetreatC, [null, 7], { players: [{ 11: [[]] }], a: [0, 7] }, [[0], [1, 0], [2, 0], [3]]);
+
+// -- 14 MoveWarshipExecution -------------------------------------------------
+// init: isValidRef -> getWaterComponent -> unit list -> per-id move (dedup Set).
+elDef(
+  "el_movewarship_ok",
+  14,
+  elMoveWarshipC,
+  [null, [10, 11], 500],
+  {
+    players: [{ 11: [[0, 1]] }],
+    units: [{ 7: [10], 0: [true], 11: [100] }, { 7: [11], 0: [true], 11: [200] }],
+    mg: { 19: [true], 20: [7], 21: [true] },
+    a: [0, [10, 11], 500],
+  },
+  [[0], [1, 0], [3], [4], [2, 0], [3]],
+);
+// invalid position -> early return before any other facade call.
+elDef("el_movewarship_invalidpos", 14, elMoveWarshipC, [null, [0], 0], { players: [{}], mg: { 19: [false] }, a: [0, [0], 0] }, [[0], [1, 0], [3], [4], [2, 0]]);
+// requested id absent from the warship map.
+elDef("el_movewarship_notfound", 14, elMoveWarshipC, [null, [5], 500], { players: [{ 11: [[0]] }], units: [{ 7: [10] }], mg: { 19: [true], 20: [7] }, a: [0, [5], 500] }, [[0], [1, 0], [2, 0], [3]]);
+// warship present but not active.
+elDef("el_movewarship_inactive", 14, elMoveWarshipC, [null, [10], 500], { players: [{ 11: [[0]] }], units: [{ 7: [10], 0: [false] }], mg: { 19: [true], 20: [7] }, a: [0, [10], 500] }, [[0], [1, 0], [2, 0]]);
+// warship in a different water component.
+elDef("el_movewarship_diffcomp", 14, elMoveWarshipC, [null, [10], 500], { players: [{ 11: [[0]] }], units: [{ 7: [10], 0: [true], 11: [100] }], mg: { 19: [true], 20: [7], 21: [false] }, a: [0, [10], 500] }, [[0], [1, 0], [2, 0]]);
+// duplicate ids collapse via `new Set`.
+elDef(
+  "el_movewarship_dedup",
+  14,
+  elMoveWarshipC,
+  [null, [10, 10, 11], 500],
+  {
+    players: [{ 11: [[0, 1]] }],
+    units: [{ 7: [10], 0: [true], 11: [100] }, { 7: [11], 0: [true], 11: [200] }],
+    mg: { 19: [true], 20: [7], 21: [true] },
+    a: [0, [10, 10, 11], 500],
+  },
+  [[0], [1, 0], [2, 0]],
+);
+
+// -- 15 DeleteUnitExecution --------------------------------------------------
+// init validates + records the deletion; tick deletes once overdue.
+elDef(
+  "el_deleteunit_ok",
+  15,
+  elDeleteUnitC,
+  [null, 7],
+  {
+    players: [{ 26: [true], 1: ["p1"], 31: [true] }],
+    units: [{ 6: [0], 0: [true], 11: [100], 16: [true] }],
+    mg: { 22: [0], 12: [0], 23: [true], 6: [false] },
+    a: [0, 7],
+  },
+  [[0], [1, 0], [3], [4], [2, 0], [3]],
+);
+// mg.unit returns nothing -> warn reads player.displayName() (232).
+elDef("el_deleteunit_missing", 15, elDeleteUnitC, [null, 7], { players: [{ 2: ["Bob"] }], mg: { 22: [null] }, a: [0, 7] }, [[0], [1, 0], [2, 0], [3]]);
+// unit owned by another player.
+elDef("el_deleteunit_notowned", 15, elDeleteUnitC, [null, 7], { players: [{ 2: ["Bob"] }], units: [{ 6: [1] }], mg: { 22: [0] }, a: [0, 7] }, [[0], [1, 0], [2, 0], [3]]);
+// unit not active.
+elDef("el_deleteunit_notactive", 15, elDeleteUnitC, [null, 7], { players: [{}], units: [{ 6: [0], 0: [false] }], mg: { 22: [0] }, a: [0, 7] }, [[0], [1, 0], [2, 0], [3]]);
+// tile owner is not a player.
+elDef("el_deleteunit_nottileplayer", 15, elDeleteUnitC, [null, 7], { players: [{ 26: [false] }], units: [{ 6: [0], 0: [true], 11: [100] }], mg: { 22: [0], 12: [0] }, a: [0, 7] }, [[0], [1, 0], [2, 0], [3]]);
+// tile owner is a different player (id list yields two distinct ids).
+elDef("el_deleteunit_tileidmismatch", 15, elDeleteUnitC, [null, 7], { players: [{ 26: [true], 1: ["p2", "p1"] }], units: [{ 6: [0], 0: [true], 11: [100] }], mg: { 22: [0], 12: [0] }, a: [0, 7] }, [[0], [1, 0], [2, 0], [3]]);
+// not on land.
+elDef("el_deleteunit_notland", 15, elDeleteUnitC, [null, 7], { players: [{ 26: [true], 1: ["p1"] }], units: [{ 6: [0], 0: [true], 11: [100] }], mg: { 22: [0], 12: [0], 23: [false] }, a: [0, 7] }, [[0], [1, 0], [2, 0], [3]]);
+// spawn phase blocked.
+elDef("el_deleteunit_spawn", 15, elDeleteUnitC, [null, 7], { players: [{ 26: [true], 1: ["p1"] }], units: [{ 6: [0], 0: [true], 11: [100] }], mg: { 22: [0], 12: [0], 23: [true], 6: [true] }, a: [0, 7] }, [[0], [1, 0], [2, 0], [3]]);
+// cooldown not expired.
+elDef("el_deleteunit_cooldown", 15, elDeleteUnitC, [null, 7], { players: [{ 26: [true], 1: ["p1"], 31: [false] }], units: [{ 6: [0], 0: [true], 11: [100] }], mg: { 22: [0], 12: [0], 23: [true], 6: [false] }, a: [0, 7] }, [[0], [1, 0], [2, 0], [3]]);
+// init ok but the unit goes inactive before the overdue tick.
+elDef("el_deleteunit_tickinactive", 15, elDeleteUnitC, [null, 7], { players: [{ 26: [true], 1: ["p1"], 31: [true] }], units: [{ 6: [0], 0: [true, false], 11: [100], 16: [true] }], mg: { 22: [0], 12: [0], 23: [true], 6: [false] }, a: [0, 7] }, [[0], [1, 0], [2, 0], [3]]);
+
+// -- 16 QuickChatExecution ---------------------------------------------------
+// init resolves the recipient; tick sends two displayChat (308) frames.
+elDef("el_quickchat_ok", 16, elQuickChatC, [null, "p2", "quick.a", "p3"], { players: [{ 29: [true], 1: ["snd"] }, { 1: ["rcv"] }], mg: { 0: [true], 1: [1] }, a: [0, "p2", "quick.a", "p3"] }, [[0], [1, 0], [3], [4], [2, 0], [3]]);
+// recipient missing: init deactivates; tick's canSendQuickChat is false.
+elDef("el_quickchat_norecipient", 16, elQuickChatC, [null, "p9", "quick.a", undefined], { players: [{ 29: [false] }], mg: { 0: [false] }, a: [0, "p9", "quick.a", undefined] }, [[0], [1, 0], [2, 0], [3]]);
+// recipient present but canSendQuickChat false.
+elDef("el_quickchat_cantsend", 16, elQuickChatC, [null, "p2", "quick.a", "p3"], { players: [{ 29: [false] }, { 1: ["rcv"] }], mg: { 0: [true], 1: [1] }, a: [0, "p2", "quick.a", "p3"] }, [[0], [1, 0], [2, 0], [3]]);
+// key without a "." -> message[1] is undefined (encoded as null).
+elDef("el_quickchat_keynopart", 16, elQuickChatC, [null, "p2", "hello", undefined], { players: [{ 29: [true], 1: ["snd"] }, { 1: ["rcv"] }], mg: { 0: [true], 1: [1] }, a: [0, "p2", "hello", undefined] }, [[0], [1, 0], [2, 0]]);
+
+// -- 17 MissileSiloExecution -------------------------------------------------
+// tick reloads once the cooldown has elapsed.
+elDef("el_silo_reload", 17, elMissileSiloC, [elUnitRef(0)], { units: [{ 12: [false], 0: [true], 13: [[5]] }], mg: { 29: [10], 2: [20] }, a: [0] }, [[0], [1, 0], [3], [4], [2, 0], [3]]);
+// cooldown still positive -> no reload.
+elDef("el_silo_nowait", 17, elMissileSiloC, [elUnitRef(0)], { units: [{ 12: [false], 0: [true], 13: [[5]] }], mg: { 29: [10], 2: [5] }, a: [0] }, [[0], [1, 0], [2, 0], [3]]);
+// under construction -> early return.
+elDef("el_silo_underconstruction", 17, elMissileSiloC, [elUnitRef(0)], { units: [{ 12: [true] }], a: [0] }, [[0], [1, 0], [2, 0], [3]]);
+// not active -> deactivate.
+elDef("el_silo_notactive", 17, elMissileSiloC, [elUnitRef(0)], { units: [{ 12: [false], 0: [false] }], a: [0] }, [[0], [1, 0], [2, 0], [3]]);
+// empty timer queue -> nothing to reload.
+elDef("el_silo_emptyqueue", 17, elMissileSiloC, [elUnitRef(0)], { units: [{ 12: [false], 0: [true], 13: [[]] }], a: [0] }, [[0], [1, 0], [2, 0], [3]]);
+
+// -- 18 UpgradeStructureExecution --------------------------------------------
+// upgrade `amount` times while canUpgradeUnit holds.
+elDef("el_upgrade_ok", 18, elUpgradeC, [null, 7, 3], { players: [{ 33: [true] }], units: [{ 6: [0] }], mg: { 22: [0] }, a: [0, 7, 3] }, [[0], [1, 0], [3], [4], [2, 0]]);
+// first check fails -> warn reads structure.type() (283), then break.
+elDef("el_upgrade_breakfirst", 18, elUpgradeC, [null, 7, 3], { players: [{ 33: [false] }], units: [{ 6: [0], 3: ["City"] }], mg: { 22: [0] }, a: [0, 7, 3] }, [[0], [1, 0], [2, 0]]);
+// upgrade once then the check flips false (no type() read at i > 0).
+elDef("el_upgrade_breaksplit", 18, elUpgradeC, [null, 7, 3], { players: [{ 33: [true, false] }], units: [{ 6: [0], 3: ["City"] }], mg: { 22: [0] }, a: [0, 7, 3] }, [[0], [1, 0], [2, 0]]);
+// unit owned by another player -> structure cleared, early return.
+elDef("el_upgrade_notowned", 18, elUpgradeC, [null, 7, 1], { players: [{}], units: [{ 6: [1] }], mg: { 22: [0] }, a: [0, 7, 1] }, [[0], [1, 0], [2, 0]]);
+// mg.unit returns nothing -> early return.
+elDef("el_upgrade_missing", 18, elUpgradeC, [null, 7, 1], { players: [{}], mg: { 22: [null] }, a: [0, 7, 1] }, [[0], [1, 0], [2, 0]]);
+// amount omitted -> default 1.
+elDef("el_upgrade_default", 18, elUpgradeC, [null, 7], { players: [{ 33: [true] }], units: [{ 6: [0] }], mg: { 22: [0] }, a: [0, 7] }, [[0], [1, 0], [2, 0]]);
+
+// -- 19 CityExecution --------------------------------------------------------
+// a nearby factory makes createStation construct a TrainStationExecution: the
+// real ctor runs `unit.setTrainStation(true)` (351) before the addExecution
+// record (307) fires.
+elDef("el_city_station", 19, elCityC, [elUnitRef(0)], { units: [{ 11: [100], 0: [true] }], mg: { 28: [34], 24: [true] }, a: [0] }, [[0], [1, 0], [3], [4], [2, 0], [2, 0], [3]]);
+// no nearby factory -> no station.
+elDef("el_city_nofactory", 19, elCityC, [elUnitRef(0)], { units: [{ 11: [100], 0: [true] }], mg: { 28: [34], 24: [false] }, a: [0] }, [[0], [1, 0], [2, 0], [3]]);
+// city inactive after the station block.
+elDef("el_city_inactive", 19, elCityC, [elUnitRef(0)], { units: [{ 11: [100], 0: [false] }], mg: { 28: [34], 24: [false] }, a: [0] }, [[0], [1, 0], [2, 0], [3]]);
+
+// -- 20 FactoryExecution -----------------------------------------------------
+// createStation news a station for the factory (spawn=true) and for every
+// nearby structure that has no station yet.
+elDef("el_factory_stations", 20, elFactoryC, [elUnitRef(0)], { units: [{ 11: [100], 0: [true] }, { 17: [true] }, { 17: [false] }], mg: { 28: [34], 25: [[1, 2]] }, a: [0] }, [[0], [1, 0], [3], [4], [2, 0], [2, 0], [3]]);
+// no nearby structures -> only the factory station.
+elDef("el_factory_empty", 20, elFactoryC, [elUnitRef(0)], { units: [{ 11: [100], 0: [true] }], mg: { 28: [34], 25: [[]] }, a: [0] }, [[0], [1, 0], [2, 0], [3]]);
+// factory inactive after the station block.
+elDef("el_factory_inactive", 20, elFactoryC, [elUnitRef(0)], { units: [{ 11: [100], 0: [false] }], mg: { 28: [34], 25: [[]] }, a: [0] }, [[0], [1, 0], [2, 0], [3]]);
+
+// -- 21 DefensePostExecution -------------------------------------------------
+// `target` is never assigned (the ship-targeting branch is commented out), so
+// tick only checks isActive / isUnderConstruction.
+elDef("el_defpost_active", 21, elDefensePostC, [elUnitRef(0)], { units: [{ 0: [true], 12: [false] }], a: [0] }, [[0], [1, 0], [3], [4], [2, 0], [3]]);
+elDef("el_defpost_underconstruction", 21, elDefensePostC, [elUnitRef(0)], { units: [{ 0: [true], 12: [true] }], a: [0] }, [[0], [1, 0], [2, 0], [3]]);
+elDef("el_defpost_inactive", 21, elDefensePostC, [elUnitRef(0)], { units: [{ 0: [false] }], a: [0] }, [[0], [1, 0], [2, 0], [3]]);
 
 const structures = {
   votetally: vtScenarios,
@@ -30718,7 +30984,9 @@ opStream(
     "/// thrown JS Error/TypeError. Class ids: 0 NoOp, 1 Pause, 2 SpawnTimer, 3\n" +
     "/// RecomputeRailCluster, 4 MarkDisconnected, 5 Embargo, 6 EmbargoAll, 7\n" +
     "/// TargetPlayer, 8 AllianceRequest, 9 AllianceExtension, 10 BreakAlliance,\n" +
-    "/// 11 AllianceReject. Facade trace events: mg 210 hasPlayer, 211 player,\n" +
+    "/// 11 AllianceReject, 12 Retreat, 13 BoatRetreat, 14 MoveWarship, 15\n" +
+    "/// DeleteUnit, 16 QuickChat, 17 MissileSilo, 18 UpgradeStructure, 19 City,\n" +
+    "/// 20 Factory, 21 DefensePost. Facade trace events: mg 210 hasPlayer, 211 player,\n" +
     "/// 212 ticks, 213 allianceRequestDuration, 214 gameType, 215\n" +
     "/// numSpawnPhaseTurns, 216 inSpawnPhase, 217 endSpawnPhase, 218 setPaused,\n" +
     "/// 219 teamTilesOwned, 220 totalLandTiles, 221 players, 222 owner, 223\n" +
@@ -30736,7 +31004,17 @@ opStream(
     "/// accept, 272 reject, 273 status, 274 createdAt; unit 280 isActive, 281\n" +
     "/// reachedTarget, 282 targetTile, 283 type, 284 targetPlayer, 285 delete,\n" +
     "/// 286 owner; neighbor 257 isPlayer, 258 isOnSameTeam, 256 updateRelation;\n" +
-    "/// 290 railNetwork.recomputeClusters. Objects cross as TOKENS (indices\n" +
+    "/// 290 railNetwork.recomputeClusters; mg 300 isValidRef, 301\n" +
+    "/// getWaterComponent, 302 hasWaterComponent, 303 unit, 304 isLand, 305\n" +
+    "/// hasUnitNearby, 306 nearbyUnits, 307 addExecution, 308 displayChat, 309\n" +
+    "/// trainStationMaxRange, 310 SiloCooldown, 311 defensePostShellAttackRate;\n" +
+    "/// player 320 orderRetreat, 321 executeRetreat, 322 canSendQuickChat, 323\n" +
+    "/// recordQuickChat, 324 canDeleteUnit, 325 recordDeleteUnit, 326\n" +
+    "/// canUpgradeUnit, 327 upgradeUnit; unit 340 id, 341\n" +
+    "/// updateTransportShipState, 342 updateWarshipState, 343 setTargetTile, 344\n" +
+    "/// tile, 345 isUnderConstruction, 346 missileTimerQueue, 347 reloadMissile,\n" +
+    "/// 348 markForDeletion, 349 isOverdueDeletion, 350 hasTrainStation, 351\n" +
+    "/// setTrainStation, 352 hasHealth. Objects cross as TOKENS (indices\n" +
     "/// into the harness tables). Scripted returns are consumed FIFO per\n" +
     "/// scenario; an exhausted list repeats its last value, an empty list\n" +
     "/// throws on the first call.",

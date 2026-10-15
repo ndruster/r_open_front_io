@@ -2610,6 +2610,37 @@ WebSockets — stays excluded, mirroring the `src/core` exclusions).
     `el_embargo*` / `el_embargoall_*` / `el_target_*` / `el_allreq_*` /
     `el_allext_*` / `el_break_*` / `el_reject_*`, 167 ops), 895,521 wasm
     comparisons bit-identical.
+83. **`execution/` layer, part 2** (`execution`, G5b) — ten simple unit- and
+    structure-level executions added to the same `exec_layer.rs` harness
+    (class ids 12…21): `RetreatExecution` (12), `BoatRetreatExecution` (13),
+    `MoveWarshipExecution` (14), `DeleteUnitExecution` (15),
+    `QuickChatExecution` (16), `MissileSiloExecution` (17),
+    `UpgradeStructureExecution` (18), `CityExecution` (19),
+    `FactoryExecution` (20), `DefensePostExecution` (21). Facade trace codes
+    pick up where G5a stopped: mg 300-311 (`isValidRef` / `getWaterComponent` /
+    `hasWaterComponent` / `unit` / `isLand` / `hasUnitNearby` / `nearbyUnits` /
+    `addExecution` / `displayChat` / `trainStationMaxRange` / `SiloCooldown` /
+    `defensePostShellAttackRate`), player 320-327 (`orderRetreat` /
+    `executeRetreat` / `canSendQuickChat` / `recordQuickChat` / `canDeleteUnit` /
+    `recordDeleteUnit` / `canUpgradeUnit` / `upgradeUnit`) and unit 340-352
+    (`id` / `updateTransportShipState` / `updateWarshipState` /
+    `setTargetTile` / `tile` / `isUnderConstruction` / `missileTimerQueue` /
+    `reloadMissile` / `markForDeletion` / `isOverdueDeletion` /
+    `hasTrainStation` / `setTrainStation` / `hasHealth`; `type` 283 reused).
+    The un-ported `TrainStationExecution` / `ShellExecution` are modelled as
+    construction-recorder events on `mg.addExecution` (307): the capture
+    imports the REAL `TrainStationExecution` (option a) so its ctor side effect
+    `this.unit.setTrainStation(true)` (351) runs before the 307 record, mirrored
+    in Rust by `mg_add_train_station`; `ShellExecution` is not imported at all
+    (its only construction site is the unreachable ship-targeting branch of
+    `DefensePostExecution`) and is emitted by the dead-code
+    `mg_add_execution_shell` (tag 1). `setTrainStation(true)` / `hasTrainStation`
+    and the `updateTransportShipState` / `updateWarshipState` state objects
+    (`{isRetreating:true}` / `{patrolTile}`) round-trip through `js_json`
+    verbatim. 47 new scenarios (`el_retreat*` / `el_boatretreat*` /
+    `el_movewarship*` / `el_deleteunit*` / `el_quickchat*` / `el_silo*` /
+    `el_upgrade*` / `el_city*` / `el_factory*` / `el_defpost*`, 204 ops),
+    87 scenarios / 371 ops and 897,869 wasm comparisons in total.
 
 Regenerate whenever a ported source changes:
 
@@ -2643,7 +2674,7 @@ node rust/tools/run_wasm_parity.mjs
 
 `wasm-probe` exposes the ported functions through `extern "C"` scalar
 entrypoints (`src/wasm_probe.rs`); the runner imports `data/vectors.json` and
-compares every value. Last run: **895,521 comparisons, all bit-identical**.
+compares every value. Last run: **897,869 comparisons, all bit-identical**.
 
 ### Windows: the linker environment
 

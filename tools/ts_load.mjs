@@ -810,6 +810,348 @@ function prepare(rel) {
     );
   }
 
+  // ---------------------------------------------------------------------------
+  // G5b: simple unit / structure executions (classIds 12..21). Same strip-mode
+  // recipe as G5a above: drop the type-only `../game/Game` import (keeping only
+  // the `UnitType` / `MessageType` enums as *values* redirected to the prepared
+  // Game.ts copy), drop `implements Execution`, and expand constructor
+  // parameter properties. CityExecution / FactoryExecution redirect their
+  // `TrainStationExecution` import to the prepared copy so its ctor side effect
+  // (`this.unit.setTrainStation(true)`) actually runs; DefensePostExecution
+  // drops its `ShellExecution` import (its only use lives inside the
+  // unreachable, commented-out ship-targeting branch).
+  // ---------------------------------------------------------------------------
+  if (rel.endsWith("execution/RetreatExecution.ts")) {
+    out = must(out, 'import { Execution, Game, Player } from "../game/Game";\n', "", "Retreat import");
+    out = must(
+      out,
+      "export class RetreatExecution implements Execution {\n" +
+        "  private active = true;\n" +
+        "  private retreatOrdered = false;\n" +
+        "  private startTick: number;\n" +
+        "  private mg: Game;\n" +
+        "  constructor(\n" +
+        "    private player: Player,\n" +
+        "    private attackID: string,\n" +
+        "  ) {}",
+      "export class RetreatExecution {\n" +
+        "  private active = true;\n" +
+        "  private retreatOrdered = false;\n" +
+        "  private startTick: number;\n" +
+        "  private mg: Game;\n" +
+        "  constructor(\n" +
+        "    player: Player,\n" +
+        "    attackID: string,\n" +
+        "  ) {\n" +
+        "    this.player = player;\n" +
+        "    this.attackID = attackID;\n" +
+        "  }",
+      "Retreat ctor",
+    );
+  }
+  if (rel.endsWith("execution/BoatRetreatExecution.ts")) {
+    if (!prepared.has(elGameRel)) prepare(elGameRel);
+    out = must(
+      out,
+      'import { Execution, Game, Player, UnitType } from "../game/Game";\n',
+      `import { UnitType } from "./${prepared.get(elGameRel)}";\n`,
+      "BoatRetreat import",
+    );
+    out = must(
+      out,
+      "export class BoatRetreatExecution implements Execution {\n" +
+        "  private active = true;\n" +
+        "  constructor(\n" +
+        "    private player: Player,\n" +
+        "    private unitID: number,\n" +
+        "  ) {}",
+      "export class BoatRetreatExecution {\n" +
+        "  private active = true;\n" +
+        "  constructor(\n" +
+        "    player: Player,\n" +
+        "    unitID: number,\n" +
+        "  ) {\n" +
+        "    this.player = player;\n" +
+        "    this.unitID = unitID;\n" +
+        "  }",
+      "BoatRetreat ctor",
+    );
+  }
+  if (rel.endsWith("execution/MoveWarshipExecution.ts")) {
+    if (!prepared.has(elGameRel)) prepare(elGameRel);
+    out = must(
+      out,
+      'import { Execution, Game, Player, UnitType } from "../game/Game";\n',
+      `import { UnitType } from "./${prepared.get(elGameRel)}";\n`,
+      "MoveWarship import",
+    );
+    out = must(out, 'import { TileRef } from "../game/GameMap";\n', "", "MoveWarship GameMap import");
+    out = must(
+      out,
+      "export class MoveWarshipExecution implements Execution {\n" +
+        "  constructor(\n" +
+        "    private readonly owner: Player,\n" +
+        "    private readonly unitIds: number[],\n" +
+        "    private readonly position: TileRef,\n" +
+        "  ) {}",
+      "export class MoveWarshipExecution {\n" +
+        "  constructor(\n" +
+        "    owner: Player,\n" +
+        "    unitIds: number[],\n" +
+        "    position: TileRef,\n" +
+        "  ) {\n" +
+        "    this.owner = owner;\n" +
+        "    this.unitIds = unitIds;\n" +
+        "    this.position = position;\n" +
+        "  }",
+      "MoveWarship ctor",
+    );
+  }
+  if (rel.endsWith("execution/DeleteUnitExecution.ts")) {
+    if (!prepared.has(elGameRel)) prepare(elGameRel);
+    out = must(
+      out,
+      'import { Execution, Game, MessageType, Player, Unit } from "../game/Game";\n',
+      `import { MessageType } from "./${prepared.get(elGameRel)}";\n`,
+      "DeleteUnit import",
+    );
+    out = must(
+      out,
+      "export class DeleteUnitExecution implements Execution {\n" +
+        "  private active: boolean = true;\n" +
+        "  private mg: Game;\n" +
+        "  private unit: Unit | null = null;\n\n" +
+        "  constructor(\n" +
+        "    private player: Player,\n" +
+        "    private unitId: number,\n" +
+        "  ) {}",
+      "export class DeleteUnitExecution {\n" +
+        "  private active: boolean = true;\n" +
+        "  private mg: Game;\n" +
+        "  private unit: Unit | null = null;\n\n" +
+        "  constructor(\n" +
+        "    player: Player,\n" +
+        "    unitId: number,\n" +
+        "  ) {\n" +
+        "    this.player = player;\n" +
+        "    this.unitId = unitId;\n" +
+        "  }",
+      "DeleteUnit ctor",
+    );
+  }
+  if (rel.endsWith("execution/QuickChatExecution.ts")) {
+    out = must(
+      out,
+      'import { Execution, Game, Player, PlayerID } from "../game/Game";\n',
+      "",
+      "QuickChat import",
+    );
+    out = must(
+      out,
+      "export class QuickChatExecution implements Execution {\n" +
+        "  private recipient: Player;\n" +
+        "  private mg: Game;\n\n" +
+        "  private active = true;\n\n" +
+        "  constructor(\n" +
+        "    private sender: Player,\n" +
+        "    private recipientID: PlayerID,\n" +
+        "    private quickChatKey: string,\n" +
+        "    private target: PlayerID | undefined,\n" +
+        "  ) {}",
+      "export class QuickChatExecution {\n" +
+        "  private recipient: Player;\n" +
+        "  private mg: Game;\n\n" +
+        "  private active = true;\n\n" +
+        "  constructor(\n" +
+        "    sender: Player,\n" +
+        "    recipientID: PlayerID,\n" +
+        "    quickChatKey: string,\n" +
+        "    target: PlayerID | undefined,\n" +
+        "  ) {\n" +
+        "    this.sender = sender;\n" +
+        "    this.recipientID = recipientID;\n" +
+        "    this.quickChatKey = quickChatKey;\n" +
+        "    this.target = target;\n" +
+        "  }",
+      "QuickChat ctor",
+    );
+  }
+  if (rel.endsWith("execution/MissileSiloExecution.ts")) {
+    out = must(out, 'import { Execution, Game, Unit } from "../game/Game";\n', "", "MissileSilo import");
+    out = must(
+      out,
+      "export class MissileSiloExecution implements Execution {",
+      "export class MissileSiloExecution {",
+      "MissileSilo implements",
+    );
+  }
+  if (rel.endsWith("execution/UpgradeStructureExecution.ts")) {
+    out = must(
+      out,
+      'import { Execution, Game, Player, Unit } from "../game/Game";\n',
+      "",
+      "UpgradeStructure import",
+    );
+    out = must(
+      out,
+      "export class UpgradeStructureExecution implements Execution {\n" +
+        "  private structure: Unit | undefined;\n" +
+        "  private cost: bigint;\n\n" +
+        "  constructor(\n" +
+        "    private player: Player,\n" +
+        "    private unitId: number,\n" +
+        "    private amount: number = 1,\n" +
+        "  ) {}",
+      "export class UpgradeStructureExecution {\n" +
+        "  private structure: Unit | undefined;\n" +
+        "  private cost: bigint;\n\n" +
+        "  constructor(\n" +
+        "    player: Player,\n" +
+        "    unitId: number,\n" +
+        "    amount: number = 1,\n" +
+        "  ) {\n" +
+        "    this.player = player;\n" +
+        "    this.unitId = unitId;\n" +
+        "    this.amount = amount;\n" +
+        "  }",
+      "UpgradeStructure ctor",
+    );
+  }
+  const elTseRel = "src/core/execution/TrainStationExecution.ts";
+  if (rel.endsWith("execution/CityExecution.ts")) {
+    if (!prepared.has(elGameRel)) prepare(elGameRel);
+    if (!prepared.has(elTseRel)) prepare(elTseRel);
+    out = must(
+      out,
+      'import { Execution, Game, Unit, UnitType } from "../game/Game";\n',
+      `import { UnitType } from "./${prepared.get(elGameRel)}";\n`,
+      "City import",
+    );
+    out = must(
+      out,
+      'import { TrainStationExecution } from "./TrainStationExecution";\n',
+      `import { TrainStationExecution } from "./${prepared.get(elTseRel)}";\n`,
+      "City TrainStationExecution import",
+    );
+    out = must(
+      out,
+      "export class CityExecution implements Execution {\n" +
+        "  private mg: Game;\n" +
+        "  private active: boolean = true;\n" +
+        "  private stationCreated = false;\n\n" +
+        "  constructor(private city: Unit) {}",
+      "export class CityExecution {\n" +
+        "  private mg: Game;\n" +
+        "  private active: boolean = true;\n" +
+        "  private stationCreated = false;\n\n" +
+        "  constructor(city: Unit) {\n" +
+        "    this.city = city;\n" +
+        "  }",
+      "City ctor",
+    );
+  }
+  if (rel.endsWith("execution/FactoryExecution.ts")) {
+    if (!prepared.has(elGameRel)) prepare(elGameRel);
+    if (!prepared.has(elTseRel)) prepare(elTseRel);
+    out = must(
+      out,
+      'import { Execution, Game, Unit, UnitType } from "../game/Game";\n',
+      `import { UnitType } from "./${prepared.get(elGameRel)}";\n`,
+      "Factory import",
+    );
+    out = must(
+      out,
+      'import { TrainStationExecution } from "./TrainStationExecution";\n',
+      `import { TrainStationExecution } from "./${prepared.get(elTseRel)}";\n`,
+      "Factory TrainStationExecution import",
+    );
+    out = must(
+      out,
+      "export class FactoryExecution implements Execution {\n" +
+        "  private active: boolean = true;\n" +
+        "  private game: Game;\n" +
+        "  private stationCreated = false;\n\n" +
+        "  constructor(private factory: Unit) {}",
+      "export class FactoryExecution {\n" +
+        "  private active: boolean = true;\n" +
+        "  private game: Game;\n" +
+        "  private stationCreated = false;\n\n" +
+        "  constructor(factory: Unit) {\n" +
+        "    this.factory = factory;\n" +
+        "  }",
+      "Factory ctor",
+    );
+  }
+  if (rel.endsWith("execution/DefensePostExecution.ts")) {
+    out = must(out, 'import { Execution, Game, Unit } from "../game/Game";\n', "", "DefensePost Game import");
+    out = must(
+      out,
+      'import { ShellExecution } from "./ShellExecution";\n',
+      "",
+      "DefensePost ShellExecution import",
+    );
+    out = must(
+      out,
+      "export class DefensePostExecution implements Execution {\n" +
+        "  private mg: Game;\n" +
+        "  private active: boolean = true;\n\n" +
+        "  private target: Unit | null = null;\n" +
+        "  private lastShellAttack = 0;\n\n" +
+        "  private alreadySentShell = new Set<Unit>();\n\n" +
+        "  constructor(private post: Unit) {}",
+      "export class DefensePostExecution {\n" +
+        "  private mg: Game;\n" +
+        "  private active: boolean = true;\n\n" +
+        "  private target: Unit | null = null;\n" +
+        "  private lastShellAttack = 0;\n\n" +
+        "  private alreadySentShell = new Set<Unit>();\n\n" +
+        "  constructor(post: Unit) {\n" +
+        "    this.post = post;\n" +
+        "  }",
+      "DefensePost ctor",
+    );
+  }
+  if (rel.endsWith("execution/TrainStationExecution.ts")) {
+    // Loaded only so CityExecution / FactoryExecution can construct it (the
+    // ctor's `this.unit.setTrainStation(true)` side effect is what the capture
+    // records). Every other import feeds a method the parity capture never
+    // calls, so they are dropped; only the ctor's parameter properties are
+    // expanded.
+    out = must(
+      out,
+      'import { Execution, Game, Unit, UnitType } from "../game/Game";\n' +
+        'import { TrainStation } from "../game/TrainStation";\n' +
+        'import { PseudoRandom } from "../PseudoRandom";\n' +
+        'import { TrainExecution } from "./TrainExecution";\n',
+      "",
+      "TrainStationExecution imports",
+    );
+    out = must(
+      out,
+      "  constructor(\n" +
+        "    private unit: Unit,\n" +
+        "    private spawnTrains?: boolean, // If set, the station will spawn trains\n" +
+        "  ) {\n" +
+        "    this.unit.setTrainStation(true);\n" +
+        "  }",
+      "  constructor(\n" +
+        "    unit: Unit,\n" +
+        "    spawnTrains?: boolean, // If set, the station will spawn trains\n" +
+        "  ) {\n" +
+        "    this.unit = unit;\n" +
+        "    this.spawnTrains = spawnTrains;\n" +
+        "    this.unit.setTrainStation(true);\n" +
+        "  }",
+      "TrainStationExecution ctor",
+    );
+    out = must(
+      out,
+      "export class TrainStationExecution implements Execution {",
+      "export class TrainStationExecution {",
+      "TrainStationExecution implements",
+    );
+  }
+
   if (rel.endsWith("algorithms/ConnectedComponents.ts")) {
     // GameMap/TileRef are type-only (interface + branded type) -> dropped; the
     // DebugSpan value import is redirected to its prepared copy. The ctor's two

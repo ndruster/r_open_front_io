@@ -49,6 +49,43 @@
 //! `8` AllianceRequest, `9` AllianceExtension, `10` BreakAlliance,
 //! `11` AllianceReject.
 //!
+//! G5b appends `12` Retreat, `13` BoatRetreat, `14` MoveWarship, `15`
+//! DeleteUnit, `16` QuickChat, `17` MissileSilo, `18` UpgradeStructure,
+//! `19` City, `20` Factory, `21` DefensePost.
+//!
+//! # G5b facade additions (codes ≥ 300)
+//!
+//! `mg`: `300` isValidRef, `301` getWaterComponent, `302` hasWaterComponent,
+//! `303` unit, `304` isLand, `305` hasUnitNearby, `306` nearbyUnits,
+//! `307` addExecution (construction record), `308` displayChat,
+//! `309` config().trainStationMaxRange(), `310` config().SiloCooldown(),
+//! `311` config().defensePostShellAttackRate() (only reachable from the
+//! unreachable `DefensePost.shoot`).
+//! `player`: `320` orderRetreat, `321` executeRetreat, `322` canSendQuickChat,
+//! `323` recordQuickChat, `324` canDeleteUnit, `325` recordDeleteUnit,
+//! `326` canUpgradeUnit, `327` upgradeUnit.
+//! `unit`: `340` id, `341` updateTransportShipState, `342` updateWarshipState,
+//! `343` setTargetTile, `344` tile, `345` isUnderConstruction,
+//! `346` missileTimerQueue, `347` reloadMissile, `348` markForDeletion,
+//! `349` isOverdueDeletion, `350` hasTrainStation, `351` setTrainStation,
+//! `352` hasHealth (only reachable from the unreachable `DefensePost.shoot`).
+//!
+//! # Constructing un-ported downstream executions
+//!
+//! `TrainStationExecution` (and `ShellExecution`) are intentionally NOT ported.
+//! `mg.addExecution(new TrainStationExecution(unit, spawnTrains?))` is modelled
+//! as an `addExecution` facade event (code 307) whose prefix is the construct
+//! tag plus the encoded ctor args — exactly how `execution_manager.rs` records
+//! `new XxxExecution(...)`. On the capture side we import the REAL
+//! `TrainStationExecution` class (option (a)): its ctor runs against the
+//! scripted unit mock and therefore emits `unit.setTrainStation(true)` FIRST
+//! (code 351), then the `addExecution` record — this keeps the trace faithful
+//! to the actual TS runtime and is mirrored verbatim on the Rust side
+//! (`mg_add_train_station` calls `un_set_train_station` then pushes the
+//! record). `ShellExecution` is likewise un-ported; its only construction site
+//! is the unreachable `DefensePost.shoot`, so it is modelled by
+//! `mg_add_execution_shell` (tag 1) but is never exercised by any scenario.
+//!
 //! # Facade (mock) surface — the capture scripts these, every call traced
 //!
 //! Players / alliances / alliance-requests / units / neighbors cross as TOKENS
@@ -81,11 +118,24 @@
 //! | 16 | 226 | `displayMessage(...)` (7 args) |
 //! | 17 | 227 | `anyUnitNearby(tile, outer, types, cb)` |
 //! | 18 | 228 | `circleSearch(tile, outer, cb)` |
+//! | 19 | 300 | `isValidRef(tile)` |
+//! | 20 | 301 | `getWaterComponent(tile)` |
+//! | 21 | 302 | `hasWaterComponent(tile, comp)` |
+//! | 22 | 303 | `unit(id)` |
+//! | 23 | 304 | `isLand(tile)` |
+//! | 24 | 305 | `hasUnitNearby(tile, outer, type)` |
+//! | 25 | 306 | `nearbyUnits(tile, outer, types)` |
+//! | 28 | 309 | `config().trainStationMaxRange()` |
+//! | 29 | 310 | `config().SiloCooldown()` |
+//! | 30 | 311 | `config().defensePostShellAttackRate()` (unreachable) |
+//!
+//! `307` `addExecution(...)` (construction record) and `308` `displayChat(...)`
+//! are synthetic events: they consume no script slot on either side.
 //!
 //! `config()` / `gameConfig()` are live-object accessors; only the leaf
 //! accessor is traced (one event per full chain read).
 //!
-//! ## `player` facade — slots 0..26
+//! ## `player` facade — slots 0..33
 //!
 //! `0` 230 `smallID()`, `1` 231 `id()`, `2` 232 `displayName()`,
 //! `3` 233 `isAlive()`, `4` 234 `isLobbyCreator()`,
@@ -101,7 +151,11 @@
 //! `22` 252 `canEmbargoAll()` (BOOL), `23` 253 `addEmbargo(other, flag)`,
 //! `24` 254 `stopEmbargo(other)`, `25` 255 `recordEmbargoAll()`,
 //! `26` 259 `isPlayer()` (BOOL — the `anyUnitNearby` callback reads the unit's
-//! owner through it).
+//! owner through it), `29` 322 `canSendQuickChat(other)` (BOOL),
+//! `31` 324 `canDeleteUnit()` (BOOL), `33` 326 `canUpgradeUnit(unit)` (BOOL).
+//! The void G5b additions (`320` orderRetreat, `321` executeRetreat,
+//! `323` recordQuickChat, `325` recordDeleteUnit, `327` upgradeUnit) consume
+//! no slot.
 //!
 //! ## `alliance` facade — slots 0..3
 //!
@@ -113,11 +167,17 @@
 //! `0` 270 `recipient()`, `1` 271 `accept()`, `2` 272 `reject()`,
 //! `3` 273 `status()`, `4` 274 `createdAt()`.
 //!
-//! ## `unit` facade — slots 0..6
+//! ## `unit` facade — slots 0..19
 //!
 //! `0` 280 `isActive()`, `1` 281 `reachedTarget()`, `2` 282 `targetTile()`,
 //! `3` 283 `type()`, `4` 284 `targetPlayer()`, `5` 285 `delete(flag)`,
-//! `6` 286 `owner()`.
+//! `6` 286 `owner()`, `7` 340 `id()`, `11` 344 `tile()`,
+//! `12` 345 `isUnderConstruction()`, `13` 346 `missileTimerQueue()`,
+//! `16` 349 `isOverdueDeletion()`, `17` 350 `hasTrainStation()`,
+//! `19` 352 `hasHealth()` (unreachable). The void G5b additions
+//! (`341` updateTransportShipState, `342` updateWarshipState,
+//! `343` setTargetTile, `347` reloadMissile, `348` markForDeletion,
+//! `351` setTrainStation) consume no slot.
 //!
 //! ## `neighbor` facade — slots 0..2
 //!
@@ -162,6 +222,20 @@ const STRUCTURES_TYPES: [&str; 6] = [
     "Port",
     "Factory",
 ];
+
+/// `UnitType` string members reused by the G5b executions.
+const UNIT_TRANSPORT: &str = "Transport";
+const UNIT_WARSHIP: &str = "Warship";
+const UNIT_CITY: &str = "City";
+const UNIT_PORT: &str = "Port";
+const UNIT_FACTORY: &str = "Factory";
+/// `MessageType.UNIT_DESTROYED` (numeric enum member 12).
+const MSG_UNIT_DESTROYED: f64 = 12.0;
+/// `RetreatExecution.cancelDelay`.
+const RETREAT_CANCEL_DELAY: f64 = 20.0;
+/// Construction-record tags (the order the capture's recorder assigns).
+const TAG_TRAIN_STATION: f64 = 0.0;
+const TAG_SHELL: f64 = 1.0;
 
 // ---- codec / script helpers ------------------------------------------------
 
@@ -263,6 +337,24 @@ fn as_tok_list(v: &JsVal) -> Vec<usize> {
     } else {
         Vec::new()
     }
+}
+
+fn as_num_list(v: &JsVal) -> Vec<f64> {
+    if let JsVal::Arr(a) = v {
+        a.iter().map(as_num).collect()
+    } else {
+        Vec::new()
+    }
+}
+
+/// JS `SameValueZero` (the key relation used by `Set` / `Map`).
+fn svz(a: f64, b: f64) -> bool {
+    a == b || (a.is_nan() && b.is_nan())
+}
+
+/// JS `String.prototype.split(".")` for the `QuickChatExecution` chat key.
+fn split_dot(s: &str) -> Vec<String> {
+    s.split('.').map(|x| x.to_string()).collect()
 }
 
 fn as_pairs(v: &JsVal) -> Vec<(f64, f64)> {
@@ -371,6 +463,24 @@ pub struct ExecHarness {
     req: Option<usize>,
     mg_ready: bool,
 
+    // G5b state.
+    unit_id: f64,
+    unit_ids: Vec<f64>,
+    position: f64,
+    amount: f64,
+    quick_key: String,
+    chat_target: Option<String>,
+    start_tick: f64,
+    retreat_ordered: bool,
+    station_created: bool,
+    unit: Option<usize>,
+    recipient: Option<usize>,
+    structure: Option<usize>,
+    #[allow(dead_code)]
+    last_shell_attack: f64,
+    #[allow(dead_code)]
+    already_sent_shell: Vec<usize>,
+
     mg: Mock,
     players: Vec<Mock>,
     alliances: Vec<Mock>,
@@ -396,6 +506,16 @@ const MG_NUKE_MAGNITUDES: usize = 14;
 const MG_NUKE_ALLIANCE_BREAK_THRESHOLD: usize = 15;
 const MG_ANY_UNIT_NEARBY: usize = 17;
 const MG_CIRCLE_SEARCH: usize = 18;
+const MG_IS_VALID_REF: usize = 19;
+const MG_GET_WATER_COMPONENT: usize = 20;
+const MG_HAS_WATER_COMPONENT: usize = 21;
+const MG_UNIT: usize = 22;
+const MG_IS_LAND: usize = 23;
+const MG_HAS_UNIT_NEARBY: usize = 24;
+const MG_NEARBY_UNITS: usize = 25;
+const MG_TRAIN_STATION_MAX_RANGE: usize = 28;
+const MG_SILO_COOLDOWN: usize = 29;
+const MG_DEFENSE_POST_SHELL_ATTACK_RATE: usize = 30;
 
 // player slot indices.
 const PL_SMALL_ID: usize = 0;
@@ -417,6 +537,9 @@ const PL_IS_ON_SAME_TEAM: usize = 20;
 const PL_TYPE: usize = 21;
 const PL_CAN_EMBARGO_ALL: usize = 22;
 const PL_IS_PLAYER: usize = 26;
+const PL_CAN_SEND_QUICK_CHAT: usize = 29;
+const PL_CAN_DELETE_UNIT: usize = 31;
+const PL_CAN_UPGRADE_UNIT: usize = 33;
 
 // alliance slot indices.
 const AL_ONLY_ONE_AGREED: usize = 0;
@@ -434,6 +557,13 @@ const UN_TARGET_TILE: usize = 2;
 const UN_TYPE: usize = 3;
 const UN_TARGET_PLAYER: usize = 4;
 const UN_OWNER: usize = 6;
+const UN_ID: usize = 7;
+const UN_TILE: usize = 11;
+const UN_IS_UNDER_CONSTRUCTION: usize = 12;
+const UN_MISSILE_TIMER_QUEUE: usize = 13;
+const UN_IS_OVERDUE_DELETION: usize = 16;
+const UN_HAS_TRAIN_STATION: usize = 17;
+const UN_HAS_HEALTH: usize = 19;
 
 // neighbor slot indices.
 const NB_IS_PLAYER: usize = 0;
@@ -526,6 +656,128 @@ impl ExecHarness {
             push_val(tr, a);
         }
         push_val(tr, &JsVal::Undef);
+    }
+    fn mg_is_valid_ref(&mut self, tr: &mut Vec<f64>, tile: f64) -> bool {
+        let v = mk_take(&mut self.mg, MG_IS_VALID_REF, tr, 300.0, &ev1(tile));
+        as_bool(&v)
+    }
+    fn mg_get_water_component(&mut self, tr: &mut Vec<f64>, tile: f64) -> JsVal {
+        mk_take(&mut self.mg, MG_GET_WATER_COMPONENT, tr, 301.0, &ev1(tile))
+    }
+    fn mg_has_water_component(&mut self, tr: &mut Vec<f64>, tile: f64, comp: &JsVal) -> bool {
+        let mut prefix = ev1(tile);
+        push_val(&mut prefix, comp);
+        let v = mk_take(&mut self.mg, MG_HAS_WATER_COMPONENT, tr, 302.0, &prefix);
+        as_bool(&v)
+    }
+    fn mg_unit(&mut self, tr: &mut Vec<f64>, id: f64) -> Option<usize> {
+        let v = mk_take(&mut self.mg, MG_UNIT, tr, 303.0, &ev1(id));
+        as_opt_tok(&v)
+    }
+    fn mg_is_land(&mut self, tr: &mut Vec<f64>, tile: f64) -> bool {
+        let v = mk_take(&mut self.mg, MG_IS_LAND, tr, 304.0, &ev1(tile));
+        as_bool(&v)
+    }
+    fn mg_has_unit_nearby(&mut self, tr: &mut Vec<f64>, tile: f64, outer: f64, ty: &str) -> bool {
+        let mut prefix = ev1(tile);
+        prefix.extend_from_slice(&ev1(outer));
+        prefix.extend_from_slice(&evs(ty));
+        let v = mk_take(&mut self.mg, MG_HAS_UNIT_NEARBY, tr, 305.0, &prefix);
+        as_bool(&v)
+    }
+    fn mg_nearby_units(
+        &mut self,
+        tr: &mut Vec<f64>,
+        tile: f64,
+        outer: f64,
+        types: &[String],
+    ) -> Vec<usize> {
+        let mut prefix = ev1(tile);
+        prefix.extend_from_slice(&ev1(outer));
+        prefix.extend_from_slice(&ev_strs(types));
+        let v = mk_take(&mut self.mg, MG_NEARBY_UNITS, tr, 306.0, &prefix);
+        as_tok_list(&v)
+    }
+    /// `mg.addExecution(new TrainStationExecution(unit, spawnTrains?))` — the
+    /// ctor side effect (`unit.setTrainStation(true)`, code 351) fires first,
+    /// then the construction record (code 307, tag 0, ctor args).
+    fn mg_add_train_station(&mut self, tr: &mut Vec<f64>, unit_tok: usize, spawn: Option<bool>) {
+        self.un_set_train_station(tr, unit_tok, true);
+        tr.push(307.0);
+        tr.push(TAG_TRAIN_STATION);
+        push_val(tr, &JsVal::Num(unit_tok as f64));
+        push_val(
+            tr,
+            &match spawn {
+                Some(b) => JsVal::Bool(b),
+                None => JsVal::Undef,
+            },
+        );
+        push_val(tr, &JsVal::Undef);
+    }
+    /// `mg.addExecution(new ShellExecution(...))` — only reachable from the
+    /// unreachable `DefensePost.shoot`.
+    #[allow(dead_code)]
+    fn mg_add_execution_shell(
+        &mut self,
+        tr: &mut Vec<f64>,
+        spawn: f64,
+        owner: Option<usize>,
+        owner_unit: usize,
+        target: usize,
+    ) {
+        tr.push(307.0);
+        tr.push(TAG_SHELL);
+        push_val(tr, &JsVal::Num(spawn));
+        push_val(
+            tr,
+            &match owner {
+                Some(o) => JsVal::Num(o as f64),
+                None => JsVal::Undef,
+            },
+        );
+        push_val(tr, &JsVal::Num(owner_unit as f64));
+        push_val(tr, &JsVal::Num(target as f64));
+        push_val(tr, &JsVal::Undef);
+    }
+    #[allow(clippy::too_many_arguments)]
+    fn mg_display_chat(
+        &mut self,
+        tr: &mut Vec<f64>,
+        m1: Option<&str>,
+        m0: Option<&str>,
+        target: Option<&str>,
+        pid: Option<&str>,
+        is_from: bool,
+        rec: Option<&str>,
+    ) {
+        tr.push(308.0);
+        tr.extend_from_slice(&evstr_opt(m1));
+        tr.extend_from_slice(&evstr_opt(m0));
+        tr.extend_from_slice(&evstr_opt(target));
+        tr.extend_from_slice(&evstr_opt(pid));
+        tr.extend_from_slice(&evb(is_from));
+        tr.extend_from_slice(&evstr_opt(rec));
+        push_val(tr, &JsVal::Undef);
+    }
+    fn mg_train_station_max_range(&mut self, tr: &mut Vec<f64>) -> f64 {
+        let v = mk_take(&mut self.mg, MG_TRAIN_STATION_MAX_RANGE, tr, 309.0, &[]);
+        as_num(&v)
+    }
+    fn mg_silo_cooldown(&mut self, tr: &mut Vec<f64>) -> f64 {
+        let v = mk_take(&mut self.mg, MG_SILO_COOLDOWN, tr, 310.0, &[]);
+        as_num(&v)
+    }
+    #[allow(dead_code)]
+    fn mg_defense_post_shell_attack_rate(&mut self, tr: &mut Vec<f64>) -> f64 {
+        let v = mk_take(
+            &mut self.mg,
+            MG_DEFENSE_POST_SHELL_ATTACK_RATE,
+            tr,
+            311.0,
+            &[],
+        );
+        as_num(&v)
     }
 
     fn mg_any_unit_nearby(
@@ -703,6 +955,33 @@ impl ExecHarness {
         extra.extend_from_slice(&ev_enc(&obj));
         self.pl_void(tok, tr, 249.0, &extra);
     }
+    fn pl_order_retreat(&mut self, tr: &mut Vec<f64>, tok: usize, attack_id: &str) {
+        self.pl_void(tok, tr, 320.0, &evs(attack_id));
+    }
+    fn pl_execute_retreat(&mut self, tr: &mut Vec<f64>, tok: usize, attack_id: &str) {
+        self.pl_void(tok, tr, 321.0, &evs(attack_id));
+    }
+    fn pl_can_send_quick_chat(&mut self, tr: &mut Vec<f64>, tok: usize, other: Option<usize>) -> bool {
+        let v = self.pl(tok, PL_CAN_SEND_QUICK_CHAT, tr, 322.0, &evtok(other));
+        as_bool(&v)
+    }
+    fn pl_record_quick_chat(&mut self, tr: &mut Vec<f64>, tok: usize, other: Option<usize>) {
+        self.pl_void(tok, tr, 323.0, &evtok(other));
+    }
+    fn pl_can_delete_unit(&mut self, tr: &mut Vec<f64>, tok: usize) -> bool {
+        let v = self.pl(tok, PL_CAN_DELETE_UNIT, tr, 324.0, &[]);
+        as_bool(&v)
+    }
+    fn pl_record_delete_unit(&mut self, tr: &mut Vec<f64>, tok: usize) {
+        self.pl_void(tok, tr, 325.0, &[]);
+    }
+    fn pl_can_upgrade_unit(&mut self, tr: &mut Vec<f64>, tok: usize, unit: usize) -> bool {
+        let v = self.pl(tok, PL_CAN_UPGRADE_UNIT, tr, 326.0, &ev1(unit as f64));
+        as_bool(&v)
+    }
+    fn pl_upgrade_unit(&mut self, tr: &mut Vec<f64>, tok: usize, unit: usize) {
+        self.pl_void(tok, tr, 327.0, &ev1(unit as f64));
+    }
 
     // alliance facade
     fn al(&mut self, aid: usize, slot: usize, tr: &mut Vec<f64>, code: f64, extra: &[f64]) -> JsVal {
@@ -796,6 +1075,64 @@ impl ExecHarness {
     fn un_owner(&mut self, tr: &mut Vec<f64>, uid: usize) -> Option<usize> {
         let v = self.un(uid, UN_OWNER, tr, 286.0, &[]);
         as_opt_tok(&v)
+    }
+    fn un_id(&mut self, tr: &mut Vec<f64>, uid: usize) -> f64 {
+        let v = self.un(uid, UN_ID, tr, 340.0, &[]);
+        as_num(&v)
+    }
+    fn un_update_transport_ship_state(&mut self, tr: &mut Vec<f64>, uid: usize) {
+        let obj = JsVal::Obj(vec![("isRetreating".to_string(), JsVal::Bool(true))]);
+        let mut prefix = vec![uid as f64];
+        prefix.extend_from_slice(&ev_enc(&obj));
+        mk_void(tr, 341.0, &prefix);
+    }
+    fn un_update_warship_state(&mut self, tr: &mut Vec<f64>, uid: usize, position: f64) {
+        let obj = JsVal::Obj(vec![("patrolTile".to_string(), JsVal::Num(position))]);
+        let mut prefix = vec![uid as f64];
+        prefix.extend_from_slice(&ev_enc(&obj));
+        mk_void(tr, 342.0, &prefix);
+    }
+    fn un_set_target_tile(&mut self, tr: &mut Vec<f64>, uid: usize) {
+        let mut prefix = vec![uid as f64];
+        prefix.extend_from_slice(&ev_enc(&JsVal::Undef));
+        mk_void(tr, 343.0, &prefix);
+    }
+    fn un_tile(&mut self, tr: &mut Vec<f64>, uid: usize) -> f64 {
+        let v = self.un(uid, UN_TILE, tr, 344.0, &[]);
+        as_num(&v)
+    }
+    fn un_is_under_construction(&mut self, tr: &mut Vec<f64>, uid: usize) -> bool {
+        let v = self.un(uid, UN_IS_UNDER_CONSTRUCTION, tr, 345.0, &[]);
+        as_bool(&v)
+    }
+    fn un_missile_timer_queue(&mut self, tr: &mut Vec<f64>, uid: usize) -> JsVal {
+        self.un(uid, UN_MISSILE_TIMER_QUEUE, tr, 346.0, &[])
+    }
+    fn un_reload_missile(&mut self, tr: &mut Vec<f64>, uid: usize) {
+        let prefix = vec![uid as f64];
+        mk_void(tr, 347.0, &prefix);
+    }
+    fn un_mark_for_deletion(&mut self, tr: &mut Vec<f64>, uid: usize) {
+        let prefix = vec![uid as f64];
+        mk_void(tr, 348.0, &prefix);
+    }
+    fn un_is_overdue_deletion(&mut self, tr: &mut Vec<f64>, uid: usize) -> bool {
+        let v = self.un(uid, UN_IS_OVERDUE_DELETION, tr, 349.0, &[]);
+        as_bool(&v)
+    }
+    fn un_has_train_station(&mut self, tr: &mut Vec<f64>, uid: usize) -> bool {
+        let v = self.un(uid, UN_HAS_TRAIN_STATION, tr, 350.0, &[]);
+        as_bool(&v)
+    }
+    fn un_set_train_station(&mut self, tr: &mut Vec<f64>, uid: usize, flag: bool) {
+        let mut prefix = vec![uid as f64];
+        prefix.extend_from_slice(&evb(flag));
+        mk_void(tr, 351.0, &prefix);
+    }
+    #[allow(dead_code)]
+    fn un_has_health(&mut self, tr: &mut Vec<f64>, uid: usize) -> bool {
+        let v = self.un(uid, UN_HAS_HEALTH, tr, 352.0, &[]);
+        as_bool(&v)
     }
 
     // neighbor facade
@@ -1094,6 +1431,55 @@ impl ExecHarness {
                 // AllianceRejectExecution: `private active = true`.
                 self.flag = true;
             }
+            12 => {
+                self.a_tok = n(0) as usize;
+                self.id_a = ctor.get(1).map(as_str).unwrap_or_default();
+                // RetreatExecution: `private active = true`.
+                self.flag = true;
+            }
+            13 => {
+                self.a_tok = n(0) as usize;
+                self.unit_id = n(1);
+                // BoatRetreatExecution: `private active = true`.
+                self.flag = true;
+            }
+            14 => {
+                self.a_tok = n(0) as usize;
+                self.unit_ids = ctor.get(1).map(as_num_list).unwrap_or_default();
+                self.position = n(2);
+            }
+            15 => {
+                self.a_tok = n(0) as usize;
+                self.unit_id = n(1);
+                // DeleteUnitExecution: `private active = true`.
+                self.flag = true;
+            }
+            16 => {
+                self.a_tok = n(0) as usize;
+                self.id_a = ctor.get(1).map(as_str).unwrap_or_default();
+                self.quick_key = ctor.get(2).map(as_str).unwrap_or_default();
+                self.chat_target = ctor.get(3).and_then(as_str_opt);
+                // QuickChatExecution: `private active = true`.
+                self.flag = true;
+            }
+            17 => {
+                self.a_tok = n(0) as usize;
+                // MissileSiloExecution: `private active = true`.
+                self.flag = true;
+            }
+            18 => {
+                self.a_tok = n(0) as usize;
+                self.unit_id = n(1);
+                self.amount = match ctor.get(2) {
+                    Some(JsVal::Num(m)) => *m,
+                    _ => 1.0,
+                };
+            }
+            19..=21 => {
+                self.a_tok = n(0) as usize;
+                // City / Factory / DefensePost: `private active = true`.
+                self.flag = true;
+            }
             _ => {}
         }
     }
@@ -1141,6 +1527,16 @@ impl ExecHarness {
             9 => self.alliance_extension(kind, tr),
             10 => self.break_alliance(kind, tr),
             11 => self.alliance_reject(kind, tr),
+            12 => self.retreat(kind, tr),
+            13 => self.boat_retreat(kind, tr),
+            14 => self.move_warship(kind, tr),
+            15 => self.delete_unit(kind, tr),
+            16 => self.quick_chat(kind, tr),
+            17 => self.missile_silo(kind, tr),
+            18 => self.upgrade_structure(kind, tr),
+            19 => self.city(kind, tr),
+            20 => self.factory(kind, tr),
+            21 => self.defense_post(kind, tr),
             k => unreachable!("exec harness: unknown class id {k}"),
         }
     }
@@ -1569,6 +1965,464 @@ impl ExecHarness {
             }
             2 => Ok(JsVal::Undef),
             _ => unreachable!(),
+        }
+    }
+
+    // 12 Retreat
+    fn retreat(&mut self, kind: u8, tr: &mut Vec<f64>) -> Result<JsVal, String> {
+        match kind {
+            3 => Ok(JsVal::Bool(self.flag)),
+            4 => Ok(JsVal::Bool(false)),
+            1 => {
+                self.mg_ready = true;
+                self.start_tick = self.mg_ticks(tr);
+                Ok(JsVal::Undef)
+            }
+            2 => {
+                if !self.retreat_ordered {
+                    let id_a = self.id_a.clone();
+                    self.pl_order_retreat(tr, self.a_tok, &id_a);
+                    self.retreat_ordered = true;
+                }
+                if !self.mg_ready {
+                    return Err("Cannot read properties of undefined (reading 'ticks')".into());
+                }
+                let t = self.mg_ticks(tr);
+                if t >= self.start_tick + RETREAT_CANCEL_DELAY {
+                    let id_a = self.id_a.clone();
+                    self.pl_execute_retreat(tr, self.a_tok, &id_a);
+                    self.flag = false;
+                }
+                Ok(JsVal::Undef)
+            }
+            _ => unreachable!(),
+        }
+    }
+
+    // 13 BoatRetreat
+    fn boat_retreat(&mut self, kind: u8, tr: &mut Vec<f64>) -> Result<JsVal, String> {
+        match kind {
+            3 => Ok(JsVal::Bool(self.flag)),
+            4 => Ok(JsVal::Bool(false)),
+            1 => Ok(JsVal::Undef),
+            2 => {
+                let units = self.pl_units(tr, self.a_tok, &[]);
+                let mut found = None;
+                for uid in units {
+                    let id = self.un_id(tr, uid);
+                    if id == self.unit_id && self.un_type(tr, uid) == UNIT_TRANSPORT {
+                        found = Some(uid);
+                        break;
+                    }
+                }
+                match found {
+                    None => { /* warn: outgoing boat not found */ }
+                    Some(uid) => self.un_update_transport_ship_state(tr, uid),
+                }
+                self.flag = false;
+                Ok(JsVal::Undef)
+            }
+            _ => unreachable!(),
+        }
+    }
+
+    // 14 MoveWarship
+    fn move_warship(&mut self, kind: u8, tr: &mut Vec<f64>) -> Result<JsVal, String> {
+        match kind {
+            3 | 4 => Ok(JsVal::Bool(false)),
+            2 => Ok(JsVal::Undef),
+            1 => {
+                if !self.mg_is_valid_ref(tr, self.position) {
+                    /* warn: position not valid */
+                    return Ok(JsVal::Undef);
+                }
+                let comp = self.mg_get_water_component(tr, self.position);
+                let warship_ty = vec![UNIT_WARSHIP.to_string()];
+                let warships = self.pl_units(tr, self.a_tok, &warship_ty);
+                // `new Map(units.map(u => [u.id(), u]))` — SameValueZero keys,
+                // overwrite in place keeps the first insertion position.
+                let mut map: Vec<(f64, usize)> = Vec::new();
+                for uid in warships {
+                    let id = self.un_id(tr, uid);
+                    match map.iter_mut().find(|(k, _)| svz(*k, id)) {
+                        Some(e) => e.1 = uid,
+                        None => map.push((id, uid)),
+                    }
+                }
+                // `for (const unitId of new Set(this.unitIds))`.
+                let mut dedup: Vec<f64> = Vec::new();
+                for id in self.unit_ids.clone() {
+                    if !dedup.iter().any(|x| svz(*x, id)) {
+                        dedup.push(id);
+                    }
+                }
+                for id in dedup {
+                    let uid = match map.iter().find(|(k, _)| svz(*k, id)) {
+                        Some((_, t)) => *t,
+                        None => continue,
+                    };
+                    if !self.un_is_active(tr, uid) {
+                        continue;
+                    }
+                    let tile = self.un_tile(tr, uid);
+                    if !self.mg_has_water_component(tr, tile, &comp) {
+                        continue;
+                    }
+                    self.un_update_warship_state(tr, uid, self.position);
+                    self.un_set_target_tile(tr, uid);
+                }
+                Ok(JsVal::Undef)
+            }
+            _ => unreachable!(),
+        }
+    }
+
+    // 15 DeleteUnit
+    fn delete_unit(&mut self, kind: u8, tr: &mut Vec<f64>) -> Result<JsVal, String> {
+        match kind {
+            3 => Ok(JsVal::Bool(self.flag)),
+            4 => Ok(JsVal::Bool(false)),
+            2 => {
+                if !self.flag || self.unit.is_none() {
+                    return Ok(JsVal::Undef);
+                }
+                let ui = self.unit.unwrap();
+                if !self.un_is_active(tr, ui) {
+                    self.flag = false;
+                    return Ok(JsVal::Undef);
+                }
+                if self.un_is_overdue_deletion(tr, ui) {
+                    self.un_delete(tr, ui, false);
+                    let pid = self.pl_id(tr, self.a_tok);
+                    self.mg_display_message(
+                        tr,
+                        &[
+                            JsVal::Str("events_display.unit_voluntarily_deleted".into()),
+                            JsVal::Num(MSG_UNIT_DESTROYED),
+                            JsVal::Str(pid),
+                        ],
+                    );
+                    self.flag = false;
+                }
+                Ok(JsVal::Undef)
+            }
+            1 => {
+                if !self.flag {
+                    return Ok(JsVal::Undef);
+                }
+                self.mg_ready = true;
+                let unit = self.mg_unit(tr, self.unit_id);
+                let bad = match unit {
+                    None => true,
+                    Some(u) => self.un_owner(tr, u) != Some(self.a_tok),
+                };
+                if bad {
+                    // warn reads `this.player.displayName()`.
+                    let _ = self.pl_display_name(tr, self.a_tok);
+                    self.flag = false;
+                    return Ok(JsVal::Undef);
+                }
+                let ui = unit.unwrap();
+                if !self.un_is_active(tr, ui) {
+                    self.flag = false;
+                    return Ok(JsVal::Undef);
+                }
+                self.unit = Some(ui);
+                let tile = self.un_tile(tr, ui);
+                let tile_owner = match self.mg_owner(tr, tile) {
+                    Some(o) => o,
+                    None => {
+                        return Err("Cannot read properties of null (reading 'isPlayer')".into());
+                    }
+                };
+                let bad2 = if !self.pl_is_player(tr, tile_owner) {
+                    true
+                } else {
+                    self.pl_id(tr, tile_owner) != self.pl_id(tr, self.a_tok)
+                };
+                if bad2 {
+                    self.flag = false;
+                    return Ok(JsVal::Undef);
+                }
+                let tile2 = self.un_tile(tr, ui);
+                if !self.mg_is_land(tr, tile2) {
+                    self.flag = false;
+                    return Ok(JsVal::Undef);
+                }
+                if self.mg_in_spawn_phase(tr) {
+                    self.flag = false;
+                    return Ok(JsVal::Undef);
+                }
+                if !self.pl_can_delete_unit(tr, self.a_tok) {
+                    self.flag = false;
+                    return Ok(JsVal::Undef);
+                }
+                self.pl_record_delete_unit(tr, self.a_tok);
+                self.un_mark_for_deletion(tr, ui);
+                Ok(JsVal::Undef)
+            }
+            _ => unreachable!(),
+        }
+    }
+
+    // 16 QuickChat
+    fn quick_chat(&mut self, kind: u8, tr: &mut Vec<f64>) -> Result<JsVal, String> {
+        match kind {
+            3 => Ok(JsVal::Bool(self.flag)),
+            4 => Ok(JsVal::Bool(false)),
+            1 => {
+                self.mg_ready = true;
+                let id_a = self.id_a.clone();
+                if !self.mg_has_player(tr, &id_a) {
+                    self.flag = false;
+                    return Ok(JsVal::Undef);
+                }
+                self.recipient = self.mg_player(tr, &id_a);
+                Ok(JsVal::Undef)
+            }
+            2 => {
+                if !self.pl_can_send_quick_chat(tr, self.a_tok, self.recipient) {
+                    self.flag = false;
+                    return Ok(JsVal::Undef);
+                }
+                let parts = split_dot(&self.quick_key);
+                let m0 = parts.first().cloned();
+                let m1 = parts.get(1).cloned();
+                self.pl_record_quick_chat(tr, self.a_tok, self.recipient);
+                if !self.mg_ready {
+                    return Err("Cannot read properties of undefined (reading 'displayChat')".into());
+                }
+                let target = self.chat_target.clone();
+                let rid = self.recipient.map(|r| self.pl_id(tr, r));
+                let sid = self.pl_id(tr, self.a_tok);
+                self.mg_display_chat(
+                    tr,
+                    m1.as_deref(),
+                    m0.as_deref(),
+                    target.as_deref(),
+                    rid.as_deref(),
+                    true,
+                    Some(&sid),
+                );
+                let sid2 = self.pl_id(tr, self.a_tok);
+                let rid2 = self.recipient.map(|r| self.pl_id(tr, r));
+                self.mg_display_chat(
+                    tr,
+                    m1.as_deref(),
+                    m0.as_deref(),
+                    target.as_deref(),
+                    Some(&sid2),
+                    false,
+                    rid2.as_deref(),
+                );
+                self.flag = false;
+                Ok(JsVal::Undef)
+            }
+            _ => unreachable!(),
+        }
+    }
+
+    // 17 MissileSilo
+    fn missile_silo(&mut self, kind: u8, tr: &mut Vec<f64>) -> Result<JsVal, String> {
+        match kind {
+            3 => Ok(JsVal::Bool(self.flag)),
+            4 => Ok(JsVal::Bool(false)),
+            1 => {
+                self.mg_ready = true;
+                Ok(JsVal::Undef)
+            }
+            2 => {
+                if self.un_is_under_construction(tr, self.a_tok) {
+                    return Ok(JsVal::Undef);
+                }
+                if !self.un_is_active(tr, self.a_tok) {
+                    self.flag = false;
+                    return Ok(JsVal::Undef);
+                }
+                let q = self.un_missile_timer_queue(tr, self.a_tok);
+                let front = match as_num_list(&q).first() {
+                    Some(f) => *f,
+                    None => return Ok(JsVal::Undef),
+                };
+                if !self.mg_ready {
+                    return Err("Cannot read properties of undefined (reading 'config')".into());
+                }
+                let cd = self.mg_silo_cooldown(tr);
+                let ticks = self.mg_ticks(tr);
+                if cd - (ticks - front) <= 0.0 {
+                    self.un_reload_missile(tr, self.a_tok);
+                }
+                Ok(JsVal::Undef)
+            }
+            _ => unreachable!(),
+        }
+    }
+
+    // 18 UpgradeStructure
+    fn upgrade_structure(&mut self, kind: u8, tr: &mut Vec<f64>) -> Result<JsVal, String> {
+        match kind {
+            3 | 4 => Ok(JsVal::Bool(false)),
+            2 => Ok(JsVal::Undef),
+            1 => {
+                self.structure = self.mg_unit(tr, self.unit_id);
+                if let Some(ui) = self.structure {
+                    if self.un_owner(tr, ui) != Some(self.a_tok) {
+                        /* warn: structure not owned by player */
+                        self.structure = None;
+                    }
+                }
+                let ui = match self.structure {
+                    Some(u) => u,
+                    None => {
+                        /* warn: structure is undefined */
+                        return Ok(JsVal::Undef);
+                    }
+                };
+                let mut i = 0.0;
+                while i < self.amount {
+                    if !self.pl_can_upgrade_unit(tr, self.a_tok, ui) {
+                        if i == 0.0 {
+                            // warn reads `this.structure.type()`.
+                            let _ = self.un_type(tr, ui);
+                        }
+                        break;
+                    }
+                    self.pl_upgrade_unit(tr, self.a_tok, ui);
+                    i += 1.0;
+                }
+                Ok(JsVal::Undef)
+            }
+            _ => unreachable!(),
+        }
+    }
+
+    // 19 City
+    fn city(&mut self, kind: u8, tr: &mut Vec<f64>) -> Result<JsVal, String> {
+        match kind {
+            3 => Ok(JsVal::Bool(self.flag)),
+            4 => Ok(JsVal::Bool(false)),
+            1 => {
+                self.mg_ready = true;
+                Ok(JsVal::Undef)
+            }
+            2 => {
+                if !self.station_created {
+                    if !self.mg_ready {
+                        return Err(
+                            "Cannot read properties of undefined (reading 'hasUnitNearby')".into(),
+                        );
+                    }
+                    let tile = self.un_tile(tr, self.a_tok);
+                    let range = self.mg_train_station_max_range(tr);
+                    if self.mg_has_unit_nearby(tr, tile, range, UNIT_FACTORY) {
+                        self.mg_add_train_station(tr, self.a_tok, None);
+                    }
+                    self.station_created = true;
+                }
+                if !self.un_is_active(tr, self.a_tok) {
+                    self.flag = false;
+                }
+                Ok(JsVal::Undef)
+            }
+            _ => unreachable!(),
+        }
+    }
+
+    // 20 Factory
+    fn factory(&mut self, kind: u8, tr: &mut Vec<f64>) -> Result<JsVal, String> {
+        match kind {
+            3 => Ok(JsVal::Bool(self.flag)),
+            4 => Ok(JsVal::Bool(false)),
+            1 => {
+                self.mg_ready = true;
+                Ok(JsVal::Undef)
+            }
+            2 => {
+                if !self.station_created {
+                    if !self.mg_ready {
+                        return Err(
+                            "Cannot read properties of undefined (reading 'nearbyUnits')".into(),
+                        );
+                    }
+                    let tile = self.un_tile(tr, self.a_tok);
+                    let range = self.mg_train_station_max_range(tr);
+                    let types = vec![
+                        UNIT_CITY.to_string(),
+                        UNIT_PORT.to_string(),
+                        UNIT_FACTORY.to_string(),
+                    ];
+                    let units = self.mg_nearby_units(tr, tile, range, &types);
+                    self.mg_add_train_station(tr, self.a_tok, Some(true));
+                    for uid in units {
+                        if !self.un_has_train_station(tr, uid) {
+                            self.mg_add_train_station(tr, uid, None);
+                        }
+                    }
+                    self.station_created = true;
+                }
+                if !self.un_is_active(tr, self.a_tok) {
+                    self.flag = false;
+                }
+                Ok(JsVal::Undef)
+            }
+            _ => unreachable!(),
+        }
+    }
+
+    // 21 DefensePost
+    fn defense_post(&mut self, kind: u8, tr: &mut Vec<f64>) -> Result<JsVal, String> {
+        match kind {
+            3 => Ok(JsVal::Bool(self.flag)),
+            4 => Ok(JsVal::Bool(false)),
+            1 => {
+                self.mg_ready = true;
+                Ok(JsVal::Undef)
+            }
+            2 => {
+                if !self.un_is_active(tr, self.a_tok) {
+                    self.flag = false;
+                    return Ok(JsVal::Undef);
+                }
+                if self.un_is_under_construction(tr, self.a_tok) {
+                    return Ok(JsVal::Undef);
+                }
+                // `this.target` is never set (the ship-targeting block below is
+                // commented out in TS), so it stays null and `shoot()` — which
+                // lives only in the commented branch — is never called.
+                if self.target.is_some() {
+                    let t = self.target.unwrap();
+                    if !self.un_is_active(tr, t) {
+                        self.target = None;
+                    }
+                }
+                Ok(JsVal::Undef)
+            }
+            _ => unreachable!(),
+        }
+    }
+
+    /// `DefensePostExecution.shoot` (TS:19-39) — unreachable from `tick` (the
+    /// ship-targeting block is commented out, so `target` stays null); ported
+    /// for completeness. `new ShellExecution(...)` is modelled as an
+    /// `addExecution` construction record (tag 1), exactly like the
+    /// `TrainStationExecution` constructions.
+    #[allow(dead_code)]
+    fn defense_post_shoot(&mut self, tr: &mut Vec<f64>) {
+        let target = match self.target {
+            Some(t) => t,
+            None => return,
+        };
+        let rate = self.mg_defense_post_shell_attack_rate(tr);
+        let ticks = self.mg_ticks(tr);
+        if ticks - self.last_shell_attack > rate {
+            self.last_shell_attack = ticks;
+            let spawn = self.un_tile(tr, self.a_tok);
+            let owner = self.un_owner(tr, self.a_tok);
+            self.mg_add_execution_shell(tr, spawn, owner, self.a_tok, target);
+            if !self.un_has_health(tr, target) {
+                self.already_sent_shell.push(target);
+                self.target = None;
+            }
         }
     }
 }

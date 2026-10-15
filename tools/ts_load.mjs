@@ -463,10 +463,14 @@ function prepare(rel) {
       "",
       "EU Config import",
     );
+    // G5a reuses this copy for `wouldNukeBreakAlliance`, which reads the
+    // `Structures` *value* import (Game / Player stay type-only). Redirect
+    // `Structures` to the prepared Game.ts copy so the function resolves.
+    if (!prepared.has("src/core/game/Game.ts")) prepare("src/core/game/Game.ts");
     out = must(
       out,
       'import { Game, Player, Structures } from "../game/Game";\n',
-      "",
+      `import { Structures } from "./${prepared.get("src/core/game/Game.ts")}";\n`,
       "EU Game import",
     );
     const gmRel = "src/core/game/GameMap.ts";
@@ -484,6 +488,328 @@ function prepare(rel) {
       "EU TileSet import",
     );
   }
+
+  // ---------------------------------------------------------------------------
+  // G5a: execution layer (12 classes + wouldNukeBreakAlliance). The real TS
+  // classes are driven against scripted facade mocks in gen_vectors.mjs; strip
+  // mode erases every type annotation, so the only rewrites needed here are:
+  //  * drop the type-only `../game/Game` import, keeping `GameType` / `MessageType`
+  //    / `UnitType` / `PlayerType` as *values* redirected to the prepared Game.ts
+  //    copy (enums inlined as plain const objects);
+  //  * drop `implements Execution` (strip mode rejects the clause);
+  //  * expand constructor parameter properties into explicit fields + ctor
+  //    assignments (strip mode rejects `constructor(private x: T)`).
+  // ---------------------------------------------------------------------------
+  const elGameRel = "src/core/game/Game.ts";
+  const elUtilRel = "src/core/execution/Util.ts";
+
+  if (rel.endsWith("execution/NoOpExecution.ts")) {
+    out = must(out, 'import { Execution, Game } from "../game/Game";\n', "", "NoOp import");
+    out = must(
+      out,
+      "export class NoOpExecution implements Execution {",
+      "export class NoOpExecution {",
+      "NoOp implements",
+    );
+  }
+  if (rel.endsWith("execution/PauseExecution.ts")) {
+    if (!prepared.has(elGameRel)) prepare(elGameRel);
+    out = must(
+      out,
+      'import { Execution, Game, GameType, Player } from "../game/Game";\n',
+      `import { GameType } from "./${prepared.get(elGameRel)}";\n`,
+      "Pause import",
+    );
+    out = must(
+      out,
+      "export class PauseExecution implements Execution {\n" +
+        "  constructor(\n" +
+        "    private player: Player,\n" +
+        "    private paused: boolean,\n" +
+        "  ) {}",
+      "export class PauseExecution {\n" +
+        "  private player: Player;\n" +
+        "  private paused: boolean;\n\n" +
+        "  constructor(player: Player, paused: boolean) {\n" +
+        "    this.player = player;\n" +
+        "    this.paused = paused;\n" +
+        "  }",
+      "Pause ctor",
+    );
+  }
+  if (rel.endsWith("execution/SpawnTimerExecution.ts")) {
+    out = must(out, 'import { Execution, Game } from "../game/Game";\n', "", "SpawnTimer import");
+    out = must(
+      out,
+      "export class SpawnTimerExecution implements Execution {",
+      "export class SpawnTimerExecution {",
+      "SpawnTimer implements",
+    );
+  }
+  if (rel.endsWith("execution/RecomputeRailClusterExecution.ts")) {
+    out = must(out, 'import { Execution, Game } from "../game/Game";\n', "", "RRC Game import");
+    out = must(
+      out,
+      'import { RailNetwork } from "../game/RailNetwork";\n',
+      "",
+      "RRC RailNetwork import",
+    );
+    out = must(
+      out,
+      "export class RecomputeRailClusterExecution implements Execution {\n" +
+        "  constructor(private railNetwork: RailNetwork) {}",
+      "export class RecomputeRailClusterExecution {\n" +
+        "  private railNetwork: RailNetwork;\n\n" +
+        "  constructor(railNetwork: RailNetwork) {\n" +
+        "    this.railNetwork = railNetwork;\n" +
+        "  }",
+      "RRC ctor",
+    );
+  }
+  if (rel.endsWith("execution/MarkDisconnectedExecution.ts")) {
+    out = must(out, 'import { Execution, Game, Player } from "../game/Game";\n', "", "MD import");
+    out = must(
+      out,
+      "export class MarkDisconnectedExecution implements Execution {\n" +
+        "  constructor(\n" +
+        "    private player: Player,\n" +
+        "    private isDisconnected: boolean,\n" +
+        "  ) {}",
+      "export class MarkDisconnectedExecution {\n" +
+        "  private player: Player;\n" +
+        "  private isDisconnected: boolean;\n\n" +
+        "  constructor(player: Player, isDisconnected: boolean) {\n" +
+        "    this.player = player;\n" +
+        "    this.isDisconnected = isDisconnected;\n" +
+        "  }",
+      "MD ctor",
+    );
+  }
+  if (rel.endsWith("execution/EmbargoExecution.ts")) {
+    out = must(
+      out,
+      'import { Execution, Game, Player, PlayerID } from "../game/Game";\n',
+      "",
+      "Embargo import",
+    );
+    out = must(
+      out,
+      "export class EmbargoExecution implements Execution {\n" +
+        "  private active = true;\n\n" +
+        "  private target: Player;\n\n" +
+        "  constructor(\n" +
+        "    private player: Player,\n" +
+        "    private targetID: PlayerID,\n" +
+        '    private readonly action: "start" | "stop",\n' +
+        "  ) {}",
+      "export class EmbargoExecution {\n" +
+        "  private active = true;\n\n" +
+        "  private target: Player;\n\n" +
+        "  constructor(\n" +
+        "    player: Player,\n" +
+        "    targetID: PlayerID,\n" +
+        '    action: "start" | "stop",\n' +
+        "  ) {\n" +
+        "    this.player = player;\n" +
+        "    this.targetID = targetID;\n" +
+        "    this.action = action;\n" +
+        "  }",
+      "Embargo ctor",
+    );
+  }
+  if (rel.endsWith("execution/EmbargoAllExecution.ts")) {
+    if (!prepared.has(elGameRel)) prepare(elGameRel);
+    out = must(
+      out,
+      'import { Execution, Game, Player, PlayerType } from "../game/Game";\n',
+      `import { PlayerType } from "./${prepared.get(elGameRel)}";\n`,
+      "EmbargoAll import",
+    );
+    out = must(
+      out,
+      "export class EmbargoAllExecution implements Execution {\n" +
+        "  constructor(\n" +
+        "    private readonly player: Player,\n" +
+        '    private readonly action: "start" | "stop",\n' +
+        "  ) {}",
+      "export class EmbargoAllExecution {\n" +
+        "  constructor(\n" +
+        "    player: Player,\n" +
+        '    action: "start" | "stop",\n' +
+        "  ) {\n" +
+        "    this.player = player;\n" +
+        "    this.action = action;\n" +
+        "  }",
+      "EmbargoAll ctor",
+    );
+  }
+  if (rel.endsWith("execution/TargetPlayerExecution.ts")) {
+    out = must(
+      out,
+      'import { Execution, Game, Player, PlayerID } from "../game/Game";\n',
+      "",
+      "TargetPlayer import",
+    );
+    out = must(
+      out,
+      "export class TargetPlayerExecution implements Execution {\n" +
+        "  private target: Player;\n\n" +
+        "  private active = true;\n\n" +
+        "  constructor(\n" +
+        "    private requestor: Player,\n" +
+        "    private targetID: PlayerID,\n" +
+        "  ) {}",
+      "export class TargetPlayerExecution {\n" +
+        "  private target: Player;\n\n" +
+        "  private active = true;\n\n" +
+        "  constructor(\n" +
+        "    requestor: Player,\n" +
+        "    targetID: PlayerID,\n" +
+        "  ) {\n" +
+        "    this.requestor = requestor;\n" +
+        "    this.targetID = targetID;\n" +
+        "  }",
+      "TargetPlayer ctor",
+    );
+  }
+  if (rel.endsWith("alliance/AllianceRequestExecution.ts")) {
+    if (!prepared.has(elGameRel)) prepare(elGameRel);
+    if (!prepared.has(elUtilRel)) prepare(elUtilRel);
+    out = must(
+      out,
+      "import {\n" +
+        "  AllianceRequest,\n" +
+        "  Execution,\n" +
+        "  Game,\n" +
+        "  MessageType,\n" +
+        "  Player,\n" +
+        "  PlayerID,\n" +
+        "  UnitType,\n" +
+        '} from "../../game/Game";\n',
+      `import { MessageType, UnitType } from "./${prepared.get(elGameRel)}";\n`,
+      "AllianceRequest imports",
+    );
+    out = must(
+      out,
+      'import { wouldNukeBreakAlliance } from "../Util";\n',
+      `import { wouldNukeBreakAlliance } from "./${prepared.get(elUtilRel)}";\n`,
+      "AllianceRequest Util import",
+    );
+    out = must(
+      out,
+      "export class AllianceRequestExecution implements Execution {\n" +
+        "  private req: AllianceRequest | null = null;\n" +
+        "  private active = true;\n" +
+        "  private mg: Game;\n\n" +
+        "  constructor(\n" +
+        "    private requestor: Player,\n" +
+        "    private recipientID: PlayerID,\n" +
+        "  ) {}",
+      "export class AllianceRequestExecution {\n" +
+        "  private req: AllianceRequest | null = null;\n" +
+        "  private active = true;\n" +
+        "  private mg: Game;\n\n" +
+        "  constructor(\n" +
+        "    requestor: Player,\n" +
+        "    recipientID: PlayerID,\n" +
+        "  ) {\n" +
+        "    this.requestor = requestor;\n" +
+        "    this.recipientID = recipientID;\n" +
+        "  }",
+      "AllianceRequest ctor",
+    );
+  }
+  if (rel.endsWith("alliance/AllianceExtensionExecution.ts")) {
+    if (!prepared.has(elGameRel)) prepare(elGameRel);
+    out = must(
+      out,
+      "import {\n" +
+        "  Execution,\n" +
+        "  Game,\n" +
+        "  MessageType,\n" +
+        "  Player,\n" +
+        "  PlayerID,\n" +
+        '} from "../../game/Game";\n',
+      `import { MessageType } from "./${prepared.get(elGameRel)}";\n`,
+      "AllianceExtension import",
+    );
+    out = must(
+      out,
+      "export class AllianceExtensionExecution implements Execution {\n" +
+        "  constructor(\n" +
+        "    private readonly from: Player,\n" +
+        "    private readonly toID: PlayerID,\n" +
+        "  ) {}",
+      "export class AllianceExtensionExecution {\n" +
+        "  constructor(\n" +
+        "    from: Player,\n" +
+        "    toID: PlayerID,\n" +
+        "  ) {\n" +
+        "    this.from = from;\n" +
+        "    this.toID = toID;\n" +
+        "  }",
+      "AllianceExtension ctor",
+    );
+  }
+  if (rel.endsWith("alliance/BreakAllianceExecution.ts")) {
+    out = must(
+      out,
+      'import { Execution, Game, Player, PlayerID } from "../../game/Game";\n',
+      "",
+      "BreakAlliance import",
+    );
+    out = must(
+      out,
+      "export class BreakAllianceExecution implements Execution {\n" +
+        "  private active = true;\n" +
+        "  private recipient: Player | null = null;\n" +
+        "  private mg: Game | null = null;\n\n" +
+        "  constructor(\n" +
+        "    private requestor: Player,\n" +
+        "    private recipientID: PlayerID,\n" +
+        "  ) {}",
+      "export class BreakAllianceExecution {\n" +
+        "  private active = true;\n" +
+        "  private recipient: Player | null = null;\n" +
+        "  private mg: Game | null = null;\n\n" +
+        "  constructor(\n" +
+        "    requestor: Player,\n" +
+        "    recipientID: PlayerID,\n" +
+        "  ) {\n" +
+        "    this.requestor = requestor;\n" +
+        "    this.recipientID = recipientID;\n" +
+        "  }",
+      "BreakAlliance ctor",
+    );
+  }
+  if (rel.endsWith("alliance/AllianceRejectExecution.ts")) {
+    out = must(
+      out,
+      'import { Execution, Game, Player, PlayerID } from "../../game/Game";\n',
+      "",
+      "AllianceReject import",
+    );
+    out = must(
+      out,
+      "export class AllianceRejectExecution implements Execution {\n" +
+        "  private active = true;\n\n" +
+        "  constructor(\n" +
+        "    private requestorID: PlayerID,\n" +
+        "    private recipient: Player,\n" +
+        "  ) {}",
+      "export class AllianceRejectExecution {\n" +
+        "  private active = true;\n\n" +
+        "  constructor(\n" +
+        "    requestorID: PlayerID,\n" +
+        "    recipient: Player,\n" +
+        "  ) {\n" +
+        "    this.requestorID = requestorID;\n" +
+        "    this.recipient = recipient;\n" +
+        "  }",
+      "AllianceReject ctor",
+    );
+  }
+
   if (rel.endsWith("algorithms/ConnectedComponents.ts")) {
     // GameMap/TileRef are type-only (interface + branded type) -> dropped; the
     // DebugSpan value import is redirected to its prepared copy. The ctor's two

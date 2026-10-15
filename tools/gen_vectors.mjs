@@ -26420,6 +26420,564 @@ runGFA(
   ],
 );
 
+// ===========================================================================
+// G5a: execution layer capture (mirrors crates/core/src/exec_layer.rs).
+//
+// The 12 real TS execution classes are driven against scripted facade mocks
+// (mg / players / alliances / requests / units / neighbors). Every facade
+// method pushes a trace frame `[code, ...prefix, ...encVal(scriptedValue)]`;
+// void methods push `[code, ...prefix, 1]`. Per op the harness emits
+//   [traceLen, ...trace, 0, ...encVal(return)]   on success
+//   [traceLen, ...trace, 1, ...encStr(msg)]      on a thrown JS Error
+// and kind 0 (construct) emits `[0,0]`. classId table:
+//   0 NoOp 1 Pause 2 SpawnTimer 3 RecomputeRailCluster 4 MarkDisconnected
+//   5 Embargo 6 EmbargoAll 7 TargetPlayer 8 AllianceRequest
+//   9 AllianceExtension 10 BreakAlliance 11 AllianceReject
+// Facade event codes: mg 210-228, `player.*` 230-259, `alliance.*` 260-263,
+// `AllianceRequest.*` 270-274, `unit.*` 280-286, neighbor 256-258, rail 290.
+// ===========================================================================
+const elNoOpC = (await loadTs("src/core/execution/NoOpExecution.ts")).NoOpExecution;
+const elPauseC = (await loadTs("src/core/execution/PauseExecution.ts")).PauseExecution;
+const elSpawnC = (await loadTs("src/core/execution/SpawnTimerExecution.ts"))
+  .SpawnTimerExecution;
+const elRailC = (await loadTs("src/core/execution/RecomputeRailClusterExecution.ts"))
+  .RecomputeRailClusterExecution;
+const elMarkC = (await loadTs("src/core/execution/MarkDisconnectedExecution.ts"))
+  .MarkDisconnectedExecution;
+const elEmbargoC = (await loadTs("src/core/execution/EmbargoExecution.ts"))
+  .EmbargoExecution;
+const elEmbargoAllC = (await loadTs("src/core/execution/EmbargoAllExecution.ts"))
+  .EmbargoAllExecution;
+const elTargetC = (await loadTs("src/core/execution/TargetPlayerExecution.ts"))
+  .TargetPlayerExecution;
+const elAllReqC = (
+  await loadTs("src/core/execution/alliance/AllianceRequestExecution.ts")
+).AllianceRequestExecution;
+const elAllExtC = (
+  await loadTs("src/core/execution/alliance/AllianceExtensionExecution.ts")
+).AllianceExtensionExecution;
+const elBreakC = (await loadTs("src/core/execution/alliance/BreakAllianceExecution.ts"))
+  .BreakAllianceExecution;
+const elRejectC = (await loadTs("src/core/execution/alliance/AllianceRejectExecution.ts"))
+  .AllianceRejectExecution;
+
+const elScenarios = [];
+let elT = [];
+let elC = null;
+
+const elSlots = (n, map) => {
+  const a = new Array(n).fill(undefined);
+  if (map) for (const k of Object.keys(map)) a[+k] = map[k];
+  // Out-of-range keys extend the array; close the resulting holes so the
+  // `encVal` flatMap does not silently skip them (it drops array holes).
+  for (let i = 0; i < a.length; i++) if (!(i in a)) a[i] = undefined;
+  return a;
+};
+function elTake(m, slot) {
+  const s = m.slots[slot];
+  if (s === undefined || s.length === 0)
+    throw new Error("exec harness: unscripted facade method (slot " + slot + ")");
+  const i = m.i[slot];
+  m.i[slot] = i + 1;
+  return s[i < s.length ? i : s.length - 1];
+}
+const elEv1 = (v) => [3, uenc(v)];
+const elEvb = (b) => [4, b ? 1 : 0];
+const elEvs = (s) => [5, ...encS(s)];
+const elEvStrOpt = (s) => (s == null ? [2] : [5, ...encS(s)]);
+const elEvStrs = (a) => {
+  const o = [7, a.length];
+  for (const s of a) o.push(5, ...encS(s));
+  return o;
+};
+const elEvTokList = (a) => {
+  const o = [7, a.length];
+  for (const t of a) o.push(3, t);
+  return o;
+};
+const elEvTok = (o) => (o == null || o._tok == null ? [1] : [3, o._tok]);
+function elRet(m, slot, code, prefix) {
+  const v = elTake(m, slot);
+  elT.push(code, ...prefix, ...encVal(v));
+  return v;
+}
+function elVoid(code, prefix) {
+  elT.push(code, ...prefix, ...encVal(undefined));
+}
+
+function elPlayerObj(tok, slots) {
+  const m = { slots, i: new Array(slots.length).fill(0) };
+  return {
+    _tok: tok,
+    smallID: () => elRet(m, 0, 230, [tok]),
+    id: () => elRet(m, 1, 231, [tok]),
+    displayName: () => elRet(m, 2, 232, [tok]),
+    isAlive: () => elRet(m, 3, 233, [tok]),
+    isLobbyCreator: () => elRet(m, 4, 234, [tok]),
+    canSendAllianceRequest: (o) => elRet(m, 5, 235, [tok, ...elEvTok(o)]),
+    outgoingAllianceRequests: () => {
+      const ts = elRet(m, 6, 236, [tok]);
+      return (ts || []).map((t) => elC.requests[t]);
+    },
+    hasEmbargoAgainst: (o) => elRet(m, 8, 238, [tok, ...elEvTok(o)]),
+    createAllianceRequest: (o) => {
+      const t = elRet(m, 10, 240, [tok, ...elEvTok(o)]);
+      return t == null ? null : elC.requests[t];
+    },
+    units: (types) => {
+      const ts = elRet(m, 11, 241, [tok, ...elEvStrs(types)]);
+      return (ts || []).map((t) => elC.units[t]);
+    },
+    isFriendly: (o) => elRet(m, 12, 242, [tok, ...elEvTok(o)]),
+    allianceWith: (o) => {
+      const t = elRet(m, 13, 243, [tok, ...elEvTok(o)]);
+      return t == null ? null : elC.alliances[t];
+    },
+    nearby: () => {
+      const ts = elRet(m, 15, 245, [tok]);
+      return (ts || []).map((t) => elC.neighbors[t]);
+    },
+    canTarget: (o) => elRet(m, 16, 246, [tok, ...elEvTok(o)]),
+    team: () => elRet(m, 18, 248, [tok]),
+    isOnSameTeam: (o) => elRet(m, 20, 250, [tok, ...elEvTok(o)]),
+    type: () => elRet(m, 21, 251, [tok]),
+    canEmbargoAll: () => elRet(m, 22, 252, [tok]),
+    isPlayer: () => elRet(m, 26, 259, [tok]),
+    updateRelation: (o, amt) => elVoid(237, [tok, ...elEvTok(o), ...elEv1(amt)]),
+    endTemporaryEmbargo: (o) => elVoid(239, [tok, ...elEvTok(o)]),
+    breakAlliance: (al) => elVoid(244, [tok, ...elEv1(al._tok)]),
+    target: (o) => elVoid(247, [tok, ...elEvTok(o)]),
+    addEmbargo: (o, flag) => elVoid(253, [tok, ...elEvTok(o), ...elEvb(flag)]),
+    stopEmbargo: (o) => elVoid(254, [tok, ...elEvTok(o)]),
+    recordEmbargoAll: () => elVoid(255, [tok]),
+    markDisconnected: (flag, obj) =>
+      elVoid(249, [tok, ...elEvb(flag), ...encVal(obj)]),
+  };
+}
+function elAllianceObj(tok, slots) {
+  const m = { slots, i: new Array(slots.length).fill(0) };
+  return {
+    _tok: tok,
+    onlyOneAgreedToExtend: () => elRet(m, 0, 260, [tok]),
+    bothAgreedToExtend: () => elRet(m, 2, 262, [tok]),
+    addExtensionRequest: (p) => elVoid(261, [tok, ...elEv1(p._tok)]),
+    extend: () => elVoid(263, [tok]),
+  };
+}
+function elRequestObj(tok, slots) {
+  const m = { slots, i: new Array(slots.length).fill(0) };
+  return {
+    _tok: tok,
+    recipient: () => {
+      const t = elRet(m, 0, 270, [tok]);
+      return t == null ? null : elC.players[t];
+    },
+    status: () => elRet(m, 3, 273, [tok]),
+    createdAt: () => elRet(m, 4, 274, [tok]),
+    accept: () => elVoid(271, [tok]),
+    reject: () => elVoid(272, [tok]),
+  };
+}
+function elUnitObj(tok, slots) {
+  const m = { slots, i: new Array(slots.length).fill(0) };
+  return {
+    _tok: tok,
+    isActive: () => elRet(m, 0, 280, [tok]),
+    reachedTarget: () => elRet(m, 1, 281, [tok]),
+    targetTile: () => elRet(m, 2, 282, [tok]),
+    type: () => elRet(m, 3, 283, [tok]),
+    targetPlayer: () => {
+      const t = elRet(m, 4, 284, [tok]);
+      return t == null ? null : elC.players[t];
+    },
+    owner: () => {
+      const t = elRet(m, 6, 286, [tok]);
+      return t == null ? null : elC.players[t];
+    },
+    delete: (flag) => elVoid(285, [tok, ...elEvb(flag)]),
+  };
+}
+function elNeighborObj(tok, slots) {
+  const m = { slots, i: new Array(slots.length).fill(0) };
+  return {
+    _tok: tok,
+    isPlayer: () => elRet(m, 0, 257, [tok]),
+    isOnSameTeam: (o) => elRet(m, 1, 258, [tok, ...elEvTok(o)]),
+    updateRelation: (o, amt) => elVoid(256, [tok, ...elEvTok(o), ...elEv1(amt)]),
+  };
+}
+function elMgObj(slots) {
+  const m = { slots, i: new Array(slots.length).fill(0) };
+  const cfg = {
+    allianceRequestDuration: () => elRet(m, 3, 213, []),
+    numSpawnPhaseTurns: () => elRet(m, 5, 215, []),
+    nukeMagnitudes: (ty) => elRet(m, 14, 224, elEvs(ty)),
+    nukeAllianceBreakThreshold: () => elRet(m, 15, 225, []),
+    gameConfig: () => ({ gameType: elRet(m, 4, 214, []) }),
+  };
+  return {
+    config: () => cfg,
+    hasPlayer: (id) => elRet(m, 0, 210, elEvs(id)),
+    player: (id) => {
+      const t = elRet(m, 1, 211, elEvs(id));
+      return t == null ? null : elC.players[t];
+    },
+    ticks: () => elRet(m, 2, 212, []),
+    inSpawnPhase: () => elRet(m, 6, 216, []),
+    endSpawnPhase: () => elVoid(217, []),
+    setPaused: (p) => elVoid(218, elEvb(p)),
+    teamTilesOwned: (team) =>
+      elRet(m, 9, 219, elEvStrOpt(typeof team === "string" ? team : null)),
+    totalLandTiles: () => elRet(m, 10, 220, []),
+    players: () => {
+      const ts = elRet(m, 11, 221, []);
+      return (ts || []).map((t) => elC.players[t]);
+    },
+    owner: (tile) => {
+      const t = elRet(m, 12, 222, elEv1(tile));
+      return t == null ? null : elC.players[t];
+    },
+    ownerID: (tile) => elRet(m, 13, 223, elEv1(tile)),
+    displayMessage: (...args) => {
+      elT.push(226);
+      for (const a of args) elT.push(...encVal(a));
+      elT.push(...encVal(undefined));
+    },
+    anyUnitNearby: (tile, outer, types, cb) => {
+      const ts = elTake(m, 17);
+      const units = ts || [];
+      elT.push(227, ...elEv1(tile), ...elEv1(outer), ...elEvStrs(types), ...elEvTokList(units));
+      let result = false;
+      for (const t of units)
+        if (cb(elC.units[t])) {
+          result = true;
+          break;
+        }
+      elT.push(...encVal(result));
+      return result;
+    },
+    circleSearch: (tile, outer, cb) => {
+      const pairs = elTake(m, 18) || [];
+      elT.push(228, ...elEv1(tile), ...elEv1(outer));
+      for (const [t, d2] of pairs) if (!cb(t, d2)) break;
+      elT.push(...encVal(undefined));
+    },
+  };
+}
+
+function elDef(name, classId, cls, args, spec, ops) {
+  elT = [];
+  elC = {};
+  elC.players = (spec.players || []).map((mm, i) => elPlayerObj(i, elSlots(27, mm)));
+  elC.alliances = (spec.alliances || []).map((mm, i) => elAllianceObj(i, elSlots(4, mm)));
+  elC.requests = (spec.requests || []).map((mm, i) => elRequestObj(i, elSlots(5, mm)));
+  elC.units = (spec.units || []).map((mm, i) => elUnitObj(i, elSlots(7, mm)));
+  elC.neighbors = (spec.neighbors || []).map((mm, i) => elNeighborObj(i, elSlots(3, mm)));
+  elC.mg = elMgObj(elSlots(19, spec.mg));
+
+  const setup = {
+    c: classId,
+    a: spec.a || [],
+    mg: elSlots(19, spec.mg),
+    players: (spec.players || []).map((mm) => elSlots(27, mm)),
+    alliances: (spec.alliances || []).map((mm) => elSlots(4, mm)),
+    requests: (spec.requests || []).map((mm) => elSlots(5, mm)),
+    units: (spec.units || []).map((mm) => elSlots(7, mm)),
+    neighbors: (spec.neighbors || []).map((mm) => elSlots(3, mm)),
+  };
+
+  // Constructor args: a `null` entry is the `spec.a` player-token reference at
+  // the same index (the real TS ctors take a `Player`, the Rust ctor table a
+  // token); any non-null entry (rail mock / id string / bool / action) is kept.
+  const aList = spec.a || [];
+  const inst = new cls(...args.map((x, i) => (x === null ? elC.players[aList[i]] : x)));
+  const played = [];
+
+  for (const [kind, ...rest] of ops) {
+    if (kind === 0) {
+      // kind 0 is the explicit construct marker: emit the setup args once.
+      played.push({ kind: 0, args: encVal(setup).map(uenc), res: [0, 0] });
+      continue;
+    }
+    elT = [];
+    let payload;
+    try {
+      let ret;
+      if (kind === 1) ret = inst.init(elC.mg, rest[0]);
+      else if (kind === 2) ret = inst.tick(rest[0]);
+      else if (kind === 3) ret = inst.isActive();
+      else if (kind === 4) ret = inst.activeDuringSpawnPhase();
+      payload = [0, ...encVal(ret)];
+    } catch (e) {
+      payload = [1, ...encS(String(e.message))];
+    }
+    played.push({ kind, args: rest.map(uenc), res: [elT.length, ...elT, ...payload].map(uenc) });
+  }
+  elScenarios.push({ name, ops: played });
+}
+
+const elRailMock = { recomputeClusters: () => elVoid(290, []) };
+
+// -- 0 NoOp ------------------------------------------------------------------
+elDef("el_noop", 0, elNoOpC, [], {}, [[0], [3], [4], [1, 5], [2, 5]]);
+
+// -- 1 Pause -----------------------------------------------------------------
+elDef("el_pause_creator", 1, elPauseC, [null, true], { players: [{ 4: [true] }], a: [0, true] }, [[0], [1, 0], [3], [4]]);
+elDef("el_pause_creator_false", 1, elPauseC, [null, false], { players: [{ 4: [true] }], a: [0, false] }, [[0], [1, 0], [3], [4]]);
+elDef("el_pause_single", 1, elPauseC, [null, true], { players: [{ 4: [false] }], mg: { 4: ["Singleplayer"] }, a: [0, true] }, [[0], [1, 0], [2, 0], [3], [4]]);
+elDef("el_pause_other", 1, elPauseC, [null, false], { players: [{ 4: [false] }], mg: { 4: ["Public"] }, a: [0, false] }, [[0], [1, 0], [3], [4]]);
+
+// -- 2 SpawnTimer ------------------------------------------------------------
+elDef("el_spawntimer", 2, elSpawnC, [], { mg: { 6: [true], 2: [10], 5: [5] } }, [[0], [3], [4], [1, 0], [3], [2, 10], [4]]);
+elDef("el_spawntimer_early", 2, elSpawnC, [], { mg: { 2: [2], 5: [5] } }, [[0], [1, 0], [2, 2], [2, 9]]);
+
+// -- 3 RecomputeRailCluster --------------------------------------------------
+elDef("el_rail", 3, elRailC, [elRailMock], {}, [[0], [3], [4], [2, 0]]);
+
+// -- 4 MarkDisconnected ------------------------------------------------------
+elDef("el_mark_team", 4, elMarkC, [null, true], { players: [{ 18: ["Red"], 3: [true] }], mg: { 9: [42], 10: [100] }, a: [0, true] }, [[0], [1, 7], [3], [4]]);
+elDef("el_mark_nullteam", 4, elMarkC, [null, true], { players: [{ 18: [null], 3: [false] }], mg: { 10: [100] }, a: [0, true] }, [[0], [1, 3], [3], [4]]);
+elDef("el_mark_off", 4, elMarkC, [null, false], { players: [{}], a: [0, false] }, [[0], [1, 3], [3], [4]]);
+
+// -- 5 Embargo ---------------------------------------------------------------
+elDef("el_embargo_start", 5, elEmbargoC, [null, "tgt", "start"], { players: [{}, {}], mg: { 0: [true], 1: [1] }, a: [0, "tgt", "start"] }, [[0], [3], [1, 0], [3], [2, 0], [4]]);
+elDef("el_embargo_stop", 5, elEmbargoC, [null, "tgt", "stop"], { players: [{}, {}], mg: { 0: [true], 1: [1] }, a: [0, "tgt", "stop"] }, [[0], [1, 0], [2, 0]]);
+elDef("el_embargo_missing", 5, elEmbargoC, [null, "tgt", "start"], { players: [{}], mg: { 0: [false] }, a: [0, "tgt", "start"] }, [[0], [1, 0], [2, 0], [3]]);
+
+// -- 6 EmbargoAll ------------------------------------------------------------
+elDef(
+  "el_embargoall_start",
+  6,
+  elEmbargoAllC,
+  [null, "start"],
+  {
+    players: [
+      { 1: ["me"], 20: [true, false], 22: [true], 8: [false] },
+      { 1: ["bot1"], 21: ["BOT"] },
+      { 1: ["p2"], 21: ["HUMAN"] },
+      { 1: ["p3"], 21: ["HUMAN"] },
+    ],
+    mg: { 11: [[0, 1, 2, 3]] },
+    a: [0, "start"],
+  },
+  [[0], [1, 0], [3], [4], [2, 0]],
+);
+elDef(
+  "el_embargoall_stop",
+  6,
+  elEmbargoAllC,
+  [null, "stop"],
+  {
+    players: [{ 1: ["me"], 20: [false], 22: [true], 8: [true] }, { 1: ["p2"], 21: ["HUMAN"] }],
+    mg: { 11: [[0, 1]] },
+    a: [0, "stop"],
+  },
+  [[0], [1, 0], [2, 0]],
+);
+elDef("el_embargoall_no", 6, elEmbargoAllC, [null, "start"], { players: [{ 22: [false] }], mg: {}, a: [0, "start"] }, [[0], [1, 0], [2, 0]]);
+
+// -- 7 TargetPlayer ----------------------------------------------------------
+elDef("el_target_hit", 7, elTargetC, [null, "tgt"], { players: [{ 16: [true] }, {}], mg: { 0: [true], 1: [1] }, a: [0, "tgt"] }, [[0], [3], [1, 0], [3], [2, 0], [4]]);
+elDef("el_target_miss", 7, elTargetC, [null, "tgt"], { players: [{ 16: [false] }, {}], mg: { 0: [true], 1: [1] }, a: [0, "tgt"] }, [[0], [1, 0], [2, 0]]);
+elDef("el_target_missing", 7, elTargetC, [null, "tgt"], { players: [{ 16: [false] }], mg: { 0: [false] }, a: [0, "tgt"] }, [[0], [1, 0], [2, 0], [3]]);
+
+// -- 8 AllianceRequest -------------------------------------------------------
+const EL_AR_BASE = {
+  players: [
+    { 1: ["p0"], 2: ["name0"], 5: [true], 8: [false] },
+    { 0: [11], 1: ["p1"], 2: ["name1"], 8: [true], 26: [true] },
+  ],
+  requests: [{ 0: [0], 3: ["pending"], 4: [9] }],
+};
+elDef(
+  "el_allreq_incoming",
+  8,
+  elAllReqC,
+  [null, "recip"],
+  {
+    players: [
+      { 1: ["p0"], 2: ["name0"], 5: [true], 8: [false], 11: [[0]] },
+      { 0: [11], 1: ["p1"], 2: ["name1"], 6: [[0]], 8: [true], 11: [[1]], 26: [true] },
+    ],
+    requests: [{ 0: [0] }],
+    units: [
+      { 0: [true], 1: [false], 2: [100], 3: ["Atom Bomb"] },
+      { 0: [true], 1: [false], 2: [200], 3: ["MIRV"], 4: [0], 6: [1] },
+    ],
+    mg: { 0: [true], 1: [1], 2: [10], 3: [20], 14: [{ inner: 4, outer: 8 }], 15: [5], 17: [[1]] },
+    a: [0, "recip"],
+  },
+  [[0], [1, 0], [3], [2, 10], [4]],
+);
+elDef(
+  "el_allreq_circle",
+  8,
+  elAllReqC,
+  [null, "recip"],
+  {
+    players: [
+      { 1: ["p0"], 2: ["name0"], 5: [true], 8: [false], 11: [[0]] },
+      { 0: [11], 1: ["p1"], 2: ["name1"], 6: [[0]], 8: [false], 11: [[]] },
+    ],
+    requests: [{ 0: [0] }],
+    units: [{ 0: [true], 1: [false], 2: [100], 3: ["Hydrogen Bomb"] }],
+    mg: { 0: [true], 1: [1], 2: [10], 3: [20], 13: [11, 11, 12, 11], 14: [{ inner: 4, outer: 8 }], 15: [2], 17: [[]], 18: [[[100, 4], [101, 30], [102, 9], [103, 4]]] },
+    a: [0, "recip"],
+  },
+  [[0], [1, 0], [3], [2, 10]],
+);
+elDef(
+  "el_allreq_create",
+  8,
+  elAllReqC,
+  [null, "recip"],
+  {
+    players: [{ 1: ["p0"], 5: [true], 10: [0], 11: [[]] }, { 6: [[]] }],
+    requests: [{ 3: ["pending"], 4: [9] }],
+    mg: { 0: [true], 1: [1], 2: [10, 14], 3: [3] },
+    a: [0, "recip"],
+  },
+  [[0], [1, 0], [3], [2, 10], [2, 14], [4]],
+);
+elDef(
+  "el_allreq_accepted",
+  8,
+  elAllReqC,
+  [null, "recip"],
+  {
+    players: [{ 1: ["p0"], 5: [true], 10: [0], 11: [[]] }, { 6: [[]] }],
+    requests: [{ 3: ["accepted"] }],
+    mg: { 0: [true], 1: [1], 2: [10], 3: [3] },
+    a: [0, "recip"],
+  },
+  [[0], [1, 0], [3], [2, 10], [3]],
+);
+elDef(
+  "el_allreq_nocan",
+  8,
+  elAllReqC,
+  [null, "recip"],
+  { players: [{ 5: [false] }, {}], mg: { 0: [true], 1: [1], 2: [10], 3: [3], 10: [0] }, a: [0, "recip"] },
+  [[0], [1, 0], [3], [2, 10], [4]],
+);
+elDef("el_allreq_missing", 8, elAllReqC, [null, "recip"], { players: [{}], mg: { 0: [false], 2: [10], 3: [3] }, a: [0, "recip"] }, [[0], [1, 0], [2, 10]]);
+elDef("el_allreq_notinit", 8, elAllReqC, [null, "recip"], { players: [{}], mg: {}, a: [0, "recip"] }, [[0], [2, 10]]);
+
+// -- 9 AllianceExtension -----------------------------------------------------
+elDef(
+  "el_allext_both",
+  9,
+  elAllExtC,
+  [null, "toid"],
+  {
+    players: [{ 1: ["f0"], 2: ["fname"], 3: [true], 13: [0] }, { 1: ["t1"], 2: ["tname"], 3: [true] }],
+    alliances: [{ 0: [false], 2: [true] }],
+    mg: { 0: [true], 1: [1] },
+    a: [0, "toid"],
+  },
+  [[0], [1, 0], [3], [4]],
+);
+elDef(
+  "el_allext_one",
+  9,
+  elAllExtC,
+  [null, "toid"],
+  {
+    players: [{ 1: ["f0"], 2: ["fname"], 3: [true], 13: [0] }, { 1: ["t1"], 3: [true] }],
+    alliances: [{ 0: [false, true], 2: [false] }],
+    mg: { 0: [true], 1: [1] },
+    a: [0, "toid"],
+  },
+  [[0], [1, 0], [3], [4]],
+);
+elDef(
+  "el_allext_same",
+  9,
+  elAllExtC,
+  [null, "toid"],
+  {
+    players: [{ 3: [true], 13: [0] }, { 3: [true] }],
+    alliances: [{ 0: [true], 2: [false] }],
+    mg: { 0: [true], 1: [1] },
+    a: [0, "toid"],
+  },
+  [[0], [1, 0], [3], [4]],
+);
+elDef(
+  "el_allext_dead",
+  9,
+  elAllExtC,
+  [null, "toid"],
+  { players: [{ 1: ["f0"], 3: [false] }, { 3: [true] }], mg: { 0: [true], 1: [1] }, a: [0, "toid"] },
+  [[0], [1, 0], [3], [4]],
+);
+elDef(
+  "el_allext_noalliance",
+  9,
+  elAllExtC,
+  [null, "toid"],
+  { players: [{ 1: ["f0"], 3: [true], 13: [null] }, { 3: [true] }], mg: { 0: [true], 1: [1] }, a: [0, "toid"] },
+  [[0], [1, 0], [2, 0]],
+);
+elDef("el_allext_missing", 9, elAllExtC, [null, "toid"], { players: [{}], mg: { 0: [false] }, a: [0, "toid"] }, [[0], [1, 0], [3]]);
+
+// -- 10 BreakAlliance --------------------------------------------------------
+elDef(
+  "el_break_ok",
+  10,
+  elBreakC,
+  [null, "recip"],
+  {
+    players: [{ 13: [0], 15: [[0, 1, 2]] }, { 20: [false, false] }],
+    alliances: [{}],
+    neighbors: [{ 0: [true], 1: [true] }, { 0: [true], 1: [false], 2: [0] }, { 0: [false] }],
+    mg: { 0: [true], 1: [1] },
+    a: [0, "recip"],
+  },
+  [[0], [3], [1, 0], [2, 0], [3], [4]],
+);
+elDef(
+  "el_break_noalliance",
+  10,
+  elBreakC,
+  [null, "recip"],
+  { players: [{ 13: [null] }, {}], mg: { 0: [true], 1: [1] }, a: [0, "recip"] },
+  [[0], [1, 0], [2, 0]],
+);
+elDef("el_break_notinit", 10, elBreakC, [null, "recip"], { players: [{}], mg: { 0: [false] }, a: [0, "recip"] }, [[0], [1, 0], [2, 0]]);
+
+// -- 11 AllianceReject -------------------------------------------------------
+elDef(
+  "el_reject_found",
+  11,
+  elRejectC,
+  ["reqid", null],
+  {
+    players: [{ 12: [false], 6: [[0]] }, { 0: [0], 3: ["pending"] }],
+    requests: [{ 0: [1] }],
+    mg: { 0: [true], 1: [0] },
+    a: ["reqid", 1],
+  },
+  [[0], [3], [1, 0], [2, 0], [3], [4]],
+);
+elDef(
+  "el_reject_notfound",
+  11,
+  elRejectC,
+  ["reqid", null],
+  { players: [{ 12: [false], 6: [[]] }, { 1: ["r1"] }], mg: { 0: [true], 1: [0] }, a: ["reqid", 1] },
+  [[0], [1, 0], [2, 0]],
+);
+elDef(
+  "el_reject_friendly",
+  11,
+  elRejectC,
+  ["reqid", null],
+  { players: [{ 12: [true], 6: [[0]] }, { 1: ["r1"] }], requests: [{ 0: [1] }], mg: { 0: [true], 1: [0] }, a: ["reqid", 1] },
+  [[0], [3], [1, 0], [2, 0]],
+);
+elDef("el_reject_missing", 11, elRejectC, ["reqid", null], { players: [{}], mg: { 0: [false] }, a: ["reqid", 1] }, [[0], [1, 0], [2, 0], [3]]);
+
 const structures = {
   votetally: vtScenarios,
   rankedcheckin: rgScenarios,
@@ -26568,6 +27126,7 @@ const structures = {
   attack: akScenarios,
   playerimpl: plScenarios,
   gamefacade: gfaScenarios,
+  execution: elScenarios,
 };
 
 // ================================================================ JSON
@@ -30146,6 +30705,41 @@ opStream(
     "/// allianceRequests list / a player's pastOutgoingAllianceRequests; 900\n" +
     "/// dumpUpdates. Objects cross as TOKENS (indices into the harness tables;\n" +
     "/// TN = -2, undefined = -1).",
+);
+
+opStream(
+  "execution",
+  "El",
+  "/// One `core/execution` op (see `exec_layer::ExecHarness::run_op` docs).\n" +
+    "/// kind 0 construct [encVal setup object {c,a,mg,players,alliances,\n" +
+    "/// requests,units,neighbors}] -> [0,0]; kind 1 init(ticks), 2 tick(ticks),\n" +
+    "/// 3 isActive, 4 activeDuringSpawnPhase -> [traceLen,(trace)*,payload]\n" +
+    "/// with payload [0,...encVal(ret)] on success or [1,...encS(msg)] for a\n" +
+    "/// thrown JS Error/TypeError. Class ids: 0 NoOp, 1 Pause, 2 SpawnTimer, 3\n" +
+    "/// RecomputeRailCluster, 4 MarkDisconnected, 5 Embargo, 6 EmbargoAll, 7\n" +
+    "/// TargetPlayer, 8 AllianceRequest, 9 AllianceExtension, 10 BreakAlliance,\n" +
+    "/// 11 AllianceReject. Facade trace events: mg 210 hasPlayer, 211 player,\n" +
+    "/// 212 ticks, 213 allianceRequestDuration, 214 gameType, 215\n" +
+    "/// numSpawnPhaseTurns, 216 inSpawnPhase, 217 endSpawnPhase, 218 setPaused,\n" +
+    "/// 219 teamTilesOwned, 220 totalLandTiles, 221 players, 222 owner, 223\n" +
+    "/// ownerID, 224 nukeMagnitudes, 225 nukeAllianceBreakThreshold, 226\n" +
+    "/// displayMessage, 227 anyUnitNearby, 228 circleSearch; player 230 smallID,\n" +
+    "/// 231 id, 232 displayName, 233 isAlive, 234 isLobbyCreator, 235\n" +
+    "/// canSendAllianceRequest, 236 outgoingAllianceRequests, 237\n" +
+    "/// updateRelation, 238 hasEmbargoAgainst, 239 endTemporaryEmbargo, 240\n" +
+    "/// createAllianceRequest, 241 units, 242 isFriendly, 243 allianceWith,\n" +
+    "/// 244 breakAlliance, 245 nearby, 246 canTarget, 247 target, 248 team,\n" +
+    "/// 249 markDisconnected, 250 isOnSameTeam, 251 type, 252 canEmbargoAll,\n" +
+    "/// 253 addEmbargo, 254 stopEmbargo, 255 recordEmbargoAll, 259 isPlayer;\n" +
+    "/// alliance 260 onlyOneAgreedToExtend, 261 addExtensionRequest, 262\n" +
+    "/// bothAgreedToExtend, 263 extend; allianceRequest 270 recipient, 271\n" +
+    "/// accept, 272 reject, 273 status, 274 createdAt; unit 280 isActive, 281\n" +
+    "/// reachedTarget, 282 targetTile, 283 type, 284 targetPlayer, 285 delete,\n" +
+    "/// 286 owner; neighbor 257 isPlayer, 258 isOnSameTeam, 256 updateRelation;\n" +
+    "/// 290 railNetwork.recomputeClusters. Objects cross as TOKENS (indices\n" +
+    "/// into the harness tables). Scripted returns are consumed FIFO per\n" +
+    "/// scenario; an exhausted list repeats its last value, an empty list\n" +
+    "/// throws on the first call.",
 );
 
 const dataDir = join(root, "crates", "core", "tests", "data");

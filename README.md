@@ -2579,6 +2579,37 @@ WebSockets — stays excluded, mirroring the `src/core` exclusions).
     `gf_g4c_alliance_happy` / `_reject` / `_already_allied` / `_isallied` /
     `_duplicate` / `_corresponding` / `_accept_absent` / `_id_sequence`, 104 ops),
     891,988 wasm comparisons bit-identical.
+82. **`execution/` layer, part 1** (`execution`, G5a) — the four alliance
+    executions (`alliance/AllianceRequestExecution` / `AllianceExtensionExecution`
+    / `BreakAllianceExecution` / `AllianceRejectExecution`), eight trivial
+    leaves (`NoOpExecution` / `PauseExecution` / `SpawnTimerExecution` /
+    `RecomputeRailClusterExecution` / `MarkDisconnectedExecution` /
+    `EmbargoExecution` / `EmbargoAllExecution` / `TargetPlayerExecution`), and
+    the `Game`-facade helper `wouldNukeBreakAlliance` (`execution/Util.ts`;
+    the pure `GameMap` helpers of that file already live in `exec_util`). One
+    `ExecHarness` carries a scenario across ops: kind 0 construct (the single
+    `js_json`-encoded `{c,a,mg,players,alliances,requests,units,neighbors}`
+    setup script), kind 1 `init(ticks)`, 2 `tick(ticks)`, 3 `isActive`, 4
+    `activeDuringSpawnPhase`; method ops return `[traceLen, (trace)*, payload]`
+    with payload `[0,…encVal(ret)]` or `[1,…encS(errMsg)]` for a thrown
+    `Error` / `TypeError`. Class ids 0…11 mirror `tools/gen_vectors.mjs`.
+    Players / alliances / requests / units / neighbors cross as TOKENS (the
+    `===` identity gates become token equality); scripted returns consume FIFO
+    per scenario, an exhausted list repeats its last value, an empty list
+    throws on the first call. Facade trace codes: mg 210-228, player 230-259,
+    alliance 260-263, allianceRequest 270-274, unit 280-286, neighbor 256-258,
+    rail 290; the two callback facades (227 `anyUnitNearby` / 228
+    `circleSearch`) push code + args before replaying their scripted callback
+    list. `wouldNukeBreakAlliance` short-circuits on an empty ally set, checks
+    227 for an allied structure, then accumulates weighted tile counts through
+    228 (inner 1.0 / outer 0.5, stop once a count exceeds `threshold`). Two
+    console-driven facade reads are mirrored verbatim: `AllianceExtensionExecution`
+    logs read `this.from.id()` (call parens), while `AllianceRejectExecution`'s
+    `this.recipient.id` (no parens) does NOT touch the facade. 40 scenarios
+    (`el_noop` / `el_pause_*` / `el_spawntimer*` / `el_rail` / `el_mark_*` /
+    `el_embargo*` / `el_embargoall_*` / `el_target_*` / `el_allreq_*` /
+    `el_allext_*` / `el_break_*` / `el_reject_*`, 167 ops), 895,521 wasm
+    comparisons bit-identical.
 
 Regenerate whenever a ported source changes:
 
@@ -2612,7 +2643,7 @@ node rust/tools/run_wasm_parity.mjs
 
 `wasm-probe` exposes the ported functions through `extern "C"` scalar
 entrypoints (`src/wasm_probe.rs`); the runner imports `data/vectors.json` and
-compares every value. Last run: **891,988 comparisons, all bit-identical**.
+compares every value. Last run: **895,521 comparisons, all bit-identical**.
 
 ### Windows: the linker environment
 

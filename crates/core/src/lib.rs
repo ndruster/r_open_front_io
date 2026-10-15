@@ -522,6 +522,7 @@ pub mod doomsday_clock;
 pub mod effect_editor_state;
 pub mod effect_palette;
 pub mod event_bus;
+pub mod exec_layer;
 pub mod exec_util;
 pub mod execution_manager;
 pub mod frame_upload;

@@ -5633,3 +5633,36 @@ pub extern "C" fn probe_gimp_op(kind: u32) -> usize {
 pub extern "C" fn probe_gimp_out_at(i: usize) -> f64 {
     GIMP_OUT.with(|o| o.borrow()[i])
 }
+
+// ============ G5a: execution layer part 1 (execution) ========================
+
+thread_local! {
+    static EL_HARNESS: std::cell::RefCell<crate::exec_layer::ExecHarness> =
+        std::cell::RefCell::new(crate::exec_layer::ExecHarness::new());
+    static EL_ARGS: std::cell::RefCell<Vec<f64>> = const { std::cell::RefCell::new(Vec::new()) };
+    static EL_OUT: std::cell::RefCell<Vec<f64>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
+#[no_mangle]
+pub extern "C" fn probe_el_reset() {
+    EL_HARNESS.with(|h| h.borrow_mut().reset());
+}
+
+#[no_mangle]
+pub extern "C" fn probe_el_arg(v: f64) {
+    EL_ARGS.with(|t| t.borrow_mut().push(v));
+}
+
+#[no_mangle]
+pub extern "C" fn probe_el_op(kind: u32) -> usize {
+    let a = EL_ARGS.with(|t| std::mem::take(&mut *t.borrow_mut()));
+    let out = EL_HARNESS.with(|h| h.borrow_mut().run_op(kind as u8, &a));
+    let len = out.len();
+    EL_OUT.with(|o| *o.borrow_mut() = out);
+    len
+}
+
+#[no_mangle]
+pub extern "C" fn probe_el_out_at(i: usize) -> f64 {
+    EL_OUT.with(|o| o.borrow()[i])
+}

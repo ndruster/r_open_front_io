@@ -4733,3 +4733,33 @@ fn replay_gameimpl_harness_scenarios() {
         }
     }
 }
+
+// G5a: one `src/core/execution` harness — a construct op (kind 0) that parses
+// the scripted facade mocks, then init/tick/isActive/activeDuringSpawnPhase
+// method ops whose flat trace + payload stream must match bit-for-bit.
+#[test]
+fn replay_execution_harness_scenarios() {
+    use openfront_core::exec_layer::ExecHarness;
+    for s in vectors::EL_SCENARIOS {
+        let mut h = ExecHarness::default();
+        for (i, op) in s.ops.iter().enumerate() {
+            let got = h.run_op(op.kind, op.args);
+            assert_eq!(
+                got.len(),
+                op.res.len(),
+                "{} op#{i} args {:?}: res len got {got:?} want {:?}",
+                s.name,
+                op.args,
+                op.res
+            );
+            for (j, (g, w)) in got.iter().zip(op.res.iter()).enumerate() {
+                assert!(
+                    obj_is(*g, *w),
+                    "{} op#{i} args {:?} res[{j}]: got {g} want {w}",
+                    s.name,
+                    op.args
+                );
+            }
+        }
+    }
+}

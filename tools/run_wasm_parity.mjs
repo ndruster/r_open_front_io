@@ -187,6 +187,7 @@ for (const name of [
   "probe_ep_reset", "probe_ep_arg", "probe_ep_op", "probe_ep_out_at",
   "probe_nm_reset", "probe_nm_arg", "probe_nm_op", "probe_nm_out_at",
   "probe_gimp_reset", "probe_gimp_arg", "probe_gimp_op", "probe_gimp_out_at",
+  "probe_el_reset", "probe_el_arg", "probe_el_op", "probe_el_out_at",
 ]) {
   if (typeof ex[name] !== "function") {
     console.error(`missing wasm export ${name} - rebuild with --features wasm-probe`);
@@ -2637,6 +2638,7 @@ for (const [key, reset, arg, op, outAt] of [
   ["attack", "probe_ak_reset", "probe_ak_arg", "probe_ak_op", "probe_ak_out_at"],
   ["playerimpl", "probe_pl_reset", "probe_pl_arg", "probe_pl_op", "probe_pl_out_at"],
   ["gamefacade", "probe_gimp_reset", "probe_gimp_arg", "probe_gimp_op", "probe_gimp_out_at"],
+  ["execution", "probe_el_reset", "probe_el_arg", "probe_el_op", "probe_el_out_at"],
 ]) {
   for (const s of S[key]) {
     ex[reset]();

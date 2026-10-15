@@ -128,6 +128,13 @@ impl FlatBinaryHeap {
     }
 }
 
+impl Default for FlatBinaryHeap {
+    /// TS `new FlatBinaryHeap()` uses the default capacity `1024`.
+    fn default() -> Self {
+        Self::new(1024)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

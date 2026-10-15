@@ -26564,6 +26564,17 @@ const elMirvC = (await loadTs("src/core/execution/MIRVExecution.ts"))
 const elSamLauncherC = (
   await loadTs("src/core/execution/SAMLauncherExecution.ts")
 ).SAMLauncherExecution;
+// G5g classes. `AttackExecution` / `TransportShipExecution` are the REAL
+// sources; `TransportShipExecution` builds a stub `WaterPathFinder`
+// (`__stub/pathfinding.ts`) and resolves its landing tile through a scripted
+// `targetTransportTile` (`__stub/transport_ship_utils.ts`, redirected by
+// `ts_load.mjs`). The downstream `AttackExecution` record uses tag 16.
+const elAttackExecC = (
+  await loadTs("src/core/execution/AttackExecution.ts")
+).AttackExecution;
+const elTransportC = (
+  await loadTs("src/core/execution/TransportShipExecution.ts")
+).TransportShipExecution;
 // A `Game` (mg) ctor argument for `TribeSpawner.gs`; resolved by the `elDef`
 // args map to `elC.mg` (the Rust ctor table sees the facade group token).
 const elMgRef = { __elmg: true };
@@ -26585,6 +26596,20 @@ const elNull = { __elnull: true };
 const elScenarios = [];
 let elT = [];
 let elC = null;
+
+// G5g: the `TerraNullius` singleton. `mg.terraNullius()` returns this object;
+// only `id()` is traced (code 811, always null) — `isPlayer` / `smallID` are
+// untraced constants (the Rust side branches on the TN token directly).
+const EL_TN_TOK = 1000000;
+const elTNObj = {
+  _tok: EL_TN_TOK,
+  id: () => {
+    elT.push(811, ...encVal(null));
+    return null;
+  },
+  isPlayer: () => false,
+  smallID: () => EL_TN_TOK,
+};
 
 const elSlots = (n, map) => {
   const a = new Array(n).fill(undefined);
@@ -26759,7 +26784,8 @@ function elPlayerObj(tok, slots) {
     spawnTile: () => elRet(m, 52, 639, [tok]),
     clearDoomsdayClock: () => elVoid(630, [tok]),
     enterDoomsdayClock: () => elVoid(631, [tok]),
-    removeTroops: (n) => elVoid(633, [tok, ...elEv1(n)]),
+    // G5g: `removeTroops` now RETURNS a number (the amount actually deducted).
+    removeTroops: (n) => elRet(m, 55, 633, [tok, ...elEv1(n)]),
     relinquish: (t) => elVoid(636, [tok, ...elEv1(t)]),
     conquer: (t) => elVoid(637, [tok, ...elEv1(t)]),
     setSpawnTile: (t) => elVoid(638, [tok, ...elEv1(t)]),
@@ -26771,8 +26797,28 @@ function elPlayerObj(tok, slots) {
     },
     outgoingAttacks: () => {
       const ts = elRet(m, 54, 721, [tok]);
-      return (ts || []).map((t) => elC.units[t]);
+      return (ts || []).map((t) => elC.attacks[t]);
     },
+    // G5g (`AttackExecution` / `TransportShipExecution`).
+    canAttackPlayer: (o) => elRet(m, 56, 820, [tok, ...elEvTok(o)]),
+    createAttack: (target, troops, sourceTile, tiles) => {
+      const t = elRet(m, 57, 821, [
+        tok,
+        ...elEvTok(target),
+        ...elEv1(troops),
+        ...encVal(sourceTile),
+        ...encVal(tiles),
+      ]);
+      return t == null ? null : elC.attacks[t];
+    },
+    incomingAttacks: () => {
+      const ts = elRet(m, 58, 822, [tok]);
+      return (ts || []).map((t) => elC.attacks[t]);
+    },
+    unitCount: (ty) => elRet(m, 59, 823, [tok, ...elEvs(ty)]),
+    addTroops: (n) => elVoid(824, [tok, ...elEv1(n)]),
+    bestTransportShipSpawn: (tile) => elRet(m, 61, 825, [tok, ...elEv1(tile)]),
+    isTraitor: () => elRet(m, 62, 826, [tok]),
   };
 }
 function elAllianceObj(tok, slots) {
@@ -26867,6 +26913,38 @@ function elUnitObj(tok, slots) {
     isInCooldown: () => elRet(m, 41, 741, [tok]),
     launch: () => elVoid(742, [tok]),
     targetedBySAM: () => elRet(m, 43, 743, [tok]),
+    // G5g (`TransportShipExecution.tick`).
+    transportShipState: () => elRet(m, 48, 850, [tok]),
+  };
+}
+// G5g: the `Attack` object returned by `Player.createAttack` and read through
+// `incomingAttacks` / `outgoingAttacks`. Scripted facade; `target()` / `attacker()`
+// resolve their scripted token to a player (or the TN sentinel).
+function elAttackObj(tok, slots) {
+  const m = { slots, i: new Array(slots.length).fill(0) };
+  return {
+    _tok: tok,
+    troops: () => elRet(m, 0, 830, [tok]),
+    setTroops: (n) => elVoid(831, [tok, ...elEv1(n)]),
+    delete: () => elVoid(832, [tok]),
+    clearBorder: () => elVoid(833, [tok]),
+    addBorderTile: (t) => elVoid(834, [tok, ...elEv1(t)]),
+    removeBorderTile: (t) => elVoid(835, [tok, ...elEv1(t)]),
+    borderSize: () => elRet(m, 6, 836, [tok]),
+    retreated: () => elRet(m, 7, 837, [tok]),
+    retreating: () => elRet(m, 8, 838, [tok]),
+    isActive: () => elRet(m, 9, 839, [tok]),
+    target: () => {
+      const t = elRet(m, 10, 840, [tok]);
+      if (t == null) return null;
+      return t === EL_TN_TOK ? elTNObj : elC.players[t];
+    },
+    sourceTile: () => elRet(m, 11, 841, [tok]),
+    attacker: () => {
+      const t = elRet(m, 12, 842, [tok]);
+      if (t == null) return null;
+      return t === EL_TN_TOK ? elTNObj : elC.players[t];
+    },
   };
 }
 function elNeighborObj(tok, slots) {
@@ -26953,6 +27031,12 @@ function elMgObj(slots) {
       elRet(m, 85, 706, [...elEvTok(sam), ...elEv1(tick)]),
     maxSamRange: () => elRet(m, 86, 707, []),
     SAMCooldown: () => elRet(m, 87, 708, []),
+    // G5g.
+    attackAmount: (o, t) => elRet(m, 62, 800, [...elEvTok(o), ...elEvTok(t)]),
+    boatMaxNumber: () => elRet(m, 90, 801, []),
+    boatAttackAmount: (a, t) => elRet(m, 91, 802, [...elEvTok(a), ...elEvTok(t)]),
+    defensePostRange: () => elRet(m, 58, 803, []),
+    attackLogic: (input) => elRet(m, 27, 809, [...encVal(input)]),
   };
   return {
     config: () => cfg,
@@ -27010,8 +27094,13 @@ function elMgObj(slots) {
       return t == null ? undefined : elC.units[t];
     },
     isLand: (tile) => elRet(m, 23, 304, elEv1(tile)),
-    hasUnitNearby: (tile, outer, ty) =>
-      elRet(m, 24, 305, [...elEv1(tile), ...elEv1(outer), ...elEvs(ty)]),
+    // G5g: the optional 4th `playerID` argument (read by
+    // `AttackExecution.attackLogicInput`) appends a nullable id.
+    hasUnitNearby: (tile, outer, ty, pid) => {
+      const pre = [...elEv1(tile), ...elEv1(outer), ...elEvs(ty)];
+      if (pid !== undefined) pre.push(...elEvStrOpt(pid));
+      return elRet(m, 24, 305, pre);
+    },
     nearbyUnits: (tile, outer, types, cb) => {
       const arr = Array.isArray(types) ? types : [types];
       if (cb === undefined) {
@@ -27158,6 +27247,21 @@ function elMgObj(slots) {
         );
         return;
       }
+      // G5g: `TransportShipExecution.tick` spawns an `AttackExecution` on landing
+      // (tag 16; ctor has no observable side effect).
+      if (cn === "AttackExecution") {
+        elT.push(
+          307,
+          16,
+          ...encVal(exec.startTroops),
+          ...elEvTok(exec._owner),
+          ...encVal(exec._targetID),
+          ...encVal(exec.sourceTile),
+          ...elEvb(exec.removeTroops),
+          ...encVal(undefined),
+        );
+        return;
+      }
       const tag = elExecTags[cn];
       if (tag === undefined) {
         throw new Error(`el: unknown execution ${cn}`);
@@ -27197,6 +27301,16 @@ function elMgObj(slots) {
         elVoid(717, [...elEvTok(p), ...elEvTok(t), ...elEvs(ty)]),
       bombLand: (p, t, ty) =>
         elVoid(718, [...elEvTok(p), ...elEvTok(t), ...elEvs(ty)]),
+      // G5g.
+      attack: (p, t, n) =>
+        elVoid(870, [...elEvTok(p), ...elEvTok(t), ...elEv1(n)]),
+      attackMaxIncoming: (p, n) => elVoid(871, [...elEvTok(p), ...elEv1(n)]),
+      attackCancel: (p, t, n) =>
+        elVoid(872, [...elEvTok(p), ...elEvTok(t), ...elEv1(n)]),
+      boatSendTroops: (p, t, n) =>
+        elVoid(873, [...elEvTok(p), ...elEvTok(t), ...elEv1(n)]),
+      boatArriveTroops: (p, t, n) =>
+        elVoid(874, [...elEvTok(p), ...elEvTok(t), ...elEv1(n)]),
     }),
     setWinner: (w, s) => elVoid(505, [...elWinArg(w), ...encVal(s)]),
     unitCount: (ty) => elRet(m, 40, 506, elEvs(ty)),
@@ -27277,28 +27391,70 @@ function elMgObj(slots) {
       elT.push(...elEvTokList(out));
       return out;
     },
+    // G5g (`AttackExecution` / `TransportShipExecution`).
+    //
+    // `mg.map()` / `mg.terraNullius()` are UNTRACED: `map()` hands back the mg
+    // mock itself (so `this.map.ownerID/isLand/isWater/neighbors4/terrainType/
+    // x/y` reuse the mg codes), `terraNullius()` the TN singleton (whose `id()`
+    // is the only traced accessor, code 811).
+    map: () => elC.mg,
+    terraNullius: () => elTNObj,
+    // `neighbors4(tile, buf)` writes the neighbor tiles into `buf` and returns
+    // the count; the trace carries the neighbour LIST so the Rust side can
+    // replay the same per-neighbour reads.
+    neighbors4: (tile, buf) => {
+      const list = elTake(m, 39) || [];
+      elT.push(804, ...elEv1(tile), ...elEvTokList(list));
+      for (let i = 0; i < list.length; i++) buf[i] = list[i];
+      return list.length;
+    },
+    terrainType: (tile) => elRet(m, 26, 805, elEv1(tile)),
+    hasFallout: (tile) => elRet(m, 8, 806, elEv1(tile)),
+    forEachNeighbor: (tile, cb) => {
+      const list = elTake(m, 16) || [];
+      elT.push(807, ...elEv1(tile), ...elEvTokList(list));
+      for (const t of list) cb(t);
+      elT.push(...encVal(undefined));
+    },
+    conquerPlayer: (o, t) => elVoid(808, [...elEvTok(o), ...elEvTok(t)]),
+    // `targetTransportTile(mg, attacker, ref)` (the `__stub/transport_ship_utils`
+    // stub reads `game.__targetTransportTile`).
+    __targetTransportTile: (attacker, ref) =>
+      elRet(m, 880, 880, [...elEvTok(attacker), ...elEv1(ref)]),
+    // `WaterPathFinder(mg, stagger)` (the `__stub/pathfinding` stub reads
+    // `game.__waterPathFinder`).
+    __waterPathFinder: {
+      rebuilt: () => elRet(m, 860, 860, []),
+      findPath: (from, to) => {
+        const ts = elRet(m, 861, 861, [...elEv1(from), ...elEv1(to)]);
+        return ts == null ? null : ts || [];
+      },
+      next: (from, to) => elRet(m, 862, 862, [...elEv1(from), ...elEv1(to)]),
+    },
   };
 }
 
 function elDef(name, classId, cls, args, spec, ops) {
   elT = [];
   elC = {};
-  elC.players = (spec.players || []).map((mm, i) => elPlayerObj(i, elSlots(55, mm)));
+  elC.players = (spec.players || []).map((mm, i) => elPlayerObj(i, elSlots(63, mm)));
   elC.alliances = (spec.alliances || []).map((mm, i) => elAllianceObj(i, elSlots(4, mm)));
   elC.requests = (spec.requests || []).map((mm, i) => elRequestObj(i, elSlots(6, mm)));
-  elC.units = (spec.units || []).map((mm, i) => elUnitObj(i, elSlots(48, mm)));
+  elC.units = (spec.units || []).map((mm, i) => elUnitObj(i, elSlots(49, mm)));
   elC.neighbors = (spec.neighbors || []).map((mm, i) => elNeighborObj(i, elSlots(3, mm)));
-  elC.mg = elMgObj(elSlots(101, spec.mg));
+  elC.attacks = (spec.attacks || []).map((mm, i) => elAttackObj(i, elSlots(13, mm)));
+  elC.mg = elMgObj(elSlots(110, spec.mg));
 
   const setup = {
     c: classId,
     a: spec.a || [],
-    mg: elSlots(101, spec.mg),
-    players: (spec.players || []).map((mm) => elSlots(55, mm)),
+    mg: elSlots(110, spec.mg),
+    players: (spec.players || []).map((mm) => elSlots(63, mm)),
     alliances: (spec.alliances || []).map((mm) => elSlots(4, mm)),
     requests: (spec.requests || []).map((mm) => elSlots(6, mm)),
-    units: (spec.units || []).map((mm) => elSlots(48, mm)),
+    units: (spec.units || []).map((mm) => elSlots(49, mm)),
     neighbors: (spec.neighbors || []).map((mm) => elSlots(3, mm)),
+    attacks: (spec.attacks || []).map((mm) => elSlots(13, mm)),
   };
 
   // Constructor args: a `null` entry is the `spec.a` player-token reference at
@@ -28527,7 +28683,7 @@ elDef(
   {
     players: [
       { 0: [0], 21: ["HUMAN"], 45: [5000] },
-      { 11: [0], 21: ["NATION"], 41: [300], 45: [100], 51: [100] },
+      { 11: [0], 21: ["NATION"], 41: [300], 45: [100], 51: [100], 55: [30] },
     ],
     units: [{ 28: [1000], 29: [500] }],
     mg: {
@@ -28570,7 +28726,7 @@ elDef(
   {
     players: [
       { 0: [0], 21: ["HUMAN"], 45: [5000] },
-      { 0: [2], 21: ["NATION"], 41: [10], 45: [200], 49: [elTileSet([10, 11])], 50: [elTileSet([10])], 51: [100] },
+      { 0: [2], 21: ["NATION"], 41: [10], 45: [200], 49: [elTileSet([10, 11])], 50: [elTileSet([10])], 51: [100], 55: [1] },
     ],
     mg: {
       2: [1000],
@@ -28906,6 +29062,7 @@ elDef(
         48: [0],
         53: [[]],
         54: [[]],
+        55: [5],
       },
     ],
     units: [{ 0: [true], 3: ["Atom Bomb"], 7: [1000] }],
@@ -28984,7 +29141,7 @@ elDef(
       98: [{ status: 0, node: 7 }, { status: 2, node: 8 }],
       99: [[5]],
     },
-    players: [{ 11: [[]], 26: [false], 47: [500], 48: [0], 53: [[]] }],
+    players: [{ 11: [[]], 26: [false], 47: [500], 48: [0], 53: [[]], 55: [5] }],
     units: [{ 0: [true], 3: ["Atom Bomb"], 7: [1000] }],
   },
   [[0], [1, 0], [2, 0], [2, 1], [3]],
@@ -29314,6 +29471,364 @@ elDef(
     units: [{ 11: [100], 12: [true], 20: [1] }],
   },
   [[0], [1, 0], [2, 0], [3]],
+);
+
+// -- 36 AttackExecution -------------------------------------------------------
+// A missing target id stops `init` before any other facade read (only
+// `mg.hasPlayer` is touched).
+elDef(
+  "el_attack_init_missing_target",
+  36,
+  elAttackExecC,
+  [100, null, "ghost", elNull, false],
+  { a: [100, 0, "ghost", elNull, false], mg: { 0: [false] }, players: [{}] },
+  [[0], [1, 0], [3], [4]],
+);
+
+// Attacking yourself: the owner/target tokens resolve to the same player, so
+// the `_owner === target` guard fires after both `smallID()` reads.
+elDef(
+  "el_attack_init_self",
+  36,
+  elAttackExecC,
+  [100, null, "me", elNull, false],
+  {
+    a: [100, 0, "me", elNull, false],
+    mg: { 0: [true], 1: [0] },
+    players: [{ 0: [7] }],
+  },
+  [[0], [1, 0], [3], [4]],
+);
+
+// A friendly (allied / same team) target is refused; both display names are
+// read for the warning.
+elDef(
+  "el_attack_init_alliance_block",
+  36,
+  elAttackExecC,
+  [100, null, "t1", elNull, false],
+  {
+    a: [100, 0, "t1", elNull, false],
+    mg: { 0: [true], 1: [1] },
+    players: [
+      { 0: [7], 2: ["A"], 12: [true] },
+      { 0: [8], 2: ["B"], 26: [true] },
+    ],
+  },
+  [[0], [1, 0], [3], [4]],
+);
+
+// A bot target skips the embargo + incoming-alliance rejection block, then
+// `canAttackPlayer` refuses the attack.
+elDef(
+  "el_attack_init_cannot_attack",
+  36,
+  elAttackExecC,
+  [100, null, "t1", elNull, false],
+  {
+    a: [100, 0, "t1", elNull, false],
+    mg: { 0: [true], 1: [1] },
+    players: [
+      { 0: [7], 12: [false], 56: [false] },
+      { 0: [8], 21: ["BOT"], 26: [true] },
+    ],
+  },
+  [[0], [1, 0], [3], [4]],
+);
+
+// Full init against a player (embargo + rejection probe, `createAttack`,
+// `refreshToConquer`, incoming/outgoing absorption, difficulty relation), then
+// a tick whose `retreated()` order triggers `retreat(25)` with the refund
+// message and the cancellation stat.
+elDef(
+  "el_attack_retreat_tick",
+  36,
+  elAttackExecC,
+  [100, null, "t1", elNull, false],
+  {
+    a: [100, 0, "t1", elNull, false],
+    mg: { 0: [true], 1: [1], 33: ["Easy"] },
+    players: [
+      {
+        0: [7],
+        1: ["me"],
+        2: ["A"],
+        12: [false],
+        21: ["HUMAN"],
+        50: [[]],
+        53: [[]],
+        54: [[]],
+        56: [true],
+        57: [0],
+        58: [[]],
+      },
+      { 0: [8], 1: ["t1"], 2: ["B"], 21: ["HUMAN"], 26: [true] },
+    ],
+    attacks: [{ 0: [100], 6: [0], 7: [true], 8: [false], 9: [true] }],
+  },
+  [[0], [1, 0], [3], [2, 0], [3], [4]],
+);
+
+// A TerraNullius target: no `isPlayer` reads, an empty border, so the first
+// tick finds an empty heap and retreats with a zero malus.
+elDef(
+  "el_attack_tick_empty_toconquer",
+  36,
+  elAttackExecC,
+  [100, null, elNull, elNull, false],
+  {
+    a: [100, 0, elNull, elNull, false],
+    mg: {},
+    players: [{ 0: [7], 50: [[]], 54: [[]], 57: [0], 58: [[]] }],
+    attacks: [{ 0: [100], 6: [0], 7: [false], 8: [false], 9: [true] }],
+  },
+  [[0], [1, 0], [3], [2, 0], [3], [4]],
+);
+
+// The attacker's `troops()` fallback + `removeTroops()` when `startTroops` is
+// left null and troops are actually paid.
+elDef(
+  "el_attack_init_deduct_troops",
+  36,
+  elAttackExecC,
+  [elNull, null, elNull, elNull, true],
+  {
+    a: [elNull, 0, elNull, elNull, true],
+    mg: { 62: [100] },
+    players: [
+      { 0: [7], 41: [80], 50: [[]], 54: [[]], 55: [55], 57: [0], 58: [[]] },
+    ],
+    attacks: [{ 0: [55], 6: [0], 7: [false], 8: [false], 9: [true] }],
+  },
+  [[0], [1, 0], [3], [2, 0], [3], [4]],
+);
+
+// -- 37 TransportShipExecution ------------------------------------------------
+
+// An invalid ref deactivates the boat before anything else is read.
+elDef(
+  "el_transport_invalid_ref",
+  37,
+  elTransportC,
+  [null, 500, elNull],
+  { a: [0, 500, elNull], mg: { 19: [false] }, players: [{}] },
+  [[0], [1, 0], [3], [4]],
+);
+
+// The attacker already owns the maximum number of boats: `unitCount` is
+// compared against `boatMaxNumber` (read twice) and the failure message fires.
+elDef(
+  "el_transport_no_boats",
+  37,
+  elTransportC,
+  [null, 500, elNull],
+  {
+    a: [0, 500, elNull],
+    mg: { 19: [true], 12: [1], 90: [0] },
+    players: [{ 1: ["me"], 59: [0] }, {}],
+  },
+  [[0], [1, 0], [3], [4]],
+);
+
+// The landing ref belongs to the attacker, so the self-attack guard fires (the
+// bot target type short-circuits the alliance-rejection probe).
+elDef(
+  "el_transport_self_target",
+  37,
+  elTransportC,
+  [null, 500, elNull],
+  {
+    a: [0, 500, elNull],
+    mg: { 19: [true], 12: [0], 90: [10] },
+    players: [{ 0: [7], 21: ["BOT"], 26: [true], 59: [0] }],
+  },
+  [[0], [1, 0], [3], [4]],
+);
+
+// `targetTransportTile` returns null: the boat attack amount fallback and the
+// troop clamp are read, then the boat never launches.
+elDef(
+  "el_transport_no_dst",
+  37,
+  elTransportC,
+  [null, 500, elNull],
+  {
+    a: [0, 500, elNull],
+    mg: { 19: [true], 12: [1], 90: [10], 91: [50], 880: [null] },
+    players: [
+      { 0: [7], 21: ["HUMAN"], 41: [100], 53: [[]], 56: [true], 59: [0] },
+      { 21: ["HUMAN"], 26: [true] },
+    ],
+  },
+  [[0], [1, 0], [3], [4]],
+);
+
+// A complete init: build the boat, record the grid motion plan, notify the
+// target and record the departure stat.
+elDef(
+  "el_transport_init_full",
+  37,
+  elTransportC,
+  [null, 500, elNull],
+  {
+    a: [0, 500, elNull],
+    mg: {
+      19: [true],
+      12: [1],
+      90: [10],
+      91: [50],
+      880: [500],
+      861: [[600, 500]],
+    },
+    players: [
+      {
+        0: [7],
+        2: ["A"],
+        21: ["HUMAN"],
+        41: [100],
+        47: [600],
+        48: [0],
+        53: [[]],
+        56: [true],
+        59: [0],
+      },
+      { 1: ["t1"], 21: ["HUMAN"], 26: [true] },
+    ],
+    units: [{ 7: [9], 30: [50] }],
+  },
+  [[0], [1, 0], [3], [4]],
+);
+
+// A tick whose path status is NOT_FOUND: the boat is refunded, deleted and the
+// execution deactivates.
+elDef(
+  "el_transport_tick_not_found",
+  37,
+  elTransportC,
+  [null, 500, elNull],
+  {
+    a: [0, 500, elNull],
+    mg: {
+      19: [true],
+      12: [1, 1],
+      90: [10],
+      91: [50],
+      880: [500],
+      861: [[600, 500]],
+      42: [false],
+      860: [false],
+      862: [{ status: 3, node: null }],
+      63: [10],
+      64: [20],
+    },
+    players: [
+      {
+        0: [7],
+        1: ["me"],
+        2: ["A"],
+        21: ["HUMAN"],
+        41: [100],
+        44: [false],
+        47: [600],
+        48: [0],
+        53: [[]],
+        56: [true],
+        59: [0],
+      },
+      { 1: ["t1"], 21: ["HUMAN"], 26: [true] },
+    ],
+    units: [
+      { 0: [true], 6: [0], 7: [9], 11: [600], 30: [50], 48: [{ isRetreating: false }] },
+    ],
+  },
+  [[0], [1, 0], [2, 1], [3]],
+);
+
+// A tick that lands on enemy territory: the attacker conquers the tile and
+// spawns a follow-up `AttackExecution` (tag 16).
+elDef(
+  "el_transport_tick_complete_conquer",
+  37,
+  elTransportC,
+  [null, 500, elNull],
+  {
+    a: [0, 500, elNull],
+    mg: {
+      19: [true],
+      12: [1, 1],
+      90: [10],
+      91: [50],
+      880: [500],
+      861: [[600, 500]],
+      42: [false],
+      860: [false],
+      862: [{ status: 2, node: null }],
+    },
+    players: [
+      {
+        0: [7],
+        1: ["me"],
+        2: ["A"],
+        12: [false],
+        21: ["HUMAN"],
+        41: [100],
+        44: [false],
+        47: [600],
+        48: [0],
+        53: [[]],
+        56: [true],
+        59: [0],
+      },
+      { 1: ["t1"], 21: ["HUMAN"], 26: [true] },
+    ],
+    units: [
+      { 0: [true], 6: [0], 7: [9], 11: [600], 30: [50], 48: [{ isRetreating: false }] },
+    ],
+  },
+  [[0], [1, 0], [2, 1], [3]],
+);
+
+// A tick that lands back on the attacker's own territory: the retreat malus is
+// applied, the survivors are refunded and the cancellation message is shown.
+elDef(
+  "el_transport_tick_land_own",
+  37,
+  elTransportC,
+  [null, 500, elNull],
+  {
+    a: [0, 500, elNull],
+    mg: {
+      19: [true],
+      12: [1, 0],
+      90: [10],
+      91: [50],
+      880: [500],
+      861: [[600, 500]],
+      42: [false],
+      860: [false],
+      862: [{ status: 2, node: null }],
+    },
+    players: [
+      {
+        0: [7],
+        1: ["me"],
+        2: ["A"],
+        21: ["HUMAN"],
+        41: [100],
+        44: [false],
+        47: [600],
+        48: [0],
+        53: [[]],
+        56: [true],
+        59: [0],
+      },
+      { 1: ["t1"], 21: ["HUMAN"], 26: [true] },
+    ],
+    units: [
+      { 0: [true], 6: [0], 7: [9], 11: [600], 30: [50], 48: [{ isRetreating: false }] },
+    ],
+  },
+  [[0], [1, 0], [2, 1], [3]],
 );
 
 const structures = {

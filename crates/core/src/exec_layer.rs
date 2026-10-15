@@ -75,6 +75,12 @@
 //! G5f appends `33` Nuke, `34` MIRV, `35` SAMLauncher (`NukeExecution`,
 //! `MirvExecution`, `SAMLauncherExecution`).
 //!
+//! G5g appends `36` Attack, `37` Transport (`AttackExecution`,
+//! `TransportShipExecution`). Both reuse the already-ported `FlatBinaryHeap`
+//! (`pathfinding/flat_heap.rs`) and `transport_ship_utils`; `Attack` is a
+//! scripted facade mock (new `attacks` mock category), the water pathfinder a
+//! scripted stub object.
+//!
 //! # G5b facade additions (codes ≥ 300)
 //!
 //! `mg`: `300` isValidRef, `301` getWaterComponent, `302` hasWaterComponent,
@@ -367,6 +373,7 @@
 use crate::doomsday_clock::{DrainConfig, FloorConfig, Profile};
 use crate::js_json::{push_str, push_val, read_val, val_field, JsVal};
 use crate::jsnum::{js_max, js_min, js_round};
+use crate::pathfinding::flat_heap::FlatBinaryHeap;
 use crate::pseudo_random::PseudoRandom;
 
 /// `MessageType.ALLIANCE_ACCEPTED` (numeric enum member 13).
@@ -422,6 +429,8 @@ const TAG_PLAYER_EXEC: f64 = 13.0;
 const TAG_TRIBE_EXEC: f64 = 14.0;
 // G5f downstream-execution tag (`mg.addExecution(new SAMMissileExecution(...))`).
 const TAG_SAM_MISSILE: f64 = 15.0;
+// G5g downstream-execution tag (`mg.addExecution(new AttackExecution(...))`).
+const TAG_ATTACK_EXEC: f64 = 16.0;
 
 /// G5d `UnitType` string members (`Game.ts`).
 const UNIT_SHELL: &str = "Shell";
@@ -470,6 +479,38 @@ const MSG_SAM_HIT: f64 = 10.0;
 const WIN_HARD_TIME_LIMIT_SECONDS: f64 = 170.0 * 60.0;
 /// `SAMMissileExecution` nukes whitelist.
 const NUKES_WHITELIST: [&str; 3] = [UNIT_ATOM_BOMB, UNIT_HYDROGEN_BOMB, UNIT_MIRV_WARHEAD];
+
+// G5g (`AttackExecution` class 36 / `TransportShipExecution` class 37).
+/// `UnitType.DefensePost` (`attackLogicInput`'s defense-post probe).
+const UNIT_DEFENSE_POST: &str = "Defense Post";
+/// `UnitType.TransportShip` (`TransportShipExecution`).
+const UNIT_TRANSPORT_SHIP: &str = "Transport";
+/// G5g `MessageType` numeric enum members.
+const MSG_ATTACK_FAILED: f64 = 0.0;
+const MSG_ATTACK_CANCELLED: f64 = 1.0;
+const MSG_NAVAL_INVASION_INBOUND: f64 = 8.0;
+/// `TerrainType` numeric enum members (`Game.ts`).
+const TERRAIN_PLAINS: f64 = 0.0;
+const TERRAIN_HIGHLAND: f64 = 1.0;
+const TERRAIN_MOUNTAIN: f64 = 2.0;
+/// `Difficulty` string enum members (`Game.ts`).
+const DIFFICULTY_EASY: &str = "Easy";
+const DIFFICULTY_MEDIUM: &str = "Medium";
+const DIFFICULTY_HARD: &str = "Hard";
+const DIFFICULTY_IMPOSSIBLE: &str = "Impossible";
+/// `AttackExecution.malusForRetreat` / `TransportShipExecution.malusForRetreat`.
+const ATTACK_RETREAT_MALUS: f64 = 25.0;
+/// `AttackExecution.handleDeadDefender` MAX_PASSES / tile threshold.
+const AT_MAX_PASSES: f64 = 100.0;
+const AT_DEAD_DEFENDER_TILES: f64 = 100.0;
+/// `PathStatus.NOT_FOUND` (`src/core/pathfinding/types.ts`).
+const PATH_STATUS_NOT_FOUND: f64 = 3.0;
+/// The `TerraNullius` sentinel token. Its `.id()` is always `null`, so the Rust
+/// side branches on this token instead of a `players` table entry.
+const TN_TOK: usize = 1_000_000;
+/// `TransportShipExecution.ticksPerMove` / `TransportShipExecution` motion-plan
+/// `startTick` uses `ticks + ticksPerMove`.
+const TS_TICKS_PER_MOVE: f64 = 1.0;
 
 /// The first argument of `Game.setWinner` / `WinCheckExecution`'s winner.
 #[derive(Clone, Debug)]
@@ -727,6 +768,11 @@ fn truthy_tile(t: Option<f64>) -> bool {
         Some(x) => x != 0.0 && !x.is_nan(),
         None => false,
     }
+}
+
+/// JS truthiness of a plain number (`0` and `NaN` are falsy).
+fn js_truthy(n: f64) -> bool {
+    n != 0.0 && !n.is_nan()
 }
 
 // ---- G5e live-config field readers -----------------------------------------
@@ -1034,12 +1080,49 @@ pub struct ExecHarness {
     sam_targeting: Option<SamTargeting>,
     sam_last_level: f64,
 
+    // G5g state (`AttackExecution`, class 36).
+    at_start_troops: Option<f64>,
+    at_target_id: Option<String>,
+    at_source_tile: Option<f64>,
+    at_remove_troops: bool,
+    at_target: Option<usize>,
+    at_attack: Option<usize>,
+    at_owner_small_id: f64,
+    at_target_small_id: f64,
+    at_to_conquer: FlatBinaryHeap,
+    at_active: bool,
+
+    // G5g state (`TransportShipExecution`, class 37).
+    ts_attacker: usize,
+    ts_ref: f64,
+    ts_troops: Option<f64>,
+    ts_last_move: f64,
+    ts_target: Option<usize>,
+    ts_dst: Option<f64>,
+    ts_src: Option<f64>,
+    ts_retreat_dst: RetDst,
+    ts_boat: Option<usize>,
+    ts_motion_plan_id: f64,
+    ts_motion_plan_dst: Option<f64>,
+    ts_original_owner: usize,
+    ts_active: bool,
+
     mg: Mock,
     players: Vec<Mock>,
     alliances: Vec<Mock>,
     requests: Vec<Mock>,
     units: Vec<Mock>,
     neighbors: Vec<Mock>,
+    attacks: Vec<Mock>,
+}
+
+/// `TransportShipExecution.retreatDst: TileRef | false | null`.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+enum RetDst {
+    #[default]
+    Null,
+    False,
+    Tile(f64),
 }
 
 // mg slot indices.
@@ -1133,6 +1216,22 @@ const MG_BFS: usize = 95;
 const MG_PARABOLA_NEXT: usize = 98;
 const MG_PARABOLA_FIND_PATH: usize = 99;
 const MG_PARABOLA_CURRENT_INDEX: usize = 100;
+// G5g mg slots (`AttackExecution` / `TransportShipExecution`). `__waterPathFinder`
+// and `__targetTransportTile` are nested facade objects that index into the same
+// mg slot array (the capture's `elSlots` extends on out-of-range keys).
+const MG_HAS_FALLOUT: usize = 8;
+const MG_FOR_EACH_NEIGHBOR: usize = 16;
+const MG_TERRAIN_TYPE: usize = 26;
+const MG_ATTACK_LOGIC: usize = 27;
+const MG_NEIGHBORS4: usize = 39;
+const MG_DEFENSE_POST_RANGE: usize = 58;
+const MG_ATTACK_AMOUNT: usize = 62;
+const MG_BOAT_MAX_NUMBER: usize = 90;
+const MG_BOAT_ATTACK_AMOUNT: usize = 91;
+const MG_WATER_REBUILT: usize = 860;
+const MG_WATER_FIND_PATH: usize = 861;
+const MG_WATER_NEXT: usize = 862;
+const MG_TARGET_TRANSPORT_TILE: usize = 880;
 
 // player slot indices.
 const PL_SMALL_ID: usize = 0;
@@ -1182,6 +1281,14 @@ const PL_SPAWN_TILE: usize = 52;
 // G5f player slots (`NukeExecution.maybeBreakAlliances`, `detonate`).
 const PL_INCOMING_ALLIANCE_REQUESTS: usize = 53;
 const PL_OUTGOING_ATTACKS: usize = 54;
+// G5g player slots (`AttackExecution` / `TransportShipExecution`).
+const PL_REMOVE_TROOPS: usize = 55;
+const PL_CAN_ATTACK_PLAYER: usize = 56;
+const PL_CREATE_ATTACK: usize = 57;
+const PL_INCOMING_ATTACKS: usize = 58;
+const PL_UNIT_COUNT: usize = 59;
+const PL_BEST_TRANSPORT_SHIP_SPAWN: usize = 61;
+const PL_IS_TRAITOR: usize = 62;
 
 // alliance slot indices.
 const AL_ONLY_ONE_AGREED: usize = 0;
@@ -1224,6 +1331,18 @@ const UN_NUKE_STATE: usize = 39;
 const UN_TRAJECTORY: usize = 40;
 const UN_IS_IN_COOLDOWN: usize = 41;
 const UN_TARGETED_BY_SAM: usize = 43;
+// G5g unit slot (`TransportShipExecution.tick`).
+const UN_TRANSPORT_SHIP_STATE: usize = 48;
+
+// attack slot indices (`AttackExecution` facade).
+const AT_TROOPS: usize = 0;
+const AT_BORDER_SIZE: usize = 6;
+const AT_RETREATED: usize = 7;
+const AT_RETREATING: usize = 8;
+const AT_IS_ACTIVE: usize = 9;
+const AT_TARGET: usize = 10;
+const AT_SOURCE_TILE: usize = 11;
+const AT_ATTACKER: usize = 12;
 
 // neighbor slot indices.
 const NB_IS_PLAYER: usize = 0;
@@ -1870,6 +1989,11 @@ impl ExecHarness {
         let v = self.pl(tok, PL_ID, tr, 231.0, &[]);
         as_str(&v)
     }
+    /// `player.id()` as the raw JS value — `TransportShipExecution` compares it
+    /// against `mg.terraNullius().id()` (both may be `null`).
+    fn pl_id_val(&mut self, tr: &mut Vec<f64>, tok: usize) -> JsVal {
+        self.pl(tok, PL_ID, tr, 231.0, &[])
+    }
     fn pl_display_name(&mut self, tr: &mut Vec<f64>, tok: usize) -> String {
         let v = self.pl(tok, PL_DISPLAY_NAME, tr, 232.0, &[]);
         as_str(&v)
@@ -2107,8 +2231,10 @@ impl ExecHarness {
     fn pl_enter_doomsday_clock(&mut self, tr: &mut Vec<f64>, tok: usize) {
         self.pl_void(tok, tr, 631.0, &[]);
     }
-    fn pl_remove_troops(&mut self, tr: &mut Vec<f64>, tok: usize, n: f64) {
-        self.pl_void(tok, tr, 633.0, &ev1(n));
+    /// G5g: `removeTroops` now RETURNS the amount actually deducted (`elRet`).
+    fn pl_remove_troops(&mut self, tr: &mut Vec<f64>, tok: usize, n: f64) -> f64 {
+        let v = self.pl(tok, PL_REMOVE_TROOPS, tr, 633.0, &ev1(n));
+        as_num(&v)
     }
     fn pl_relinquish(&mut self, tr: &mut Vec<f64>, tok: usize, tile: f64) {
         self.pl_void(tok, tr, 636.0, &ev1(tile));
@@ -2570,6 +2696,282 @@ impl ExecHarness {
         let v = self.un(uid, UN_TARGETED_BY_SAM, tr, 743.0, &[]);
         as_bool(&v)
     }
+    fn un_transport_ship_state(&mut self, tr: &mut Vec<f64>, uid: usize) -> JsVal {
+        self.un(uid, UN_TRANSPORT_SHIP_STATE, tr, 850.0, &[])
+    }
+    /// `unit.setTargetTile(tile)` with a numeric tile (the G5b variant passes
+    /// `undefined`).
+    fn un_set_target_tile_num(&mut self, tr: &mut Vec<f64>, uid: usize, tile: f64) {
+        let mut prefix = vec![uid as f64];
+        prefix.extend_from_slice(&ev1(tile));
+        mk_void(tr, 343.0, &prefix);
+    }
+
+    // ---- G5g facade accessors (codes >= 800) ----
+
+    /// `mg.terraNullius().id()` — the ONE traced `TerraNullius` accessor (code
+    /// 811, always `null`); `isPlayer()` / `smallID()` are untraced constants.
+    fn tn_id(&mut self, tr: &mut Vec<f64>) -> Option<usize> {
+        tr.push(811.0);
+        push_val(tr, &JsVal::Null);
+        None
+    }
+
+    // mg (`AttackExecution` / `TransportShipExecution`).
+    fn mg_attack_amount(&mut self, tr: &mut Vec<f64>, owner: usize, target: usize) -> f64 {
+        let mut p = evtok(Some(owner));
+        p.extend_from_slice(&evtok(Some(target)));
+        as_num(&mk_take(&mut self.mg, MG_ATTACK_AMOUNT, tr, 800.0, &p))
+    }
+    fn mg_boat_max_number(&mut self, tr: &mut Vec<f64>) -> f64 {
+        as_num(&mk_take(&mut self.mg, MG_BOAT_MAX_NUMBER, tr, 801.0, &[]))
+    }
+    fn mg_boat_attack_amount(&mut self, tr: &mut Vec<f64>, attacker: usize, target: usize) -> f64 {
+        let mut p = evtok(Some(attacker));
+        p.extend_from_slice(&evtok(Some(target)));
+        as_num(&mk_take(&mut self.mg, MG_BOAT_ATTACK_AMOUNT, tr, 802.0, &p))
+    }
+    fn mg_defense_post_range(&mut self, tr: &mut Vec<f64>) -> f64 {
+        as_num(&mk_take(&mut self.mg, MG_DEFENSE_POST_RANGE, tr, 803.0, &[]))
+    }
+    /// `mg.config().attackLogic(input)` — `input` is the exact object the TS side
+    /// built (key order preserved).
+    fn mg_attack_logic(&mut self, tr: &mut Vec<f64>, input: &JsVal) -> JsVal {
+        mk_take(&mut self.mg, MG_ATTACK_LOGIC, tr, 809.0, &ev_enc(input))
+    }
+    /// `mg.hasUnitNearby(tile, range, ty, playerID)` (the 4-arg form).
+    fn mg_has_unit_nearby_pid(
+        &mut self,
+        tr: &mut Vec<f64>,
+        tile: f64,
+        outer: f64,
+        ty: &str,
+        pid: &str,
+    ) -> bool {
+        let mut p = ev1(tile);
+        p.extend_from_slice(&ev1(outer));
+        p.extend_from_slice(&evs(ty));
+        p.extend_from_slice(&evstr_opt(Some(pid)));
+        as_bool(&mk_take(&mut self.mg, MG_HAS_UNIT_NEARBY, tr, 305.0, &p))
+    }
+    /// `map.neighbors4(tile, buf)` — returns the traced neighbour list.
+    fn mg_neighbors4(&mut self, tr: &mut Vec<f64>, tile: f64) -> Vec<f64> {
+        let v = mk_take(&mut self.mg, MG_NEIGHBORS4, tr, 804.0, &ev1(tile));
+        as_num_list(&v)
+    }
+    /// `map.terrainType(tile)` — the numeric `TerrainType` member.
+    fn mg_terrain_type(&mut self, tr: &mut Vec<f64>, tile: f64) -> f64 {
+        as_num(&mk_take(&mut self.mg, MG_TERRAIN_TYPE, tr, 805.0, &ev1(tile)))
+    }
+    fn mg_has_fallout(&mut self, tr: &mut Vec<f64>, tile: f64) -> bool {
+        as_bool(&mk_take(&mut self.mg, MG_HAS_FALLOUT, tr, 806.0, &ev1(tile)))
+    }
+    fn mg_conquer_player(&mut self, tr: &mut Vec<f64>, owner: usize, target: usize) {
+        let mut p = evtok(Some(owner));
+        p.extend_from_slice(&evtok(Some(target)));
+        mk_void(tr, 808.0, &p);
+    }
+    /// `mg.forEachNeighbor(tile, cb)` — callback form, no return value.
+    fn mg_for_each_neighbor(
+        &mut self,
+        tr: &mut Vec<f64>,
+        tile: f64,
+        mut cb: impl FnMut(&mut Self, &mut Vec<f64>, f64),
+    ) {
+        let v = mk_take(&mut self.mg, MG_FOR_EACH_NEIGHBOR, tr, 807.0, &ev1(tile));
+        let list = as_num_list(&v);
+        for n in &list {
+            cb(self, tr, *n);
+        }
+        push_val(tr, &JsVal::Undef);
+    }
+    /// `targetTransportTile(mg, attacker, ref)` → `TileRef | null`.
+    fn mg_target_transport_tile(
+        &mut self,
+        tr: &mut Vec<f64>,
+        attacker: usize,
+        r: f64,
+    ) -> Option<f64> {
+        let mut p = evtok(Some(attacker));
+        p.extend_from_slice(&ev1(r));
+        let v = mk_take(&mut self.mg, MG_TARGET_TRANSPORT_TILE, tr, 880.0, &p);
+        as_opt_num(Some(&v))
+    }
+    /// `WaterPathFinder.rebuilt`.
+    fn mg_water_rebuilt(&mut self, tr: &mut Vec<f64>) -> bool {
+        as_bool(&mk_take(&mut self.mg, MG_WATER_REBUILT, tr, 860.0, &[]))
+    }
+    /// `WaterPathFinder.findPath(from, to)` — `TileRef[] | null`.
+    fn mg_water_find_path(&mut self, tr: &mut Vec<f64>, from: f64, to: f64) -> Option<Vec<f64>> {
+        let mut p = ev1(from);
+        p.extend_from_slice(&ev1(to));
+        let v = mk_take(&mut self.mg, MG_WATER_FIND_PATH, tr, 861.0, &p);
+        match v {
+            JsVal::Null | JsVal::Undef => None,
+            other => Some(as_num_list(&other)),
+        }
+    }
+    /// `WaterPathFinder.next(from, to)` → `{status, node}`.
+    fn mg_water_next(&mut self, tr: &mut Vec<f64>, from: f64, to: f64) -> JsVal {
+        let mut p = ev1(from);
+        p.extend_from_slice(&ev1(to));
+        mk_take(&mut self.mg, MG_WATER_NEXT, tr, 862.0, &p)
+    }
+    fn mg_stats_attack(&mut self, tr: &mut Vec<f64>, p: usize, t: usize, troops: f64) {
+        let mut e = evtok(Some(p));
+        e.extend_from_slice(&evtok(Some(t)));
+        e.extend_from_slice(&ev1(troops));
+        mk_void(tr, 870.0, &e);
+    }
+    fn mg_stats_attack_max_incoming(&mut self, tr: &mut Vec<f64>, p: usize, troops: f64) {
+        let mut e = evtok(Some(p));
+        e.extend_from_slice(&ev1(troops));
+        mk_void(tr, 871.0, &e);
+    }
+    fn mg_stats_attack_cancel(&mut self, tr: &mut Vec<f64>, p: usize, t: usize, troops: f64) {
+        let mut e = evtok(Some(p));
+        e.extend_from_slice(&evtok(Some(t)));
+        e.extend_from_slice(&ev1(troops));
+        mk_void(tr, 872.0, &e);
+    }
+    fn mg_stats_boat_send_troops(&mut self, tr: &mut Vec<f64>, p: usize, t: usize, troops: f64) {
+        let mut e = evtok(Some(p));
+        e.extend_from_slice(&evtok(Some(t)));
+        e.extend_from_slice(&ev1(troops));
+        mk_void(tr, 873.0, &e);
+    }
+    fn mg_stats_boat_arrive_troops(&mut self, tr: &mut Vec<f64>, p: usize, t: usize, troops: f64) {
+        let mut e = evtok(Some(p));
+        e.extend_from_slice(&evtok(Some(t)));
+        e.extend_from_slice(&ev1(troops));
+        mk_void(tr, 874.0, &e);
+    }
+    /// `mg.addExecution(new AttackExecution(...))` (tag 16).
+    #[allow(clippy::too_many_arguments)]
+    fn mg_add_attack_exec(
+        &mut self,
+        tr: &mut Vec<f64>,
+        start_troops: f64,
+        owner: usize,
+        target_id: Option<&str>,
+        source_tile: Option<f64>,
+        remove_troops: bool,
+    ) {
+        tr.push(307.0);
+        tr.push(TAG_ATTACK_EXEC);
+        push_val(tr, &JsVal::Num(start_troops));
+        push_val(tr, &JsVal::Num(owner as f64));
+        push_val(
+            tr,
+            &match target_id {
+                Some(s) => JsVal::Str(s.to_string()),
+                None => JsVal::Null,
+            },
+        );
+        push_val(
+            tr,
+            &match source_tile {
+                Some(t) => JsVal::Num(t),
+                None => JsVal::Null,
+            },
+        );
+        push_val(tr, &JsVal::Bool(remove_troops));
+        push_val(tr, &JsVal::Undef);
+    }
+
+    // G5g player accessors.
+    fn pl_can_attack_player(&mut self, tr: &mut Vec<f64>, tok: usize, other: usize) -> bool {
+        let v = self.pl(tok, PL_CAN_ATTACK_PLAYER, tr, 820.0, &evtok(Some(other)));
+        as_bool(&v)
+    }
+    fn pl_create_attack(
+        &mut self,
+        tr: &mut Vec<f64>,
+        tok: usize,
+        target: usize,
+        troops: f64,
+        source_tile: Option<f64>,
+        tiles: &JsVal,
+    ) -> Option<usize> {
+        let mut extra = evtok(Some(target));
+        extra.extend_from_slice(&ev1(troops));
+        extra.extend_from_slice(&ev_enc(&match source_tile {
+            Some(t) => JsVal::Num(t),
+            None => JsVal::Null,
+        }));
+        extra.extend_from_slice(&ev_enc(tiles));
+        let v = self.pl(tok, PL_CREATE_ATTACK, tr, 821.0, &extra);
+        as_opt_tok(&v)
+    }
+    fn pl_incoming_attacks(&mut self, tr: &mut Vec<f64>, tok: usize) -> Vec<usize> {
+        let v = self.pl(tok, PL_INCOMING_ATTACKS, tr, 822.0, &[]);
+        as_tok_list(&v)
+    }
+    fn pl_unit_count(&mut self, tr: &mut Vec<f64>, tok: usize, ty: &str) -> f64 {
+        as_num(&self.pl(tok, PL_UNIT_COUNT, tr, 823.0, &evs(ty)))
+    }
+    fn pl_add_troops(&mut self, tr: &mut Vec<f64>, tok: usize, n: f64) {
+        self.pl_void(tok, tr, 824.0, &ev1(n));
+    }
+    /// `player.bestTransportShipSpawn(tile)` → `TileRef | false`.
+    fn pl_best_transport_ship_spawn(&mut self, tr: &mut Vec<f64>, tok: usize, tile: f64) -> JsVal {
+        self.pl(tok, PL_BEST_TRANSPORT_SHIP_SPAWN, tr, 825.0, &ev1(tile))
+    }
+    fn pl_is_traitor(&mut self, tr: &mut Vec<f64>, tok: usize) -> bool {
+        let v = self.pl(tok, PL_IS_TRAITOR, tr, 826.0, &[]);
+        as_bool(&v)
+    }
+
+    // G5g attack facade.
+    fn at(&mut self, aid: usize, slot: usize, tr: &mut Vec<f64>, code: f64, extra: &[f64]) -> JsVal {
+        let mut prefix = vec![aid as f64];
+        prefix.extend_from_slice(extra);
+        mk_take(&mut self.attacks[aid], slot, tr, code, &prefix)
+    }
+    fn at_void(&mut self, aid: usize, tr: &mut Vec<f64>, code: f64, extra: &[f64]) {
+        let mut prefix = vec![aid as f64];
+        prefix.extend_from_slice(extra);
+        mk_void(tr, code, &prefix);
+    }
+    fn at_troops(&mut self, tr: &mut Vec<f64>, aid: usize) -> f64 {
+        as_num(&self.at(aid, AT_TROOPS, tr, 830.0, &[]))
+    }
+    fn at_set_troops(&mut self, tr: &mut Vec<f64>, aid: usize, n: f64) {
+        self.at_void(aid, tr, 831.0, &ev1(n));
+    }
+    fn at_delete(&mut self, tr: &mut Vec<f64>, aid: usize) {
+        self.at_void(aid, tr, 832.0, &[]);
+    }
+    fn at_clear_border(&mut self, tr: &mut Vec<f64>, aid: usize) {
+        self.at_void(aid, tr, 833.0, &[]);
+    }
+    fn at_add_border_tile(&mut self, tr: &mut Vec<f64>, aid: usize, tile: f64) {
+        self.at_void(aid, tr, 834.0, &ev1(tile));
+    }
+    fn at_remove_border_tile(&mut self, tr: &mut Vec<f64>, aid: usize, tile: f64) {
+        self.at_void(aid, tr, 835.0, &ev1(tile));
+    }
+    fn at_border_size(&mut self, tr: &mut Vec<f64>, aid: usize) -> f64 {
+        as_num(&self.at(aid, AT_BORDER_SIZE, tr, 836.0, &[]))
+    }
+    fn at_retreated(&mut self, tr: &mut Vec<f64>, aid: usize) -> bool {
+        as_bool(&self.at(aid, AT_RETREATED, tr, 837.0, &[]))
+    }
+    fn at_retreating(&mut self, tr: &mut Vec<f64>, aid: usize) -> bool {
+        as_bool(&self.at(aid, AT_RETREATING, tr, 838.0, &[]))
+    }
+    fn at_is_active(&mut self, tr: &mut Vec<f64>, aid: usize) -> bool {
+        as_bool(&self.at(aid, AT_IS_ACTIVE, tr, 839.0, &[]))
+    }
+    fn at_target(&mut self, tr: &mut Vec<f64>, aid: usize) -> Option<usize> {
+        as_opt_tok(&self.at(aid, AT_TARGET, tr, 840.0, &[]))
+    }
+    fn at_source_tile(&mut self, tr: &mut Vec<f64>, aid: usize) -> Option<f64> {
+        as_opt_num(Some(&self.at(aid, AT_SOURCE_TILE, tr, 841.0, &[])))
+    }
+    fn at_attacker(&mut self, tr: &mut Vec<f64>, aid: usize) -> Option<usize> {
+        as_opt_tok(&self.at(aid, AT_ATTACKER, tr, 842.0, &[]))
+    }
 
     // neighbor facade
     fn nb(&mut self, nid: usize, slot: usize, tr: &mut Vec<f64>, code: f64, extra: &[f64]) -> JsVal {
@@ -2833,6 +3235,12 @@ impl ExecHarness {
             .iter()
             .map(build_mock)
             .collect();
+        self.attacks = val_field(&v, "attacks")
+            .map(as_arr)
+            .unwrap_or_default()
+            .iter()
+            .map(build_mock)
+            .collect();
 
         let n = |k: usize| -> f64 { ctor.get(k).map(as_num).unwrap_or(f64::NAN) };
         match self.class_id {
@@ -3068,6 +3476,36 @@ impl ExecHarness {
                     self.sam_tile = as_opt_num(ctor.get(1));
                 }
             }
+            36 => {
+                // AttackExecution(startTroops = null, _owner, _targetID = null,
+                // sourceTile = null, removeTroops = true).
+                self.at_start_troops = as_opt_num(ctor.first());
+                self.a_tok = n(1) as usize;
+                self.at_target_id = ctor.get(2).and_then(as_str_opt);
+                self.at_source_tile = as_opt_num(ctor.get(3));
+                self.at_remove_troops = ctor.get(4).map(as_bool).unwrap_or(false);
+                self.at_attack = None;
+                self.at_active = true;
+                self.at_to_conquer.clear();
+                // `private random = new PseudoRandom(123)`.
+                self.random = Some(PseudoRandom::new(123.0));
+            }
+            37 => {
+                // TransportShipExecution(attacker, ref, troops).
+                self.ts_attacker = n(0) as usize;
+                self.ts_original_owner = self.ts_attacker;
+                self.ts_ref = n(1);
+                self.ts_troops = as_opt_num(ctor.get(2));
+                self.ts_active = true;
+                self.ts_last_move = f64::NAN;
+                self.ts_dst = None;
+                self.ts_src = None;
+                self.ts_retreat_dst = RetDst::Null;
+                self.ts_boat = None;
+                self.ts_motion_plan_id = 1.0;
+                self.ts_motion_plan_dst = None;
+                self.ts_target = None;
+            }
             _ => {}
         }
     }
@@ -3172,6 +3610,8 @@ impl ExecHarness {
             33 => self.nuke_execution(kind, ticks, tr),
             34 => self.mirv_execution(kind, ticks, tr),
             35 => self.sam_launcher_execution(kind, ticks, tr),
+            36 => self.attack_execution(kind, ticks, tr),
+            37 => self.transport_ship_execution(kind, ticks, tr),
             k => unreachable!("exec harness: unknown class id {k}"),
         }
     }
@@ -6610,7 +7050,7 @@ impl ExecHarness {
                     self.mg_nuke_death_factor(tr, &nuke_type, pt, tiles_left, max_troops); // 704
                 self.pl_remove_troops(tr, player, deaths); // 633
                 for attack in &outgoing {
-                    let at = self.un_troops(tr, *attack); // 730
+                    let at = self.at_troops(tr, *attack); // 830
                     let d = self.mg_nuke_death_factor(
                         tr,
                         &nuke_type,
@@ -6618,7 +7058,7 @@ impl ExecHarness {
                         tiles_left,
                         max_troops,
                     ); // 704
-                    self.un_set_troops(tr, *attack, at - d); // 731
+                    self.at_set_troops(tr, *attack, at - d); // 831
                 }
                 for u in &transports {
                     let ut = transport_troops
@@ -7252,6 +7692,947 @@ impl ExecHarness {
             self.mg_add_sam_missile(tr, st, ow.unwrap_or(self.a_tok), sam, unit, tile);
         }
         Ok(JsVal::Undef)
+    }
+
+    // ---- 36 `AttackExecution` (G5g) -----------------------------------------
+
+    fn attack_execution(
+        &mut self,
+        kind: u8,
+        _ticks: f64,
+        tr: &mut Vec<f64>,
+    ) -> Result<JsVal, String> {
+        match kind {
+            3 => return Ok(JsVal::Bool(self.at_active)),
+            4 => return Ok(JsVal::Bool(false)),
+            1 => {
+                self.attack_init(tr)?;
+                return Ok(JsVal::Undef);
+            }
+            2 => {}
+            _ => return Ok(JsVal::Undef),
+        }
+        self.attack_tick(tr)?;
+        Ok(JsVal::Undef)
+    }
+
+    /// `this.random.nextInt(min, max)` for the attack tile-priority draws.
+    fn at_random_int(&mut self, min: f64, max: f64) -> f64 {
+        self.random
+            .as_mut()
+            .expect("attack random")
+            .next_int(min, max) as f64
+    }
+
+    fn at_attack_id(&self) -> Result<usize, String> {
+        self.at_attack
+            .ok_or_else(|| "Attack not initialized".to_string())
+    }
+
+    /// `this.target.isPlayer()` — the `TerraNullius` mock answers untraced
+    /// `false`, so a sentinel target never reads code `259`.
+    fn attack_target_is_player(&mut self, tr: &mut Vec<f64>) -> bool {
+        match self.at_target {
+            Some(p) if p != TN_TOK => self.pl_is_player(tr, p), // 259
+            _ => false,
+        }
+    }
+
+    fn attack_reject_incoming_alliance(&mut self, tr: &mut Vec<f64>) {
+        let target = match self.at_target {
+            Some(t) => t,
+            None => return,
+        };
+        let incoming = self.pl_incoming_alliance_requests(tr, self.a_tok); // 720
+        for rid in incoming {
+            let r = self.rq_requestor(tr, rid); // 744
+            if r == Some(target) {
+                self.rq_reject(tr, rid); // 272
+                break;
+            }
+        }
+    }
+
+    fn attack_init(&mut self, tr: &mut Vec<f64>) -> Result<(), String> {
+        if !self.at_active {
+            return Ok(());
+        }
+        // `this.map = mg.map()` — untraced.
+        if let Some(id) = self.at_target_id.clone() {
+            if !self.mg_has_player(tr, &id) {
+                // 210
+                self.at_active = false;
+                return Ok(());
+            }
+        }
+        // `this.target = _targetID === mg.terraNullius().id() ? mg.terraNullius()
+        //  : mg.player(_targetID)`; the `terraNullius().id()` read always fires.
+        let tn_id = self.tn_id(tr); // 811
+        let is_tn = self.at_target_id.is_none() && tn_id.is_none();
+        self.at_target = if is_tn {
+            Some(TN_TOK)
+        } else {
+            let id = self.at_target_id.clone().unwrap_or_default();
+            self.mg_player(tr, &id) // 211
+        };
+        self.at_owner_small_id = self.pl_small_id(tr, self.a_tok); // 230
+        if self.at_target == Some(TN_TOK) {
+            self.at_target_small_id = TN_TOK as f64;
+        } else {
+            match self.at_target {
+                Some(p) => self.at_target_small_id = self.pl_small_id(tr, p), // 230
+                None => {
+                    return Err(
+                        "Cannot read properties of null (reading 'smallID')".to_string()
+                    )
+                }
+            }
+        }
+
+        // `if (this._owner === this.target)`.
+        if self.at_target == Some(self.a_tok) {
+            self.at_active = false;
+            return Ok(());
+        }
+
+        // ALLIANCE CHECK — block attacks on friendly (ally or same team).
+        if self.attack_target_is_player(tr)
+            && self.pl_is_friendly(tr, self.a_tok, self.at_target)
+        {
+            // 242
+            let _ = self.pl_display_name(tr, self.a_tok); // 232
+            let _ = self.pl_display_name(tr, self.at_target.unwrap()); // 232
+            self.at_active = false;
+            return Ok(());
+        }
+
+        // `if (this.target && this.target.isPlayer())`.
+        if self.attack_target_is_player(tr) {
+            let target_tok = self.at_target.unwrap();
+            let tty = self.pl_type(tr, target_tok); // 251
+            if tty != PLAYER_TYPE_BOT {
+                let oty = self.pl_type(tr, self.a_tok); // 251
+                if oty != PLAYER_TYPE_BOT {
+                    self.pl_add_embargo(tr, target_tok, Some(self.a_tok), true); // 253
+                    self.attack_reject_incoming_alliance(tr);
+                }
+            }
+        }
+
+        // `if (this.target.isPlayer() && !this._owner.canAttackPlayer(this.target))`.
+        if self.attack_target_is_player(tr) {
+            let ok = self.pl_can_attack_player(tr, self.a_tok, self.at_target.unwrap()); // 820
+            if !ok {
+                self.at_active = false;
+                return Ok(());
+            }
+        }
+
+        let target_tok = self.at_target.unwrap();
+        if self.at_start_troops.is_none() {
+            let amt = self.mg_attack_amount(tr, self.a_tok, target_tok); // 800
+            self.at_start_troops = Some(amt);
+        }
+        if self.at_remove_troops {
+            let owned = self.pl_troops(tr, self.a_tok); // 418
+            let st = js_min(self.at_start_troops.unwrap(), owned);
+            self.at_start_troops = Some(self.pl_remove_troops(tr, self.a_tok, st)); // 633
+        }
+        let tiles = JsVal::Obj(Vec::new());
+        self.at_attack = self.pl_create_attack(
+            tr,
+            self.a_tok,
+            target_tok,
+            self.at_start_troops.unwrap(),
+            self.at_source_tile,
+            &tiles,
+        ); // 821
+
+        match self.at_source_tile {
+            Some(t) => self.attack_add_neighbors(tr, t)?,
+            None => self.attack_refresh_to_conquer(tr)?,
+        }
+
+        self.mg_stats_attack(tr, self.a_tok, target_tok, self.at_start_troops.unwrap()); // 870
+
+        let atk = self.at_attack_id()?;
+        let incoming = self.pl_incoming_attacks(tr, self.a_tok); // 822
+        for inc in incoming {
+            let att = self.at_attacker(tr, inc); // 842
+            if att != self.at_target {
+                continue;
+            }
+            let a = self.at_troops(tr, inc); // 830
+            let b = self.at_troops(tr, atk); // 830
+            if a > b {
+                let x = self.at_troops(tr, inc); // 830
+                let y = self.at_troops(tr, atk); // 830
+                self.at_set_troops(tr, inc, x - y); // 831
+                self.at_delete(tr, atk); // 832
+                self.at_active = false;
+                return Ok(());
+            }
+            let x = self.at_troops(tr, atk); // 830
+            let y = self.at_troops(tr, inc); // 830
+            self.at_set_troops(tr, atk, x - y); // 831
+            self.at_delete(tr, inc); // 832
+        }
+
+        let outgoing = self.pl_outgoing_attacks(tr, self.a_tok); // 721
+        for out in outgoing {
+            if out == atk {
+                continue;
+            }
+            let ot = self.at_target(tr, out); // 840
+            let mt = self.at_target(tr, atk); // 840
+            if ot != mt {
+                continue;
+            }
+            let st = self.at_source_tile(tr, atk); // 841
+            if st.is_none() {
+                let x = self.at_troops(tr, atk); // 830
+                let y = self.at_troops(tr, out); // 830
+                self.at_set_troops(tr, atk, x + y); // 831
+                self.at_delete(tr, out); // 832
+            }
+        }
+
+        let max_in = self.at_troops(tr, atk); // 830
+        self.mg_stats_attack_max_incoming(tr, target_tok, max_in); // 871
+
+        if self.attack_target_is_player(tr) {
+            let difficulty = self.mg_difficulty(tr); // 402
+            let rel = if difficulty == DIFFICULTY_EASY {
+                -60.0
+            } else if difficulty == DIFFICULTY_MEDIUM {
+                -70.0
+            } else if difficulty == DIFFICULTY_HARD {
+                -80.0
+            } else if difficulty == DIFFICULTY_IMPOSSIBLE {
+                -100.0
+            } else {
+                return Err(format!("Unexpected value: {difficulty}"));
+            };
+            self.pl_update_relation(tr, self.at_target.unwrap(), Some(self.a_tok), rel); // 237
+        }
+        Ok(())
+    }
+
+    fn attack_refresh_to_conquer(&mut self, tr: &mut Vec<f64>) -> Result<(), String> {
+        let atk = self.at_attack_id()?;
+        self.at_to_conquer.clear();
+        self.at_clear_border(tr, atk); // 833
+        let tiles = self.pl_border_tiles(tr, self.a_tok); // 635
+        for t in tiles {
+            self.attack_add_neighbors(tr, t)?;
+        }
+        Ok(())
+    }
+
+    fn attack_add_neighbors(&mut self, tr: &mut Vec<f64>, tile: f64) -> Result<(), String> {
+        let atk = self.at_attack_id()?;
+        let tick_now = self.mg_ticks(tr); // 212
+        let target_small = self.at_target_small_id;
+        let owner_small = self.at_owner_small_id;
+        let neighbors = self.mg_neighbors4(tr, tile); // 804
+        for n in neighbors {
+            if self.mg_is_water(tr, n) {
+                // 508
+                continue;
+            }
+            if self.mg_is_impassable(tr, n) {
+                // 617
+                continue;
+            }
+            if self.mg_owner_id(tr, n) != target_small {
+                // 223
+                continue;
+            }
+            self.at_add_border_tile(tr, atk, n); // 834
+            let inner = self.mg_neighbors4(tr, n); // 804
+            let mut num_owned_by_me = 0.0;
+            for n2 in inner {
+                if self.mg_owner_id(tr, n2) == owner_small {
+                    // 223
+                    num_owned_by_me += 1.0;
+                }
+            }
+            let terrain = self.mg_terrain_type(tr, n); // 805
+            let mag = if terrain == TERRAIN_PLAINS {
+                1.0
+            } else if terrain == TERRAIN_HIGHLAND {
+                1.5
+            } else if terrain == TERRAIN_MOUNTAIN {
+                2.0
+            } else {
+                0.0
+            };
+            let r = self.at_random_int(0.0, 7.0);
+            let priority =
+                (r + 10.0) * (1.0 - num_owned_by_me * 0.5 + mag / 2.0) + tick_now;
+            self.at_to_conquer.enqueue(n, priority);
+        }
+        Ok(())
+    }
+
+    fn attack_retreat(&mut self, tr: &mut Vec<f64>, malus_percent: f64) -> Result<(), String> {
+        let atk = self.at_attack_id()?;
+        let deaths = self.at_troops(tr, atk) * (malus_percent / 100.0); // 830
+        if js_truthy(deaths) {
+            let oid = self.pl_id(tr, self.a_tok); // 231
+            let rendered = crate::utils_format::render_troops(deaths);
+            self.mg_display_message(
+                tr,
+                &[
+                    JsVal::Str("events_display.attack_cancelled_retreat".to_string()),
+                    JsVal::Num(MSG_ATTACK_CANCELLED),
+                    JsVal::Str(oid),
+                    JsVal::Undef,
+                    JsVal::Obj(vec![("troops".to_string(), JsVal::Str(rendered))]),
+                ],
+            ); // 226
+        }
+        if !self.at_remove_troops && self.at_source_tile.is_none() {
+            let a = self.at_troops(tr, atk); // 830
+            let b = self.at_start_troops.unwrap_or(0.0);
+            self.at_set_troops(tr, atk, a - b); // 831
+        }
+        let survivors = self.at_troops(tr, atk) - deaths; // 830
+        self.pl_add_troops(tr, self.a_tok, survivors); // 824
+        self.at_delete(tr, atk); // 832
+        self.at_active = false;
+        if self.at_retreated(tr, atk) {
+            // 837
+            let t = self.at_target.unwrap_or(TN_TOK);
+            self.mg_stats_attack_cancel(tr, self.a_tok, t, survivors); // 872
+        }
+        Ok(())
+    }
+
+    fn attack_tick(&mut self, tr: &mut Vec<f64>) -> Result<(), String> {
+        let atk = self.at_attack_id()?;
+        let mut troop_count = self.at_troops(tr, atk); // 830
+        let target_is_player = self.attack_target_is_player(tr); // 259
+
+        if self.at_retreated(tr, atk) {
+            // 837
+            if target_is_player {
+                self.attack_retreat(tr, ATTACK_RETREAT_MALUS)?;
+            } else {
+                self.attack_retreat(tr, 0.0)?;
+            }
+            self.at_active = false;
+            return Ok(());
+        }
+        if self.at_retreating(tr, atk) {
+            // 838
+            return Ok(());
+        }
+        if !self.at_is_active(tr, atk) {
+            // 839
+            self.at_active = false;
+            return Ok(());
+        }
+        if target_is_player && self.pl_is_friendly(tr, self.a_tok, self.at_target) {
+            // 242
+            self.attack_retreat(tr, 0.0)?;
+            return Ok(());
+        }
+
+        let bs = self.at_border_size(tr, atk); // 836
+        let border_size = bs + self.at_random_int(0.0, 5.0);
+        let mut tick_budget = 1.0;
+
+        while tick_budget > 0.0 {
+            if troop_count < 1.0 {
+                self.at_delete(tr, atk); // 832
+                self.at_active = false;
+                return Ok(());
+            }
+            if self.at_to_conquer.size() == 0 {
+                self.attack_refresh_to_conquer(tr)?;
+                self.attack_retreat(tr, 0.0)?;
+                return Ok(());
+            }
+            let tile = self.at_to_conquer.dequeue().unwrap_or(f64::NAN);
+            self.at_remove_border_tile(tr, atk, tile); // 835
+
+            let neighbors = self.mg_neighbors4(tr, tile); // 804
+            let mut on_border = false;
+            for n in &neighbors {
+                if self.mg_owner_id(tr, *n) == self.at_owner_small_id {
+                    // 223
+                    on_border = true;
+                    break;
+                }
+            }
+            if self.mg_owner_id(tr, tile) != self.at_target_small_id || !on_border {
+                // 223
+                continue;
+            }
+            if !self.mg_is_land(tr, tile) {
+                // 304
+                continue;
+            }
+            if self.mg_is_impassable(tr, tile) {
+                // 617
+                continue;
+            }
+            self.attack_add_neighbors(tr, tile)?;
+
+            let input = self.attack_logic_input(tr, troop_count, tile, border_size);
+            let logic = self.mg_attack_logic(tr, &input); // 809
+            let tick_fraction = val_field(&logic, "tickFraction")
+                .map(as_num)
+                .unwrap_or(f64::NAN);
+            let attacker_loss = val_field(&logic, "attackerTroopLoss")
+                .map(as_num)
+                .unwrap_or(f64::NAN);
+            let defender_loss = val_field(&logic, "defenderTroopLoss")
+                .map(as_num)
+                .unwrap_or(f64::NAN);
+            tick_budget -= tick_fraction;
+            troop_count -= attacker_loss;
+            self.at_set_troops(tr, atk, troop_count); // 831
+            if target_is_player {
+                let dp = self.at_target.unwrap();
+                self.pl_remove_troops(tr, dp, defender_loss); // 633
+            }
+            self.pl_conquer(tr, self.a_tok, tile); // 637
+            self.attack_handle_dead_defender(tr);
+        }
+        Ok(())
+    }
+
+    /// `AttackExecution.attackLogicInput` — the object passed to
+    /// `config().attackLogic`. Property order mirrors the TS literal.
+    fn attack_logic_input(
+        &mut self,
+        tr: &mut Vec<f64>,
+        attack_troops: f64,
+        tile: f64,
+        border_size: f64,
+    ) -> JsVal {
+        let defender = if self.attack_target_is_player(tr) {
+            // 259
+            self.at_target
+        } else {
+            None
+        };
+        let mut defender_has_post = false;
+        if let Some(d) = defender {
+            let range = self.mg_defense_post_range(tr); // 803
+            let did = self.pl_id(tr, d); // 231
+            defender_has_post =
+                self.mg_has_unit_nearby_pid(tr, tile, range, UNIT_DEFENSE_POST, &did); // 305
+        }
+
+        let terrain = self.mg_terrain_type(tr, tile); // 805
+        let att_type = self.pl_type(tr, self.a_tok); // 251
+        let att_tiles = self.pl_num_tiles_owned(tr, self.a_tok); // 532
+        let attacker = JsVal::Obj(vec![
+            ("type".to_string(), JsVal::Str(att_type)),
+            ("numTiles".to_string(), JsVal::Num(att_tiles)),
+        ]);
+
+        let defender_val = match defender {
+            None => JsVal::Null,
+            Some(d) => {
+                let dty = self.pl_type(tr, d); // 251
+                let dtiles = self.pl_num_tiles_owned(tr, d); // 532
+                let dtroops = self.pl_troops(tr, d); // 418
+                let dtraitor = self.pl_is_traitor(tr, d); // 826
+                let ddisc = self.pl_is_disconnected(tr, d); // 531
+                let teammate = if ddisc {
+                    self.pl_is_on_same_team(tr, self.a_tok, Some(d)) // 250
+                } else {
+                    false
+                };
+                JsVal::Obj(vec![
+                    ("type".to_string(), JsVal::Str(dty)),
+                    ("numTiles".to_string(), JsVal::Num(dtiles)),
+                    ("troops".to_string(), JsVal::Num(dtroops)),
+                    ("isTraitor".to_string(), JsVal::Bool(dtraitor)),
+                    ("isDisconnectedTeammate".to_string(), JsVal::Bool(teammate)),
+                ])
+            }
+        };
+
+        let fallout = if self.mg_has_fallout(tr, tile) {
+            // 806
+            let with = self.mg_num_tiles_with_fallout(tr); // 502
+            let land = self.mg_num_land_tiles(tr); // 501
+            JsVal::Num(with / land)
+        } else {
+            JsVal::Null
+        };
+
+        JsVal::Obj(vec![
+            ("terrain".to_string(), JsVal::Num(terrain)),
+            ("attackTroops".to_string(), JsVal::Num(attack_troops)),
+            ("attacker".to_string(), attacker),
+            ("defender".to_string(), defender_val),
+            ("defenderHasDefensePost".to_string(), JsVal::Bool(defender_has_post)),
+            ("falloutRatio".to_string(), fallout),
+            ("borderSize".to_string(), JsVal::Num(border_size)),
+        ])
+    }
+
+    fn attack_handle_dead_defender(&mut self, tr: &mut Vec<f64>) {
+        if !self.attack_target_is_player(tr) {
+            // 259
+            return;
+        }
+        let target = match self.at_target {
+            Some(t) => t,
+            None => return,
+        };
+        let owned = self.pl_num_tiles_owned(tr, target); // 532
+        // `!(owned < 100)` — NaN must also bail out, hence the explicit check.
+        if owned.is_nan() || owned >= AT_DEAD_DEFENDER_TILES {
+            return;
+        }
+        self.mg_conquer_player(tr, self.a_tok, target); // 808
+
+        let a_tok = self.a_tok;
+        let mut pass = 0.0;
+        while pass < AT_MAX_PASSES {
+            let mut progressed = false;
+            let tiles = self.pl_tiles(tr, target); // 634
+            for tile in &tiles {
+                let tile = *tile;
+                let mut borders = false;
+                self.mg_for_each_neighbor(tr, tile, |h, tr, t| {
+                    let owner = h.mg_owner(tr, t); // 222
+                    if !borders && owner == Some(a_tok) {
+                        borders = true;
+                    }
+                }); // 807
+                if borders {
+                    self.pl_conquer(tr, self.a_tok, tile); // 637
+                    progressed = true;
+                } else {
+                    let mut captured = false;
+                    self.mg_for_each_neighbor(tr, tile, |h, tr, nb| {
+                        if captured {
+                            return;
+                        }
+                        let no = h.mg_owner(tr, nb); // 222
+                        let np = match no {
+                            Some(x) => x,
+                            None => return,
+                        };
+                        if !h.pl_is_player(tr, np) {
+                            // 259
+                            return;
+                        }
+                        if np == target {
+                            return;
+                        }
+                        if h.pl_is_friendly(tr, np, Some(target)) {
+                            // 242
+                            return;
+                        }
+                        let pid = h.pl_id(tr, np); // 231
+                        let ptok = h.mg_player(tr, &pid).unwrap_or(np); // 211
+                        h.pl_conquer(tr, ptok, tile); // 637
+                        captured = true;
+                    }); // 807
+                    if captured {
+                        progressed = true;
+                    }
+                }
+            }
+            if !progressed {
+                break;
+            }
+            pass += 1.0;
+        }
+    }
+
+    // ---- 37 `TransportShipExecution` (G5g) ---------------------------------
+
+    fn transport_ship_execution(
+        &mut self,
+        kind: u8,
+        ticks: f64,
+        tr: &mut Vec<f64>,
+    ) -> Result<JsVal, String> {
+        match kind {
+            3 => return Ok(JsVal::Bool(self.ts_active)),
+            4 => return Ok(JsVal::Bool(false)),
+            1 => {
+                self.transport_init(ticks, tr)?;
+                return Ok(JsVal::Undef);
+            }
+            2 => {}
+            _ => return Ok(JsVal::Undef),
+        }
+        self.transport_tick(ticks, tr)?;
+        Ok(JsVal::Undef)
+    }
+
+    fn ts_target_is_player(&mut self, tr: &mut Vec<f64>) -> Result<bool, String> {
+        match self.ts_target {
+            Some(p) => Ok(self.pl_is_player(tr, p)), // 259
+            None => Err(
+                "Cannot read properties of null (reading 'isPlayer')".to_string()
+            ),
+        }
+    }
+
+    fn ts_reject_incoming_alliance(&mut self, tr: &mut Vec<f64>, target: usize) {
+        let incoming = self.pl_incoming_alliance_requests(tr, self.ts_attacker); // 720
+        for rid in incoming {
+            let r = self.rq_requestor(tr, rid); // 744
+            if r == Some(target) {
+                self.rq_reject(tr, rid); // 272
+                break;
+            }
+        }
+    }
+
+    fn transport_init(&mut self, ticks: f64, tr: &mut Vec<f64>) -> Result<(), String> {
+        if !self.mg_is_valid_ref(tr, self.ts_ref) {
+            // 300
+            self.ts_active = false;
+            return Ok(());
+        }
+        self.ts_last_move = ticks;
+        self.ts_target = self.mg_owner(tr, self.ts_ref); // 222
+        // `new WaterPathFinder(mg, stagger)` — untraced.
+
+        let cnt = self.pl_unit_count(tr, self.ts_attacker, UNIT_TRANSPORT_SHIP); // 823
+        let bmax = self.mg_boat_max_number(tr); // 801
+        if cnt >= bmax {
+            let aid = self.pl_id(tr, self.ts_attacker); // 231
+            let bmax2 = self.mg_boat_max_number(tr); // 801
+            self.mg_display_message(
+                tr,
+                &[
+                    JsVal::Str("events_display.no_boats_available".to_string()),
+                    JsVal::Num(MSG_ATTACK_FAILED),
+                    JsVal::Str(aid),
+                    JsVal::Undef,
+                    JsVal::Obj(vec![("max".to_string(), JsVal::Num(bmax2))]),
+                ],
+            ); // 226
+            self.ts_active = false;
+            return Ok(());
+        }
+
+        if self.ts_target_is_player(tr)? {
+            let t = self.ts_target.unwrap();
+            let tty = self.pl_type(tr, t); // 251
+            if tty != PLAYER_TYPE_BOT {
+                let aty = self.pl_type(tr, self.ts_attacker); // 251
+                if aty != PLAYER_TYPE_BOT {
+                    self.ts_reject_incoming_alliance(tr, t);
+                }
+            }
+        }
+
+        if self.ts_target == Some(self.ts_attacker) {
+            self.ts_active = false;
+            return Ok(());
+        }
+
+        if self.ts_target_is_player(tr)? {
+            let t = self.ts_target.unwrap();
+            let ok = self.pl_can_attack_player(tr, self.ts_attacker, t); // 820
+            if !ok {
+                self.ts_active = false;
+                return Ok(());
+            }
+        }
+
+        let t = self.ts_target.unwrap();
+        if self.ts_troops.is_none() {
+            let amt = self.mg_boat_attack_amount(tr, self.ts_attacker, t); // 802
+            self.ts_troops = Some(amt);
+        }
+        let owned = self.pl_troops(tr, self.ts_attacker); // 418
+        self.ts_troops = Some(js_min(self.ts_troops.unwrap(), owned));
+
+        self.ts_dst = self.mg_target_transport_tile(tr, self.ts_attacker, self.ts_ref); // 880
+        if self.ts_dst.is_none() {
+            self.ts_active = false;
+            return Ok(());
+        }
+        let dst = self.ts_dst.unwrap();
+
+        let src = self.pl_can_build(tr, self.ts_attacker, UNIT_TRANSPORT_SHIP, dst); // 534
+        if matches!(src, JsVal::Bool(false)) {
+            self.ts_active = false;
+            return Ok(());
+        }
+        let src_t = as_num(&src);
+        self.ts_src = Some(src_t);
+
+        let params = JsVal::Obj(vec![
+            ("troops".to_string(), JsVal::Num(self.ts_troops.unwrap())),
+            ("targetTile".to_string(), JsVal::Num(dst)),
+        ]);
+        self.ts_boat = self.pl_build_unit(tr, self.ts_attacker, UNIT_TRANSPORT_SHIP, src_t, &params); // 535
+        let boat = match self.ts_boat {
+            Some(b) => b,
+            None => {
+                return Err(
+                    "Cannot read properties of null (reading 'isActive')".to_string()
+                )
+            }
+        };
+
+        let found = self.mg_water_find_path(tr, src_t, dst); // 861
+        let mut full_path = match found {
+            Some(p) => p,
+            None => vec![src_t],
+        };
+        if full_path.is_empty() || full_path[0] != src_t {
+            full_path.insert(0, src_t);
+        }
+
+        let uid = self.un_id(tr, boat); // 340
+        let plan = JsVal::Obj(vec![
+            ("kind".to_string(), JsVal::Str("grid".to_string())),
+            ("unitId".to_string(), JsVal::Num(uid)),
+            ("planId".to_string(), JsVal::Num(self.ts_motion_plan_id)),
+            ("startTick".to_string(), JsVal::Num(ticks + TS_TICKS_PER_MOVE)),
+            ("ticksPerStep".to_string(), JsVal::Num(TS_TICKS_PER_MOVE)),
+            (
+                "path".to_string(),
+                JsVal::Arr(full_path.iter().map(|x| JsVal::Num(*x)).collect()),
+            ),
+        ]);
+        self.mg_record_motion_plan(tr, &plan); // 711
+        self.ts_motion_plan_dst = self.ts_dst;
+
+        let tid_null = matches!(self.pl_id_val(tr, t), JsVal::Null); // 231
+        let tn = self.tn_id(tr); // 811
+        // `this.target.id() !== mg.terraNullius().id()`.
+        if !(tid_null && tn.is_none()) {
+            let bid = self.un_id(tr, boat); // 340
+            let name = self.pl_display_name(tr, self.ts_attacker); // 232
+            let btr = self.un_troops(tr, boat); // 730
+            let rendered = crate::utils_format::render_troops(btr);
+            let msg = format!("Naval invasion incoming from {name} ({rendered})");
+            let pid = self.pl_id(tr, t); // 231
+            self.mg_display_incoming_unit(tr, bid, &msg, MSG_NAVAL_INVASION_INBOUND, &pid); // 714
+        }
+
+        let sent = self.un_troops(tr, boat); // 730
+        self.mg_stats_boat_send_troops(tr, self.ts_attacker, t, sent); // 873
+        Ok(())
+    }
+
+    fn transport_tick(&mut self, ticks: f64, tr: &mut Vec<f64>) -> Result<(), String> {
+        if self.ts_dst.is_none() {
+            self.ts_active = false;
+            return Ok(());
+        }
+        if !self.ts_active {
+            return Ok(());
+        }
+        let boat = match self.ts_boat {
+            Some(b) => b,
+            None => {
+                return Err(
+                    "Cannot read properties of null (reading 'isActive')".to_string()
+                )
+            }
+        };
+        if !self.un_is_active(tr, boat) {
+            // 280
+            self.ts_active = false;
+            return Ok(());
+        }
+        if ticks - self.ts_last_move < TS_TICKS_PER_MOVE {
+            return Ok(());
+        }
+        self.ts_last_move = ticks;
+
+        // Team mate can conquer disconnected player and get their ships.
+        let boat_owner = self.un_owner(tr, boat); // 286
+        if self.pl_is_disconnected(tr, self.ts_original_owner) {
+            // 531
+            if boat_owner != Some(self.ts_original_owner) {
+                if let Some(bo) = boat_owner {
+                    if self.pl_is_on_same_team(tr, bo, Some(self.ts_original_owner)) {
+                        // 250
+                        self.ts_attacker = bo;
+                        self.ts_original_owner = bo;
+                    }
+                }
+            }
+        }
+
+        if self.mg_water_rebuilt(tr) {
+            // 860
+            self.ts_motion_plan_dst = None;
+        }
+
+        let dst = self.ts_dst.unwrap();
+        if self.mg_is_water(tr, dst) {
+            // 508
+            let st = self.un_transport_ship_state(tr, boat); // 850
+            let retreating = val_field(&st, "isRetreating").map(as_bool).unwrap_or(false);
+            if !retreating {
+                self.un_update_transport_ship_state(tr, boat); // 341
+            }
+            self.ts_retreat_dst = RetDst::Null;
+        }
+
+        let st2 = self.un_transport_ship_state(tr, boat); // 850
+        if val_field(&st2, "isRetreating").map(as_bool).unwrap_or(false) {
+            if matches!(self.ts_retreat_dst, RetDst::Null) {
+                let bt = self.un_tile(tr, boat); // 344
+                let spawn = self.pl_best_transport_ship_spawn(tr, self.ts_attacker, bt); // 825
+                self.ts_retreat_dst = match spawn {
+                    JsVal::Bool(false) => RetDst::False,
+                    v => RetDst::Tile(as_num(&v)),
+                };
+            }
+            if matches!(self.ts_retreat_dst, RetDst::False) {
+                let trp = self.un_troops(tr, boat); // 730
+                self.pl_add_troops(tr, self.ts_attacker, trp); // 824
+                self.un_delete(tr, boat, false); // 285
+                self.ts_active = false;
+                return Ok(());
+            }
+            let rd = match self.ts_retreat_dst {
+                RetDst::Tile(x) => x,
+                _ => f64::NAN,
+            };
+            self.ts_dst = Some(rd);
+            let cur = self.un_target_tile(tr, boat); // 282
+            if cur != Some(rd) {
+                self.un_set_target_tile_num(tr, boat, rd); // 343
+            }
+        }
+
+        let dst2 = self.ts_dst.unwrap();
+        let bt2 = self.un_tile(tr, boat); // 344
+        let result = self.mg_water_next(tr, bt2, dst2); // 862
+        let status = val_field(&result, "status").map(as_num).unwrap_or(f64::NAN);
+        let node = val_field(&result, "node").cloned().unwrap_or(JsVal::Undef);
+
+        let t = match self.ts_target {
+            Some(x) => x,
+            None => {
+                return Err(
+                    "Cannot read properties of null (reading 'id')".to_string()
+                )
+            }
+        };
+
+        if status == 2.0 {
+            // `PathStatus.COMPLETE`.
+            let owner = self.mg_owner(tr, dst2); // 222
+            if owner == Some(self.ts_attacker) {
+                let t1 = self.un_troops(tr, boat); // 730
+                let deaths = t1 * (ATTACK_RETREAT_MALUS / 100.0);
+                let t2 = self.un_troops(tr, boat); // 730
+                let survivors = t2 - deaths;
+                self.pl_add_troops(tr, self.ts_attacker, survivors); // 824
+                self.un_delete(tr, boat, false); // 285
+                self.ts_active = false;
+                self.mg_stats_boat_arrive_troops(tr, self.ts_attacker, t, survivors); // 874
+                if js_truthy(deaths) {
+                    let aid = self.pl_id(tr, self.ts_attacker); // 231
+                    let rendered = crate::utils_format::render_troops(deaths);
+                    self.mg_display_message(
+                        tr,
+                        &[
+                            JsVal::Str(
+                                "events_display.attack_cancelled_retreat".to_string(),
+                            ),
+                            JsVal::Num(MSG_ATTACK_CANCELLED),
+                            JsVal::Str(aid),
+                            JsVal::Undef,
+                            JsVal::Obj(vec![("troops".to_string(), JsVal::Str(rendered))]),
+                        ],
+                    ); // 226
+                }
+                return Ok(());
+            }
+            self.pl_conquer(tr, self.ts_attacker, dst2); // 637
+            let tip = self.ts_target_is_player(tr)?; // 259
+            let fr = if tip {
+                self.pl_is_friendly(tr, self.ts_attacker, self.ts_target) // 242
+            } else {
+                false
+            };
+            if tip && fr {
+                let trp = self.un_troops(tr, boat); // 730
+                self.pl_add_troops(tr, self.ts_attacker, trp); // 824
+            } else {
+                let trp = self.un_troops(tr, boat); // 730
+                let tid = self.pl_id(tr, t); // 231
+                self.mg_add_attack_exec(tr, trp, self.ts_attacker, Some(&tid), Some(dst2), false);
+            }
+            self.un_delete(tr, boat, false); // 285
+            self.ts_active = false;
+            let arrived = self.un_troops(tr, boat); // 730
+            self.mg_stats_boat_arrive_troops(tr, self.ts_attacker, t, arrived); // 874
+            return Ok(());
+        }
+
+        if status == PATH_STATUS_NOT_FOUND {
+            let bt3 = self.un_tile(tr, boat); // 344
+            let _ = self.mg_x(tr, bt3); // 603
+            let _ = self.mg_y(tr, bt3); // 604
+            let _ = self.mg_x(tr, dst2); // 603
+            let _ = self.mg_y(tr, dst2); // 604
+            let _ = self.pl_id(tr, self.ts_attacker); // 231
+            let _ = self.pl_id(tr, t); // 231
+            let trp = self.un_troops(tr, boat); // 730
+            self.pl_add_troops(tr, self.ts_attacker, trp); // 824
+            self.un_delete(tr, boat, false); // 285
+            self.ts_active = false;
+            return Ok(());
+        }
+
+        if status == 0.0 {
+            // `PathStatus.NEXT`.
+            self.un_move(tr, boat, &node); // 545
+        }
+
+        // Force a motion-plan re-record when the destination moved.
+        if self.ts_dst.is_some() && self.ts_dst != self.ts_motion_plan_dst {
+            self.ts_motion_plan_id += 1.0;
+            let d = self.ts_dst.unwrap();
+            let bt = self.un_tile(tr, boat); // 344
+            let found = self.mg_water_find_path(tr, bt, d); // 861
+            let mut full_path = match found {
+                Some(p) => p,
+                None => vec![self.un_tile(tr, boat)], // 344
+            };
+            let empty = full_path.is_empty();
+            let mut mismatch = false;
+            if !empty {
+                let btc = self.un_tile(tr, boat); // 344
+                mismatch = full_path[0] != btc;
+            }
+            if empty || mismatch {
+                let btu = self.un_tile(tr, boat); // 344
+                full_path.insert(0, btu);
+            }
+            let uid = self.un_id(tr, boat); // 340
+            let plan = JsVal::Obj(vec![
+                ("kind".to_string(), JsVal::Str("grid".to_string())),
+                ("unitId".to_string(), JsVal::Num(uid)),
+                ("planId".to_string(), JsVal::Num(self.ts_motion_plan_id)),
+                ("startTick".to_string(), JsVal::Num(ticks + TS_TICKS_PER_MOVE)),
+                ("ticksPerStep".to_string(), JsVal::Num(TS_TICKS_PER_MOVE)),
+                (
+                    "path".to_string(),
+                    JsVal::Arr(full_path.iter().map(|x| JsVal::Num(*x)).collect()),
+                ),
+            ]);
+            self.mg_record_motion_plan(tr, &plan); // 711
+            self.ts_motion_plan_dst = self.ts_dst;
+        }
+        Ok(())
     }
 }
 

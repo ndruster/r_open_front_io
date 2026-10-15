@@ -59,6 +59,28 @@ export class UniversalPathFinding {
     return game.__parabola;
   }
 }
+
+// G5g: TransportShipExecution builds its pathfinder via
+// new WaterPathFinder(mg, stagger). The harness has no real water graph /
+// GameMap, so the instance is a scripted facade on the mock
+// (mg.__waterPathFinder): rebuilt is a getter, findPath / next are
+// scripted calls. STAGGER_SPREAD mirrors the real static (PathFinder.ts).
+export class WaterPathFinder {
+  static STAGGER_SPREAD = 50;
+  constructor(game, stagger) {
+    this.game = game;
+    this.stagger = stagger;
+  }
+  get rebuilt() {
+    return this.game.__waterPathFinder.rebuilt();
+  }
+  findPath(from, to) {
+    return this.game.__waterPathFinder.findPath(from, to);
+  }
+  next(from, to) {
+    return this.game.__waterPathFinder.next(from, to);
+  }
+}
 `,
   "__stub/downstream.ts": `export class NukeExecution {
   constructor(nukeType, player, dst, src, speed, waitTicks, rocketDirectionUp) {
@@ -156,6 +178,15 @@ export class TribeExecution {
 
 export function getSpawnTiles(gm, tile, requireAllValid) {
   return gm.getSpawnTiles(tile, requireAllValid);
+}
+`,
+  // G5g: TransportShipExecution resolves its landing tile via the real
+  // `targetTransportTile`, which builds a SpatialQuery over the GameMap. The
+  // harness has no real map, so the module is redirected to this stub, which
+  // turns the whole lookup into one scripted facade call on the mock
+  // (game.__targetTransportTile(attacker, ref)).
+  "__stub/transport_ship_utils.ts": `export function targetTransportTile(game, attacker, ref) {
+  return game.__targetTransportTile(attacker, ref);
 }
 `,
 };
@@ -1910,6 +1941,145 @@ function prepare(rel) {
         "    }\n" +
         "  }",
       "SAM ctor",
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // G5g: AttackExecution / TransportShipExecution. Both run the real classes
+  // against scripted facade mocks. AttackExecution builds a real
+  // FlatBinaryHeap and a real PseudoRandom(123); TransportShipExecution builds
+  // a stub WaterPathFinder and resolves its landing tile through a scripted
+  // `targetTransportTile`. The GameMap / Attack / Config.attackLogic objects do
+  // not exist in the harness and are all scripted facade calls on the mock.
+  const elUtilsRel = "src/client/Utils.ts";
+  const elCoreUtilRel = "src/core/Util.ts";
+  const elFbhRel = "src/core/execution/utils/FlatBinaryHeap.ts";
+  const elAttackRel = "src/core/execution/AttackExecution.ts";
+  const elTsuRel = "__stub/transport_ship_utils.ts";
+  if (rel.endsWith("execution/AttackExecution.ts")) {
+    if (!prepared.has(elGameRel)) prepare(elGameRel);
+    if (!prepared.has(elUtilsRel)) prepare(elUtilsRel);
+    if (!prepared.has(elPsrRel)) prepare(elPsrRel);
+    if (!prepared.has(elFbhRel)) prepare(elFbhRel);
+    if (!prepared.has(elCoreUtilRel)) prepare(elCoreUtilRel);
+    out = must(
+      out,
+      'import { renderTroops } from "../../client/Utils";\n' +
+        'import { AttackLogicInput } from "../configuration/Config";\n' +
+        "import {\n" +
+        "  Attack,\n" +
+        "  Difficulty,\n" +
+        "  Execution,\n" +
+        "  Game,\n" +
+        "  MessageType,\n" +
+        "  Player,\n" +
+        "  PlayerID,\n" +
+        "  PlayerType,\n" +
+        "  TerrainType,\n" +
+        "  TerraNullius,\n" +
+        "  UnitType,\n" +
+        '} from "../game/Game";\n' +
+        'import { GameMap, TileRef } from "../game/GameMap";\n' +
+        'import { PseudoRandom } from "../PseudoRandom";\n' +
+        'import { assertNever } from "../Util";\n' +
+        'import { FlatBinaryHeap } from "./utils/FlatBinaryHeap"; // adjust path if needed\n',
+      `import { renderTroops } from "./${prepared.get(elUtilsRel)}";\n` +
+        `import { Difficulty, MessageType, PlayerType, TerrainType, UnitType } from "./${prepared.get(elGameRel)}";\n` +
+        `import { PseudoRandom } from "./${prepared.get(elPsrRel)}";\n` +
+        `import { assertNever } from "./${prepared.get(elCoreUtilRel)}";\n` +
+        `import { FlatBinaryHeap } from "./${prepared.get(elFbhRel)}";\n`,
+      "Attack imports",
+    );
+    out = must(
+      out,
+      "export class AttackExecution implements Execution {\n",
+      "export class AttackExecution {\n",
+      "Attack implements",
+    );
+    out = must(
+      out,
+      "  constructor(\n" +
+        "    private startTroops: number | null = null,\n" +
+        "    private _owner: Player,\n" +
+        "    private _targetID: PlayerID | null,\n" +
+        "    private sourceTile: TileRef | null = null,\n" +
+        "    private removeTroops: boolean = true,\n" +
+        "  ) {}",
+      "  constructor(\n" +
+        "    startTroops,\n" +
+        "    _owner,\n" +
+        "    _targetID,\n" +
+        "    sourceTile = null,\n" +
+        "    removeTroops = true,\n" +
+        "  ) {\n" +
+        "    this.startTroops = startTroops;\n" +
+        "    this._owner = _owner;\n" +
+        "    this._targetID = _targetID;\n" +
+        "    this.sourceTile = sourceTile;\n" +
+        "    this.removeTroops = removeTroops;\n" +
+        "  }",
+      "Attack ctor",
+    );
+  }
+
+  if (rel.endsWith("execution/TransportShipExecution.ts")) {
+    if (!prepared.has(elGameRel)) prepare(elGameRel);
+    if (!prepared.has(elUtilsRel)) prepare(elUtilsRel);
+    if (!prepared.has(elPfRel)) prepare(elPfRel);
+    if (!prepared.has(elAttackRel)) prepare(elAttackRel);
+    if (!prepared.has(elTsuRel)) prepare(elTsuRel);
+    out = must(
+      out,
+      'import { renderTroops } from "../../client/Utils";\n' +
+        "import {\n" +
+        "  Execution,\n" +
+        "  Game,\n" +
+        "  MessageType,\n" +
+        "  Player,\n" +
+        "  PlayerType,\n" +
+        "  TerraNullius,\n" +
+        "  Unit,\n" +
+        "  UnitType,\n" +
+        '} from "../game/Game";\n' +
+        'import { TileRef } from "../game/GameMap";\n' +
+        'import { MotionPlanRecord } from "../game/MotionPlans";\n' +
+        'import { targetTransportTile } from "../game/TransportShipUtils";\n' +
+        'import { WaterPathFinder } from "../pathfinding/PathFinder";\n' +
+        'import { PathStatus } from "../pathfinding/types";\n' +
+        'import { AttackExecution } from "./AttackExecution";\n',
+      `import { renderTroops } from "./${prepared.get(elUtilsRel)}";\n` +
+        `import { MessageType, PlayerType, UnitType } from "./${prepared.get(elGameRel)}";\n` +
+        `import { targetTransportTile } from "./${prepared.get(elTsuRel)}";\n` +
+        `import { PathStatus, WaterPathFinder } from "./${prepared.get(elPfRel)}";\n` +
+        `import { AttackExecution } from "./${prepared.get(elAttackRel)}";\n`,
+      "TransportShip imports",
+    );
+    out = must(
+      out,
+      "export class TransportShipExecution implements Execution {\n",
+      "export class TransportShipExecution {\n",
+      "TransportShip implements",
+    );
+    out = must(
+      out,
+      "  constructor(\n" +
+        "    private attacker: Player,\n" +
+        "    private ref: TileRef,\n" +
+        "    private troops: number,\n" +
+        "  ) {\n" +
+        "    this.originalOwner = this.attacker;\n" +
+        "  }",
+      "  constructor(\n" +
+        "    attacker,\n" +
+        "    ref,\n" +
+        "    troops,\n" +
+        "  ) {\n" +
+        "    this.attacker = attacker;\n" +
+        "    this.ref = ref;\n" +
+        "    this.troops = troops;\n" +
+        "    this.originalOwner = this.attacker;\n" +
+        "  }",
+      "TransportShip ctor",
     );
   }
 

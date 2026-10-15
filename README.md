@@ -2762,6 +2762,44 @@ WebSockets — stays excluded, mirroring the `src/core` exclusions).
     recording `SAMMissileExecution` (tag 15). 19 new scenarios (`el_nuke_*` /
     `el_mirv_*` / `el_sam_*`, 102 ops), 198 scenarios / 825 ops and 1,262,925
     wasm comparisons in total.
+88. **`execution/` layer, part 7** (`execution`, G5g) — the attack and
+    transport-ship executions added to the same `exec_layer.rs` harness (class
+    ids 36…37): `AttackExecution` (36) and `TransportShipExecution` (37).
+    `AttackExecution`'s `toConquer` frontier is the already-ported REAL
+    `FlatBinaryHeap` (`pathfinding/flat_heap.rs`, f32 priority semantics);
+    `TransportShipExecution` reuses the ported `transport_ship_utils`
+    `targetTransportTile` and records a `MotionPlanRecord`. The water pathfinder
+    (`PathFinder.Water`) is a scripted stub object (the G5f `__stub/pathfinding.ts`
+    extended with `WaterPathFinder`), and `Attack` is a scripted facade mock via a
+    new `attacks` mock category. Facade trace codes pick up where G5f stopped: mg
+    reuses `hasFallout` (8) / `forEachNeighbor` (16) / `terrainType` (26) /
+    `attackLogic` (27) / `neighbors4` (39) / `defensePostRange` (58) /
+    `attackAmount` (62) / `boatMaxNumber` (90) / `boatAttackAmount` (91) and adds
+    the scripted water pathfinder 860-862 (`rebuilt` / `findPath` / `next`) plus
+    `targetTransportTile` 880; player reuses `incomingAllianceRequests` (53) /
+    `outgoingAttacks` (54) / `incomingAttacks` (58) and adds `removeTroops` (55) /
+    `canAttackPlayer` (56) / `createAttack` (57) / `unitCount` (59) /
+    `bestTransportShipSpawn` (61) / `isTraitor` (62); unit adds
+    `transportShipState` (48); attack slots 0-12 (`troops` / `borderSize` /
+    `retreated` / `retreating` / `isActive` / `target` / `sourceTile` /
+    `attacker`). `AttackExecution` covers the `hasPlayer` / self / friendly /
+    `canAttackPlayer` init gates, the `attackAmount` then `min(troops)` then
+    `removeTroops` (returning the deducted amount) start-troop clamp, the
+    incoming/outgoing attack cancel-out + merge loops, the Difficulty relation
+    change, and the tick conquest loop (`FlatBinaryHeap` dequeue, the `neighbors4`
+    on-border scan, `attackLogic`, conquer, `handleDeadDefender`) with the
+    terrain-priority enqueue. `TransportShipExecution` covers the `isValidRef` /
+    `boatMaxNumber` / self / `canAttackPlayer` gates, the static `_staggerCounter`
+    water pathfinder, `targetTransportTile`, the build + motion-plan record, the
+    disconnected-teammate owner capture, the water-destination auto-retreat and the
+    `next(...)` COMPLETE / NEXT / NOT_FOUND switch, where COMPLETE lands an
+    `AttackExecution` (construction tag 16). Two fidelity fixes to G5e/G5f code
+    ripple into their vectors: `Player.removeTroops` now RETURNS the amount
+    actually deducted (TS `PlayerImpl.removeTroops(): number`), and
+    `NukeExecution.detonate`'s `outgoingAttacks()` bleed reads `Attack.troops` /
+    `setTroops` (codes 830/831) instead of unit codes — both matching the TS. 15
+    new scenarios (`el_attack_*` / `el_transport_ship_*`, 66 ops), 213 scenarios /
+    891 ops and 1,265,614 wasm comparisons in total.
 
 Regenerate whenever a ported source changes:
 
@@ -2795,7 +2833,7 @@ node rust/tools/run_wasm_parity.mjs
 
 `wasm-probe` exposes the ported functions through `extern "C"` scalar
 entrypoints (`src/wasm_probe.rs`); the runner imports `data/vectors.json` and
-compares every value. Last run: **1,262,925 comparisons, all bit-identical**.
+compares every value. Last run: **1,265,614 comparisons, all bit-identical**.
 
 ### Windows: the linker environment
 

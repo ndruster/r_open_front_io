@@ -109,7 +109,7 @@ pub(crate) fn render_number(num: f64, fp_flag: f64, fp: f64) -> String {
 
 /// `renderTroops(troops)` — `renderNumber(troops / 10)` with the default
 /// fixedPoints (the TS call site never passes one).
-fn render_troops(troops: f64) -> String {
+pub(crate) fn render_troops(troops: f64) -> String {
     render_number(troops / 10.0, 0.0, 0.0)
 }
 

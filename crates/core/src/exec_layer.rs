@@ -72,6 +72,9 @@
 //! `SpawnExecution`). Class `31` is NOT an `Execution`: only op kinds `0`
 //! (construct) and `5` (`spawnTribes`) apply to it (kinds 1..4 unreachable).
 //!
+//! G5f appends `33` Nuke, `34` MIRV, `35` SAMLauncher (`NukeExecution`,
+//! `MirvExecution`, `SAMLauncherExecution`).
+//!
 //! # G5b facade additions (codes ≥ 300)
 //!
 //! `mg`: `300` isValidRef, `301` getWaterComponent, `302` hasWaterComponent,
@@ -309,6 +312,37 @@
 //! (the ctor has no side effect), `14` `TribeExecution(player)` (its ctor
 //! reads `player.id()` first, then the record).
 //!
+//! ## G5f facade additions (codes ≥ 700)
+//!
+//! `mg`: `700` config().nukeSpeed(type), `701` config().waterNukes() (BOOL),
+//! `702` config().defaultNukeTargetableRange(), `703` playerBySmallID(id),
+//! `704` config().nukeDeathFactor(type, troops, tilesLeft, maxTroops),
+//! `705` config().mirvNormalizeTargetTicks(), `706`
+//! config().dynamicSamRange(sam, tick), `707` config().maxSamRange(),
+//! `708` config().SAMCooldown(), `709` units(), `710` euclideanDistSquared(a, b),
+//! `715` nearbyUnits(tile, outer, types, cb) (the callback form of `306`),
+//! `716` bfs(start, cb). Void (`mg`): `711` recordMotionPlan(plan), `712`
+//! queueNukeImpact(tile), `713` queueWaterConversion(tile), `714`
+//! displayIncomingUnit(id, msg, type, targetId), `717` stats().bombLaunch(p, t,
+//! type), `718` stats().bombLand(p, t, type).
+//! `player`: `720` incomingAllianceRequests(), `721` outgoingAttacks() (both
+//! return facade-token lists). `request`: `744` requestor().
+//! `unit`: `730` troops(), `731` setTroops(n), `732` updateNukeState(waitTicks),
+//! `733` setTrajectoryIndex(i), `734` setTargetable(flag), `735` targetUnit(),
+//! `736` touch(), `737` isUnit() (BOOL), `738` trajectoryIndex(), `739`
+//! nukeState() (`{waitTicks}`), `740` trajectory() (`TrajectoryTile[]`), `741`
+//! isInCooldown() (BOOL), `742` launch(), `743` targetedBySAM() (BOOL).
+//!
+//! The two callback facades push their code and args BEFORE replaying their
+//! scripted list through the callback, then the filtered result: `bfs` (`716`,
+//! a `TileRef[]`) and the callback `nearbyUnits` (`715`, a unit-token list) — the
+//! `bfs`/`nearbyUnits` callbacks drive the nested `mg`/`unit` reads. The parabola
+//! pathfinder is a scripted `__parabola` object (`750` `next(from, to, speed)`,
+//! `751` `findPath(from, to)`, `752` `currentIndex()`), replayed by the
+//! `__stub/pathfinding.ts` stub. The G5f construction tag is `15`
+//! (`SAMMissileExecution`: `spawn`, `_owner`, `ownerUnit`, `target`,
+//! `targetTile`).
+//!
 //! ## `neighbor` facade — slots 0..2
 //!
 //! `0` 257 `isPlayer()`, `1` 258 `isOnSameTeam(other)`,
@@ -386,6 +420,8 @@ const TAG_TRADE_SHIP: f64 = 12.0;
 // G5e downstream-execution tags (`mg.addExecution(new XxxExecution(...))`).
 const TAG_PLAYER_EXEC: f64 = 13.0;
 const TAG_TRIBE_EXEC: f64 = 14.0;
+// G5f downstream-execution tag (`mg.addExecution(new SAMMissileExecution(...))`).
+const TAG_SAM_MISSILE: f64 = 15.0;
 
 /// G5d `UnitType` string members (`Game.ts`).
 const UNIT_SHELL: &str = "Shell";
@@ -393,6 +429,30 @@ const UNIT_SAM_MISSILE: &str = "SAMMissile";
 const UNIT_TRADE_SHIP: &str = "Trade Ship";
 const UNIT_ATOM_BOMB: &str = "Atom Bomb";
 const UNIT_HYDROGEN_BOMB: &str = "Hydrogen Bomb";
+/// G5f `UnitType` string members.
+const UNIT_MISSILE_SILO: &str = "Missile Silo";
+const UNIT_SAM_LAUNCHER: &str = "SAM Launcher";
+/// G5f `MessageType` numeric enum members.
+const MSG_MIRV_INBOUND: f64 = 4.0;
+const MSG_NUKE_INBOUND: f64 = 5.0;
+const MSG_NUKE_DETONATED: f64 = 6.0;
+const MSG_HYDROGEN_BOMB_INBOUND: f64 = 7.0;
+/// `NukeExecution.SPRITE_RADIUS`.
+const SPRITE_RADIUS: f64 = 16.0;
+/// `MIRVExecution` static/instance constants.
+const MIRV_MATH_SCALE: f64 = 100.0;
+const MIRV_LONG_FLIGHT_MULT: f64 = 14.0;
+const MIRV_LONG_FLIGHT_LINEAR_PERCENT: f64 = 10.0;
+const MIRV_SHORT_FLIGHT_MULT: f64 = 10.0;
+/// `PathStatus` members (`src/core/pathfinding/types.ts`).
+const PATH_STATUS_NEXT: f64 = 0.0;
+const PATH_STATUS_COMPLETE: f64 = 2.0;
+/// `PathFinder.Parabola.ts` `PARABOLA_MIN_HEIGHT`.
+const PARABOLA_MIN_HEIGHT: f64 = 50.0;
+/// `MirvExecution` instance constants (`range` / `minimumSpread` / `warheadCount`).
+const MIRV_RANGE: f64 = 1500.0;
+const MIRV_MINIMUM_SPREAD: f64 = 55.0;
+const MIRV_WARHEAD_COUNT: f64 = 350.0;
 /// `GameMode.FFA`.
 const GAME_MODE_FFA: &str = "Free For All";
 /// `GameMapSize.Compact`.
@@ -738,6 +798,57 @@ fn ev_tok_list(items: &[usize]) -> Vec<f64> {
     o
 }
 
+/// `elEvTokList` over a list of plain tile numbers (the `bfs` callback result).
+fn ev_num_list(items: &[f64]) -> Vec<f64> {
+    let mut o = vec![7.0, items.len() as f64];
+    for it in items {
+        o.extend_from_slice(&ev1(*it));
+    }
+    o
+}
+
+/// `ParabolaUniversalPathFinder.next(...).status`.
+fn parabola_status(v: &JsVal) -> f64 {
+    val_field(v, "status").map(as_num).unwrap_or(f64::NAN)
+}
+
+/// `ParabolaUniversalPathFinder.next(...).node`, a tile number.
+fn parabola_node_num(v: &JsVal) -> f64 {
+    val_field(v, "node").map(as_num).unwrap_or(f64::NAN)
+}
+
+/// `unit.trajectory()` (`TrajectoryTile[]`) as `(tile, targetable)` pairs.
+fn as_traj(v: &JsVal) -> Vec<(f64, bool)> {
+    match v {
+        JsVal::Arr(items) => items
+            .iter()
+            .map(|it| {
+                (
+                    val_field(it, "tile").map(as_num).unwrap_or(f64::NAN),
+                    val_field(it, "targetable").map(as_bool).unwrap_or(false),
+                )
+            })
+            .collect(),
+        _ => Vec::new(),
+    }
+}
+
+/// `unit.nukeState().waitTicks ?? 0`.
+fn nuke_state_wait_ticks(v: &JsVal) -> f64 {
+    match val_field(v, "waitTicks") {
+        Some(JsVal::Num(n)) => *n,
+        _ => 0.0,
+    }
+}
+
+/// `JsVal::Arr` as a number list (the `findPath` / `missileTimerQueue` scripts).
+fn as_arr_nums(v: &JsVal) -> Vec<f64> {
+    match v {
+        JsVal::Arr(items) => items.iter().map(as_num).collect(),
+        _ => Vec::new(),
+    }
+}
+
 fn mk_take(m: &mut Mock, slot: usize, tr: &mut Vec<f64>, code: f64, prefix: &[f64]) -> JsVal {
     m.slots[slot].take(tr, code, prefix)
 }
@@ -801,6 +912,23 @@ fn emoji_at(idx: f64) -> Option<&'static str> {
 }
 
 // ---- the harness -----------------------------------------------------------
+
+/// `SAMTargetingSystem.CachedInterception`.
+#[derive(Clone, Copy, Debug, Default)]
+struct CachedInterception {
+    tick: f64,
+    tile: f64,
+    min_dist_sq: f64,
+    last_seen_tick: f64,
+}
+
+/// `SAMLauncherExecution.SAMTargetingSystem`. `precomputed_nukes` reproduces the
+/// insertion-ordered `Map<number, CachedInterception>` keyed by unit id.
+#[derive(Clone, Debug, Default)]
+struct SamTargeting {
+    precomputed_nukes: Vec<(f64, CachedInterception)>,
+    missile_speed: f64,
+}
 
 /// The mutable class state shared by the 12 executions. The names are the
 /// reused slots: `a_tok` is requestor / player / from / launcher, `b_tok` the
@@ -873,6 +1001,38 @@ pub struct ExecHarness {
     el_queued_spawn: bool,
     el_spawn_tile: Option<f64>,
     el_rot_state: Vec<RotState>,
+
+    // G5f state (`NukeExecution`, class 33).
+    nuke_type: String,
+    nuke_dst: f64,
+    nuke_src: Option<f64>,
+    nuke_speed: f64,
+    nuke_wait_ticks: f64,
+    nuke_rocket_up: bool,
+    nuke: Option<usize>,
+    tiles_to_destroy_cache: Option<Vec<f64>>,
+
+    // G5f state (`MirvExecution`, class 34).
+    mirv_dst: f64,
+    mirv_nuke: Option<usize>,
+    mirv_spawn_tile: f64,
+    mirv_range_squared: f64,
+    mirv_base_x: f64,
+    mirv_base_y: f64,
+    mirv_target_player: Option<usize>,
+    mirv_separate_dst: f64,
+    mirv_speed: f64,
+    mirv_full_path: Vec<f64>,
+    mirv_path_index: usize,
+    mirv_staged_targets: Vec<f64>,
+    mirv_warheads_spawned: bool,
+    mirv_warhead_count: usize,
+
+    // G5f state (`SAMLauncherExecution`, class 35).
+    sam_tile: Option<f64>,
+    sam_unit: Option<usize>,
+    sam_targeting: Option<SamTargeting>,
+    sam_last_level: f64,
 
     mg: Mock,
     players: Vec<Mock>,
@@ -956,6 +1116,23 @@ const MG_GAME_MAP_SIZE: usize = 75;
 const MG_IS_VALID_COORD: usize = 76;
 const MG_IS_IMPASSABLE: usize = 77;
 const MG_GET_SPAWN_TILES: usize = 78;
+// G5f mg slots (NukeExecution / MirvExecution / SAMLauncherExecution).
+const MG_NUKE_SPEED: usize = 79;
+const MG_WATER_NUKES: usize = 80;
+const MG_DEFAULT_NUKE_TARGETABLE_RANGE: usize = 81;
+const MG_PLAYER_BY_SMALL_ID: usize = 82;
+const MG_NUKE_DEATH_FACTOR: usize = 83;
+const MG_MIRV_NORMALIZE_TARGET_TICKS: usize = 84;
+const MG_DYNAMIC_SAM_RANGE: usize = 85;
+const MG_MAX_SAM_RANGE: usize = 86;
+const MG_SAM_COOLDOWN: usize = 87;
+const MG_UNITS: usize = 88;
+const MG_EUCLIDEAN_DIST_SQUARED: usize = 89;
+const MG_NEARBY_UNITS_CB: usize = 94;
+const MG_BFS: usize = 95;
+const MG_PARABOLA_NEXT: usize = 98;
+const MG_PARABOLA_FIND_PATH: usize = 99;
+const MG_PARABOLA_CURRENT_INDEX: usize = 100;
 
 // player slot indices.
 const PL_SMALL_ID: usize = 0;
@@ -1002,6 +1179,9 @@ const PL_TILES: usize = 49;
 const PL_BORDER_TILES: usize = 50;
 const PL_DOOMSDAY_CLOCK_TICKS: usize = 51;
 const PL_SPAWN_TILE: usize = 52;
+// G5f player slots (`NukeExecution.maybeBreakAlliances`, `detonate`).
+const PL_INCOMING_ALLIANCE_REQUESTS: usize = 53;
+const PL_OUTGOING_ATTACKS: usize = 54;
 
 // alliance slot indices.
 const AL_ONLY_ONE_AGREED: usize = 0;
@@ -1011,6 +1191,8 @@ const AL_BOTH_AGREED: usize = 2;
 const RQ_RECIPIENT: usize = 0;
 const RQ_STATUS: usize = 3;
 const RQ_CREATED_AT: usize = 4;
+// G5f alliance-request slot.
+const RQ_REQUESTOR: usize = 5;
 
 // unit slot indices.
 const UN_IS_ACTIVE: usize = 0;
@@ -1033,6 +1215,15 @@ const UN_VETERANCY: usize = 21;
 // G5e unit slots.
 const UN_MAX_HEALTH: usize = 28;
 const UN_HEALTH: usize = 29;
+// G5f unit slots.
+const UN_TROOPS: usize = 30;
+const UN_TARGET_UNIT: usize = 35;
+const UN_IS_UNIT: usize = 37;
+const UN_TRAJECTORY_INDEX: usize = 38;
+const UN_NUKE_STATE: usize = 39;
+const UN_TRAJECTORY: usize = 40;
+const UN_IS_IN_COOLDOWN: usize = 41;
+const UN_TARGETED_BY_SAM: usize = 43;
 
 // neighbor slot indices.
 const NB_IS_PLAYER: usize = 0;
@@ -2131,6 +2322,255 @@ impl ExecHarness {
         as_num(&v)
     }
 
+    // ---- G5f facade accessors (`NukeExecution` / `MirvExecution` /
+    // `SAMLauncherExecution`) ----
+
+    fn mg_nuke_speed(&mut self, tr: &mut Vec<f64>, ty: &str) -> f64 {
+        let v = mk_take(&mut self.mg, MG_NUKE_SPEED, tr, 700.0, &evs(ty));
+        as_num(&v)
+    }
+    fn mg_water_nukes(&mut self, tr: &mut Vec<f64>) -> bool {
+        let v = mk_take(&mut self.mg, MG_WATER_NUKES, tr, 701.0, &[]);
+        as_bool(&v)
+    }
+    fn mg_default_nuke_targetable_range(&mut self, tr: &mut Vec<f64>) -> f64 {
+        let v = mk_take(
+            &mut self.mg,
+            MG_DEFAULT_NUKE_TARGETABLE_RANGE,
+            tr,
+            702.0,
+            &[],
+        );
+        as_num(&v)
+    }
+    /// `mg.playerBySmallID(id)` — returns the player facade or `null`.
+    fn mg_player_by_small_id(&mut self, tr: &mut Vec<f64>, id: f64) -> JsVal {
+        mk_take(&mut self.mg, MG_PLAYER_BY_SMALL_ID, tr, 703.0, &ev1(id))
+    }
+    fn mg_nuke_death_factor(
+        &mut self,
+        tr: &mut Vec<f64>,
+        ty: &str,
+        troops: f64,
+        tiles_left: f64,
+        max_troops: f64,
+    ) -> f64 {
+        let mut p = evs(ty);
+        p.extend_from_slice(&ev1(troops));
+        p.extend_from_slice(&ev1(tiles_left));
+        p.extend_from_slice(&ev1(max_troops));
+        let v = mk_take(&mut self.mg, MG_NUKE_DEATH_FACTOR, tr, 704.0, &p);
+        as_num(&v)
+    }
+    fn mg_mirv_normalize_target_ticks(&mut self, tr: &mut Vec<f64>) -> f64 {
+        let v = mk_take(&mut self.mg, MG_MIRV_NORMALIZE_TARGET_TICKS, tr, 705.0, &[]);
+        as_num(&v)
+    }
+    fn mg_dynamic_sam_range(&mut self, tr: &mut Vec<f64>, sam: usize, tick: f64) -> f64 {
+        let mut p = evtok(Some(sam));
+        p.extend_from_slice(&ev1(tick));
+        let v = mk_take(&mut self.mg, MG_DYNAMIC_SAM_RANGE, tr, 706.0, &p);
+        as_num(&v)
+    }
+    fn mg_max_sam_range(&mut self, tr: &mut Vec<f64>) -> f64 {
+        let v = mk_take(&mut self.mg, MG_MAX_SAM_RANGE, tr, 707.0, &[]);
+        as_num(&v)
+    }
+    fn mg_sam_cooldown(&mut self, tr: &mut Vec<f64>) -> f64 {
+        let v = mk_take(&mut self.mg, MG_SAM_COOLDOWN, tr, 708.0, &[]);
+        as_num(&v)
+    }
+    fn mg_units(&mut self, tr: &mut Vec<f64>) -> Vec<usize> {
+        let v = mk_take(&mut self.mg, MG_UNITS, tr, 709.0, &[]);
+        as_tok_list(&v)
+    }
+    fn mg_euclidean_dist_squared(&mut self, tr: &mut Vec<f64>, a: f64, b: f64) -> f64 {
+        let mut p = ev1(a);
+        p.extend_from_slice(&ev1(b));
+        let v = mk_take(&mut self.mg, MG_EUCLIDEAN_DIST_SQUARED, tr, 710.0, &p);
+        as_num(&v)
+    }
+    fn mg_record_motion_plan(&mut self, tr: &mut Vec<f64>, plan: &JsVal) {
+        mk_void(tr, 711.0, &ev_enc(plan));
+    }
+    fn mg_queue_nuke_impact(&mut self, tr: &mut Vec<f64>, tile: f64) {
+        mk_void(tr, 712.0, &ev1(tile));
+    }
+    fn mg_queue_water_conversion(&mut self, tr: &mut Vec<f64>, tile: f64) {
+        mk_void(tr, 713.0, &ev1(tile));
+    }
+    fn mg_display_incoming_unit(
+        &mut self,
+        tr: &mut Vec<f64>,
+        id: f64,
+        msg: &str,
+        ty: f64,
+        player_id: &str,
+    ) {
+        let mut p = ev1(id);
+        p.extend_from_slice(&evs(msg));
+        p.extend_from_slice(&ev1(ty));
+        p.extend_from_slice(&evs(player_id));
+        mk_void(tr, 714.0, &p);
+    }
+    fn mg_stats_bomb_launch(&mut self, tr: &mut Vec<f64>, p: usize, t: Option<usize>, ty: &str) {
+        let mut args = evtok(Some(p));
+        args.extend_from_slice(&evtok(t));
+        args.extend_from_slice(&evs(ty));
+        mk_void(tr, 717.0, &args);
+    }
+    fn mg_stats_bomb_land(&mut self, tr: &mut Vec<f64>, p: usize, t: Option<usize>, ty: &str) {
+        let mut args = evtok(Some(p));
+        args.extend_from_slice(&evtok(t));
+        args.extend_from_slice(&evs(ty));
+        mk_void(tr, 718.0, &args);
+    }
+    /// `mg.nearbyUnits(tile, outer, types, cb)` — the callback form. The raw
+    /// scripted list and the filtered result are both traced.
+    fn mg_nearby_units_cb(
+        &mut self,
+        tr: &mut Vec<f64>,
+        tile: f64,
+        outer: f64,
+        types: &[String],
+        mut cb: impl FnMut(&mut Self, &mut Vec<f64>, usize) -> bool,
+    ) -> Vec<usize> {
+        let mut prefix = ev1(tile);
+        prefix.extend_from_slice(&ev1(outer));
+        prefix.extend_from_slice(&ev_strs(types));
+        let v = mk_take(&mut self.mg, MG_NEARBY_UNITS_CB, tr, 715.0, &prefix);
+        let units = as_tok_list(&v);
+        let mut out = Vec::new();
+        for t in &units {
+            if cb(self, tr, *t) {
+                out.push(*t);
+            }
+        }
+        tr.extend_from_slice(&ev_tok_list(&out));
+        out
+    }
+    /// `mg.bfs(start, cb)` — the callback form (tile list in, filtered out).
+    fn mg_bfs(
+        &mut self,
+        tr: &mut Vec<f64>,
+        start: f64,
+        mut cb: impl FnMut(&mut Self, &mut Vec<f64>, f64) -> bool,
+    ) -> Vec<f64> {
+        let v = mk_take(&mut self.mg, MG_BFS, tr, 716.0, &ev1(start));
+        let list = as_num_list(&v);
+        let mut out = Vec::new();
+        for n in &list {
+            if cb(self, tr, *n) {
+                out.push(*n);
+            }
+        }
+        tr.extend_from_slice(&ev_num_list(&out));
+        out
+    }
+    fn mg_parabola_next(&mut self, tr: &mut Vec<f64>, from: f64, to: f64, speed: f64) -> JsVal {
+        let mut p = ev1(from);
+        p.extend_from_slice(&ev1(to));
+        p.extend_from_slice(&ev1(speed));
+        mk_take(&mut self.mg, MG_PARABOLA_NEXT, tr, 750.0, &p)
+    }
+    fn mg_parabola_find_path(&mut self, tr: &mut Vec<f64>, from: f64, to: f64) -> Vec<f64> {
+        let mut p = ev1(from);
+        p.extend_from_slice(&ev1(to));
+        let v = mk_take(&mut self.mg, MG_PARABOLA_FIND_PATH, tr, 751.0, &p);
+        as_num_list(&v)
+    }
+    fn mg_parabola_current_index(&mut self, tr: &mut Vec<f64>) -> f64 {
+        let v = mk_take(&mut self.mg, MG_PARABOLA_CURRENT_INDEX, tr, 752.0, &[]);
+        as_num(&v)
+    }
+    fn mg_add_sam_missile(
+        &mut self,
+        tr: &mut Vec<f64>,
+        spawn: f64,
+        owner: usize,
+        owner_unit: usize,
+        target: usize,
+        target_tile: f64,
+    ) {
+        tr.push(307.0);
+        tr.push(TAG_SAM_MISSILE);
+        push_val(tr, &JsVal::Num(spawn));
+        push_val(tr, &JsVal::Num(owner as f64));
+        push_val(tr, &JsVal::Num(owner_unit as f64));
+        push_val(tr, &JsVal::Num(target as f64));
+        push_val(tr, &JsVal::Num(target_tile));
+        push_val(tr, &JsVal::Undef);
+    }
+    fn pl_incoming_alliance_requests(&mut self, tr: &mut Vec<f64>, tok: usize) -> Vec<usize> {
+        let v = self.pl(tok, PL_INCOMING_ALLIANCE_REQUESTS, tr, 720.0, &[]);
+        as_tok_list(&v)
+    }
+    fn pl_outgoing_attacks(&mut self, tr: &mut Vec<f64>, tok: usize) -> Vec<usize> {
+        let v = self.pl(tok, PL_OUTGOING_ATTACKS, tr, 721.0, &[]);
+        as_tok_list(&v)
+    }
+    fn rq_requestor(&mut self, tr: &mut Vec<f64>, rid: usize) -> Option<usize> {
+        let v = self.rq(rid, RQ_REQUESTOR, tr, 744.0, &[]);
+        as_opt_tok(&v)
+    }
+    fn un_troops(&mut self, tr: &mut Vec<f64>, uid: usize) -> f64 {
+        let v = self.un(uid, UN_TROOPS, tr, 730.0, &[]);
+        as_num(&v)
+    }
+    fn un_set_troops(&mut self, tr: &mut Vec<f64>, uid: usize, n: f64) {
+        let mut prefix = vec![uid as f64];
+        prefix.extend_from_slice(&ev1(n));
+        mk_void(tr, 731.0, &prefix);
+    }
+    fn un_update_nuke_state(&mut self, tr: &mut Vec<f64>, uid: usize, wait_ticks: f64) {
+        let obj = JsVal::Obj(vec![("waitTicks".to_string(), JsVal::Num(wait_ticks))]);
+        let mut prefix = vec![uid as f64];
+        prefix.extend_from_slice(&ev_enc(&obj));
+        mk_void(tr, 732.0, &prefix);
+    }
+    fn un_set_trajectory_index(&mut self, tr: &mut Vec<f64>, uid: usize, i: f64) {
+        let mut prefix = vec![uid as f64];
+        prefix.extend_from_slice(&ev1(i));
+        mk_void(tr, 733.0, &prefix);
+    }
+    fn un_set_targetable(&mut self, tr: &mut Vec<f64>, uid: usize, flag: bool) {
+        let mut prefix = vec![uid as f64];
+        prefix.extend_from_slice(&evb(flag));
+        mk_void(tr, 734.0, &prefix);
+    }
+    fn un_target_unit(&mut self, tr: &mut Vec<f64>, uid: usize) -> Option<usize> {
+        let v = self.un(uid, UN_TARGET_UNIT, tr, 735.0, &[]);
+        as_opt_tok(&v)
+    }
+    fn un_touch(&mut self, tr: &mut Vec<f64>, uid: usize) {
+        mk_void(tr, 736.0, &[uid as f64]);
+    }
+    fn un_is_unit(&mut self, tr: &mut Vec<f64>, uid: usize) -> bool {
+        let v = self.un(uid, UN_IS_UNIT, tr, 737.0, &[]);
+        as_bool(&v)
+    }
+    fn un_trajectory_index(&mut self, tr: &mut Vec<f64>, uid: usize) -> f64 {
+        let v = self.un(uid, UN_TRAJECTORY_INDEX, tr, 738.0, &[]);
+        as_num(&v)
+    }
+    fn un_nuke_state(&mut self, tr: &mut Vec<f64>, uid: usize) -> JsVal {
+        self.un(uid, UN_NUKE_STATE, tr, 739.0, &[])
+    }
+    fn un_trajectory(&mut self, tr: &mut Vec<f64>, uid: usize) -> JsVal {
+        self.un(uid, UN_TRAJECTORY, tr, 740.0, &[])
+    }
+    fn un_is_in_cooldown(&mut self, tr: &mut Vec<f64>, uid: usize) -> bool {
+        let v = self.un(uid, UN_IS_IN_COOLDOWN, tr, 741.0, &[]);
+        as_bool(&v)
+    }
+    fn un_launch(&mut self, tr: &mut Vec<f64>, uid: usize) {
+        mk_void(tr, 742.0, &[uid as f64]);
+    }
+    fn un_targeted_by_sam(&mut self, tr: &mut Vec<f64>, uid: usize) -> bool {
+        let v = self.un(uid, UN_TARGETED_BY_SAM, tr, 743.0, &[]);
+        as_bool(&v)
+    }
+
     // neighbor facade
     fn nb(&mut self, nid: usize, slot: usize, tr: &mut Vec<f64>, code: f64, extra: &[f64]) -> JsVal {
         let mut prefix = vec![nid as f64];
@@ -2579,6 +3019,55 @@ impl ExecHarness {
                 self.flag = true;
                 self.mg_ready = false;
             }
+            33 => {
+                // NukeExecution(nukeType, player, dst, src?, speed = -1,
+                // waitTicks = 0, rocketDirectionUp = true). `active = true`.
+                self.nuke_type = ctor.first().map(as_str).unwrap_or_default();
+                self.a_tok = n(1) as usize;
+                self.nuke_dst = n(2);
+                self.nuke_src = as_opt_num(ctor.get(3));
+                self.nuke_speed = ctor.get(4).map(as_num).unwrap_or(-1.0);
+                self.nuke_wait_ticks = ctor.get(5).map(as_num).unwrap_or(0.0);
+                self.nuke_rocket_up = ctor.get(6).map(as_bool).unwrap_or(true);
+                self.nuke = None;
+                self.tiles_to_destroy_cache = None;
+                self.flag = true;
+            }
+            34 => {
+                // MirvExecution(player, dst). `active = true`, `range = 1500`.
+                self.a_tok = n(0) as usize;
+                self.mirv_dst = n(1);
+                self.mirv_range_squared = 1500.0 * 1500.0;
+                self.mirv_nuke = None;
+                self.mirv_full_path = Vec::new();
+                self.mirv_path_index = 0;
+                self.mirv_staged_targets = Vec::new();
+                self.mirv_warheads_spawned = false;
+                self.mirv_warhead_count = MIRV_WARHEAD_COUNT as usize;
+                self.flag = true;
+                self.mg_ready = false;
+            }
+            35 => {
+                // SAMLauncherExecution(player, tileArg, sam = null). The ctor
+                // reads `sam.tile()` when a unit is supplied; the capture drops
+                // that read (kind 0) but the script cursor advances, so replay
+                // it into a scratch buffer.
+                self.a_tok = n(0) as usize;
+                let sam_arg = as_opt_tok(ctor.get(2).unwrap_or(&JsVal::Absent));
+                self.sam_unit = sam_arg;
+                self.sam_targeting = None;
+                self.sam_last_level = 1.0;
+                self.flag = true;
+                self.mg_ready = false;
+                if let Some(sam) = sam_arg {
+                    let mut scratch: Vec<f64> = Vec::new();
+                    self.sam_tile = Some(self.un_tile(&mut scratch, sam));
+                } else {
+                    // The ctor `tile` argument is `TileRef | null`; `null` throws
+                    // "tile is null" on the first tick.
+                    self.sam_tile = as_opt_num(ctor.get(1));
+                }
+            }
             _ => {}
         }
     }
@@ -2680,6 +3169,9 @@ impl ExecHarness {
             30 => self.doomsday_clock_exec(kind, ticks, tr),
             31 => self.tribe_spawner(kind, args, tr),
             32 => self.spawn_execution(kind, ticks, tr),
+            33 => self.nuke_execution(kind, ticks, tr),
+            34 => self.mirv_execution(kind, ticks, tr),
+            35 => self.sam_launcher_execution(kind, ticks, tr),
             k => unreachable!("exec harness: unknown class id {k}"),
         }
     }
@@ -5429,6 +5921,1338 @@ impl ExecHarness {
             ("playerType".into(), JsVal::Str(self.el_player_type.clone())),
         ])
     }
+
+    // ================== G5f: Nuke / MIRV / SAM launcher ==================
+
+    /// `getParabolaControlPoints(gameMap, from, to, options)`
+    /// (`PathFinder.Parabola.ts`). The only map reads are x/y/height.
+    #[allow(clippy::too_many_arguments)]
+    fn el_parabola_control_points(
+        &mut self,
+        tr: &mut Vec<f64>,
+        from: f64,
+        to: f64,
+        distance_based_height: bool,
+        direction_up: bool,
+        ignore_map_bounds: bool,
+    ) -> [(f64, f64); 4] {
+        let p0x = self.mg_x(tr, from);
+        let p0y = self.mg_y(tr, from);
+        let p3x = self.mg_x(tr, to);
+        let p3y = self.mg_y(tr, to);
+        let dx = p3x - p0x;
+        let dy = p3y - p0y;
+        let distance = (dx * dx + dy * dy).sqrt();
+        let max_height = if distance_based_height {
+            js_max(distance / 3.0, PARABOLA_MIN_HEIGHT)
+        } else {
+            0.0
+        };
+        let height_mult = if direction_up { -1.0 } else { 1.0 };
+        let map_height = self.mg_height(tr);
+        let p1y = p0y + dy / 4.0 + height_mult * max_height;
+        let p2y = p0y + (dy * 3.0) / 4.0 + height_mult * max_height;
+        let p1y = if ignore_map_bounds {
+            p1y
+        } else {
+            crate::util::within(p1y, 0.0, map_height - 1.0)
+        };
+        let p2y = if ignore_map_bounds {
+            p2y
+        } else {
+            crate::util::within(p2y, 0.0, map_height - 1.0)
+        };
+        [
+            (p0x, p0y),
+            (p0x + dx / 4.0, p1y),
+            (p0x + (dx * 3.0) / 4.0, p2y),
+            (p3x, p3y),
+        ]
+    }
+
+    /// `DistanceBasedBezierCurve.getLength` over the 4 control points.
+    fn bezier_length(pts: &[(f64, f64); 4]) -> f64 {
+        use crate::line::{DistanceBasedBezierCurve, Point};
+        let p = |i: usize| Point {
+            x: pts[i].0,
+            y: pts[i].1,
+        };
+        DistanceBasedBezierCurve::get_length(&p(0), &p(1), &p(2), &p(3))
+    }
+
+    /// `MirvExecution.calculateDeterministicSpeed`.
+    fn mirv_calc_speed(&mut self, tr: &mut Vec<f64>, spawn_tile: f64, separate_dst: f64) -> f64 {
+        let ideal = self.el_parabola_control_points(tr, spawn_tile, separate_dst, true, true, true);
+        let ideal_len = Self::bezier_length(&ideal);
+        let base_speed = self.mg_nuke_speed(tr, UNIT_MIRV);
+        let ideal_ticks = ideal_len / base_speed;
+        let base_ticks = self.mg_mirv_normalize_target_ticks(tr);
+        let base_ticks_scaled = base_ticks * MIRV_MATH_SCALE;
+        let ideal_ticks_int = (ideal_ticks * MIRV_MATH_SCALE).floor();
+        let mut target_int = base_ticks_scaled;
+        if ideal_ticks_int > base_ticks_scaled {
+            let diff = ideal_ticks_int - base_ticks_scaled;
+            target_int = base_ticks_scaled
+                + diff.sqrt().floor() * MIRV_LONG_FLIGHT_MULT
+                + ((diff * MIRV_LONG_FLIGHT_LINEAR_PERCENT) / 100.0).floor();
+        } else if ideal_ticks_int < base_ticks_scaled {
+            let diff = base_ticks_scaled - ideal_ticks_int;
+            target_int = base_ticks_scaled - diff.sqrt().floor() * MIRV_SHORT_FLIGHT_MULT;
+        }
+        target_int = js_max(MIRV_MATH_SCALE, target_int);
+        let actual = self.el_parabola_control_points(tr, spawn_tile, separate_dst, true, true, false);
+        let actual_len = Self::bezier_length(&actual);
+        let actual_len_int = js_round(actual_len * 256.0);
+        let num = actual_len_int * MIRV_MATH_SCALE;
+        let den = target_int;
+        let pure = ((num + (den / 2.0).floor()) / den).floor();
+        js_max(1.0, pure / 256.0)
+    }
+
+    /// `MirvExecution.tryGenerateTarget` — returns the accepted tile.
+    fn mirv_try_generate_target(&mut self, tr: &mut Vec<f64>) -> Option<f64> {
+        let mut attempt = 0;
+        while attempt < 100 {
+            let (r1, r2) = {
+                let rng = self.random.as_mut().expect("mirv rng initialized");
+                let r1 = rng.next();
+                let r2 = crate::jsnum::js_mod(r1 * 15485863.0, 1.0);
+                (r1, r2)
+            };
+            let x = js_round(r1 * MIRV_RANGE * 2.0 - MIRV_RANGE + self.mirv_base_x);
+            let y = js_round(r2 * MIRV_RANGE * 2.0 - MIRV_RANGE + self.mirv_base_y);
+            attempt += 1;
+            if !self.mg_is_valid_coord(tr, x, y) {
+                continue;
+            }
+            let tile = self.mg_ref(tr, x, y);
+            if !self.mg_is_land(tr, tile) {
+                continue;
+            }
+            if (x - self.mirv_base_x).powi(2) + (y - self.mirv_base_y).powi(2) > self.mirv_range_squared
+            {
+                continue;
+            }
+            if self.mg_owner(tr, tile) != self.mirv_target_player {
+                continue;
+            }
+            if self.mirv_is_overlapping(tr, x, y) {
+                continue;
+            }
+            return Some(tile);
+        }
+        None
+    }
+
+    /// `MirvExecution.isOverlapping` over the staged targets.
+    fn mirv_is_overlapping(&mut self, tr: &mut Vec<f64>, x: f64, y: f64) -> bool {
+        let taken = self.mirv_staged_targets.clone();
+        for existing in taken {
+            let ex = self.mg_x(tr, existing);
+            let ey = self.mg_y(tr, existing);
+            let manhattan = (x - ex).abs() + (y - ey).abs();
+            if manhattan < MIRV_MINIMUM_SPREAD {
+                return true;
+            }
+        }
+        false
+    }
+
+    /// `MirvExecution.finalizeDestinations` (`500 + extraAttempts` callers).
+    fn mirv_finalize_destinations(&mut self, tr: &mut Vec<f64>, additional_attempts: f64) {
+        let dst = self.mirv_dst;
+        let tp = self.mirv_target_player;
+        let mut kept: Vec<f64> = Vec::new();
+        for tile in self.mirv_staged_targets.clone() {
+            if tile == dst || self.mg_owner(tr, tile) == tp {
+                kept.push(tile);
+            }
+        }
+        self.mirv_staged_targets = kept;
+        let mut attempt = 0.0;
+        while attempt < additional_attempts {
+            if self.mirv_staged_targets.len() as f64 >= self.mirv_warhead_count as f64 {
+                break;
+            }
+            if let Some(t) = self.mirv_try_generate_target(tr) {
+                self.mirv_staged_targets.push(t);
+            }
+            attempt += 1.0;
+        }
+        // V8 in-place sort, comparator `(a, b) => dist(b) - dist(a)`.
+        let n = self.mirv_staged_targets.len();
+        if n > 1 {
+            for i in 1..n {
+                let element = self.mirv_staged_targets[i];
+                let (mut lo, mut hi) = (0usize, i);
+                while lo < hi {
+                    let mid = (lo + hi) / 2;
+                    let m = self.mg_manhattan_dist(tr, self.mirv_staged_targets[mid], dst);
+                    let e = self.mg_manhattan_dist(tr, element, dst);
+                    if m - e < 0.0 {
+                        hi = mid;
+                    } else {
+                        lo = mid + 1;
+                    }
+                }
+                if lo < i {
+                    self.mirv_staged_targets.remove(i);
+                    self.mirv_staged_targets.insert(lo, element);
+                }
+            }
+        }
+    }
+
+    /// `MirvExecution.spawnWarheadsWithWait` — a `NukeExecution` per staged tile.
+    fn mirv_spawn_warheads_with_wait(&mut self, tr: &mut Vec<f64>, remaining_ticks: f64) {
+        if self.mirv_nuke.is_none() {
+            return;
+        }
+        let wait_base = js_max(0.0, remaining_ticks);
+        let warhead_speed = self.mg_nuke_speed(tr, UNIT_MIRV_WARHEAD); // 700
+        let staged = self.mirv_staged_targets.clone();
+        let separate_dst = self.mirv_separate_dst;
+        for (i, dst) in staged.into_iter().enumerate() {
+            let speed_offset = if i < 70 {
+                0.0
+            } else if i < 140 {
+                1.0
+            } else if i < 210 {
+                2.0
+            } else if i < 280 {
+                3.0
+            } else {
+                4.0
+            };
+            let wait =
+                wait_base + self.random.as_mut().expect("mirv rng").next_int(0.0, 15.0) as f64;
+            self.mg_add_nuke(
+                tr,
+                UNIT_MIRV_WARHEAD,
+                self.a_tok,
+                dst,
+                Some(separate_dst),
+                warhead_speed + speed_offset,
+                wait,
+                None,
+            );
+        }
+    }
+
+    fn mirv_execution(&mut self, kind: u8, _ticks: f64, tr: &mut Vec<f64>) -> Result<JsVal, String> {
+        match kind {
+            3 => return Ok(JsVal::Bool(self.flag)),
+            4 => return Ok(JsVal::Bool(false)),
+            1 => {
+                self.mg_ready = true;
+                let t = self.mg_ticks(tr); // 212
+                let pid = self.pl_id(tr, self.a_tok); // 231
+                self.random = Some(PseudoRandom::new(t + crate::util::simple_hash(&pid)));
+                self.mirv_target_player = self.mg_owner(tr, self.mirv_dst); // 222
+                self.mirv_base_x = self.mg_x(tr, self.mirv_dst); // 603
+                self.mirv_base_y = self.mg_y(tr, self.mirv_dst); // 604
+                self.mirv_staged_targets = vec![self.mirv_dst];
+                return Ok(JsVal::Undef);
+            }
+            2 => {}
+            _ => return Ok(JsVal::Undef),
+        }
+
+        if self.mirv_nuke.is_none() {
+            let spawn = self.pl_can_build(tr, self.a_tok, UNIT_MIRV, self.mirv_dst); // 534
+            if matches!(spawn, JsVal::Bool(false)) {
+                self.flag = false;
+                return Ok(JsVal::Undef);
+            }
+            let spawn_tile = as_num(&spawn);
+            self.mirv_spawn_tile = spawn_tile;
+            let tp = self.mirv_target_player;
+            let target_param = match tp {
+                Some(t) => JsVal::Num(t as f64),
+                None => JsVal::Undef,
+            };
+            let params = JsVal::Obj(vec![
+                ("targetTile".to_string(), JsVal::Num(self.mirv_dst)),
+                ("targetPlayer".to_string(), target_param),
+            ]);
+            self.mirv_nuke = self.pl_build_unit(tr, self.a_tok, UNIT_MIRV, spawn_tile, &params); // 535
+            self.mg_stats_bomb_launch(tr, self.a_tok, tp, UNIT_MIRV); // 717
+            let tp_tok = match tp {
+                Some(t) => t,
+                None => return Err("Cannot read properties of null (reading 'isPlayer')".into()),
+            };
+            if self.pl_is_player(tr, tp_tok) {
+                // 259
+                let alliance = self.pl_alliance_with(tr, self.a_tok, Some(tp_tok)); // 243
+                if let Some(a) = alliance {
+                    self.pl_break_alliance(tr, self.a_tok, a); // 244
+                }
+                if tp_tok != self.a_tok {
+                    self.pl_update_relation(tr, tp_tok, Some(self.a_tok), -100.0); // 237
+                    self.pl_update_relation(tr, self.a_tok, Some(tp_tok), -100.0); // 237
+                }
+            }
+            let nu = self.mirv_nuke.expect("nuke built");
+            let nuke_x = self.un_tile(tr, nu); // 344
+            let x = ((self.mirv_base_x + self.mg_x(tr, nuke_x)) / 2.0).floor(); // 603
+            let y = js_max(0.0, self.mirv_base_y - 500.0) + 50.0;
+            self.mirv_separate_dst = self.mg_ref(tr, x, y); // 609
+            let sep = self.mirv_separate_dst;
+            self.mirv_speed = self.mirv_calc_speed(tr, spawn_tile, sep);
+            let speed = self.mirv_speed;
+            let mut full_path: Vec<f64> = Vec::new();
+            let mut result = self.mg_parabola_next(tr, spawn_tile, sep, speed); // 750
+            while parabola_status(&result) == PATH_STATUS_NEXT {
+                full_path.push(parabola_node_num(&result));
+                result = self.mg_parabola_next(tr, spawn_tile, sep, speed); // 750
+            }
+            self.mirv_full_path = full_path;
+            self.mirv_path_index = 0;
+            let nid = self.un_id(tr, nu); // 340
+            let dn = self.pl_display_name(tr, self.a_tok); // 232
+            let tid = match tp {
+                Some(t) => self.pl_id(tr, t), // 231
+                None => String::new(),
+            };
+            let msg = format!("⚠️⚠️⚠️ {dn} - MIRV INBOUND ⚠️⚠️⚠️");
+            self.mg_display_incoming_unit(tr, nid, &msg, MSG_MIRV_INBOUND, &tid); // 714
+            let silos = self.pl_units(tr, self.a_tok, &[UNIT_MISSILE_SILO.to_string()]); // 241
+            let mut silo: Option<usize> = None;
+            for s in silos {
+                let st = self.un_tile(tr, s); // 344
+                if svz(st, spawn_tile) {
+                    silo = Some(s);
+                    break;
+                }
+            }
+            if let Some(s) = silo {
+                self.un_launch(tr, s); // 742
+            }
+        }
+
+        let nu = self.mirv_nuke.expect("nuke present");
+        if !self.un_is_active(tr, nu) {
+            // 280
+            self.flag = false;
+            return Ok(JsVal::Undef);
+        }
+
+        let remaining_ticks = self.mirv_full_path.len() as f64 - self.mirv_path_index as f64;
+        if remaining_ticks <= 20.0 && remaining_ticks > 10.0 {
+            let mut attempt = 0;
+            while attempt < 100 {
+                if self.mirv_staged_targets.len() as f64 >= self.mirv_warhead_count as f64 {
+                    break;
+                }
+                if let Some(t) = self.mirv_try_generate_target(tr) {
+                    self.mirv_staged_targets.push(t);
+                }
+                attempt += 1;
+            }
+        }
+        if remaining_ticks <= 10.0 && !self.mirv_warheads_spawned {
+            self.mirv_warheads_spawned = true;
+            let extra = (10.0 - remaining_ticks) * 50.0;
+            self.mirv_finalize_destinations(tr, 500.0 + extra);
+            self.mirv_spawn_warheads_with_wait(tr, remaining_ticks);
+        }
+        if self.mirv_path_index < self.mirv_full_path.len() {
+            let node = self.mirv_full_path[self.mirv_path_index];
+            self.mirv_path_index += 1;
+            self.un_move(tr, nu, &JsVal::Num(node)); // 545
+        } else {
+            self.un_delete(tr, nu, false); // 285
+            self.flag = false;
+            self.mg_stats_bomb_land(tr, self.a_tok, self.mirv_target_player, UNIT_MIRV); // 718
+        }
+        Ok(JsVal::Undef)
+    }
+
+    // ---------------------------- NukeExecution ----------------------------
+
+    /// `NukeExecution.getTrajectory(target)`.
+    fn nuke_get_trajectory(&mut self, tr: &mut Vec<f64>, target: f64) -> JsVal {
+        let range = self.mg_default_nuke_targetable_range(tr); // 702
+        let range_sq = range * range;
+        let src = self.nuke_src.expect("src set");
+        let all = self.mg_parabola_find_path(tr, src, target); // 751
+        let mut out: Vec<JsVal> = Vec::new();
+        for tile in all {
+            let targetable = self.nuke_is_targetable(tr, target, tile, range_sq);
+            out.push(JsVal::Obj(vec![
+                ("tile".to_string(), JsVal::Num(tile)),
+                ("targetable".to_string(), JsVal::Bool(targetable)),
+            ]));
+        }
+        JsVal::Arr(out)
+    }
+
+    /// `NukeExecution.isTargetable(targetTile, nukeTile, targetRangeSquared)`.
+    fn nuke_is_targetable(
+        &mut self,
+        tr: &mut Vec<f64>,
+        target_tile: f64,
+        nuke_tile: f64,
+        range_sq: f64,
+    ) -> bool {
+        if self.mg_euclidean_dist_squared(tr, nuke_tile, target_tile) < range_sq {
+            // 710
+            return true;
+        }
+        if let Some(src) = self.nuke_src {
+            if self.mg_euclidean_dist_squared(tr, src, nuke_tile) < range_sq {
+                // 710
+                return true;
+            }
+        }
+        false
+    }
+
+    /// `NukeExecution.updateNukeTargetable`.
+    fn nuke_update_targetable(&mut self, tr: &mut Vec<f64>) {
+        let nu = match self.nuke {
+            Some(n) => n,
+            None => return,
+        };
+        if self.un_target_tile(tr, nu).is_none() {
+            // 282
+            return;
+        }
+        let range = self.mg_default_nuke_targetable_range(tr); // 702
+        let range_sq = range * range;
+        let target_tile = match self.un_target_tile(tr, nu) {
+            // 282
+            Some(t) => t,
+            None => return,
+        };
+        let nuke_tile = self.un_tile(tr, nu); // 344
+        let flag = self.nuke_is_targetable(tr, target_tile, nuke_tile, range_sq);
+        self.un_set_targetable(tr, nu, flag); // 734
+    }
+
+    /// `NukeExecution.recordMotionPlan(ticks)`.
+    fn nuke_record_motion_plan(&mut self, tr: &mut Vec<f64>, ticks: f64) {
+        let nu = match self.nuke {
+            Some(n) => n,
+            None => return,
+        };
+        let src = match self.nuke_src {
+            Some(s) => s,
+            None => return,
+        };
+        let speed = self.nuke_speed;
+        let dst = self.nuke_dst;
+        let mut path: Vec<JsVal> = vec![JsVal::Num(src)];
+        let mut result = self.mg_parabola_next(tr, src, dst, speed); // 750
+        while parabola_status(&result) == PATH_STATUS_NEXT {
+            path.push(JsVal::Num(parabola_node_num(&result)));
+            result = self.mg_parabola_next(tr, src, dst, speed); // 750
+        }
+        let uid = self.un_id(tr, nu); // 340
+        let plan = JsVal::Obj(vec![
+            ("kind".to_string(), JsVal::Str("grid".to_string())),
+            ("unitId".to_string(), JsVal::Num(uid)),
+            ("planId".to_string(), JsVal::Num(1.0)),
+            (
+                "startTick".to_string(),
+                JsVal::Num(ticks + self.nuke_wait_ticks + 1.0),
+            ),
+            ("ticksPerStep".to_string(), JsVal::Num(1.0)),
+            ("path".to_string(), JsVal::Arr(path)),
+        ]);
+        self.mg_record_motion_plan(tr, &plan); // 711
+    }
+
+    /// `NukeExecution.tilesToDestroy` (memoised on the instance).
+    fn nuke_tiles_to_destroy(&mut self, tr: &mut Vec<f64>) -> Vec<f64> {
+        if let Some(c) = self.tiles_to_destroy_cache.as_ref() {
+            return c.clone();
+        }
+        let nu = self.nuke.expect("nuke initialized");
+        let ty = self.un_type(tr, nu); // 283
+        let (inner, outer) = self.mg_nuke_magnitudes(tr, &ty); // 224
+        let seed = self.mg_ticks(tr); // 212
+        let mut rand = PseudoRandom::new(seed);
+        let inner2 = inner * inner;
+        let outer2 = outer * outer;
+        let dst = self.nuke_dst;
+        let result = if self.mg_water_nukes(tr) {
+            // 701
+            let num_samples = 16usize;
+            let mut radii_sq = vec![0.0f64; num_samples];
+            for r in radii_sq.iter_mut() {
+                *r = rand.next_float(inner2, outer2);
+            }
+            let prev = radii_sq.clone();
+            for i in 0..num_samples {
+                let l = (i + num_samples - 1) % num_samples;
+                let r = (i + 1) % num_samples;
+                radii_sq[i] = prev[i] * 0.6 + prev[l] * 0.2 + prev[r] * 0.2;
+            }
+            let cx = self.mg_x(tr, dst); // 603
+            let cy = self.mg_y(tr, dst); // 604
+            let width = self.mg_width(tr); // 610
+            let height = self.mg_height(tr); // 611
+            let x0 = js_max(0.0, cx - outer);
+            let y0 = js_max(0.0, cy - outer);
+            let x1 = js_min(width - 1.0, cx + outer);
+            let y1 = js_min(height - 1.0, cy + outer);
+            let mut out: Vec<f64> = Vec::new();
+            let mut py = y0;
+            while py <= y1 {
+                let mut px = x0;
+                while px <= x1 {
+                    let dx = px - cx;
+                    let dy = py - cy;
+                    let d2 = dx * dx + dy * dy;
+                    px += 1.0;
+                    if d2 > outer2 {
+                        continue;
+                    }
+                    if d2 > inner2 {
+                        let angle =
+                            crate::detmath::atan2(dy, dx) + std::f64::consts::PI;
+                        let t = (angle / (2.0 * std::f64::consts::PI)) * num_samples as f64;
+                        let i0 = crate::jsnum::js_mod(t.floor(), num_samples as f64) as usize;
+                        let i1 = (i0 + 1) % num_samples;
+                        let frac = t - t.floor();
+                        let threshold =
+                            radii_sq[i0] * (1.0 - frac) + radii_sq[i1] * frac;
+                        if d2 > threshold {
+                            continue;
+                        }
+                    }
+                    let tile = self.mg_ref(tr, px - 1.0, py); // 609
+                    if self.mg_is_impassable(tr, tile) {
+                        // 617
+                        continue;
+                    }
+                    if !out.iter().any(|v| svz(*v, tile)) {
+                        out.push(tile);
+                    }
+                }
+                py += 1.0;
+            }
+            out
+        } else {
+            self.mg_bfs(tr, dst, |h, tr, n| {
+                let d2 = h.mg_euclidean_dist_squared(tr, dst, n); // 710
+                if !(d2 <= outer2 && (d2 <= inner2 || rand.chance(2.0))) {
+                    return false;
+                }
+                !h.mg_is_impassable(tr, n) // 617
+            })
+        };
+        self.tiles_to_destroy_cache = Some(result.clone());
+        result
+    }
+
+    /// `listNukeBreakAlliance` (`Util.ts:100-129`) — returns the small IDs.
+    fn list_nuke_break_alliance(
+        &mut self,
+        tr: &mut Vec<f64>,
+        target_tile: f64,
+        inner: f64,
+        outer: f64,
+        threshold: f64,
+    ) -> Vec<f64> {
+        let inner2 = inner * inner;
+        let mut counts: Vec<(f64, f64)> = Vec::new();
+        self.mg_circle_search(tr, target_tile, outer, |h, tr, tile, d2| {
+            let sid = h.mg_owner_id(tr, tile); // 223
+            if sid > 0.0 {
+                let weight = if d2 <= inner2 { 1.0 } else { 0.5 };
+                match counts.iter_mut().find(|(id, _)| *id == sid) {
+                    Some(e) => e.1 += weight,
+                    None => counts.push((sid, weight)),
+                }
+            }
+            true
+        });
+        let mut players: Vec<f64> = Vec::new();
+        for (sid, total) in &counts {
+            if *total > threshold && !players.iter().any(|p| svz(*p, *sid)) {
+                players.push(*sid);
+            }
+        }
+        let types: Vec<String> = STRUCTURES_TYPES.iter().map(|s| s.to_string()).collect();
+        for uid in self.mg_nearby_units(tr, target_tile, outer, &types) {
+            // 306
+            if let Some(o) = self.un_owner(tr, uid) {
+                // 286
+                let small = self.pl_small_id(tr, o); // 230
+                if !players.iter().any(|p| svz(*p, small)) {
+                    players.push(small);
+                }
+            }
+        }
+        players
+    }
+
+    /// `NukeExecution.maybeBreakAlliances`.
+    fn nuke_maybe_break_alliances(&mut self, tr: &mut Vec<f64>) {
+        let nu = match self.nuke {
+            Some(n) => n,
+            None => return,
+        };
+        let ty = self.un_type(tr, nu); // 283
+        if ty == UNIT_MIRV_WARHEAD {
+            return;
+        }
+        let ty2 = self.un_type(tr, nu); // 283
+        let (inner, outer) = self.mg_nuke_magnitudes(tr, &ty2); // 224
+        let threshold = self.mg_nuke_alliance_break_threshold(tr); // 225
+        let to_break = self.list_nuke_break_alliance(tr, self.nuke_dst, inner, outer, threshold);
+        let incoming = self.pl_incoming_alliance_requests(tr, self.a_tok); // 720
+        for rid in incoming {
+            let r = match self.rq_requestor(tr, rid) {
+                Some(r) => r,
+                None => continue,
+            }; // 744
+            let sid = self.pl_small_id(tr, r); // 230
+            if to_break.iter().any(|p| svz(*p, sid)) {
+                self.rq_reject(tr, rid); // 272
+            }
+        }
+        for sid in to_break {
+            let attacked = self.mg_player_by_small_id(tr, sid); // 703
+            let tok = match as_opt_tok(&attacked) {
+                Some(t) => t,
+                None => continue,
+            };
+            if !self.pl_is_player(tr, tok) {
+                // 259
+                continue;
+            }
+            let ra = self.pl_incoming_alliance_requests(tr, tok); // 720
+            let mut rejected = false;
+            for rid in ra {
+                let r = self.rq_requestor(tr, rid); // 744
+                if r == Some(self.a_tok) {
+                    self.rq_reject(tr, rid); // 272
+                    rejected = true;
+                    break;
+                }
+            }
+            if rejected {
+                continue;
+            }
+            let all = self.pl_alliance_with(tr, self.a_tok, Some(tok)); // 243
+            if let Some(a) = all {
+                self.pl_break_alliance(tr, self.a_tok, a); // 244
+            }
+            if tok != self.a_tok {
+                self.pl_update_relation(tr, tok, Some(self.a_tok), -100.0); // 237
+            }
+        }
+    }
+
+    /// `NukeExecution.redrawBuildings(range)`.
+    fn nuke_redraw_buildings(&mut self, tr: &mut Vec<f64>, range: f64) {
+        let range_sq = range * range;
+        let dst = self.nuke_dst;
+        for unit in self.mg_units(tr) {
+            // 709
+            let ty = self.un_type(tr, unit); // 283
+            if STRUCTURES_TYPES.iter().any(|s| *s == ty) {
+                let ut = self.un_tile(tr, unit); // 344
+                let d = self.mg_euclidean_dist_squared(tr, dst, ut); // 710
+                if d < range_sq {
+                    self.un_touch(tr, unit); // 736
+                }
+            }
+        }
+    }
+
+    /// `NukeExecution.detonate`.
+    fn nuke_detonate(&mut self, tr: &mut Vec<f64>) {
+        let nu = self.nuke.expect("nuke initialized");
+        let ty = self.un_type(tr, nu); // 283
+        let (_inner, outer) = self.mg_nuke_magnitudes(tr, &ty); // 224
+        let to_destroy = self.nuke_tiles_to_destroy(tr);
+        // Cloned so the `mg_nuke_death_factor` calls below do not hold an
+        // immutable borrow of `self` across the mutable one.
+        let nuke_type = self.nuke_type.clone();
+        let mut tiles_per_players: Vec<(usize, f64)> = Vec::new();
+        for tile in to_destroy {
+            let owner = self.mg_owner(tr, tile); // 222
+            if let Some(o) = owner {
+                if self.pl_is_player(tr, o) {
+                    // 259
+                    self.pl_relinquish(tr, o, tile); // 636
+                    match tiles_per_players.iter_mut().find(|(p, _)| *p == o) {
+                        Some(e) => e.1 += 1.0,
+                        None => tiles_per_players.push((o, 1.0)),
+                    }
+                }
+            }
+            if self.mg_is_land(tr, tile) {
+                // 304
+                self.mg_queue_water_conversion(tr, tile); // 713
+            }
+            self.mg_queue_nuke_impact(tr, tile); // 712
+        }
+        for (player, num_impacted) in tiles_per_players.clone() {
+            let tiles_before = self.pl_num_tiles_owned(tr, player) + num_impacted; // 532
+            let transports = self.pl_units(tr, player, &[UNIT_TRANSPORT.to_string()]); // 241
+            let mut transport_troops: Vec<(usize, f64)> = Vec::new();
+            for u in &transports {
+                let t = self.un_troops(tr, *u); // 730
+                transport_troops.push((*u, t));
+            }
+            let outgoing = self.pl_outgoing_attacks(tr, player); // 721
+            let max_troops = self.mg_max_troops(tr, Rec::P(player)); // 401
+            let mut i = 0.0;
+            while i < num_impacted {
+                let tiles_left = tiles_before - i;
+                let pt = self.pl_troops(tr, player); // 418
+                let deaths =
+                    self.mg_nuke_death_factor(tr, &nuke_type, pt, tiles_left, max_troops); // 704
+                self.pl_remove_troops(tr, player, deaths); // 633
+                for attack in &outgoing {
+                    let at = self.un_troops(tr, *attack); // 730
+                    let d = self.mg_nuke_death_factor(
+                        tr,
+                        &nuke_type,
+                        at,
+                        tiles_left,
+                        max_troops,
+                    ); // 704
+                    self.un_set_troops(tr, *attack, at - d); // 731
+                }
+                for u in &transports {
+                    let ut = transport_troops
+                        .iter()
+                        .find(|(x, _)| x == u)
+                        .map(|(_, v)| *v)
+                        .unwrap_or(0.0);
+                    let d = self.mg_nuke_death_factor(
+                        tr,
+                        &nuke_type,
+                        ut,
+                        tiles_left,
+                        max_troops,
+                    ); // 704
+                    let nv = js_max(0.0, ut - d);
+                    if let Some(e) = transport_troops.iter_mut().find(|(x, _)| x == u) {
+                        e.1 = nv;
+                    }
+                }
+                i += 1.0;
+            }
+            for (u, troops) in &transport_troops {
+                self.un_set_troops(tr, *u, *troops); // 731
+            }
+        }
+        let outer2 = outer * outer;
+        let dst = self.nuke_dst;
+        for unit in self.mg_units(tr) {
+            // 709
+            let ty = self.un_type(tr, unit); // 283
+            if ty == UNIT_ATOM_BOMB
+                || ty == UNIT_HYDROGEN_BOMB
+                || ty == UNIT_MIRV_WARHEAD
+                || ty == UNIT_MIRV
+                || ty == UNIT_SAM_MISSILE
+            {
+                continue;
+            }
+            let ut = self.un_tile(tr, unit); // 344
+            let d = self.mg_euclidean_dist_squared(tr, dst, ut); // 710
+            if d < outer2 {
+                let o = self.un_owner(tr, unit); // 286
+                let friendly = self.pl_is_friendly(tr, self.a_tok, o); // 242
+                self.un_delete(tr, unit, true); // 285
+                let _ = friendly;
+            }
+        }
+        self.nuke_redraw_buildings(tr, outer + SPRITE_RADIUS);
+        self.flag = false;
+        self.un_set_reached_target(tr, nu); // 544
+        self.un_delete(tr, nu, false); // 285
+        if self.nuke_type == UNIT_ATOM_BOMB || self.nuke_type == UNIT_HYDROGEN_BOMB {
+            let message_key = if self.nuke_type == UNIT_ATOM_BOMB {
+                "events_display.atom_bomb_detonated"
+            } else {
+                "events_display.hydrogen_bomb_detonated"
+            };
+            for (impacted, _) in &tiles_per_players {
+                let iid = self.pl_id(tr, *impacted); // 231
+                let dn = self.pl_display_name(tr, self.a_tok); // 232
+                let pid = self.pl_id(tr, self.a_tok); // 231
+                let args = vec![
+                    JsVal::Str(message_key.to_string()),
+                    JsVal::Num(MSG_NUKE_DETONATED),
+                    JsVal::Str(iid),
+                    JsVal::Undef,
+                    JsVal::Obj(vec![("name".to_string(), JsVal::Str(dn))]),
+                    JsVal::Undef,
+                    JsVal::Str(pid),
+                ];
+                self.mg_display_message(tr, &args); // 226
+            }
+        }
+        let target = self.mg_owner(tr, dst); // 222
+        let ty2 = self.un_type(tr, nu); // 283
+        self.mg_stats_bomb_land(tr, self.a_tok, target, &ty2); // 718
+    }
+
+    fn nuke_execution(&mut self, kind: u8, ticks: f64, tr: &mut Vec<f64>) -> Result<JsVal, String> {
+        // Cloned so `nuke_type` can be passed alongside `&mut self` below.
+        let nuke_type = self.nuke_type.clone();
+        match kind {
+            3 => return Ok(JsVal::Bool(self.flag)),
+            4 => return Ok(JsVal::Bool(false)),
+            1 => {
+                self.mg_ready = true;
+                if self.nuke_speed == -1.0 {
+                    self.nuke_speed = self.mg_nuke_speed(tr, &nuke_type); // 700
+                }
+                return Ok(JsVal::Undef);
+            }
+            2 => {}
+            _ => return Ok(JsVal::Undef),
+        }
+
+        if self.nuke.is_none() {
+            let spawn = self.pl_can_build(tr, self.a_tok, &nuke_type, self.nuke_dst); // 534
+            if matches!(spawn, JsVal::Bool(false)) {
+                self.flag = false;
+                return Ok(JsVal::Undef);
+            }
+            let spawn_tile = as_num(&spawn);
+            let src = match self.nuke_src {
+                Some(s) => s,
+                None => {
+                    self.nuke_src = Some(spawn_tile);
+                    spawn_tile
+                }
+            };
+            let silos = self.pl_units(tr, self.a_tok, &[UNIT_MISSILE_SILO.to_string()]); // 241
+            let mut silo: Option<usize> = None;
+            for s in silos {
+                let st = self.un_tile(tr, s); // 344
+                if svz(st, spawn_tile) {
+                    silo = Some(s);
+                    break;
+                }
+            }
+            if let Some(s) = silo {
+                let mut last_dep = 0.0;
+                let q = self.un_missile_timer_queue(tr, s); // 346
+                for launch_tick in as_arr_nums(&q) {
+                    last_dep = js_max(launch_tick + 1.0, last_dep + 1.0);
+                }
+                let cur = self.mg_ticks(tr); // 212
+                if last_dep > cur {
+                    let cur2 = self.mg_ticks(tr); // 212
+                    self.nuke_wait_ticks += last_dep - cur2;
+                }
+            }
+            let trajectory = self.nuke_get_trajectory(tr, self.nuke_dst);
+            let params = JsVal::Obj(vec![
+                ("targetTile".to_string(), JsVal::Num(self.nuke_dst)),
+                ("trajectory".to_string(), trajectory),
+            ]);
+            self.nuke = self.pl_build_unit(tr, self.a_tok, &nuke_type, src, &params); // 535
+            let nu = match self.nuke {
+                Some(n) => n,
+                None => {
+                    return Err(
+                        "Cannot read properties of undefined (reading 'updateNukeState')".into(),
+                    )
+                }
+            };
+            self.un_update_nuke_state(tr, nu, self.nuke_wait_ticks); // 732
+            self.nuke_record_motion_plan(tr, ticks);
+            let ty = self.un_type(tr, nu); // 283
+            if ty != UNIT_MIRV_WARHEAD {
+                self.nuke_maybe_break_alliances(tr);
+            }
+            if self.mg_has_owner(tr, self.nuke_dst) {
+                // 607
+                let target = match self.mg_owner(tr, self.nuke_dst) {
+                    // 222
+                    Some(t) => t,
+                    None => {
+                        return Err(
+                            "Cannot read properties of null (reading 'isPlayer')".into(),
+                        )
+                    }
+                };
+                if self.pl_is_player(tr, target) {
+                    // 259
+                    if self.nuke_type == UNIT_ATOM_BOMB {
+                        let nid = self.un_id(tr, nu); // 340
+                        let dn = self.pl_display_name(tr, self.a_tok); // 232
+                        let tid = self.pl_id(tr, target); // 231
+                        let msg = format!("{dn} - atom bomb inbound");
+                        self.mg_display_incoming_unit(tr, nid, &msg, MSG_NUKE_INBOUND, &tid); // 714
+                    } else if self.nuke_type == UNIT_HYDROGEN_BOMB {
+                        let nid = self.un_id(tr, nu); // 340
+                        let dn = self.pl_display_name(tr, self.a_tok); // 232
+                        let tid = self.pl_id(tr, target); // 231
+                        let msg = format!("{dn} - hydrogen bomb inbound");
+                        self.mg_display_incoming_unit(
+                            tr,
+                            nid,
+                            &msg,
+                            MSG_HYDROGEN_BOMB_INBOUND,
+                            &tid,
+                        ); // 714
+                    }
+                }
+                self.mg_stats_bomb_launch(tr, self.a_tok, Some(target), &nuke_type); // 717
+            }
+            if let Some(s) = silo {
+                self.un_launch(tr, s); // 742
+            }
+            return Ok(JsVal::Undef);
+        }
+
+        let nu = self.nuke.unwrap();
+        if !self.un_is_active(tr, nu) {
+            // 280
+            self.flag = false;
+            return Ok(JsVal::Undef);
+        }
+        if self.nuke_wait_ticks > 0.0 {
+            self.nuke_wait_ticks -= 1.0;
+            self.un_update_nuke_state(tr, nu, self.nuke_wait_ticks); // 732
+            return Ok(JsVal::Undef);
+        }
+        let src = self.nuke_src.unwrap_or(f64::NAN);
+        let result = self.mg_parabola_next(tr, src, self.nuke_dst, self.nuke_speed); // 750
+        let status = parabola_status(&result);
+        if status == PATH_STATUS_COMPLETE {
+            let node = val_field(&result, "node").cloned().unwrap_or(JsVal::Undef);
+            self.un_move(tr, nu, &node); // 545
+            let outer = self.mg_default_sam_speed(tr); // 516
+            let hits = self.mg_nearby_units_cb(tr, self.nuke_dst, outer, &[UNIT_SAM_MISSILE.to_string()], |h, tr, uid| {
+                if !h.un_is_unit(tr, uid) {
+                    // 737
+                    return false;
+                }
+                let cand_owner = h.un_owner(tr, uid); // 286
+                let nuke_owner = h.un_owner(tr, nu); // 286
+                if cand_owner == nuke_owner {
+                    return false;
+                }
+                match h.un_target_unit(tr, uid) {
+                    // 735
+                    None => false,
+                    Some(t) => h.un_id(tr, t) == h.un_id(tr, nu), // 340, 340
+                }
+            });
+            if hits.is_empty() {
+                self.nuke_detonate(tr);
+            }
+        } else if status == PATH_STATUS_NEXT {
+            self.nuke_update_targetable(tr);
+            let node = val_field(&result, "node").cloned().unwrap_or(JsVal::Undef);
+            self.un_move(tr, nu, &node); // 545
+            let idx = self.mg_parabola_current_index(tr); // 752
+            self.un_set_trajectory_index(tr, nu, idx); // 733
+        }
+        Ok(JsVal::Undef)
+    }
+
+    // ------------------------ SAMLauncherExecution ------------------------
+
+    fn sam_on_level_up(&mut self) {
+        if let Some(t) = self.sam_targeting.as_mut() {
+            t.precomputed_nukes.retain(|(_, c)| c.tick != -1.0);
+        }
+    }
+
+    fn sam_update_unreachable_nukes(&mut self, tick: f64) {
+        if let Some(t) = self.sam_targeting.as_mut() {
+            t.precomputed_nukes.retain(|(_, c)| c.last_seen_tick == tick);
+        }
+    }
+
+    fn sam_missile_speed(&self) -> f64 {
+        self.sam_targeting
+            .as_ref()
+            .map(|t| t.missile_speed)
+            .unwrap_or(f64::NAN)
+    }
+
+    /// `SAMTargetingSystem.tickToReach`.
+    fn sam_tick_to_reach(&mut self, tr: &mut Vec<f64>, current: f64, tile: f64) -> f64 {
+        let d = self.mg_manhattan_dist(tr, current, tile); // 509
+        (d / self.sam_missile_speed()).ceil()
+    }
+
+    /// `SAMTargetingSystem.isValidNukeTarget`.
+    fn sam_is_valid_nuke_target(&mut self, tr: &mut Vec<f64>, sam: usize, uid: usize) -> bool {
+        if !self.un_is_unit(tr, uid) {
+            // 737
+            return false;
+        }
+        if self.un_targeted_by_sam(tr, uid) {
+            // 743
+            return false;
+        }
+        let uo = self.un_owner(tr, uid); // 286
+        let sam_owner0 = self.un_owner(tr, sam); // 286
+        if uo == sam_owner0 {
+            return false;
+        }
+        let sam_owner = self.un_owner(tr, sam).unwrap_or(self.a_tok); // 286
+        let nuke_owner = self.un_owner(tr, uid); // 286
+        if self.pl_is_friendly(tr, sam_owner, nuke_owner) {
+            // 242
+            let winner = self.mg_get_winner(tr); // 600
+            let game_over = if !matches!(winner, JsVal::Null) {
+                let gt = self.mg_game_type(tr); // 214
+                gt != GAME_TYPE_SINGLEPLAYER
+            } else {
+                false
+            };
+            if !game_over {
+                return false;
+            }
+            return self.pl_is_on_same_team(tr, sam_owner, nuke_owner); // 250
+        }
+        true
+    }
+
+    /// `SAMTargetingSystem.checkDetonationInterception`.
+    fn sam_check_detonation_interception(
+        &mut self,
+        tr: &mut Vec<f64>,
+        sam: usize,
+        uid: usize,
+        sam_tile: f64,
+        ticks: f64,
+    ) -> Option<CachedInterception> {
+        let traj = as_traj(&self.un_trajectory(tr, uid)); // 740
+        let max_idx = traj.len() as f64 - 2.0;
+        let final_tile = match traj.last() {
+            Some(t) if t.1 => *t,
+            _ => return None,
+        };
+        let cur_idx = self.un_trajectory_index(tr, uid); // 738
+        let wait_ticks = nuke_state_wait_ticks(&self.un_nuke_state(tr, uid)); // 739
+        let exp_ticks = traj.len() as f64 - 1.0 - cur_idx + wait_ticks;
+        let range = self.mg_dynamic_sam_range(tr, sam, ticks + exp_ticks); // 706
+        if self.mg_euclidean_dist_squared(tr, sam_tile, final_tile.0) > range * range {
+            // 710
+            return None;
+        }
+        let flight_tile = match traj.get(max_idx as usize) {
+            Some(t) if max_idx >= 0.0 && t.1 => *t,
+            _ => return None,
+        };
+        let nuke_ticks = max_idx - cur_idx + wait_ticks;
+        let sam_ticks = self.sam_tick_to_reach(tr, sam_tile, flight_tile.0);
+        let tick_before = nuke_ticks - sam_ticks;
+        if tick_before >= 0.0 {
+            Some(CachedInterception {
+                tick: tick_before,
+                tile: flight_tile.0,
+                min_dist_sq: 0.0,
+                last_seen_tick: ticks,
+            })
+        } else {
+            None
+        }
+    }
+
+    /// `SAMTargetingSystem.computeInterceptionTile`.
+    fn sam_compute_interception_tile(
+        &mut self,
+        tr: &mut Vec<f64>,
+        sam: usize,
+        uid: usize,
+        sam_tile: f64,
+        ticks: f64,
+    ) -> CachedInterception {
+        let traj = as_traj(&self.un_trajectory(tr, uid)); // 740
+        let cur_idx = self.un_trajectory_index(tr, uid); // 738
+        let wait_ticks = nuke_state_wait_ticks(&self.un_nuke_state(tr, uid)); // 739
+        let max_idx = traj.len() as f64 - 2.0;
+        let max_range = self.mg_max_sam_range(tr); // 707
+        let max_range_sq = max_range * max_range;
+        let mut min_dist_sq = f64::INFINITY;
+        let mut closest_tile = sam_tile;
+        let mut inc_steps = 0.0;
+        let mut last_dist_sq = -1.0;
+        let mut i = cur_idx;
+        while i <= max_idx {
+            let (tile, targetable) = match traj.get(i as usize) {
+                Some(v) => *v,
+                None => (f64::NAN, false),
+            };
+            let dist_sq = self.mg_euclidean_dist_squared(tr, sam_tile, tile); // 710
+            if dist_sq < min_dist_sq {
+                min_dist_sq = dist_sq;
+                closest_tile = tile;
+            }
+            if last_dist_sq != -1.0 && dist_sq > last_dist_sq {
+                inc_steps += 1.0;
+            } else {
+                inc_steps = 0.0;
+            }
+            last_dist_sq = dist_sq;
+            let nuke_ticks = i - cur_idx + wait_ticks;
+            let sam_ticks = self.sam_tick_to_reach(tr, sam_tile, tile);
+            let allowed = self.mg_dynamic_sam_range(tr, sam, ticks + nuke_ticks); // 706
+            if targetable && dist_sq <= allowed * allowed && nuke_ticks >= sam_ticks {
+                return CachedInterception {
+                    tick: nuke_ticks - sam_ticks,
+                    tile,
+                    min_dist_sq,
+                    last_seen_tick: ticks,
+                };
+            }
+            if inc_steps > 3.0 && dist_sq > max_range_sq {
+                break;
+            }
+            i += 1.0;
+        }
+        if let Some(d) = self.sam_check_detonation_interception(tr, sam, uid, sam_tile, ticks) {
+            return CachedInterception {
+                tick: d.tick,
+                tile: d.tile,
+                min_dist_sq,
+                last_seen_tick: ticks,
+            };
+        }
+        CachedInterception {
+            tick: if min_dist_sq > max_range_sq { -2.0 } else { -1.0 },
+            tile: closest_tile,
+            min_dist_sq,
+            last_seen_tick: ticks,
+        }
+    }
+
+    /// `SAMTargetingSystem.computeTargetScore`.
+    fn sam_compute_target_score(&mut self, tr: &mut Vec<f64>, uid: usize) -> f64 {
+        let sam = self.sam_unit.expect("sam set");
+        let sam_tile = self.un_tile(tr, sam); // 344
+        let traj = as_traj(&self.un_trajectory(tr, uid)); // 740
+        let current_index = self.un_trajectory_index(tr, uid); // 738
+        let time_to_explode = js_max(1.0, traj.len() as f64 - current_index);
+        let target_tile = match self.un_target_tile(tr, uid) {
+            // 282
+            Some(t) => t,
+            None => {
+                if !traj.is_empty() {
+                    traj[traj.len() - 1].0
+                } else {
+                    sam_tile
+                }
+            }
+        };
+        let dist = self.mg_manhattan_dist(tr, sam_tile, target_tile); // 509
+        let ty = self.un_type(tr, uid); // 283
+        let type_bonus = if ty == UNIT_HYDROGEN_BOMB { 70001.0 } else { 0.0 };
+        let distance_bonus = js_max(0.0, 200000.0 - dist * 1000.0);
+        let urgency_bonus = js_max(0.0, 10000.0 - time_to_explode * 100.0);
+        type_bonus + distance_bonus + urgency_bonus
+    }
+
+    /// `SAMTargetingSystem.sortTargets` — V8's binary-insertion sort on scores.
+    fn sam_sort_targets(
+        &mut self,
+        tr: &mut Vec<f64>,
+        targets: Vec<(usize, f64)>,
+    ) -> Vec<(usize, f64)> {
+        if targets.len() <= 1 {
+            return targets;
+        }
+        let mut scored: Vec<(usize, f64, f64)> = Vec::new();
+        for (u, t) in targets {
+            let s = self.sam_compute_target_score(tr, u);
+            scored.push((u, t, s));
+        }
+        let n = scored.len();
+        for i in 1..n {
+            let element = scored[i];
+            let (mut lo, mut hi) = (0usize, i);
+            while lo < hi {
+                let mid = (lo + hi) / 2;
+                if scored[mid].2 - element.2 < 0.0 {
+                    hi = mid;
+                } else {
+                    lo = mid + 1;
+                }
+            }
+            if lo < i {
+                scored.remove(i);
+                scored.insert(lo, element);
+            }
+        }
+        scored.into_iter().map(|(u, t, _)| (u, t)).collect()
+    }
+
+    /// `SAMTargetingSystem.getValidTargets`.
+    fn sam_get_valid_targets(&mut self, tr: &mut Vec<f64>, ticks: f64) -> Vec<(usize, f64)> {
+        let sam = self.sam_unit.expect("sam set");
+        let sam_tile = self.un_tile(tr, sam); // 344
+        let detection_range = self.mg_max_sam_range(tr) * 4.0; // 707
+        let types: Vec<String> = [UNIT_ATOM_BOMB, UNIT_HYDROGEN_BOMB, UNIT_MIRV_WARHEAD]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+        let candidates = self.mg_nearby_units_cb(tr, sam_tile, detection_range, &types, |h, tr, uid| {
+            h.sam_is_valid_nuke_target(tr, sam, uid)
+        }); // 715
+        let mut targets: Vec<(usize, f64)> = Vec::new();
+        for uid in candidates {
+            let id = self.un_id(tr, uid); // 340
+            let cached_idx = self
+                .sam_targeting
+                .as_ref()
+                .and_then(|t| t.precomputed_nukes.iter().position(|(k, _)| svz(*k, id)));
+            if let Some(ci) = cached_idx {
+                let c = {
+                    let t = self.sam_targeting.as_mut().unwrap();
+                    t.precomputed_nukes[ci].1.last_seen_tick = ticks;
+                    t.precomputed_nukes[ci].1
+                };
+                if c.tick == -2.0 || c.tick == -1.0 {
+                    continue;
+                }
+                if c.tick == ticks || c.tick == ticks + 1.0 {
+                    targets.push((uid, c.tile));
+                    self.sam_targeting.as_mut().unwrap().precomputed_nukes.remove(ci);
+                    continue;
+                }
+                if c.tick > ticks {
+                    continue;
+                }
+                self.sam_targeting.as_mut().unwrap().precomputed_nukes.remove(ci);
+            }
+            let res = self.sam_compute_interception_tile(tr, sam, uid, sam_tile, ticks);
+            if res.tick >= 0.0 && res.tick <= 1.0 {
+                targets.push((uid, res.tile));
+            } else {
+                let tick = if res.tick >= 0.0 { res.tick + ticks } else { res.tick };
+                self.sam_targeting.as_mut().unwrap().precomputed_nukes.push((
+                    id,
+                    CachedInterception {
+                        tick,
+                        tile: res.tile,
+                        min_dist_sq: res.min_dist_sq,
+                        last_seen_tick: ticks,
+                    },
+                ));
+            }
+        }
+        self.sam_update_unreachable_nukes(ticks);
+        self.sam_sort_targets(tr, targets)
+    }
+
+    fn sam_launcher_execution(
+        &mut self,
+        kind: u8,
+        ticks: f64,
+        tr: &mut Vec<f64>,
+    ) -> Result<JsVal, String> {
+        match kind {
+            3 => return Ok(JsVal::Bool(self.flag)),
+            4 => return Ok(JsVal::Bool(false)),
+            1 => {
+                self.mg_ready = true;
+                return Ok(JsVal::Undef);
+            }
+            2 => {}
+            _ => return Ok(JsVal::Undef),
+        }
+        if !self.mg_ready {
+            return Err("Not initialized".into());
+        }
+        if self.sam_unit.is_none() {
+            let tile = match self.sam_tile {
+                Some(t) => t,
+                None => return Err("tile is null".into()),
+            };
+            let spawn = self.pl_can_build(tr, self.a_tok, UNIT_SAM_LAUNCHER, tile); // 534
+            if matches!(spawn, JsVal::Bool(false)) {
+                self.flag = false;
+                return Ok(JsVal::Undef);
+            }
+            let spawn_tile = as_num(&spawn);
+            let params = JsVal::Obj(vec![]);
+            self.sam_unit = self.pl_build_unit(tr, self.a_tok, UNIT_SAM_LAUNCHER, spawn_tile, &params); // 535
+        }
+        let sam = self.sam_unit.expect("sam set");
+        if self.sam_targeting.is_none() {
+            let ms = self.mg_default_sam_speed(tr); // 516
+            self.sam_targeting = Some(SamTargeting {
+                precomputed_nukes: Vec::new(),
+                missile_speed: ms,
+            });
+        }
+        let lvl = self.un_level(tr, sam); // 540
+        if self.sam_last_level != lvl {
+            self.sam_last_level = self.un_level(tr, sam); // 540
+            self.sam_on_level_up();
+        }
+        if self.un_is_under_construction(tr, sam) {
+            // 345
+            return Ok(JsVal::Undef);
+        }
+        if !self.un_is_active(tr, sam) {
+            // 280
+            self.flag = false;
+            return Ok(JsVal::Undef);
+        }
+        let owner = self.un_owner(tr, sam); // 286
+        if owner != Some(self.a_tok) {
+            if let Some(o) = owner {
+                self.a_tok = o;
+            }
+        }
+        loop {
+            let q = self.un_missile_timer_queue(tr, sam); // 346
+            if as_arr_nums(&q).is_empty() {
+                break;
+            }
+            let q2 = self.un_missile_timer_queue(tr, sam); // 346
+            let front = as_arr_nums(&q2).first().copied().unwrap_or(f64::NAN);
+            let cd = self.mg_sam_cooldown(tr); // 708
+            let tk = self.mg_ticks(tr); // 212
+            if cd - (tk - front) > 0.0 {
+                break;
+            }
+            self.un_reload_missile(tr, sam); // 347
+        }
+        if self.un_is_in_cooldown(tr, sam) {
+            // 741
+            return Ok(JsVal::Undef);
+        }
+        if self.random.is_none() {
+            let id = self.un_id(tr, sam); // 340
+            self.random = Some(PseudoRandom::new(id));
+        }
+        let a = self.mg_unit_count(tr, UNIT_ATOM_BOMB); // 506
+        if a == 0.0 {
+            let b = self.mg_unit_count(tr, UNIT_HYDROGEN_BOMB); // 506
+            if b == 0.0 {
+                let c = self.mg_unit_count(tr, UNIT_MIRV_WARHEAD); // 506
+                if c == 0.0 {
+                    return Ok(JsVal::Undef);
+                }
+            }
+        }
+        let targets = self.sam_get_valid_targets(tr, ticks);
+        for (unit, tile) in targets {
+            if self.un_is_in_cooldown(tr, sam) {
+                // 741
+                break;
+            }
+            self.un_launch(tr, sam); // 742
+            self.un_set_targeted_by_sam(tr, unit, true); // 734
+            let st = self.un_tile(tr, sam); // 344
+            let ow = self.un_owner(tr, sam); // 286
+            self.mg_add_sam_missile(tr, st, ow.unwrap_or(self.a_tok), sam, unit, tile);
+        }
+        Ok(JsVal::Undef)
+    }
 }
 
 #[cfg(test)]
@@ -5508,5 +7332,55 @@ mod tests {
                 ("playerType".into(), JsVal::Str("HUMAN".into())),
             ])
         );
+    }
+
+    #[test]
+    fn nuke_state_wait_ticks_defaults_to_zero() {
+        // `unit.nukeState().waitTicks ?? 0`: only a numeric field survives.
+        assert_eq!(nuke_state_wait_ticks(&JsVal::Undef), 0.0);
+        assert_eq!(nuke_state_wait_ticks(&JsVal::Null), 0.0);
+        assert_eq!(
+            nuke_state_wait_ticks(&JsVal::Obj(vec![("other".into(), JsVal::Num(3.0))])),
+            0.0
+        );
+        assert_eq!(
+            nuke_state_wait_ticks(&JsVal::Obj(vec![("waitTicks".into(), JsVal::Num(7.5))])),
+            7.5
+        );
+    }
+
+    #[test]
+    fn parabola_status_and_node_read_the_object_fields() {
+        let r = JsVal::Obj(vec![
+            ("status".into(), JsVal::Num(2.0)),
+            ("node".into(), JsVal::Num(9.0)),
+        ]);
+        assert_eq!(parabola_status(&r), 2.0);
+        assert_eq!(parabola_node_num(&r), 9.0);
+        // A missing field is NaN (the `PathStatus.NEXT`/`COMPLETE` comparison).
+        assert!(parabola_status(&JsVal::Undef).is_nan());
+        assert!(parabola_node_num(&JsVal::Null).is_nan());
+    }
+
+    #[test]
+    fn as_traj_reads_tile_and_targetable() {
+        let v = JsVal::Arr(vec![
+            JsVal::Obj(vec![
+                ("tile".into(), JsVal::Num(5.0)),
+                ("targetable".into(), JsVal::Bool(true)),
+            ]),
+            JsVal::Obj(vec![("tile".into(), JsVal::Num(6.0))]),
+        ]);
+        assert_eq!(as_traj(&v), vec![(5.0, true), (6.0, false)]);
+        assert!(as_traj(&JsVal::Null).is_empty());
+    }
+
+    #[test]
+    fn as_arr_nums_reads_a_number_list() {
+        assert_eq!(
+            as_arr_nums(&JsVal::Arr(vec![JsVal::Num(3.0), JsVal::Num(5.0)])),
+            vec![3.0, 5.0]
+        );
+        assert!(as_arr_nums(&JsVal::Undef).is_empty());
     }
 }

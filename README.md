@@ -2728,6 +2728,40 @@ WebSockets — stays excluded, mirroring the `src/core` exclusions).
     re-roll no-ops. 15 new scenarios (`el_ddc_*` / `el_tribe_spawner_*` /
     `el_spawn_exec_*`, 55 ops), 179 scenarios / 723 ops and 906,185 wasm
     comparisons in total.
+87. **`execution/` layer, part 6** (`execution`, G5f) — the nuke, MIRV and SAM
+    launcher executions added to the same `exec_layer.rs` harness (class ids
+    33…35): `NukeExecution` (33), `MirvExecution` (34) and
+    `SAMLauncherExecution` (35, with its module-local `SAMTargetingSystem`
+    targeting helper). Facade trace codes pick up where G5e stopped: mg 700-718
+    (`config().nukeSpeed` / `config().waterNukes` /
+    `config().defaultNukeTargetableRange` / `playerBySmallID` /
+    `config().nukeDeathFactor` / `config().mirvNormalizeTargetTicks` /
+    `config().dynamicSamRange` / `config().maxSamRange` /
+    `config().SAMCooldown` / `units` / `euclideanDistSquared` / the callback
+    `nearbyUnits` / `bfs`, plus the void `recordMotionPlan` / `queueNukeImpact`
+    / `queueWaterConversion` / `displayIncomingUnit` / `stats().bombLaunch` /
+    `stats().bombLand`), the scripted `__parabola` pathfinder 750-752 (`next` /
+    `findPath` / `currentIndex`), player 720-721 (`incomingAllianceRequests` /
+    `outgoingAttacks`), request 744 (`requestor`) and unit 730-743 (`troops` /
+    `setTroops` / `updateNukeState` / `setTrajectoryIndex` / `setTargetable` /
+    `targetUnit` / `touch` / `isUnit` / `trajectoryIndex` / `nukeState` /
+    `trajectory` / `isInCooldown` / `launch` / `targetedBySAM`). The parabola
+    pathfinder is a scripted stub object (`__stub/pathfinding.ts`); the
+    trajectory / `nukeState` values the real game derives from the motion plan
+    are scripted facade values. `NukeExecution` covers the canBuild-warn / idle
+    gates, the silo-queue wait, the atom-vs-hydrogen inbound message, the
+    COMPLETE→detonate branch (with and without a SAM intercept) and the NEXT
+    branch, and both the `bfs` land blast and the `waterNukes` ring sampler.
+    `MirvExecution` covers the deterministic-speed parabola flight, the
+    `finalizeDestinations` top-up (budget exhaustion when no candidate tile
+    validates) with its `NukeExecution` warhead spawn (tag 3), and the
+    final-tick `separate` + `bombLand`. `SAMLauncherExecution` covers the
+    null-sam / cannot-build / under-construction / inactive gates, the
+    reload-missile loop, the cooldown gate, the zero-unitCount early return and
+    `getValidTargets` (cached + freshly-computed nukes) → the launch loop
+    recording `SAMMissileExecution` (tag 15). 19 new scenarios (`el_nuke_*` /
+    `el_mirv_*` / `el_sam_*`, 102 ops), 198 scenarios / 825 ops and 1,262,925
+    wasm comparisons in total.
 
 Regenerate whenever a ported source changes:
 
@@ -2761,7 +2795,7 @@ node rust/tools/run_wasm_parity.mjs
 
 `wasm-probe` exposes the ported functions through `extern "C"` scalar
 entrypoints (`src/wasm_probe.rs`); the runner imports `data/vectors.json` and
-compares every value. Last run: **906,185 comparisons, all bit-identical**.
+compares every value. Last run: **1,262,925 comparisons, all bit-identical**.
 
 ### Windows: the linker environment
 

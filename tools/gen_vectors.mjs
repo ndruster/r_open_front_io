@@ -26552,6 +26552,18 @@ const elTribeSpawnerC = (
 const elSpawnExecC = (
   await loadTs("src/core/execution/SpawnExecution.ts")
 ).SpawnExecution;
+// G5f classes. `NukeExecution`, `MirvExecution` and `SAMLauncherExecution` are
+// the REAL sources; the parabola stepper is a scripted facade (`mg.__parabola`
+// via the `__stub/pathfinding.ts` `UniversalPathFinding.Parabola`), and the
+// downstream `NukeExecution` / `SAMMissileExecution` records use the
+// `__stub/downstream.ts` / prepared `SAMMissileExecution` copies.
+const elNukeC = (await loadTs("src/core/execution/NukeExecution.ts"))
+  .NukeExecution;
+const elMirvC = (await loadTs("src/core/execution/MIRVExecution.ts"))
+  .MirvExecution;
+const elSamLauncherC = (
+  await loadTs("src/core/execution/SAMLauncherExecution.ts")
+).SAMLauncherExecution;
 // A `Game` (mg) ctor argument for `TribeSpawner.gs`; resolved by the `elDef`
 // args map to `elC.mg` (the Rust ctor table sees the facade group token).
 const elMgRef = { __elmg: true };
@@ -26752,6 +26764,15 @@ function elPlayerObj(tok, slots) {
     conquer: (t) => elVoid(637, [tok, ...elEv1(t)]),
     setSpawnTile: (t) => elVoid(638, [tok, ...elEv1(t)]),
     markRotted: () => elVoid(640, [tok]),
+    // G5f (`NukeExecution.maybeBreakAlliances`, `detonate`).
+    incomingAllianceRequests: () => {
+      const ts = elRet(m, 53, 720, [tok]);
+      return (ts || []).map((t) => elC.requests[t]);
+    },
+    outgoingAttacks: () => {
+      const ts = elRet(m, 54, 721, [tok]);
+      return (ts || []).map((t) => elC.units[t]);
+    },
   };
 }
 function elAllianceObj(tok, slots) {
@@ -26776,6 +26797,11 @@ function elRequestObj(tok, slots) {
     createdAt: () => elRet(m, 4, 274, [tok]),
     accept: () => elVoid(271, [tok]),
     reject: () => elVoid(272, [tok]),
+    // G5f (`NukeExecution.maybeBreakAlliances`).
+    requestor: () => {
+      const t = elRet(m, 5, 744, [tok]);
+      return t == null ? null : elC.players[t];
+    },
   };
 }
 function elUnitObj(tok, slots) {
@@ -26821,6 +26847,26 @@ function elUnitObj(tok, slots) {
     // G5e.
     maxHealth: () => elRet(m, 28, 620, [tok]),
     health: () => elRet(m, 29, 621, [tok]),
+    // G5f. `trajectory()`/`trajectoryIndex()`/`nukeState()` are computed from
+    // the unit's motion plan in the real game; here they are scripted facade
+    // values (`TrajectoryTile[]` / number / `{waitTicks}`).
+    troops: () => elRet(m, 30, 730, [tok]),
+    setTroops: (n) => elVoid(731, [tok, ...elEv1(n)]),
+    updateNukeState: (state) => elVoid(732, [tok, ...encVal(state)]),
+    setTrajectoryIndex: (i) => elVoid(733, [tok, ...elEv1(i)]),
+    setTargetable: (flag) => elVoid(734, [tok, ...elEvb(flag)]),
+    targetUnit: () => {
+      const t = elRet(m, 35, 735, [tok]);
+      return t == null ? undefined : elC.units[t];
+    },
+    touch: () => elVoid(736, [tok]),
+    isUnit: () => elRet(m, 37, 737, [tok]),
+    trajectoryIndex: () => elRet(m, 38, 738, [tok]),
+    nukeState: () => elRet(m, 39, 739, [tok]),
+    trajectory: () => elRet(m, 40, 740, [tok]),
+    isInCooldown: () => elRet(m, 41, 741, [tok]),
+    launch: () => elVoid(742, [tok]),
+    targetedBySAM: () => elRet(m, 43, 743, [tok]),
   };
 }
 function elNeighborObj(tok, slots) {
@@ -26891,6 +26937,22 @@ function elMgObj(slots) {
     doomsdayClockConfig: () => elRet(m, 61, 601, []),
     isRandomSpawn: () => elRet(m, 66, 606, []),
     minDistanceBetweenPlayers: () => elRet(m, 72, 612, []),
+    // G5f.
+    nukeSpeed: (ty) => elRet(m, 79, 700, elEvs(ty)),
+    waterNukes: () => elRet(m, 80, 701, []),
+    defaultNukeTargetableRange: () => elRet(m, 81, 702, []),
+    nukeDeathFactor: (ty, troops, tilesLeft, maxTroops) =>
+      elRet(m, 83, 704, [
+        ...elEvs(ty),
+        ...elEv1(troops),
+        ...elEv1(tilesLeft),
+        ...elEv1(maxTroops),
+      ]),
+    mirvNormalizeTargetTicks: () => elRet(m, 84, 705, []),
+    dynamicSamRange: (sam, tick) =>
+      elRet(m, 85, 706, [...elEvTok(sam), ...elEv1(tick)]),
+    maxSamRange: () => elRet(m, 86, 707, []),
+    SAMCooldown: () => elRet(m, 87, 708, []),
   };
   return {
     config: () => cfg,
@@ -26950,13 +27012,32 @@ function elMgObj(slots) {
     isLand: (tile) => elRet(m, 23, 304, elEv1(tile)),
     hasUnitNearby: (tile, outer, ty) =>
       elRet(m, 24, 305, [...elEv1(tile), ...elEv1(outer), ...elEvs(ty)]),
-    nearbyUnits: (tile, outer, types) => {
-      const ts = elRet(m, 25, 306, [
+    nearbyUnits: (tile, outer, types, cb) => {
+      const arr = Array.isArray(types) ? types : [types];
+      if (cb === undefined) {
+        const ts = elRet(m, 25, 306, [
+          ...elEv1(tile),
+          ...elEv1(outer),
+          ...elEvStrs(arr),
+        ]);
+        return (ts || []).map((t) => ({ unit: elC.units[t] }));
+      }
+      // G5f: the callback form. The scripted list is replayed through `cb`
+      // (which drives every `unit.*` read) and only the passing units are
+      // returned; the raw list and the filtered result are both traced.
+      const units = elTake(m, 94) || [];
+      elT.push(
+        715,
         ...elEv1(tile),
         ...elEv1(outer),
-        ...elEvStrs(types),
-      ]);
-      return (ts || []).map((t) => ({ unit: elC.units[t] }));
+        ...elEvStrs(arr),
+        ...elEvTokList(units),
+      );
+      const out = [];
+      for (const t of units)
+        if (cb({ unit: elC.units[t], distSquared: 0 })) out.push(t);
+      elT.push(...elEvTokList(out));
+      return out.map((t) => ({ unit: elC.units[t] }));
     },
     addExecution: (exec) => {
       const cn = exec.constructor.name;
@@ -27062,6 +27143,21 @@ function elMgObj(slots) {
         elT.push(307, 14, ...elEvTok(exec.player), ...encVal(undefined));
         return;
       }
+      // G5f: `SAMLauncherExecution` spawns `SAMMissileExecution` (tag 15; the
+      // prepared ctor has no observable side effect).
+      if (cn === "SAMMissileExecution") {
+        elT.push(
+          307,
+          15,
+          ...encVal(exec.spawn),
+          ...elEvTok(exec._owner),
+          ...elEvTok(exec.ownerUnit),
+          ...elEvTok(exec.target),
+          ...encVal(exec.targetTile),
+          ...encVal(undefined),
+        );
+        return;
+      }
       const tag = elExecTags[cn];
       if (tag === undefined) {
         throw new Error(`el: unknown execution ${cn}`);
@@ -27096,6 +27192,11 @@ function elMgObj(slots) {
       stats: () => elRet(m, 38, 504, []),
       bombIntercept: (p, ty, n) =>
         elVoid(524, [...elEvTok(p), ...elEvs(ty), ...elEv1(n)]),
+      // G5f.
+      bombLaunch: (p, t, ty) =>
+        elVoid(717, [...elEvTok(p), ...elEvTok(t), ...elEvs(ty)]),
+      bombLand: (p, t, ty) =>
+        elVoid(718, [...elEvTok(p), ...elEvTok(t), ...elEvs(ty)]),
     }),
     setWinner: (w, s) => elVoid(505, [...elWinArg(w), ...encVal(s)]),
     unitCount: (ty) => elRet(m, 40, 506, elEvs(ty)),
@@ -27135,27 +27236,68 @@ function elMgObj(slots) {
     __pathFinder: {
       next: (from, to) => elRet(m, 59, 525, [...elEv1(from), ...elEv1(to)]),
     },
+    // G5f. `UniversalPathFinding.Parabola(mg, opts)` returns this object (the
+    // pathfinding stub reads `game.__parabola`); `next` / `findPath` /
+    // `currentIndex` replay the scripted values.
+    __parabola: {
+      next: (from, to, speed) =>
+        elRet(m, 98, 750, [...elEv1(from), ...elEv1(to), ...elEv1(speed)]),
+      findPath: (from, to) => {
+        const ts = elRet(m, 99, 751, [...elEv1(from), ...elEv1(to)]);
+        return ts || [];
+      },
+      currentIndex: () => elRet(m, 100, 752, []),
+    },
+    // G5f.
+    playerBySmallID: (id) => {
+      const t = elRet(m, 82, 703, elEv1(id));
+      return t == null ? null : elC.players[t];
+    },
+    units: () => {
+      const ts = elRet(m, 88, 709, []);
+      return (ts || []).map((t) => elC.units[t]);
+    },
+    euclideanDistSquared: (a, b) =>
+      elRet(m, 89, 710, [...elEv1(a), ...elEv1(b)]),
+    recordMotionPlan: (plan) => elVoid(711, [...encVal(plan)]),
+    queueNukeImpact: (tile) => elVoid(712, [...elEv1(tile)]),
+    queueWaterConversion: (tile) => elVoid(713, [...elEv1(tile)]),
+    displayIncomingUnit: (id, msg, type, targetId) =>
+      elVoid(714, [
+        ...elEv1(id),
+        ...elEvs(msg),
+        ...elEv1(type),
+        ...elEvs(targetId),
+      ]),
+    bfs: (start, cb) => {
+      const list = elTake(m, 95) || [];
+      elT.push(716, ...elEv1(start), ...elEvTokList(list));
+      const out = [];
+      for (const n of list) if (cb(undefined, n)) out.push(n);
+      elT.push(...elEvTokList(out));
+      return out;
+    },
   };
 }
 
 function elDef(name, classId, cls, args, spec, ops) {
   elT = [];
   elC = {};
-  elC.players = (spec.players || []).map((mm, i) => elPlayerObj(i, elSlots(53, mm)));
+  elC.players = (spec.players || []).map((mm, i) => elPlayerObj(i, elSlots(55, mm)));
   elC.alliances = (spec.alliances || []).map((mm, i) => elAllianceObj(i, elSlots(4, mm)));
-  elC.requests = (spec.requests || []).map((mm, i) => elRequestObj(i, elSlots(5, mm)));
-  elC.units = (spec.units || []).map((mm, i) => elUnitObj(i, elSlots(30, mm)));
+  elC.requests = (spec.requests || []).map((mm, i) => elRequestObj(i, elSlots(6, mm)));
+  elC.units = (spec.units || []).map((mm, i) => elUnitObj(i, elSlots(48, mm)));
   elC.neighbors = (spec.neighbors || []).map((mm, i) => elNeighborObj(i, elSlots(3, mm)));
-  elC.mg = elMgObj(elSlots(79, spec.mg));
+  elC.mg = elMgObj(elSlots(101, spec.mg));
 
   const setup = {
     c: classId,
     a: spec.a || [],
-    mg: elSlots(79, spec.mg),
-    players: (spec.players || []).map((mm) => elSlots(53, mm)),
+    mg: elSlots(101, spec.mg),
+    players: (spec.players || []).map((mm) => elSlots(55, mm)),
     alliances: (spec.alliances || []).map((mm) => elSlots(4, mm)),
-    requests: (spec.requests || []).map((mm) => elSlots(5, mm)),
-    units: (spec.units || []).map((mm) => elSlots(30, mm)),
+    requests: (spec.requests || []).map((mm) => elSlots(6, mm)),
+    units: (spec.units || []).map((mm) => elSlots(48, mm)),
     neighbors: (spec.neighbors || []).map((mm) => elSlots(3, mm)),
   };
 
@@ -28572,6 +28714,606 @@ elDef(
     },
   },
   [[0], [1, 0], [2, 0], [3], [4]],
+);
+
+// ---------------------------------------------------------------------------
+// G5f — execution facade for NukeExecution (classId 33), MIRVExecution (34) and
+// SAMLauncherExecution (35). Op codes are >= 700; `addExecution` tags 3 / 4 /
+// 15 (Nuke / MIRV / SAMMissile) are replayed by the harness's execution sink.
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// NukeExecution (33)
+// ---------------------------------------------------------------------------
+
+// `canBuild` returns false -> warn and go inactive before any unit is built.
+elDef(
+  "el_nuke_cannot_build",
+  33,
+  elNukeC,
+  ["AtomBomb", null, 100],
+  {
+    a: ["AtomBomb", 0, 100],
+    mg: { 79: [10] },
+    players: [{ 47: [false] }],
+  },
+  [[0], [1, 0], [2, 0], [3], [4]],
+);
+
+// The first tick builds the nuke (no silo on the launch tile); the second sees
+// `waitTicks > 0` and only decrements it.
+elDef(
+  "el_nuke_wait_ticks",
+  33,
+  elNukeC,
+  ["AtomBomb", null, 100, elNull, -1, 5],
+  {
+    a: ["AtomBomb", 0, 100, elNull, -1, 5],
+    mg: {
+      14: [{ inner: 1, outer: 2 }],
+      15: [0],
+      18: [[]],
+      25: [[]],
+      67: [false],
+      79: [10],
+      81: [30],
+      89: [100],
+      98: [{ status: 0, node: 7 }, { status: 2, node: 8 }],
+      99: [[5]],
+    },
+    players: [{ 47: [500], 48: [0], 11: [[]], 53: [[]] }],
+    units: [{ 0: [true], 3: ["Atom Bomb"], 7: [1000] }],
+  },
+  [[0], [1, 0], [2, 0], [2, 1], [3]],
+);
+
+// A `NEXT` movement result: retargetable check, move, trajectory index update.
+elDef(
+  "el_nuke_next_step",
+  33,
+  elNukeC,
+  ["AtomBomb", null, 100],
+  {
+    a: ["AtomBomb", 0, 100],
+    mg: {
+      14: [{ inner: 1, outer: 2 }],
+      15: [0],
+      18: [[]],
+      25: [[]],
+      67: [false],
+      79: [10],
+      81: [30],
+      89: [100],
+      98: [
+        { status: 0, node: 7 },
+        { status: 2, node: 8 },
+        { status: 0, node: 9 },
+      ],
+      99: [[5]],
+      100: [3],
+    },
+    players: [{ 47: [500], 48: [0], 11: [[]], 53: [[]] }],
+    units: [{ 0: [true], 2: [100], 3: ["Atom Bomb"], 7: [1000], 11: [500] }],
+  },
+  [[0], [1, 0], [2, 0], [2, 1], [3]],
+);
+
+// A completed flight is cancelled by an in-range SAM missile targeting it.
+elDef(
+  "el_nuke_sam_intercept",
+  33,
+  elNukeC,
+  ["AtomBomb", null, 100],
+  {
+    a: ["AtomBomb", 0, 100],
+    mg: {
+      14: [{ inner: 1, outer: 2 }],
+      15: [0],
+      18: [[]],
+      25: [[]],
+      50: [100],
+      67: [false],
+      79: [10],
+      81: [30],
+      89: [100],
+      94: [[1]],
+      98: [
+        { status: 0, node: 7 },
+        { status: 2, node: 8 },
+        { status: 2, node: 9 },
+      ],
+      99: [[5]],
+    },
+    players: [{ 47: [500], 48: [0], 11: [[]], 53: [[]] }, {}],
+    units: [
+      { 0: [true], 3: ["Atom Bomb"], 6: [0], 7: [1000], 11: [500] },
+      { 6: [1], 35: [0], 37: [true] },
+    ],
+  },
+  [[0], [1, 0], [2, 0], [2, 1], [3]],
+);
+
+// A silo on the launch tile pushes the missile back by its timer queue.
+elDef(
+  "el_nuke_silo_queue_delay",
+  33,
+  elNukeC,
+  ["AtomBomb", null, 100],
+  {
+    a: ["AtomBomb", 0, 100],
+    mg: {
+      2: [2],
+      14: [{ inner: 1, outer: 2 }],
+      15: [0],
+      18: [[]],
+      25: [[]],
+      67: [false],
+      79: [10],
+      81: [30],
+      89: [100],
+      98: [{ status: 0, node: 7 }, { status: 2, node: 8 }],
+      99: [[5]],
+    },
+    players: [{ 47: [500], 48: [1], 11: [[0]], 53: [[]] }],
+    units: [
+      { 11: [500], 13: [[3, 5]] },
+      { 0: [true], 3: ["Atom Bomb"], 7: [1000] },
+    ],
+  },
+  [[0], [1, 0], [2, 0], [3]],
+);
+
+// Atom bomb detonation with a two-tile BFS blast owned by the player.
+elDef(
+  "el_nuke_atom_bfs_detonate",
+  33,
+  elNukeC,
+  ["AtomBomb", null, 100],
+  {
+    a: ["AtomBomb", 0, 100],
+    mg: {
+      2: [0],
+      12: [0],
+      14: [{ inner: 1, outer: 2 }],
+      15: [0],
+      18: [[]],
+      23: [true],
+      25: [[]],
+      32: [1000],
+      50: [100],
+      67: [false],
+      77: [false],
+      79: [10],
+      80: [false],
+      81: [30],
+      83: [5],
+      88: [[]],
+      89: [0],
+      94: [[]],
+      95: [[10, 11]],
+      98: [{ status: 0, node: 7 }, { status: 2, node: 8 }],
+      99: [[5]],
+    },
+    players: [
+      {
+        1: ["p1"],
+        2: ["Owner"],
+        11: [[]],
+        26: [true],
+        41: [50],
+        45: [50],
+        47: [500],
+        48: [0],
+        53: [[]],
+        54: [[]],
+      },
+    ],
+    units: [{ 0: [true], 3: ["Atom Bomb"], 7: [1000] }],
+  },
+  [[0], [1, 0], [2, 0], [2, 1], [3]],
+);
+
+// Hydrogen warhead announces an inbound hydrogen bomb to the target player.
+elDef(
+  "el_nuke_hydrogen_inbound",
+  33,
+  elNukeC,
+  ["Hydrogen Bomb", null, 100],
+  {
+    a: ["Hydrogen Bomb", 0, 100],
+    mg: {
+      12: [0],
+      14: [{ inner: 1, outer: 2 }],
+      15: [0],
+      18: [[]],
+      25: [[]],
+      67: [true],
+      79: [10],
+      81: [30],
+      89: [100],
+      98: [{ status: 0, node: 7 }, { status: 2, node: 8 }],
+      99: [[5]],
+    },
+    players: [
+      {
+        1: ["p1"],
+        2: ["Owner"],
+        11: [[]],
+        26: [true],
+        47: [500],
+        48: [0],
+        53: [[]],
+      },
+    ],
+    units: [{ 0: [true], 3: ["Hydrogen Bomb"], 7: [1000] }],
+  },
+  [[0], [1, 0], [2, 0], [3], [4]],
+);
+
+// `waterNukes` true: the blast is carved by the smoothed angular radius
+// sampler instead of a BFS. `outer = 0` collapses the scan to a single cell.
+elDef(
+  "el_nuke_water_radius",
+  33,
+  elNukeC,
+  ["AtomBomb", null, 100],
+  {
+    a: ["AtomBomb", 0, 100],
+    mg: {
+      2: [0],
+      12: [0],
+      14: [{ inner: 0, outer: 0 }],
+      15: [0],
+      18: [[]],
+      23: [true],
+      25: [[]],
+      50: [100],
+      63: [5],
+      64: [5],
+      67: [false],
+      69: [100],
+      70: [10],
+      71: [10],
+      77: [true],
+      79: [10],
+      80: [true],
+      81: [30],
+      88: [[]],
+      89: [100],
+      94: [[]],
+      98: [{ status: 0, node: 7 }, { status: 2, node: 8 }],
+      99: [[5]],
+    },
+    players: [{ 11: [[]], 26: [false], 47: [500], 48: [0], 53: [[]] }],
+    units: [{ 0: [true], 3: ["Atom Bomb"], 7: [1000] }],
+  },
+  [[0], [1, 0], [2, 0], [2, 1], [3]],
+);
+
+// ---------------------------------------------------------------------------
+// MIRVExecution (34)
+// ---------------------------------------------------------------------------
+
+// `canBuild` for the MIRV returns false -> warn and go inactive.
+elDef(
+  "el_mirv_cannot_build",
+  34,
+  elMirvC,
+  [null, 100],
+  {
+    a: [0, 100],
+    mg: { 2: [0], 12: [0], 63: [5], 64: [5] },
+    players: [{ 1: ["p1"], 47: [false] }],
+  },
+  [[0], [1, 0], [2, 0], [3], [4]],
+);
+
+// Full flight: build, deterministic speed, motion plan, `finalizeDestinations`
+// (with no valid tile -> the tryGenerateTarget budget is exhausted) and the
+// warhead spawn (a `NukeExecution`, tag 3); then the missile separates on the
+// final tick, recording `bombLand`.
+elDef(
+  "el_mirv_separate_warheads",
+  34,
+  elMirvC,
+  [null, 100],
+  {
+    a: [0, 100],
+    mg: {
+      2: [0],
+      12: [0],
+      63: [5],
+      64: [5],
+      69: [700],
+      71: [100],
+      76: [false],
+      79: [10],
+      84: [100],
+      98: [
+        { status: 0, node: 1 },
+        { status: 0, node: 2 },
+        { status: 0, node: 3 },
+        { status: 0, node: 4 },
+        { status: 0, node: 5 },
+        { status: 0, node: 6 },
+        { status: 0, node: 7 },
+        { status: 0, node: 8 },
+        { status: 0, node: 9 },
+        { status: 0, node: 10 },
+        { status: 2, node: 0 },
+      ],
+    },
+    players: [
+      {
+        1: ["p1"],
+        2: ["Owner"],
+        11: [[]],
+        13: [null],
+        26: [true],
+        47: [500],
+        48: [1],
+      },
+    ],
+    units: [{}, { 0: [true], 3: ["MIRV"], 7: [1000], 11: [600] }],
+  },
+  [
+    [0],
+    [1, 0],
+    [2, 0],
+    [2, 1],
+    [2, 2],
+    [2, 3],
+    [2, 4],
+    [2, 5],
+    [2, 6],
+    [2, 7],
+    [2, 8],
+    [2, 9],
+    [2, 10],
+    [3],
+    [4],
+  ],
+);
+
+// The MIRV's own unit is inactive -> go inactive without further work.
+elDef(
+  "el_mirv_unit_inactive",
+  34,
+  elMirvC,
+  [null, 100],
+  {
+    a: [0, 100],
+    mg: {
+      2: [0],
+      12: [0],
+      63: [5],
+      64: [5],
+      69: [700],
+      71: [100],
+      76: [false],
+      79: [10],
+      84: [100],
+      98: [{ status: 0, node: 7 }, { status: 2, node: 8 }],
+    },
+    players: [
+      {
+        1: ["p1"],
+        2: ["Owner"],
+        11: [[]],
+        13: [null],
+        26: [true],
+        47: [500],
+        48: [1],
+      },
+    ],
+    units: [{}, { 0: [false], 3: ["MIRV"], 7: [1000], 11: [600] }],
+  },
+  [[0], [1, 0], [2, 0], [3], [4]],
+);
+
+// ---------------------------------------------------------------------------
+// SAMLauncherExecution (35)
+// ---------------------------------------------------------------------------
+
+// `sam` is null and the ctor tile is null -> the tick throws.
+elDef(
+  "el_sam_tile_null",
+  35,
+  elSamLauncherC,
+  [null, elNull, elNull],
+  {
+    a: [0, elNull, elNull],
+    players: [{}],
+  },
+  [[0], [1, 0], [2, 0], [3], [4]],
+);
+
+// `canBuild` for the SAM Launcher returns false -> warn and go inactive.
+elDef(
+  "el_sam_cannot_build",
+  35,
+  elSamLauncherC,
+  [null, 100, elNull],
+  {
+    a: [0, 100, elNull],
+    players: [{ 47: [false] }],
+  },
+  [[0], [1, 0], [2, 0], [3], [4]],
+);
+
+// A freshly built launcher still under construction returns immediately.
+elDef(
+  "el_sam_under_construction",
+  35,
+  elSamLauncherC,
+  [null, 100, elNull],
+  {
+    a: [0, 100, elNull],
+    mg: { 50: [100] },
+    players: [{ 47: [500], 48: [0] }],
+    units: [{ 12: [true], 20: [1] }],
+  },
+  [[0], [1, 0], [2, 0], [3]],
+);
+
+// Reload-missile loop: the first queue read is behind the cooldown, so the
+// missile reloads once; the second read drains the queue and the loop exits.
+// With every nuke count at zero the tick then returns before targeting.
+elDef(
+  "el_sam_reload_missile",
+  35,
+  elSamLauncherC,
+  [null, 100, elNull],
+  {
+    a: [0, 100, elNull],
+    mg: { 2: [20], 40: [0], 50: [100], 87: [10] },
+    players: [{ 47: [500], 48: [0] }],
+    units: [
+      {
+        0: [true],
+        6: [0],
+        7: [10],
+        12: [false],
+        13: [[5], [5], []],
+        20: [1],
+        41: [false],
+      },
+    ],
+  },
+  [[0], [1, 0], [2, 0], [3], [4]],
+);
+
+// The queue read is ahead of the cooldown -> break, then `isInCooldown` returns.
+elDef(
+  "el_sam_in_cooldown",
+  35,
+  elSamLauncherC,
+  [null, 100, elNull],
+  {
+    a: [0, 100, elNull],
+    mg: { 2: [0], 50: [100], 87: [10] },
+    players: [{ 47: [500], 48: [0] }],
+    units: [
+      { 0: [true], 6: [0], 12: [false], 13: [[5]], 20: [1], 41: [true] },
+    ],
+  },
+  [[0], [1, 0], [2, 0], [3]],
+);
+
+// A reachable interception this tick -> the launch loop fires a
+// `SAMMissileExecution` (tag 15).
+elDef(
+  "el_sam_launch_missile",
+  35,
+  elSamLauncherC,
+  [null, 100, elNull],
+  {
+    a: [0, 100, elNull],
+    mg: {
+      40: [1],
+      43: [0],
+      50: [100],
+      85: [100],
+      86: [100],
+      89: [0],
+      94: [[1]],
+    },
+    players: [{ 12: [false], 47: [500], 48: [0] }, {}],
+    units: [
+      {
+        0: [true],
+        6: [0],
+        7: [10],
+        11: [100],
+        12: [false],
+        13: [[]],
+        20: [1],
+        41: [false],
+      },
+      {
+        6: [1],
+        7: [11],
+        37: [true],
+        38: [0],
+        39: [{ waitTicks: 0 }],
+        40: [
+          [
+            { tile: 10, targetable: true },
+            { tile: 11, targetable: true },
+            { tile: 12, targetable: true },
+          ],
+        ],
+        43: [false],
+      },
+    ],
+  },
+  [[0], [1, 0], [2, 0], [3]],
+);
+
+// A nuke that cannot be intercepted this tick is cached; a later tick whose
+// `cached.tick === ticks + 1` reuses the cache and launches from it.
+elDef(
+  "el_sam_cached_interception",
+  35,
+  elSamLauncherC,
+  [null, 100, elNull],
+  {
+    a: [0, 100, elNull],
+    mg: {
+      40: [1],
+      43: [600],
+      50: [100],
+      85: [100],
+      86: [100],
+      89: [0],
+      94: [[1]],
+    },
+    players: [{ 12: [false], 47: [500], 48: [0] }, {}],
+    units: [
+      {
+        0: [true],
+        6: [0],
+        7: [10],
+        11: [100],
+        12: [false],
+        13: [[]],
+        20: [1],
+        41: [false],
+      },
+      {
+        6: [1],
+        7: [11],
+        37: [true],
+        38: [0],
+        39: [{ waitTicks: 10 }],
+        40: [
+          [
+            { tile: 10, targetable: true },
+            { tile: 11, targetable: true },
+            { tile: 12, targetable: true },
+          ],
+        ],
+        43: [false],
+      },
+    ],
+  },
+  [[0], [1, 0], [2, 0], [2, 1], [2, 2], [2, 3], [3]],
+);
+
+// The ctor already supplies the launcher unit, so the tile is read from it and
+// the first tick skips `canBuild`.
+elDef(
+  "el_sam_existing_unit",
+  35,
+  elSamLauncherC,
+  [null, elNull, elUnitRef(0)],
+  {
+    a: [0, elNull, 0],
+    mg: { 50: [100] },
+    players: [{}],
+    units: [{ 11: [100], 12: [true], 20: [1] }],
+  },
+  [[0], [1, 0], [2, 0], [3]],
 );
 
 const structures = {
@@ -32318,7 +33060,8 @@ opStream(
     "/// DeleteUnit, 16 QuickChat, 17 MissileSilo, 18 UpgradeStructure, 19 City,\n" +
     "/// 20 Factory, 21 DefensePost, 22 Emoji, 23 DonateTroop, 24 DonateGold, 25\n" +
     "/// WinCheck, 26 Shell, 27 SAMMissile, 28 Port, 29 Construction, 30\n" +
-    "/// DoomsdayClock, 31 TribeSpawner, 32 SpawnExecution. Facade trace\n" +
+    "/// DoomsdayClock, 31 TribeSpawner, 32 SpawnExecution, 33 Nuke, 34 MIRV, 35\n" +
+    "/// SAMLauncher. Facade trace\n" +
     "/// events: mg 210 hasPlayer, 211 player,\n" +
     "/// 212 ticks, 213 allianceRequestDuration, 214 gameType, 215\n" +
     "/// numSpawnPhaseTurns, 216 inSpawnPhase, 217 endSpawnPhase, 218 setPaused,\n" +
@@ -32368,10 +33111,23 @@ opStream(
     "/// tiles, 635 borderTiles, 639 spawnTile (void 630 clearDoomsdayClock, 631\n" +
     "/// enterDoomsdayClock, 633 removeTroops, 636 relinquish, 637 conquer, 638\n" +
     "/// setSpawnTile, 640 markRotted); unit 620 maxHealth, 621 health.\n" +
+    "/// G5f: mg 700 nukeSpeed, 701 waterNukes, 702 defaultNukeTargetableRange,\n" +
+    "/// 703 playerBySmallID, 704 nukeDeathFactor, 705 mirvNormalizeTargetTicks,\n" +
+    "/// 706 dynamicSamRange, 707 maxSamRange, 708 SAMCooldown, 709 units, 710\n" +
+    "/// euclideanDistSquared, 715 nearbyUnits(cb), 716 bfs(cb) (void 711\n" +
+    "/// recordMotionPlan, 712 queueNukeImpact, 713 queueWaterConversion, 714\n" +
+    "/// displayIncomingUnit, 717 stats().bombLaunch, 718 stats().bombLand), 750\n" +
+    "/// parabola.next, 751 parabola.findPath, 752 parabola.currentIndex; player\n" +
+    "/// 720 incomingAllianceRequests, 721 outgoingAttacks; request 744 requestor;\n" +
+    "/// unit 730 troops, 731 setTroops, 732 updateNukeState, 733\n" +
+    "/// setTrajectoryIndex, 734 setTargetable, 735 targetUnit, 736 touch, 737\n" +
+    "/// isUnit, 738 trajectoryIndex, 739 nukeState, 740 trajectory, 741\n" +
+    "/// isInCooldown, 742 launch, 743 targetedBySAM.\n" +
     "/// Construction-record tags on 307: 0 TrainStation, 1\n" +
     "/// Shell, 2 Emoji, 3 Nuke, 4 MIRV, 5 Warship, 6 Port, 7 MissileSilo, 8\n" +
     "/// DefensePost, 9 SAMLauncher, 10 City, 11 Factory, 12 TradeShip, 13\n" +
-    "/// PlayerExecution, 14 TribeExecution (its ctor reads player.id first).\n" +
+    "/// PlayerExecution, 14 TribeExecution (its ctor reads player.id first), 15\n" +
+    "/// SAMMissileExecution.\n" +
     "/// G5e kind 5 spawnTribes [5,numEnc,namesEnc] -> a list of\n" +
     "/// [name,token,tile?] rows. Objects\n" +
     "/// cross as TOKENS (indices\n" +

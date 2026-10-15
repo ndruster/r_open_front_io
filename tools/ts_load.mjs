@@ -50,6 +50,15 @@ export class PathFinding {
     return game.__pathFinder;
   }
 }
+
+// G5f: NukeExecution / MirvExecution build their pathfinder via
+// UniversalPathFinding.Parabola(mg, opts). The harness has no real GameMap,
+// so the stepper is a scripted facade on the mock (mg.__parabola).
+export class UniversalPathFinding {
+  static Parabola(game, options) {
+    return game.__parabola;
+  }
+}
 `,
   "__stub/downstream.ts": `export class NukeExecution {
   constructor(nukeType, player, dst, src, speed, waitTicks, rocketDirectionUp) {
@@ -61,6 +70,7 @@ export class PathFinding {
     this.waitTicks = waitTicks;
     this.rocketDirectionUp = rocketDirectionUp;
   }
+  cancel() {}
 }
 
 export class MirvExecution {
@@ -1677,6 +1687,229 @@ function prepare(rel) {
         "    this.tile = tile;\n" +
         "    this.fromIntent = fromIntent;",
       "SpawnExecution ctor",
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // G5f: NukeExecution / MIRVExecution / SAMLauncherExecution. The real classes
+  // run against scripted facade mocks. There is no real GameMap in the harness,
+  // so `UniversalPathFinding.Parabola(mg, opts)` is redirected to the
+  // pathfinding stub (returns `mg.__parabola`, whose `next` / `findPath` /
+  // `currentIndex` are scripted facade calls). `getParabolaControlPoints` stays
+  // the real implementation - its only map reads are `mg.x/y/height`, all
+  // scripted - and `DistanceBasedBezierCurve` is the real prepared Line.ts.
+  const elParabolaRel = "src/core/pathfinding/PathFinder.Parabola.ts";
+  const elLineRel = "src/core/utilities/Line.ts";
+  const elSamMissileRel = "src/core/execution/SAMMissileExecution.ts";
+  if (rel.endsWith("execution/NukeExecution.ts")) {
+    if (!prepared.has(elGameRel)) prepare(elGameRel);
+    if (!prepared.has(elUtilRel)) prepare(elUtilRel);
+    if (!prepared.has(elPfRel)) prepare(elPfRel);
+    if (!prepared.has(elPsrRel)) prepare(elPsrRel);
+    out = must(
+      out,
+      'import { atan2 } from "../DetMath";\n',
+      `import { atan2 } from "${TS_URL}src/core/DetMath.ts";\n`,
+      "Nuke DetMath import",
+    );
+    out = must(
+      out,
+      "import {\n" +
+        "  Execution,\n" +
+        "  Game,\n" +
+        "  isUnit,\n" +
+        "  MessageType,\n" +
+        "  Player,\n" +
+        "  Structures,\n" +
+        "  TerraNullius,\n" +
+        "  TrajectoryTile,\n" +
+        "  Unit,\n" +
+        "  UnitType,\n" +
+        '} from "../game/Game";\n' +
+        'import { TileRef } from "../game/GameMap";\n' +
+        'import { UniversalPathFinding } from "../pathfinding/PathFinder";\n' +
+        'import { ParabolaUniversalPathFinder } from "../pathfinding/PathFinder.Parabola";\n' +
+        'import { PathStatus } from "../pathfinding/types";\n' +
+        'import { PseudoRandom } from "../PseudoRandom";\n' +
+        'import { NukeType } from "../StatsSchemas";\n' +
+        'import { listNukeBreakAlliance } from "./Util";\n',
+      `import { isUnit, MessageType, Structures, UnitType } from "./${prepared.get(elGameRel)}";\n` +
+        `import { PathStatus, UniversalPathFinding } from "./${prepared.get(elPfRel)}";\n` +
+        `import { PseudoRandom } from "./${prepared.get(elPsrRel)}";\n` +
+        `import { listNukeBreakAlliance } from "./${prepared.get(elUtilRel)}";\n`,
+      "Nuke imports",
+    );
+    out = must(
+      out,
+      "export class NukeExecution implements Execution {\n" +
+        "  private active = true;\n" +
+        "  private mg: Game;\n" +
+        "  private nuke: Unit | null = null;\n" +
+        "  private tilesToDestroyCache: Set<TileRef> | undefined;\n" +
+        "  private pathFinder: ParabolaUniversalPathFinder;\n\n" +
+        "  constructor(\n" +
+        "    private nukeType: NukeType,\n" +
+        "    private player: Player,\n" +
+        "    private dst: TileRef,\n" +
+        "    private src?: TileRef | null,\n" +
+        "    private speed: number = -1,\n" +
+        "    private waitTicks = 0,\n" +
+        "    private rocketDirectionUp: boolean = true,\n" +
+        "  ) {}",
+      "export class NukeExecution {\n" +
+        "  private active = true;\n" +
+        "  private mg: Game;\n" +
+        "  private nuke: Unit | null = null;\n" +
+        "  private tilesToDestroyCache: Set<TileRef> | undefined;\n" +
+        "  private pathFinder: ParabolaUniversalPathFinder;\n\n" +
+        "  constructor(\n" +
+        "    nukeType: NukeType,\n" +
+        "    player: Player,\n" +
+        "    dst: TileRef,\n" +
+        "    src: TileRef | null | undefined,\n" +
+        "    speed: number = -1,\n" +
+        "    waitTicks = 0,\n" +
+        "    rocketDirectionUp: boolean = true,\n" +
+        "  ) {\n" +
+        "    this.nukeType = nukeType;\n" +
+        "    this.player = player;\n" +
+        "    this.dst = dst;\n" +
+        "    this.src = src;\n" +
+        "    this.speed = speed;\n" +
+        "    this.waitTicks = waitTicks;\n" +
+        "    this.rocketDirectionUp = rocketDirectionUp;\n" +
+        "  }",
+      "Nuke ctor",
+    );
+  }
+  if (rel.endsWith("execution/MIRVExecution.ts")) {
+    if (!prepared.has(elGameRel)) prepare(elGameRel);
+    if (!prepared.has(elPfRel)) prepare(elPfRel);
+    if (!prepared.has(elPsrRel)) prepare(elPsrRel);
+    if (!prepared.has(elUtilRel2)) prepare(elUtilRel2);
+    if (!prepared.has(elParabolaRel)) prepare(elParabolaRel);
+    if (!prepared.has(elLineRel)) prepare(elLineRel);
+    if (!prepared.has(elDownRel)) prepare(elDownRel);
+    out = must(
+      out,
+      "import {\n" +
+        "  Execution,\n" +
+        "  Game,\n" +
+        "  MessageType,\n" +
+        "  Player,\n" +
+        "  TerraNullius,\n" +
+        "  Unit,\n" +
+        "  UnitType,\n" +
+        '} from "../game/Game";\n' +
+        'import { TileRef } from "../game/GameMap";\n' +
+        'import { UniversalPathFinding } from "../pathfinding/PathFinder";\n' +
+        "import {\n" +
+        "  ParabolaUniversalPathFinder,\n" +
+        "  getParabolaControlPoints,\n" +
+        '} from "../pathfinding/PathFinder.Parabola";\n' +
+        'import { PathStatus } from "../pathfinding/types";\n' +
+        'import { PseudoRandom } from "../PseudoRandom";\n' +
+        'import { simpleHash } from "../Util";\n' +
+        'import { DistanceBasedBezierCurve } from "../utilities/Line";\n' +
+        'import { NukeExecution } from "./NukeExecution";\n',
+      `import { MessageType, UnitType } from "./${prepared.get(elGameRel)}";\n` +
+        `import { PathStatus, UniversalPathFinding } from "./${prepared.get(elPfRel)}";\n` +
+        `import { getParabolaControlPoints } from "./${prepared.get(elParabolaRel)}";\n` +
+        `import { PseudoRandom } from "./${prepared.get(elPsrRel)}";\n` +
+        `import { simpleHash } from "./${prepared.get(elUtilRel2)}";\n` +
+        `import { DistanceBasedBezierCurve } from "./${prepared.get(elLineRel)}";\n` +
+        `import { NukeExecution } from "./${prepared.get(elDownRel)}";\n`,
+      "MIRV imports",
+    );
+    out = must(
+      out,
+      "export class MirvExecution implements Execution {\n",
+      "export class MirvExecution {\n",
+      "MIRV implements",
+    );
+    out = must(
+      out,
+      "  constructor(\n    private player: Player,\n    private dst: TileRef,\n  ) {}",
+      "  constructor(\n    player: Player,\n    dst: TileRef,\n  ) {\n" +
+        "    this.player = player;\n" +
+        "    this.dst = dst;\n" +
+        "  }",
+      "MIRV ctor",
+    );
+  }
+  if (rel.endsWith("execution/SAMLauncherExecution.ts")) {
+    if (!prepared.has(elGameRel)) prepare(elGameRel);
+    if (!prepared.has(elPsrRel)) prepare(elPsrRel);
+    if (!prepared.has(elSamMissileRel)) prepare(elSamMissileRel);
+    out = must(
+      out,
+      "import {\n" +
+        "  Execution,\n" +
+        "  Game,\n" +
+        "  GameType,\n" +
+        "  isUnit,\n" +
+        "  Player,\n" +
+        "  Unit,\n" +
+        "  UnitType,\n" +
+        '} from "../game/Game";\n' +
+        'import { TileRef } from "../game/GameMap";\n' +
+        'import { PseudoRandom } from "../PseudoRandom";\n' +
+        'import { SAMMissileExecution } from "./SAMMissileExecution";\n',
+      `import { GameType, isUnit, UnitType } from "./${prepared.get(elGameRel)}";\n` +
+        `import { PseudoRandom } from "./${prepared.get(elPsrRel)}";\n` +
+        `import { SAMMissileExecution } from "./${prepared.get(elSamMissileRel)}";\n`,
+      "SAM imports",
+    );
+    out = must(
+      out,
+      "  constructor(\n" +
+        "    private readonly mg: Game,\n" +
+        "    private readonly sam: Unit,\n" +
+        "  ) {\n" +
+        "    this.missileSpeed = this.mg.config().defaultSamMissileSpeed();\n" +
+        "    this.isTargetableNearbyUnit = this.isTargetableNearbyUnit.bind(this);\n" +
+        "  }",
+      "  constructor(\n" +
+        "    mg: Game,\n" +
+        "    sam: Unit,\n" +
+        "  ) {\n" +
+        "    this.mg = mg;\n" +
+        "    this.sam = sam;\n" +
+        "    this.missileSpeed = this.mg.config().defaultSamMissileSpeed();\n" +
+        "    this.isTargetableNearbyUnit = this.isTargetableNearbyUnit.bind(this);\n" +
+        "  }",
+      "SAM targeting ctor",
+    );
+    out = must(
+      out,
+      "export class SAMLauncherExecution implements Execution {\n",
+      "export class SAMLauncherExecution {\n",
+      "SAM implements",
+    );
+    out = must(
+      out,
+      "  constructor(\n" +
+        "    private player: Player,\n" +
+        "    private tile: TileRef | null,\n" +
+        "    private sam: Unit | null = null,\n" +
+        "  ) {\n" +
+        "    if (sam !== null) {\n" +
+        "      this.tile = sam.tile();\n" +
+        "    }\n" +
+        "  }",
+      "  constructor(\n" +
+        "    player: Player,\n" +
+        "    tile: TileRef | null,\n" +
+        "    sam: Unit | null = null,\n" +
+        "  ) {\n" +
+        "    this.player = player;\n" +
+        "    this.tile = tile;\n" +
+        "    this.sam = sam;\n" +
+        "    if (sam !== null) {\n" +
+        "      this.tile = sam.tile();\n" +
+        "    }\n" +
+        "  }",
+      "SAM ctor",
     );
   }
 

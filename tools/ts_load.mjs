@@ -1202,6 +1202,26 @@ function prepare(rel) {
     if (!prepared.has(gbStatsRel)) prepare(gbStatsRel);
     const gbUtilRel = "src/client/Utils.ts";
     if (!prepared.has(gbUtilRel)) prepare(gbUtilRel);
+    // G4c runs populateTeams / addPlayers / addPlayer / maybeAssignTeam /
+    // createAllianceRequest / acceptAllianceRequest / rejectAllianceRequest.
+    // Those method bodies are the ones that *construct collaborators*:
+    //   * `resolveTeamsList` / `assignTeams` (./TeamAssignment) and `simpleHash`
+    //     (../Util) are REAL value uses (TeamAssignment is already a real ported
+    //     dependency), so they ride prepared copies of the real modules.
+    //   * `new PlayerImpl` / `new AllianceRequestImpl` / `new AllianceImpl` are
+    //     redirected to inert scripted stubs with the same *shape*: each ctor
+    //     pushes a facade trace `[code, ...ctorArgs]` and returns a mock token
+    //     (the mock player / request / alliance object). The same events +
+    //     tokens are fabricated by the Rust `GameHarness`, so the two traces
+    //     stay identical. The stub ctor takes `globalThis.__GFA.newX(...)`,
+    //     which runGFA installs (closing over the live `gfaT` / mock tables).
+    //   * `ColoredTeams` / `Duos` / `Trios` / `Quads` / `HumansVsNations` are
+    //     inlined as consts (TeamAssignment precedent) — the class-field
+    //     initializers that also use them are never evaluated under the capture.
+    const taRel = "src/core/game/TeamAssignment.ts";
+    if (!prepared.has(taRel)) prepare(taRel);
+    const gicUtilRel = "src/core/Util.ts";
+    if (!prepared.has(gicUtilRel)) prepare(gicUtilRel);
     const giHead = out.indexOf("export function createGame(");
     if (giHead === -1) {
       throw new Error("ts_load: GameImpl createGame anchor not found");
@@ -1212,7 +1232,31 @@ function prepare(rel) {
       `import { packMotionPlans } from "./${prepared.get(mpRel)}";\n` +
       `import { MessageType, PlayerType, UnitType } from "./${prepared.get(gbGameRel)}";\n` +
       `import { ATTACK_INDEX_SENT } from "./${prepared.get(gbStatsRel)}";\n` +
-      `import { renderNumber } from "./${prepared.get(gbUtilRel)}";\n\n` +
+      `import { renderNumber } from "./${prepared.get(gbUtilRel)}";\n` +
+      `import { resolveTeamsList, assignTeams } from "./${prepared.get(taRel)}";\n` +
+      `import { simpleHash } from "./${prepared.get(gicUtilRel)}";\n` +
+      "const ColoredTeams = { Red: \"Red\", Blue: \"Blue\", Teal: \"Teal\", " +
+      "Purple: \"Purple\", Yellow: \"Yellow\", Orange: \"Orange\", Green: \"Green\", " +
+      "Bot: \"Bot\", Humans: \"Humans\", Nations: \"Nations\" };\n" +
+      'const Duos = "Duos";\n' +
+      'const Trios = "Trios";\n' +
+      'const Quads = "Quads";\n' +
+      'const HumansVsNations = "Humans Vs Nations";\n' +
+      "class PlayerImpl {\n" +
+      "  constructor(game, smallID, playerInfo, troops, team) {\n" +
+      "    return globalThis.__GFA.newPlayer(smallID, playerInfo, troops, team);\n" +
+      "  }\n" +
+      "}\n" +
+      "class AllianceRequestImpl {\n" +
+      "  constructor(requestor, recipient, tickCreated, game) {\n" +
+      "    return globalThis.__GFA.newRequest(requestor, recipient, tickCreated);\n" +
+      "  }\n" +
+      "}\n" +
+      "class AllianceImpl {\n" +
+      "  constructor(game, requestor, recipient, tickCreated, id) {\n" +
+      "    return globalThis.__GFA.newAlliance(requestor, recipient, tickCreated, id);\n" +
+      "  }\n" +
+      "}\n\n" +
       out.slice(giHead);
     out = must(
       out,

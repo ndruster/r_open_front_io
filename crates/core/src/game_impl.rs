@@ -189,13 +189,59 @@
 //! keyless object `[6,0]`, so the twin uses an empty [`JsVal::Obj`] for that
 //! leaf (the non-skip branch carries a plain number).
 //!
+//! ## G4c additions
+//!
+//! The `constructor` (TS 122-153) is deliberately left OUT of scope. Its
+//! observable outputs are the collaborators the harness drives directly
+//! (`_config.gameConfig().gameMode`, `_humans`, `_nations`, `_players`, plus
+//! the `populateTeams` / `addPlayers` calls now ported below); the remaining
+//! constructor-only work (`TerraNulliusImpl`, `UnitGrid`, `WaterManager`,
+//! `SharedWaterCache`) is scripted by the harness, so building the real object
+//! graph adds no observable behaviour over the G4a `createGame` compose step.
+//!
+//! New GameImpl method mids: 400 `populateTeams` (155-161), 401 `addPlayers`
+//! (163-197), 402 `addPlayer` (680-692), 403 `maybeAssignTeam` (694-703),
+//! 404 `createAllianceRequest` (371-399), 405 `acceptAllianceRequest` (401-437),
+//! 406 `rejectAllianceRequest` (439-451); plus the harness-only observation
+//! mids 311 (the live `allianceRequests` list) and 312 (a player's
+//! `pastOutgoingAllianceRequests` queue).
+//!
+//! Collaborator construction is scripted exactly like the capture: the
+//! `./PlayerImpl`, `./AllianceRequestImpl` and `./AllianceImpl` imports are
+//! redirected to inert stubs whose constructors only emit the facade events
+//! 200 `newPlayer`, 201 `newAllianceRequest` and 202 `newAlliance`; the twins
+//! are [`GameHarness::add_player_impl`], [`GameHarness::self_new_request`] and
+//! [`GameHarness::self_new_alliance`]. `TeamAssignment` is a REAL dependency —
+//! the capture imports `resolveTeamsList` / `assignTeams` from the ported
+//! module, so the twins call [`crate::team_assignment::resolve_teams_list`] and
+//! [`crate::team_assignment::assign_teams`].
+//!
+//! New facade trace codes. Player: 137 `allianceWith`, 138
+//! `incomingAllianceRequests`. Request: 145 `requestor`, 146 `recipient`,
+//! 203 `toUpdate` (followed by two 117 `smallID`). Stats: 159 `allianceFormed`.
+//! Config: 167 `playerTeams`, 168 `startManpower`. Stub constructors: 200
+//! `newPlayer`, 201 `newAllianceRequest`, 202 `newAlliance`.
+//!
+//! The construct now reads `cfg.playerTeams` / `cfg.startManpower` (straight
+//! after `conquerGoldAmount`) and, at the tail, the `infos` (PlayerInfo) table,
+//! `humans` (info indices) and `nextAllianceID`. `_players` keeps the
+//! construct's numeric keys in `players_map` and appends `addPlayer`'s string
+//! keys (`info.id`) in `players_dyn` (in-place overwrite on a repeated key);
+//! `players()` / `allPlayers()` (mids 36/37) iterate both in that order.
+//!
 //! [`TileSet`]: crate::tile_set::TileSet
 
 use crate::game_map::{GameMap, TerrainType};
+use crate::game_ts::js_num_str;
 use crate::js_json::{push_str, push_val, read_str, read_val, val_field, JsVal};
 use crate::jsnum::{to_int32, to_uint32};
 use crate::motion_plans::{pack_motion_plans, MotionPlanInput};
+use crate::team_assignment::{
+    assign_teams, resolve_teams_list, Assignment, PlayerInfo as TaPlayerInfo, PlayerType,
+    ResolveTeamsError, TeamCountConfig,
+};
 use crate::tile_set::TileSet;
+use crate::util::simple_hash;
 use crate::utils_format::render_number;
 use crate::water_manager::WaterManager;
 use std::cell::RefCell;
@@ -273,6 +319,56 @@ fn jsval_str(v: &JsVal) -> String {
     match v {
         JsVal::Str(s) => s.clone(),
         _ => String::new(),
+    }
+}
+
+/// The template-literal `${value}` rendering of a scripted value (only the
+/// states the G4c error paths interpolate are distinguished).
+fn js_val_to_ts_string(v: &JsVal) -> String {
+    match v {
+        JsVal::Undef | JsVal::Absent => "undefined".to_string(),
+        JsVal::Null => "null".to_string(),
+        JsVal::Bool(b) => if *b { "true" } else { "false" }.to_string(),
+        JsVal::Num(n) => js_num_str(*n),
+        JsVal::Str(s) => s.clone(),
+        JsVal::Arr(_) => String::new(),
+        JsVal::Obj(_) => "[object Object]".to_string(),
+    }
+}
+
+/// `_config.playerTeams()` value → the [`TeamCountConfig`] `resolveTeamsList`
+/// matches on. A `null`/`undefined` config is a non-numeric unknown.
+fn to_team_count_config(v: &JsVal) -> TeamCountConfig {
+    match v {
+        JsVal::Num(n) => TeamCountConfig::Num(*n),
+        JsVal::Str(s) => match s.as_str() {
+            "Duos" => TeamCountConfig::Duos,
+            "Trios" => TeamCountConfig::Trios,
+            "Quads" => TeamCountConfig::Quads,
+            "Humans Vs Nations" => TeamCountConfig::HumansVsNations,
+            other => TeamCountConfig::Other(other.to_string()),
+        },
+        _ => TeamCountConfig::Other(js_val_to_ts_string(v)),
+    }
+}
+
+/// The exception message `resolveTeamsList` would throw, reproduced for the
+/// three [`ResolveTeamsError`] variants.
+fn resolve_teams_error_msg(e: ResolveTeamsError, cfg: &JsVal, total: f64) -> String {
+    match e {
+        ResolveTeamsError::UnknownConfig => {
+            format!("Unknown TeamCountConfig {}", js_val_to_ts_string(cfg))
+        }
+        ResolveTeamsError::TooFewTeams => {
+            // Reachable only from the numeric branch (`Duos`/`Trios`/`Quads`
+            // are clamped to `>= 2` by `Math.max`).
+            let num = match cfg {
+                JsVal::Num(n) => *n,
+                _ => total,
+            };
+            format!("Too few teams: {}", js_num_str(num))
+        }
+        ResolveTeamsError::InvalidLength => "Invalid array length".to_string(),
     }
 }
 
@@ -360,6 +456,8 @@ struct GmPlayer {
     border_tiles: TileSet,
     last_tile_change: f64,
     tile_change_version: f64,
+    /// G4c: `pastOutgoingAllianceRequests` — request-table indices in order.
+    past_outgoing: Vec<usize>,
 }
 
 impl Default for GmPlayer {
@@ -395,8 +493,57 @@ impl Default for GmPlayer {
             border_tiles: TileSet::new(None),
             last_tile_change: 0.0,
             tile_change_version: 0.0,
+            past_outgoing: Vec::new(),
         }
     }
+}
+
+/// The G4c PlayerInfo table entry (construct tail). Only the fields the
+/// in-scope methods read are kept, in the capture's `gfaInfoEnc` order.
+#[derive(Default, Clone)]
+struct GmInfo {
+    id: String,
+    name: String,
+    player_type: String,
+    client_id: JsVal,
+    clan_tag: JsVal,
+    friends: Vec<String>,
+    team_index: JsVal,
+}
+
+impl GmInfo {
+    /// `PlayerInfo` as [`crate::team_assignment::assign_teams`] sees it.
+    fn to_ta(&self) -> TaPlayerInfo {
+        TaPlayerInfo {
+            id: self.id.clone(),
+            player_type: match self.player_type.as_str() {
+                "BOT" => PlayerType::Bot,
+                "NATION" => PlayerType::Nation,
+                _ => PlayerType::Human,
+            },
+            client_id: match &self.client_id {
+                JsVal::Str(s) => Some(s.clone()),
+                _ => None,
+            },
+            clan_tag: match &self.clan_tag {
+                JsVal::Str(s) => Some(s.clone()),
+                _ => None,
+            },
+            friends: self.friends.clone(),
+            team_index: match &self.team_index {
+                JsVal::Num(n) => Some(*n),
+                _ => None,
+            },
+        }
+    }
+}
+
+/// A scripted `AllianceRequest` (G4c), keyed by its `request_table` index.
+#[derive(Default, Clone)]
+struct GmReq {
+    requestor: f64,
+    recipient: f64,
+    tick_created: f64,
 }
 
 /// A scripted alliance mock shared (by table index) between players.
@@ -436,6 +583,10 @@ struct Cfg {
     nation_spawn_immunity: f64,
     team_land_share: f64,
     conquer_gold_amount: f64,
+    /// G4c: `_config.playerTeams()` (trace 167) — a `TeamCountConfig`.
+    player_teams: JsVal,
+    /// G4c: `_config.startManpower(info)` (trace 168).
+    start_manpower: f64,
 }
 
 /// Scripted constants for the `unitGrid` facade.
@@ -493,6 +644,22 @@ pub struct GameHarness {
     /// Shared alliance table (identity for `_alliances`).
     alliance_table: Vec<GmAlliance>,
 
+    // ---- G4c scripted state ----
+    /// The construct-tail PlayerInfo table (info index = `gTok` token).
+    player_infos: Vec<GmInfo>,
+    /// `_humans` — info indices, in order.
+    humans: Vec<usize>,
+    /// The live `allianceRequests` list (request-table indices, in order).
+    alliance_requests: Vec<usize>,
+    /// The `AllianceRequest` table (index = token, appended by `addPlayer`
+    /// only transitively via `createAllianceRequest`).
+    request_table: Vec<GmReq>,
+    /// `_players` string-key entries appended after the construct's numeric
+    /// `players_map` keys (in-place overwrite on a repeated `info.id`).
+    players_dyn: Vec<(JsVal, usize)>,
+    /// `nextAllianceID` counter.
+    next_alliance_id: f64,
+
     tr: Vec<f64>,
     res: Vec<f64>,
 }
@@ -538,6 +705,12 @@ impl Default for GameHarness {
             swc: JsVal::Null,
             sps: JsVal::Null,
             alliance_table: Vec::new(),
+            player_infos: Vec::new(),
+            humans: Vec::new(),
+            alliance_requests: Vec::new(),
+            request_table: Vec::new(),
+            players_dyn: Vec::new(),
+            next_alliance_id: 0.0,
             tr: Vec::new(),
             res: Vec::new(),
         }
@@ -902,6 +1075,374 @@ impl GameHarness {
         self.tr.push(v);
         v
     }
+
+    // ------------------------------------------------ G4c facades
+
+    /// `player.allianceWith(other)` (trace 137). The mock probes `_alliances`
+    /// with `a.recipient()` then (short-circuit) `a.requestor()`, so the twin
+    /// interleaves the 142/141 probes and closes with the found token or `-1`.
+    fn p_alliance_with(&mut self, idx: usize, other: f64) -> Option<usize> {
+        let pid = self.players[idx].pid;
+        let toks = self.players[idx].alliance_toks.clone();
+        self.tr.push(137.0);
+        self.tr.push(pid);
+        self.tr.push(other);
+        let mut found: Option<usize> = None;
+        for a in toks {
+            if self.a_recipient(a) == other {
+                found = Some(a);
+                break;
+            }
+            if self.a_requestor(a) == other {
+                found = Some(a);
+                break;
+            }
+        }
+        self.tr.push(found.map(|a| a as f64).unwrap_or(-1.0));
+        found
+    }
+
+    /// `player.incomingAllianceRequests()` (trace 138) — the live list filtered
+    /// by `ar.recipient() === player`, so every live entry first emits a 146.
+    fn p_incoming_alliance_requests(&mut self, idx: usize) -> Vec<usize> {
+        let live = self.alliance_requests.clone();
+        let mut list: Vec<usize> = Vec::new();
+        for t in live {
+            if self.r_recipient(t) == idx as f64 {
+                list.push(t);
+            }
+        }
+        let pid = self.players[idx].pid;
+        self.tr.push(138.0);
+        self.tr.push(pid);
+        self.tr.push(list.len() as f64);
+        for t in &list {
+            self.tr.push(*t as f64);
+        }
+        list
+    }
+
+    /// `request.requestor()` (trace 145).
+    fn r_requestor(&mut self, tok: usize) -> f64 {
+        let v = self.request_table[tok].requestor;
+        self.tr.push(145.0);
+        self.tr.push(tok as f64);
+        self.tr.push(v);
+        v
+    }
+    /// `request.recipient()` (trace 146).
+    fn r_recipient(&mut self, tok: usize) -> f64 {
+        let v = self.request_table[tok].recipient;
+        self.tr.push(146.0);
+        self.tr.push(tok as f64);
+        self.tr.push(v);
+        v
+    }
+    /// `request.toUpdate()` (trace 203, then the two `smallID()` 117s): the
+    /// returned `AllianceRequestUpdate` value.
+    fn r_to_update_value(&mut self, tok: usize) -> JsVal {
+        self.tr.push(203.0);
+        self.tr.push(tok as f64);
+        let req = self.request_table[tok].requestor;
+        let rec = self.request_table[tok].recipient;
+        let req_sid = self.p_small_id(req as usize);
+        let rec_sid = self.p_small_id(rec as usize);
+        JsVal::Obj(vec![
+            ("type".to_string(), JsVal::Num(5.0)),
+            ("requestorID".to_string(), JsVal::Num(req_sid)),
+            ("recipientID".to_string(), JsVal::Num(rec_sid)),
+            ("createdAt".to_string(), JsVal::Num(self.request_table[tok].tick_created)),
+        ])
+    }
+    /// `stats().allianceFormed(player)` (trace 159).
+    fn stats_alliance_formed(&mut self, idx: usize) {
+        self.tr.push(159.0);
+        self.tr.push(self.players[idx].pid);
+    }
+    /// `_config.playerTeams()` (trace 167) — the `TeamCountConfig` value.
+    fn cfg_player_teams(&mut self) -> JsVal {
+        let v = self.cfg.player_teams.clone();
+        self.tr.push(167.0);
+        push_val(&mut self.tr, &v);
+        v
+    }
+    /// `_config.startManpower(info)` (trace 168).
+    fn cfg_start_manpower(&mut self, info: usize) -> f64 {
+        let v = self.cfg.start_manpower;
+        self.tr.push(168.0);
+        self.tr.push(info as f64);
+        self.tr.push(v);
+        v
+    }
+
+    /// The `new AllianceRequestImpl(...)` stub (trace 201); appends the request
+    /// table entry and returns its token.
+    fn self_new_request(&mut self, req: f64, rec: f64) -> usize {
+        let tok = self.request_table.len();
+        let tick = self.ticks;
+        self.tr.push(201.0);
+        self.tr.push(tok as f64);
+        self.tr.push(req);
+        self.tr.push(rec);
+        self.tr.push(tick);
+        self.request_table.push(GmReq {
+            requestor: req,
+            recipient: rec,
+            tick_created: tick,
+        });
+        tok
+    }
+    /// The `new AllianceImpl(...)` stub (trace 202); appends the alliance table
+    /// entry and returns its token.
+    fn self_new_alliance(&mut self, req: f64, rec: f64, id: f64) -> usize {
+        let tok = self.alliance_table.len();
+        let tick = self.ticks;
+        self.tr.push(202.0);
+        self.tr.push(tok as f64);
+        self.tr.push(req);
+        self.tr.push(rec);
+        self.tr.push(tick);
+        self.tr.push(id);
+        self.alliance_table.push(GmAlliance {
+            id,
+            created_at: tick,
+            req,
+            rec,
+        });
+        tok
+    }
+
+    // ------------------------------------------------ G4c method bodies
+
+    /// `_players` iteration order: the construct's numeric keys, then the
+    /// `addPlayer` string keys in insertion order.
+    fn player_iter_order(&self) -> Vec<usize> {
+        let mut v: Vec<usize> = self.players_map.iter().map(|(_, i)| *i).collect();
+        v.extend(self.players_dyn.iter().map(|(_, i)| *i));
+        v
+    }
+
+    /// The `{playerInfo: idx}` nation wrappers' info indices, in order.
+    fn nation_info_indices(&self) -> Vec<usize> {
+        match &self.nations {
+            JsVal::Arr(items) => items
+                .iter()
+                .filter_map(|it| match val_field(it, "playerInfo") {
+                    Some(JsVal::Num(n)) => Some(*n as usize),
+                    _ => None,
+                })
+                .collect(),
+            _ => Vec::new(),
+        }
+    }
+
+    /// `maybeAssignTeam(playerInfo)` (TS 694-703).
+    fn maybe_assign_team(&mut self, info: usize) -> JsVal {
+        let (_, gmode) = self.cfg_game_config();
+        if gmode != "Team" {
+            return JsVal::Null;
+        }
+        if self.player_infos[info].player_type == "BOT" {
+            return JsVal::Str(self.bot_team.clone());
+        }
+        let rand = simple_hash(&self.player_infos[info].id);
+        let len = self.player_teams.len();
+        if len == 0 {
+            // `playerTeams[NaN]` — undefined.
+            return JsVal::Undef;
+        }
+        let idx = (rand % (len as f64)) as usize;
+        JsVal::Str(self.player_teams[idx].clone())
+    }
+
+    /// `addPlayer(playerInfo, team)` (TS 680-692) — the scripted `PlayerImpl`
+    /// stub. Returns the new player's table token.
+    fn add_player_impl(&mut self, info: usize, team_arg: JsVal) -> usize {
+        let small_id = self.next_player_id;
+        let manpower = self.cfg_start_manpower(info);
+        let team = if matches!(team_arg, JsVal::Undef | JsVal::Absent | JsVal::Null) {
+            self.maybe_assign_team(info)
+        } else {
+            team_arg
+        };
+        self.tr.push(200.0);
+        self.tr.push(small_id);
+        self.tr.push(info as f64);
+        self.tr.push(manpower);
+        push_val(&mut self.tr, &team);
+        let gm = GmPlayer {
+            pid: small_id,
+            sid: small_id,
+            alive: true,
+            team,
+            name: JsVal::Str(self.player_infos[info].name.clone()),
+            id_val: JsVal::Str(self.player_infos[info].id.clone()),
+            ..GmPlayer::default()
+        };
+        let idx = self.players.len();
+        self.players.push(gm);
+        self.players_by_small_id.push(Some(idx));
+        self.next_player_id += 1.0;
+        let key = JsVal::Str(self.player_infos[info].id.clone());
+        match self.players_dyn.iter_mut().find(|(k, _)| *k == key) {
+            Some(slot) => slot.1 = idx,
+            None => self.players_dyn.push((key, idx)),
+        }
+        idx
+    }
+
+    /// `populateTeams()` (TS 155-161).
+    fn m_populate_teams(&mut self) {
+        let total = self.humans.len() as f64 + self.nation_info_indices().len() as f64;
+        let cfgv = self.cfg_player_teams();
+        let tc = to_team_count_config(&cfgv);
+        match resolve_teams_list(&tc, total) {
+            Ok(teams) => {
+                self.player_teams = teams;
+                push_ok_undef(&mut self.res);
+            }
+            Err(e) => push_err(&mut self.res, &resolve_teams_error_msg(e, &cfgv, total)),
+        }
+    }
+
+    /// `addPlayers()` (TS 163-197).
+    fn m_add_players(&mut self) {
+        let (_, gmode) = self.cfg_game_config();
+        let humans: Vec<usize> = self.humans.clone();
+        let nations: Vec<usize> = self.nation_info_indices();
+        if gmode == "Free For All" {
+            for info in humans {
+                self.add_player_impl(info, JsVal::Absent);
+            }
+            for info in nations {
+                self.add_player_impl(info, JsVal::Absent);
+            }
+            push_ok_undef(&mut self.res);
+            return;
+        }
+        let pt = self.cfg_player_teams();
+        if matches!(&pt, JsVal::Str(s) if s == "Humans Vs Nations") {
+            for info in humans {
+                self.add_player_impl(info, JsVal::Str("Humans".to_string()));
+            }
+            for info in nations {
+                self.add_player_impl(info, JsVal::Str("Nations".to_string()));
+            }
+            push_ok_undef(&mut self.res);
+            return;
+        }
+        let mut all: Vec<usize> = humans;
+        all.extend(nations);
+        let pt2 = self.cfg_player_teams();
+        let is_dtq =
+            matches!(&pt2, JsVal::Str(s) if s == "Duos" || s == "Trios" || s == "Quads");
+        let infos: Vec<TaPlayerInfo> = all.iter().map(|i| self.player_infos[*i].to_ta()).collect();
+        let teams = self.player_teams.clone();
+        for (i, asg) in assign_teams(&infos, &teams, is_dtq) {
+            match asg {
+                Assignment::Kicked => {}
+                Assignment::Team(t) => {
+                    self.add_player_impl(all[i], JsVal::Str(t));
+                }
+            }
+        }
+        push_ok_undef(&mut self.res);
+    }
+
+    /// `createAllianceRequest(requestor, recipient)` (TS 371-399).
+    fn m_create_alliance_request(&mut self, c: &mut C) {
+        let req = c.f() as usize;
+        let rec = c.f() as usize;
+        if self.p_is_allied_with(req, rec as f64) {
+            push_ok_null(&mut self.res);
+            return;
+        }
+        let rec_list = self.p_incoming_alliance_requests(rec);
+        let mut dup = false;
+        for t in &rec_list {
+            if self.r_requestor(*t) == req as f64 {
+                dup = true;
+                break;
+            }
+        }
+        if dup {
+            // `console.log(\`duplicate alliance request from ${requestor.name()}\`)`.
+            self.p_name(req);
+            push_ok_null(&mut self.res);
+            return;
+        }
+        let req_list = self.p_incoming_alliance_requests(req);
+        let mut corr: Option<usize> = None;
+        for t in &req_list {
+            if self.r_requestor(*t) == rec as f64 {
+                corr = Some(*t);
+                break;
+            }
+        }
+        if let Some(ct) = corr {
+            if self.accept_alliance_request_impl(ct) {
+                push_ok_null(&mut self.res);
+            }
+            return;
+        }
+        let tok = self.self_new_request(req as f64, rec as f64);
+        self.alliance_requests.push(tok);
+        let upd = self.r_to_update_value(tok);
+        self.add_update(upd);
+        push_ok_num(&mut self.res, tok as f64);
+    }
+
+    /// `acceptAllianceRequest(request)` (TS 401-437). On the "already allied"
+    /// throw the error result is pushed here and `false` returned; on success
+    /// the caller pushes its own `ok`.
+    fn accept_alliance_request_impl(&mut self, tok: usize) -> bool {
+        self.alliance_requests.retain(|t| *t != tok);
+        let requestor = self.r_requestor(tok);
+        let recipient = self.r_recipient(tok);
+        if self.p_alliance_with(requestor as usize, recipient).is_some() {
+            let nm = self.p_name(recipient as usize);
+            let msg = format!(
+                "cannot accept alliance request, already allied with {}",
+                js_val_to_ts_string(&nm)
+            );
+            push_err(&mut self.res, &msg);
+            return false;
+        }
+        let aid = self.next_alliance_id;
+        let rid = self.self_new_alliance(requestor, recipient, aid);
+        self.next_alliance_id += 1.0;
+        let rq = self.a_requestor(rid);
+        self.players[rq as usize].alliance_toks.push(rid);
+        let rc = self.a_recipient(rid);
+        self.players[rc as usize].alliance_toks.push(rid);
+        self.stats_alliance_formed(requestor as usize);
+        self.stats_alliance_formed(recipient as usize);
+        let rq2 = self.r_requestor(tok);
+        self.players[rq2 as usize].past_outgoing.push(tok);
+        let upd = self.r_to_update_value(tok);
+        self.add_update(JsVal::Obj(vec![
+            ("type".to_string(), JsVal::Num(6.0)),
+            ("request".to_string(), upd),
+            ("accepted".to_string(), JsVal::Bool(true)),
+        ]));
+        true
+    }
+
+    /// `rejectAllianceRequest(request)` (TS 439-451).
+    fn m_reject_alliance_request(&mut self, c: &mut C) {
+        let tok = c.f() as usize;
+        self.alliance_requests.retain(|t| *t != tok);
+        let rq = self.r_requestor(tok);
+        self.players[rq as usize].past_outgoing.push(tok);
+        let upd = self.r_to_update_value(tok);
+        self.add_update(JsVal::Obj(vec![
+            ("type".to_string(), JsVal::Num(6.0)),
+            ("request".to_string(), upd),
+            ("accepted".to_string(), JsVal::Bool(false)),
+        ]));
+        push_ok_undef(&mut self.res);
+    }
+
     fn exec_tick(&mut self, idx: usize, ticks: f64) {
         self.tr.push(182.0);
         self.tr.push(idx as f64);
@@ -1202,6 +1743,7 @@ impl GameHarness {
                     border_tiles,
                     last_tile_change,
                     tile_change_version,
+                    past_outgoing: Vec::new(),
                 }
             })
             .collect();
@@ -1253,6 +1795,8 @@ impl GameHarness {
         self.cfg.nation_spawn_immunity = c.f();
         self.cfg.team_land_share = c.f();
         self.cfg.conquer_gold_amount = c.f();
+        self.cfg.player_teams = c.v();
+        self.cfg.start_manpower = c.f();
         self.ug.has_unit_nearby = c.b();
         self.ug.any_unit_nearby = c.b();
         self.ug.nearby_units = c.v();
@@ -1269,6 +1813,31 @@ impl GameHarness {
                 rec: c.f(),
             })
             .collect();
+        let ninf = c.f() as usize;
+        self.player_infos = (0..ninf)
+            .map(|_| {
+                let id = c.s();
+                let name = c.s();
+                let player_type = c.s();
+                let client_id = c.v();
+                let clan_tag = c.v();
+                let nf = c.f() as usize;
+                let friends = (0..nf).map(|_| c.s()).collect();
+                let team_index = c.v();
+                GmInfo {
+                    id,
+                    name,
+                    player_type,
+                    client_id,
+                    clan_tag,
+                    friends,
+                    team_index,
+                }
+            })
+            .collect();
+        let nh = c.f() as usize;
+        self.humans = (0..nh).map(|_| c.f() as usize).collect();
+        self.next_alliance_id = c.f();
         self.constructed = true;
         self.res.push(0.0);
     }
@@ -2072,7 +2641,7 @@ impl GameHarness {
                 push_ok_undef(&mut self.res);
             }
             36 => {
-                let order: Vec<usize> = self.players_map.iter().map(|(_, i)| *i).collect();
+                let order = self.player_iter_order();
                 let mut alive = Vec::new();
                 for idx in order {
                     if self.p_alive(idx) {
@@ -2084,9 +2653,9 @@ impl GameHarness {
             }
             37 => {
                 let arr: Vec<JsVal> = self
-                    .players_map
-                    .iter()
-                    .map(|(_, i)| JsVal::Num(*i as f64))
+                    .player_iter_order()
+                    .into_iter()
+                    .map(|i| JsVal::Num(i as f64))
                     .collect();
                 push_ok_val(&mut self.res, &JsVal::Arr(arr));
             }
@@ -2505,6 +3074,47 @@ impl GameHarness {
                 let idx = c.f() as usize;
                 self.dump_player(idx);
             }
+            311 => {
+                // The live `allianceRequests` list (request-table tokens).
+                let arr: Vec<JsVal> = self
+                    .alliance_requests
+                    .iter()
+                    .map(|t| JsVal::Num(*t as f64))
+                    .collect();
+                push_ok_val(&mut self.res, &JsVal::Arr(arr));
+            }
+            312 => {
+                // A player's `pastOutgoingAllianceRequests` queue.
+                let idx = c.f() as usize;
+                let arr: Vec<JsVal> = self.players[idx]
+                    .past_outgoing
+                    .iter()
+                    .map(|t| JsVal::Num(*t as f64))
+                    .collect();
+                push_ok_val(&mut self.res, &JsVal::Arr(arr));
+            }
+            400 => self.m_populate_teams(),
+            401 => self.m_add_players(),
+            402 => {
+                // [mid, infoIdx, ...akEnc(team)]
+                let info = c.f() as usize;
+                let team = c.v();
+                let idx = self.add_player_impl(info, team);
+                push_ok_num(&mut self.res, idx as f64);
+            }
+            403 => {
+                let info = c.f() as usize;
+                let v = self.maybe_assign_team(info);
+                push_ok_val(&mut self.res, &v);
+            }
+            404 => self.m_create_alliance_request(&mut c),
+            405 => {
+                let tok = c.f() as usize;
+                if self.accept_alliance_request_impl(tok) {
+                    push_ok_undef(&mut self.res);
+                }
+            }
+            406 => self.m_reject_alliance_request(&mut c),
             900 => {
                 let v = self.dump_updates();
                 push_arr_nums(&mut self.res, &v);

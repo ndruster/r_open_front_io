@@ -2554,6 +2554,31 @@ WebSockets — stays excluded, mirroring the `src/core` exclusions).
     (`gf_g4b_conquer` / `_relinquish` / `_borders` / `_alliance` /
     `_conquer_player_skip` / `_conquer_player_gold` / `_conquer_player_nation` /
     `_tick` / `_tick_spawn`, 71 ops), 886,606 wasm comparisons bit-identical.
+    G4c adds the player-admission / alliance-formation tail:
+    `populateTeams` / `addPlayers` / `addPlayer` / `maybeAssignTeam` /
+    `createAllianceRequest` / `acceptAllianceRequest` / `rejectAllianceRequest`
+    (mids 400-406). Collaborator construction is scripted: the `./PlayerImpl` /
+    `./AllianceRequestImpl` / `./AllianceImpl` imports are redirected to inert
+    stubs whose constructors only emit the facade events 200 `newPlayer` /
+    201 `newAllianceRequest` / 202 `newAlliance` — the Rust twins are
+    `add_player_impl` / `self_new_request` / `self_new_alliance` — while
+    `TeamAssignment` stays a REAL dependency (`resolveTeamsList` / `assignTeams`
+    map onto `team_assignment`). New facades: player 137 `allianceWith` / 138
+    `incomingAllianceRequests`, request 145 `requestor` / 146 `recipient` / 203
+    `toUpdate` (two 117 `smallID`), stats 159 `allianceFormed`, config 167
+    `playerTeams` / 168 `startManpower`; the harness-only mids 311 (live
+    `allianceRequests`) and 312 (`pastOutgoingAllianceRequests`). `_players`
+    keeps the construct's numeric keys in `players_map` and appends `addPlayer`'s
+    string keys (`info.id`) in `players_dyn`; mids 36/37 iterate both in that
+    order. The construct reads `cfg.playerTeams` / `cfg.startManpower` and, at
+    the tail, the PlayerInfo (`infos`) table / `humans` / `nextAllianceID`; the
+    `constructor` itself (TS 122-153) stays out of scope — its only observable
+    outputs are the collaborators the harness drives directly. 17 new scenarios
+    (`gf_g4c_populate_teams_duos` / `_hvn` / `_num` / `_threw` / `_unknown` /
+    `gf_g4c_addplayers_ffa` / `_team` / `_hvn` / `gf_g4c_addplayer` /
+    `gf_g4c_alliance_happy` / `_reject` / `_already_allied` / `_isallied` /
+    `_duplicate` / `_corresponding` / `_accept_absent` / `_id_sequence`, 104 ops),
+    891,988 wasm comparisons bit-identical.
 
 Regenerate whenever a ported source changes:
 
@@ -2587,7 +2612,7 @@ node rust/tools/run_wasm_parity.mjs
 
 `wasm-probe` exposes the ported functions through `extern "C"` scalar
 entrypoints (`src/wasm_probe.rs`); the runner imports `data/vectors.json` and
-compares every value. Last run: **886,606 comparisons, all bit-identical**.
+compares every value. Last run: **891,988 comparisons, all bit-identical**.
 
 ### Windows: the linker environment
 

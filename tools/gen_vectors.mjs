@@ -23563,6 +23563,11 @@ const gfaCfg = (o = {}) => ({
   teamLandShare: o.teamLandShare ?? 0,
   // G4b: scripted `conquerGoldAmount(conquered)` return (trace 166).
   conquerGoldAmount: o.conquerGoldAmount ?? 0,
+  // G4c: `playerTeams()` return (trace 167) — a TeamCountConfig: a number,
+  // one of the Duos/Trios/Quads/HumansVsNations strings, or null/undefined.
+  playerTeams: o.playerTeams === undefined ? null : o.playerTeams,
+  // G4c: `startManpower(playerInfo)` return (trace 168).
+  startManpower: o.startManpower ?? 0,
 });
 const gfaUg = (o = {}) => ({
   hasUnitNearby: o.hasUnitNearby ?? 0,
@@ -23607,6 +23612,18 @@ const gfaP = (o = {}) => ({
   tuAtk: o.tuAtk ?? [],
   tuRet: o.tuRet === undefined ? null : o.tuRet,
 });
+// G4c: a `PlayerInfo` (only the fields `addPlayer` / `maybeAssignTeam` /
+// `assignTeams` read). `friends` is a list of friend ids; `teamIndex` is the
+// server-pinned team slot (null = none).
+const gfaInfo = (o = {}) => ({
+  id: o.id ?? "0",
+  name: o.name ?? "P",
+  playerType: o.playerType ?? "HUMAN",
+  clientID: o.clientID === undefined ? null : o.clientID,
+  clanTag: o.clanTag === undefined ? null : o.clanTag,
+  friends: o.friends ?? [],
+  teamIndex: o.teamIndex === undefined ? null : o.teamIndex,
+});
 const gfaU = (o = {}) => ({
   uid: o.uid ?? 1,
   typ: o.typ ?? "Warship",
@@ -23647,6 +23664,9 @@ const gfaS = (o = {}) => ({
   isPaused: o.isPaused ?? 0,
   winner: o.winner === undefined ? null : o.winner,
   teamSpawnAreas: o.teamSpawnAreas,
+  // G4c: `_nations` — each entry is `{playerInfo: <index into infos>}` so
+  // `this._nations[i].playerInfo` resolves to the same PlayerInfo mock the rest
+  // of the harness uses. `nations()` (mid 16) still returns `_nations`.
   nations: o.nations ?? [],
   unitsVersion: o.unitsVersion ?? 0,
   territoryVersion: o.territoryVersion ?? 0,
@@ -23667,6 +23687,13 @@ const gfaS = (o = {}) => ({
   // Each player's `al` lists TABLE indices into this, preserving object
   // identity across the two participants (`Set.has` / `!==`).
   alliances: o.alliances ?? [],
+  // G4c: the PlayerInfo table (constructed before any scenario op). `humans`
+  // lists info indices that form `_humans`; `nations` above lists `{playerInfo}`
+  // wrappers over the same table.
+  infos: o.infos ?? [],
+  humans: o.humans ?? [],
+  // G4c: `nextAllianceID` counter (advances on each accepted alliance).
+  nextAllianceID: o.nextAllianceID ?? 0,
 });
 
 function gfaPlayerEnc(p) {
@@ -23788,6 +23815,8 @@ function gfaConstruct(S) {
     uenc(S.cfg.nationSpawnImmunity),
     uenc(S.cfg.teamLandShare),
     uenc(S.cfg.conquerGoldAmount),
+    ...akEnc(S.cfg.playerTeams),
+    uenc(S.cfg.startManpower),
   );
   a.push(
     uenc(S.ug.hasUnitNearby ? 1 : 0),
@@ -23807,7 +23836,22 @@ function gfaConstruct(S) {
       uenc(al.rec),
     ]),
   );
+  a.push(uenc(S.infos.length), ...S.infos.flatMap(gfaInfoEnc));
+  a.push(uenc(S.humans.length), ...S.humans.map(uenc));
+  a.push(uenc(S.nextAllianceID));
   return a;
+}
+function gfaInfoEnc(p) {
+  return [
+    ...encS(p.id),
+    ...encS(p.name),
+    ...encS(p.playerType),
+    ...akEnc(p.clientID),
+    ...akEnc(p.clanTag),
+    uenc(p.friends.length),
+    ...p.friends.flatMap(encS),
+    ...akEnc(p.teamIndex),
+  ];
 }
 
 function gfaDump(g) {
@@ -24063,10 +24107,173 @@ function runGFA(name, S, ops) {
         for (const v of p.tuAtk) attackOut.push(v);
         return p.tuRet;
       },
+      // ---- G4c surface ----
+      // `pastOutgoingAllianceRequests`: the queue accept/reject push into.
+      pastOutgoingAllianceRequests: [],
+      // `allianceWith(other)`: first alliance in the CURRENT `_alliances` list
+      // whose recipient or requestor is `other` (else null). `find` short-circuits
+      // so only the probes needed to reach the match are traced.
+      allianceWith: (other) => {
+        const ot = gTok.get(other);
+        gfaT.push(137, p.pid, ot);
+        let found = null;
+        for (const a of o._alliances) {
+          if (a.recipient() === other || a.requestor() === other) {
+            found = a;
+            break;
+          }
+        }
+        gfaT.push(found === null ? -1 : gTok.get(found));
+        return found;
+      },
+      // `incomingAllianceRequests()`: game.allianceRequests filtered by recipient
+      // identity (probes each request's recipient), then the resulting list.
+      incomingAllianceRequests: () => {
+        const list = g.allianceRequests.filter((ar) => ar.recipient() === o);
+        gfaT.push(138, p.pid, list.length, ...list.map((ar) => gTok.get(ar)));
+        return list;
+      },
     };
     gTok.set(o, i);
     return o;
   });
+  // G4c: the PlayerInfo table. Each info is a token in `gTok`, so a PlayerImpl
+  // ctor arg / an `_players.set(info.id, ...)` key resolves identically on both
+  // sides.
+  const mockInfo = S.infos.map((info, i) => {
+    const o = {
+      id: info.id,
+      name: info.name,
+      playerType: info.playerType,
+      clientID: info.clientID,
+      clanTag: info.clanTag,
+      friends: info.friends,
+      teamIndex: info.teamIndex,
+    };
+    gTok.set(o, i);
+    return o;
+  });
+  // G4c: append-only tables for the objects the in-scope methods CONSTRUCT at
+  // runtime. New players join `mockP` and new alliances join `mockA`, so their
+  // tokens continue the construct indices; new requests get their own table.
+  // Object identity (`!==`, `.find`, `Map`/`Set`) rides the shared token.
+  const mockReq = [];
+  const mkWrappedPlayer = (smallID, infoIdx, team) => {
+    const info = mockInfo[infoIdx];
+    const o = {
+      pid: smallID,
+      sid: smallID,
+      idv: info.id,
+      alive: 1,
+      alliedWith: 0,
+      _alliances: [],
+      pastOutgoingAllianceRequests: [],
+      _tiles: new TileSet([]),
+      _borderTiles: new TileSet([]),
+      _lastTileChange: 0,
+      _tileChangeVersion: 0,
+      // `players()` (mid 36) filters on isAlive; a fresh PlayerImpl is alive.
+      isAlive: () => {
+        gfaT.push(100, smallID, 1);
+        return true;
+      },
+      smallID: () => {
+        gfaT.push(117, smallID, smallID);
+        return smallID;
+      },
+      id: () => {
+        gfaT.push(116, smallID, ...akEnc(info.id));
+        return info.id;
+      },
+      name: () => {
+        gfaT.push(108, smallID, ...akEnc(info.name));
+        return info.name;
+      },
+      team: () => {
+        gfaT.push(106, smallID, ...akEnc(team));
+        return team;
+      },
+      isAlliedWith: () => {
+        gfaT.push(136, smallID, 0);
+        return false;
+      },
+      allianceWith: (other) => {
+        const ot = gTok.get(other);
+        gfaT.push(137, smallID, ot);
+        let found = null;
+        for (const a of o._alliances) {
+          if (a.recipient() === other || a.requestor() === other) {
+            found = a;
+            break;
+          }
+        }
+        gfaT.push(found === null ? -1 : gTok.get(found));
+        return found;
+      },
+      incomingAllianceRequests: () => {
+        const list = g.allianceRequests.filter((ar) => ar.recipient() === o);
+        gfaT.push(138, smallID, list.length, ...list.map((ar) => gTok.get(ar)));
+        return list;
+      },
+    };
+    gTok.set(o, mockP.length);
+    mockP.push(o);
+    return o;
+  };
+  const mkRequest = (requestor, recipient, tickCreated) => {
+    const tok = mockReq.length;
+    const o = {
+      requestor: () => {
+        gfaT.push(145, tok, gTok.get(requestor));
+        return requestor;
+      },
+      recipient: () => {
+        gfaT.push(146, tok, gTok.get(recipient));
+        return recipient;
+      },
+      toUpdate: () => {
+        gfaT.push(203, tok);
+        return {
+          type: 5,
+          requestorID: requestor.smallID(),
+          recipientID: recipient.smallID(),
+          createdAt: tickCreated,
+        };
+      },
+      accept: () => {
+        g.acceptAllianceRequest(o);
+      },
+    };
+    gTok.set(o, tok);
+    mockReq.push(o);
+    return o;
+  };
+  const mkAlliance = (requestor, recipient, tickCreated, id) => {
+    const tok = mockA.length;
+    const o = {
+      _id: id,
+      _createdAt: tickCreated,
+      requestor: () => {
+        gfaT.push(141, tok, gTok.get(requestor));
+        return requestor;
+      },
+      recipient: () => {
+        gfaT.push(142, tok, gTok.get(recipient));
+        return recipient;
+      },
+      id: () => {
+        gfaT.push(143, tok, id);
+        return id;
+      },
+      createdAt: () => {
+        gfaT.push(144, tok, tickCreated);
+        return tickCreated;
+      },
+    };
+    gTok.set(o, tok);
+    mockA.push(o);
+    return o;
+  };
   let map = null;
   let mini = null;
   let wm = null;
@@ -24081,6 +24288,7 @@ function runGFA(name, S, ops) {
   g._ticks = S.ticks;
   g.startTick = S.startTick === undefined ? null : S.startTick;
   g._nextUnitID = S.nextUnitID;
+  g.nextPlayerID = S.nextPlayerID;
   g._width = S.width;
   g._height = S.height;
   g._nukeImpactQueue = S.nukeQueue.slice();
@@ -24097,7 +24305,13 @@ function runGFA(name, S, ops) {
   g._isPaused = !!S.isPaused;
   g._winner = S.winner;
   g._teamGameSpawnAreas = S.teamSpawnAreas;
-  g._nations = S.nations;
+  // G4c: `_nations` entries wrap a PlayerInfo (`n.playerInfo`); `_humans` is the
+  // plain PlayerInfo list. `allianceRequests` is the live request list and
+  // `nextAllianceID` the accepted-alliance counter.
+  g._nations = S.nations.map((n) => ({ playerInfo: mockInfo[n.playerInfo] }));
+  g._humans = S.humans.map((i) => mockInfo[i]);
+  g.allianceRequests = [];
+  g.nextAllianceID = S.nextAllianceID;
   g._unitsVersion = S.unitsVersion;
   g._territoryVersion = S.territoryVersion;
   // G4b: reusable neighbor buffer read by updateBorders (a prototype field the
@@ -24152,6 +24366,15 @@ function runGFA(name, S, ops) {
       gfaT.push(166, captured.pid, S.cfg.conquerGoldAmount);
       return S.cfg.conquerGoldAmount;
     },
+    // G4c: scripted `playerTeams()` / `startManpower(playerInfo)` facades.
+    playerTeams: () => {
+      gfaT.push(167, ...akEnc(S.cfg.playerTeams));
+      return S.cfg.playerTeams;
+    },
+    startManpower: (playerInfo) => {
+      gfaT.push(168, gTok.get(playerInfo), S.cfg.startManpower);
+      return S.cfg.startManpower;
+    },
   };
   g._stats = {
     recordFinalTiles: (player, n) => {
@@ -24186,6 +24409,10 @@ function runGFA(name, S, ops) {
     },
     allianceEnded: (player, duration, type) => {
       gfaT.push(158, player.pid, duration, ...akEnc(type));
+    },
+    // G4c: `allianceFormed(player)` (acceptAllianceRequest).
+    allianceFormed: (player) => {
+      gfaT.push(159, player.pid);
     },
   };
   g.unitGrid = {
@@ -24245,6 +24472,31 @@ function runGFA(name, S, ops) {
     get: (player) => {
       gfaT.push(170, player.pid);
       return S.swc;
+    },
+  };
+  // G4c: the collaborator constructors redirected by the GameImpl.ts rule call
+  // these global hooks. Each pushes the ctor trace and returns a mock token.
+  globalThis.__GFA = {
+    newPlayer: (smallID, playerInfo, troops, team) => {
+      gfaT.push(200, smallID, gTok.get(playerInfo), troops, ...akEnc(team));
+      return mkWrappedPlayer(smallID, gTok.get(playerInfo), team);
+    },
+    newRequest: (requestor, recipient, tickCreated) => {
+      const tok = mockReq.length;
+      gfaT.push(201, tok, gTok.get(requestor), gTok.get(recipient), tickCreated);
+      return mkRequest(requestor, recipient, tickCreated);
+    },
+    newAlliance: (requestor, recipient, tickCreated, id) => {
+      const tok = mockA.length;
+      gfaT.push(
+        202,
+        tok,
+        gTok.get(requestor),
+        gTok.get(recipient),
+        tickCreated,
+        id,
+      );
+      return mkAlliance(requestor, recipient, tickCreated, id);
     },
   };
 
@@ -24898,6 +25150,56 @@ function runGFA(name, S, ops) {
         case 310:
           p1(rest[0]);
           r = [0, ...akEnc(gfaDumpPlayer(mockP[rest[0]]))];
+          break;
+        // G4c harness-only observation mids.
+        case 311:
+          // The live `allianceRequests` list (request-table tokens), in order.
+          r = [0, ...akEnc([...g.allianceRequests])];
+          break;
+        case 312:
+          // A player's `pastOutgoingAllianceRequests` queue (request tokens).
+          p1(rest[0]);
+          r = [0, ...akEnc([...mockP[rest[0]].pastOutgoingAllianceRequests])];
+          break;
+        // G4c: the collaborator-construction methods.
+        case 400:
+          g.populateTeams();
+          r = [0, 1];
+          break;
+        case 401:
+          g.addPlayers();
+          r = [0, 1];
+          break;
+        case 402: {
+          const info = mockInfo[rest[0]];
+          const team = rest.length > 1 ? rest[1] : undefined;
+          p1(rest[0]);
+          args.push(...akEnc(team));
+          r = [0, ...akEnc(g.addPlayer(info, team))];
+          break;
+        }
+        case 403:
+          p1(rest[0]);
+          r = [0, ...akEnc(g.maybeAssignTeam(mockInfo[rest[0]]))];
+          break;
+        case 404:
+          // [mid, requestorIdx, recipientIdx]
+          p1(rest[0]);
+          p1(rest[1]);
+          r = [
+            0,
+            ...gfaRefTok(g.createAllianceRequest(mockP[rest[0]], mockP[rest[1]])),
+          ];
+          break;
+        case 405:
+          p1(rest[0]);
+          g.acceptAllianceRequest(mockReq[rest[0]]);
+          r = [0, 1];
+          break;
+        case 406:
+          p1(rest[0]);
+          g.rejectAllianceRequest(mockReq[rest[0]]);
+          r = [0, 1];
           break;
         case 900:
           r = [0, ...akEnc(gfaDump(g))];
@@ -25668,6 +25970,452 @@ runGFA(
   }),
   [
     [1, 300],
+    [1, 900],
+  ],
+);
+
+// --- G4c: player/team + alliance construction ------------------------------
+// PlayerInfo fixtures reused by the G4c scenarios.
+const GFA_G4C_INFOS = [
+  gfaInfo({
+    id: "h1",
+    name: "Hum1",
+    playerType: "HUMAN",
+    clientID: "c1",
+    clanTag: "CL1",
+    friends: ["h2"],
+    teamIndex: null,
+  }),
+  gfaInfo({
+    id: "h2",
+    name: "Hum2",
+    playerType: "HUMAN",
+    clientID: "c2",
+    clanTag: "CL1",
+    friends: ["h1"],
+    teamIndex: 0,
+  }),
+  gfaInfo({
+    id: "b1",
+    name: "Bot1",
+    playerType: "BOT",
+    clientID: null,
+    clanTag: null,
+    friends: [],
+    teamIndex: null,
+  }),
+  gfaInfo({
+    id: "n1",
+    name: "Nation1",
+    playerType: "NATION",
+    clientID: null,
+    clanTag: null,
+    friends: [],
+    teamIndex: 1,
+  }),
+];
+
+// G4c: populateTeams — Duos over 3 players (2 + 1) → 2 resolved teams; then
+// maybeAssignTeam for a human / a bot (botTeam short-circuit) / a nation.
+runGFA(
+  "gf_g4c_populate_teams_duos",
+  gfaS({
+    ticks: 10,
+    nextPlayerID: 5,
+    cfg: { gmode: "Team", playerTeams: "Duos", startManpower: 40 },
+    infos: GFA_G4C_INFOS,
+    humans: [0, 1],
+    nations: [{ playerInfo: 2 }],
+  }),
+  [
+    [1, 400],
+    [1, 57],
+    [1, 403, 0],
+    [1, 403, 2],
+    [1, 403, 3],
+    [1, 900],
+  ],
+);
+
+// G4c: populateTeams — HumansVsNations over 2 humans + 2 nations.
+runGFA(
+  "gf_g4c_populate_teams_hvn",
+  gfaS({
+    ticks: 4,
+    nextPlayerID: 5,
+    cfg: { gmode: "Team", playerTeams: "Humans Vs Nations", startManpower: 40 },
+    infos: GFA_G4C_INFOS,
+    humans: [0, 1],
+    nations: [{ playerInfo: 2 }, { playerInfo: 3 }],
+  }),
+  [
+    [1, 400],
+    [1, 57],
+    [1, 900],
+  ],
+);
+
+// G4c: populateTeams — numeric TeamCountConfig (four teams) and a Trios config
+// over an empty roster (Math.max(2, 0)).
+runGFA(
+  "gf_g4c_populate_teams_num",
+  gfaS({
+    ticks: 1,
+    nextPlayerID: 1,
+    cfg: { gmode: "Team", playerTeams: 4 },
+    infos: GFA_G4C_INFOS,
+  }),
+  [
+    [1, 400],
+    [1, 57],
+    [1, 400],
+    [1, 900],
+  ],
+);
+
+// G4c: populateTeams — TooFewTeams throw (1 team) and unknown config (null)
+// over an empty roster.
+runGFA(
+  "gf_g4c_populate_teams_threw",
+  gfaS({
+    ticks: 1,
+    nextPlayerID: 1,
+    cfg: { gmode: "Team", playerTeams: 1 },
+    infos: GFA_G4C_INFOS,
+  }),
+  [
+    [1, 400],
+    [1, 57],
+    [1, 900],
+  ],
+);
+
+runGFA(
+  "gf_g4c_populate_teams_unknown",
+  gfaS({
+    ticks: 1,
+    nextPlayerID: 1,
+    cfg: { gmode: "Team", playerTeams: null },
+    infos: GFA_G4C_INFOS,
+  }),
+  [
+    [1, 400],
+    [1, 57],
+    [1, 900],
+  ],
+);
+
+// G4c: addPlayers — Free For All: each addPlayer's `team ?? maybeAssignTeam`
+// yields null (the mode gate), registering three players under string ids.
+runGFA(
+  "gf_g4c_addplayers_ffa",
+  gfaS({
+    ticks: 7,
+    nextPlayerID: 1,
+    cfg: { gmode: "Free For All", startManpower: 50 },
+    infos: GFA_G4C_INFOS,
+    humans: [0, 1],
+    nations: [{ playerInfo: 2 }],
+  }),
+  [
+    [1, 401],
+    [1, 36],
+    [1, 37],
+    [1, 2, 1],
+    [1, 2, 2],
+    [1, 2, 3],
+    [1, 2, 4],
+    [1, 900],
+  ],
+);
+
+// G4c: addPlayers — Team mode with a Duos config: assignTeams over
+// [humans..., nations...] and the per-entry team push (clan/friend kicking
+// included).
+runGFA(
+  "gf_g4c_addplayers_team",
+  gfaS({
+    ticks: 7,
+    nextPlayerID: 1,
+    cfg: { gmode: "Team", playerTeams: "Duos", startManpower: 30 },
+    playerTeams: ["Red", "Blue"],
+    infos: GFA_G4C_INFOS,
+    humans: [0, 1],
+    nations: [{ playerInfo: 2 }, { playerInfo: 3 }],
+  }),
+  [
+    [1, 401],
+    [1, 36],
+    [1, 37],
+    [1, 900],
+  ],
+);
+
+// G4c: addPlayers — HumansVsNations branch (humans forced to Humans, nations to
+// Nations; no assignTeams pass).
+runGFA(
+  "gf_g4c_addplayers_hvn",
+  gfaS({
+    ticks: 7,
+    nextPlayerID: 1,
+    cfg: { gmode: "Team", playerTeams: "Humans Vs Nations", startManpower: 70 },
+    infos: GFA_G4C_INFOS,
+    humans: [0, 1],
+    nations: [{ playerInfo: 2 }],
+  }),
+  [
+    [1, 401],
+    [1, 36],
+    [1, 37],
+    [1, 900],
+  ],
+);
+
+// G4c: addPlayer — an implicit team (maybeAssignTeam), an explicit team, and a
+// duplicate id that overwrites the `_players` entry (order preserved).
+runGFA(
+  "gf_g4c_addplayer",
+  gfaS({
+    ticks: 3,
+    nextPlayerID: 9,
+    cfg: { gmode: "Team", playerTeams: "Duos", startManpower: 25 },
+    playerTeams: ["Red", "Blue"],
+    infos: [GFA_G4C_INFOS[0], GFA_G4C_INFOS[2]],
+  }),
+  [
+    [1, 402, 0],
+    [1, 402, 1, "Green"],
+    [1, 402, 0],
+    [1, 36],
+    [1, 37],
+    [1, 2, 1],
+    [1, 2, 2],
+    [1, 2, 3],
+    [1, 2, 4],
+    [1, 312, 0],
+    [1, 310, 0],
+    [1, 900],
+  ],
+);
+
+// --- G4c: the alliance trio -------------------------------------------------
+const GFA_G4C_APLAYERS = [
+  gfaP({
+    pid: 1,
+    sid: 1,
+    alive: 1,
+    nt: 5,
+    hash: 11,
+    cid: "c1",
+    team: "Red",
+    name: "Alice",
+    alliedWith: 0,
+    idv: 1,
+    tiles: [1, 2],
+    bTiles: [3],
+  }),
+  gfaP({
+    pid: 2,
+    sid: 2,
+    alive: 1,
+    nt: 3,
+    hash: 7,
+    cid: "c2",
+    team: "Blue",
+    name: "Bob",
+    alliedWith: 0,
+    idv: 2,
+  }),
+  gfaP({
+    pid: 3,
+    sid: 3,
+    alive: 1,
+    nt: 2,
+    hash: 5,
+    cid: "c3",
+    team: "Green",
+    name: "Cara",
+    alliedWith: 0,
+    idv: 3,
+  }),
+];
+
+// G4c: happy path — request p1→p2, accept it (alliance id from nextAllianceID),
+// the request list bookkeeping, `_alliances`, the outgoing queue and the
+// AllianceRequest/AllianceRequestReply updates.
+runGFA(
+  "gf_g4c_alliance_happy",
+  gfaS({
+    ticks: 20,
+    nextPlayerID: 4,
+    nextAllianceID: 5,
+    cfg: { gmode: "Free For All" },
+    players: GFA_G4C_APLAYERS,
+    playersMap: [[1, 0], [2, 1], [3, 2]],
+    playersBySmallID: [0, 1, 2],
+  }),
+  [
+    [1, 404, 0, 1],
+    [1, 311],
+    [1, 405, 0],
+    [1, 311],
+    [1, 310, 0],
+    [1, 312, 0],
+    [1, 900],
+  ],
+);
+
+// G4c: reject — the request is dropped from the live list, pushed onto the
+// requestor's outgoing queue and echoed as an un-accepted reply.
+runGFA(
+  "gf_g4c_alliance_reject",
+  gfaS({
+    ticks: 20,
+    nextPlayerID: 4,
+    nextAllianceID: 5,
+    cfg: { gmode: "Free For All" },
+    players: GFA_G4C_APLAYERS,
+    playersMap: [[1, 0], [2, 1], [3, 2]],
+    playersBySmallID: [0, 1, 2],
+  }),
+  [
+    [1, 404, 0, 1],
+    [1, 406, 0],
+    [1, 311],
+    [1, 312, 0],
+    [1, 900],
+  ],
+);
+
+// G4c: accept throws "already allied with …" (allianceWith finds the existing
+// pre-seeded alliance; recipient.name() rides the error).
+runGFA(
+  "gf_g4c_alliance_already_allied",
+  gfaS({
+    ticks: 20,
+    nextPlayerID: 4,
+    nextAllianceID: 9,
+    cfg: { gmode: "Free For All" },
+    players: [
+      gfaP({ pid: 1, sid: 1, alive: 1, name: "Alice", al: [0], alliedWith: 0, idv: 1 }),
+      gfaP({ pid: 2, sid: 2, alive: 1, name: "Bob", al: [0], alliedWith: 0, idv: 2 }),
+    ],
+    playersMap: [[1, 0], [2, 1]],
+    playersBySmallID: [0, 1],
+    alliances: [{ id: 7, createdAt: 3, req: 0, rec: 1 }],
+  }),
+  [
+    [1, 404, 0, 1],
+    [1, 405, 0],
+    [1, 311],
+    [1, 900],
+  ],
+);
+
+// G4c: createAllianceRequest early return when `requestor.isAlliedWith(recipient)`.
+runGFA(
+  "gf_g4c_alliance_isallied",
+  gfaS({
+    ticks: 20,
+    nextPlayerID: 4,
+    cfg: { gmode: "Free For All" },
+    players: [
+      gfaP({ pid: 1, sid: 1, alive: 1, name: "Alice", alliedWith: 1, idv: 1 }),
+      gfaP({ pid: 2, sid: 2, alive: 1, name: "Bob", alliedWith: 0, idv: 2 }),
+    ],
+    playersMap: [[1, 0], [2, 1]],
+    playersBySmallID: [0, 1],
+  }),
+  [
+    [1, 404, 0, 1],
+    [1, 311],
+    [1, 900],
+  ],
+);
+
+// G4c: duplicate request — the candidate's recipient already holds a request
+// from the same requestor.
+runGFA(
+  "gf_g4c_alliance_duplicate",
+  gfaS({
+    ticks: 20,
+    nextPlayerID: 4,
+    cfg: { gmode: "Free For All" },
+    players: GFA_G4C_APLAYERS,
+    playersMap: [[1, 0], [2, 1], [3, 2]],
+    playersBySmallID: [0, 1, 2],
+  }),
+  [
+    [1, 404, 0, 1],
+    [1, 404, 0, 1],
+    [1, 311],
+    [1, 900],
+  ],
+);
+
+// G4c: corresponding request — p2 already requested p1, so p1's counter-request
+// auto-accepts the pending one via `correspondingReq.accept()`.
+runGFA(
+  "gf_g4c_alliance_corresponding",
+  gfaS({
+    ticks: 20,
+    nextPlayerID: 4,
+    nextAllianceID: 2,
+    cfg: { gmode: "Free For All" },
+    players: GFA_G4C_APLAYERS,
+    playersMap: [[1, 0], [2, 1], [3, 2]],
+    playersBySmallID: [0, 1, 2],
+  }),
+  [
+    [1, 404, 1, 0],
+    [1, 404, 0, 1],
+    [1, 311],
+    [1, 310, 0],
+    [1, 900],
+  ],
+);
+
+// G4c: accept a request that is NOT in the live list (rejected first): the
+// retain is a no-op and the alliance is still formed.
+runGFA(
+  "gf_g4c_alliance_accept_absent",
+  gfaS({
+    ticks: 20,
+    nextPlayerID: 4,
+    nextAllianceID: 5,
+    cfg: { gmode: "Free For All" },
+    players: GFA_G4C_APLAYERS,
+    playersMap: [[1, 0], [2, 1], [3, 2]],
+    playersBySmallID: [0, 1, 2],
+  }),
+  [
+    [1, 404, 0, 1],
+    [1, 406, 0],
+    [1, 405, 0],
+    [1, 311],
+    [1, 310, 0],
+    [1, 900],
+  ],
+);
+
+// G4c: nextAllianceID progression across two accepted alliance requests.
+runGFA(
+  "gf_g4c_alliance_id_sequence",
+  gfaS({
+    ticks: 20,
+    nextPlayerID: 4,
+    nextAllianceID: 3,
+    cfg: { gmode: "Free For All" },
+    players: GFA_G4C_APLAYERS,
+    playersMap: [[1, 0], [2, 1], [3, 2]],
+    playersBySmallID: [0, 1, 2],
+  }),
+  [
+    [1, 404, 0, 1],
+    [1, 405, 0],
+    [1, 404, 0, 2],
+    [1, 405, 1],
+    [1, 310, 0],
     [1, 900],
   ],
 );
@@ -29372,22 +30120,32 @@ opStream(
     "/// unitMap, planDriven, playerTeams, botTeam, isPaused, winner,\n" +
     "/// teamSpawnAreas, nations, unitsVersion, territoryVersion, tileUpdates,\n" +
     "/// playerStatsQuads, attackTroopsQuads, motionRecords, unitsByTypeMemo,\n" +
-    "/// unitCountMemo, config block, unitGrid block, sharedWaterCache] ->\n" +
+    "/// unitCountMemo, config block, unitGrid block, sharedWaterCache, alliance\n" +
+    "/// table, infos (PlayerInfo table: id/name/playerType/friends + scripted\n" +
+    "/// clientID/clanTag/teamIndex), humans, nextAllianceID] ->\n" +
     "/// [0,0]; kind 1 method [mid,...] -> [traceLen,(trace)*,[0,...encVal] |\n" +
     "/// [1,encS]]. Trace events: players 100 isAlive, 101 hasSpawned, 102\n" +
     "/// numTilesOwned, 104 hash, 105 clientID, 106 team, 108 name, 111\n" +
     "/// disconnectSnapshot, 112 isDisconnected, 113 alliances, 114 units, 115\n" +
-    "/// unitCount, 117 smallID; units 120 toUpdate, 121 hasTrainStation, 122\n" +
-    "/// id, 123 type; unitGrid 130 addUnit, 131 removeUnit, 132 updateUnitCell,\n" +
-    "/// 133 hasUnitNearby, 134 anyUnitNearby, 135 nearbyUnits; rail 140\n" +
-    "/// removeStation; stats 150 recordFinalTiles, 151 recordAlliancesAtEnd;\n" +
-    "/// config 160 gameConfig, 161 unitInfo, 162 waterNukes, 163\n" +
-    "/// spawnImmunityDuration, 164 nationSpawnImmunityDuration, 165\n" +
-    "/// teamLandShareWinThresholdTenths; water cache 170 get; exec 180\n" +
-    "/// activeDuringSpawnPhase, 181 isActive; callbacks 190 forEachNeighbor,\n" +
-    "/// 191 forEachNeighborWithDiag, 192 forEachTile, 193 circleSearch filter,\n" +
-    "/// 194 bfs filter. mid 900 dumpUpdates. Objects cross as TOKENS (indices\n" +
-    "/// into the harness tables; TN = -2, undefined = -1).",
+    "/// unitCount, 117 smallID, 136 isAlliedWith, 137 allianceWith, 138\n" +
+    "/// incomingAllianceRequests; units 120 toUpdate, 121 hasTrainStation, 122\n" +
+    "/// id, 123 type; requests 145 requestor, 146 recipient, 203 toUpdate;\n" +
+    "/// alliances 141 requestor, 142 recipient; unitGrid 130 addUnit, 131\n" +
+    "/// removeUnit, 132 updateUnitCell, 133 hasUnitNearby, 134 anyUnitNearby,\n" +
+    "/// 135 nearbyUnits; rail 140 removeStation; stats 150 recordFinalTiles,\n" +
+    "/// 151 recordAlliancesAtEnd, 159 allianceFormed; config 160 gameConfig, 161\n" +
+    "/// unitInfo, 162 waterNukes, 163 spawnImmunityDuration, 164\n" +
+    "/// nationSpawnImmunityDuration, 165 teamLandShareWinThresholdTenths, 166\n" +
+    "/// conquerGoldAmount, 167 playerTeams, 168 startManpower; scripted\n" +
+    "/// constructors 200 newPlayer, 201 newAllianceRequest, 202 newAlliance;\n" +
+    "/// water cache 170 get; exec 180 activeDuringSpawnPhase, 181 isActive;\n" +
+    "/// callbacks 190 forEachNeighbor, 191 forEachNeighborWithDiag, 192\n" +
+    "/// forEachTile, 193 circleSearch filter, 194 bfs filter. Mids 400-406\n" +
+    "/// populateTeams/addPlayers/addPlayer/maybeAssignTeam/createAllianceRequest/\n" +
+    "/// acceptAllianceRequest/rejectAllianceRequest; 311/312 the live\n" +
+    "/// allianceRequests list / a player's pastOutgoingAllianceRequests; 900\n" +
+    "/// dumpUpdates. Objects cross as TOKENS (indices into the harness tables;\n" +
+    "/// TN = -2, undefined = -1).",
 );
 
 const dataDir = join(root, "crates", "core", "tests", "data");

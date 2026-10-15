@@ -838,6 +838,138 @@ function prepare(rel) {
       "SWT ctor",
     );
   }
+  if (rel.endsWith("pathfinding/PathFinderBuilder.ts")) {
+    // G3c5: PathFinding.Water really runs now (the SpatialQuery capture).
+    // DebugSpan / PathFinderStepper are value uses redirected to prepared
+    // copies (StepperConfig is an interface -> erased from the named import);
+    // the ./types names are both interfaces -> dropped. The private ctor's
+    // parameter property is expanded.
+    const dbgRel = "src/core/utilities/DebugSpan.ts";
+    if (!prepared.has(dbgRel)) prepare(dbgRel);
+    out = must(
+      out,
+      'import { DebugSpan } from "../utilities/DebugSpan";',
+      `import { DebugSpan } from "./${prepared.get(dbgRel)}";`,
+      "PFB DebugSpan import",
+    );
+    const pfsRel = "src/core/pathfinding/PathFinderStepper.ts";
+    if (!prepared.has(pfsRel)) prepare(pfsRel);
+    out = must(
+      out,
+      'import { PathFinderStepper, StepperConfig } from "./PathFinderStepper";',
+      `import { PathFinderStepper } from "./${prepared.get(pfsRel)}";`,
+      "PFB Stepper import",
+    );
+    out = must(
+      out,
+      'import { PathFinder, SteppingPathFinder } from "./types";',
+      "",
+      "PFB types import",
+    );
+    out = must(
+      out,
+      "  private constructor(private core: PathFinder<T>) {}",
+      "  private core: PathFinder<T>;\n\n" +
+        "  private constructor(core: PathFinder<T>) {\n" +
+        "    this.core = core;\n" +
+        "  }",
+      "PFB ctor",
+    );
+  }
+  if (rel.endsWith("pathfinding/spatial/SpatialQuery.ts")) {
+    // G3c5: captured for TransportShipUtils. Game / Player / TerraNullius /
+    // TileRef are all type-only (the Game facade is passed in) -> dropped.
+    // TileTraversalScratch / DebugSpan / PathFinding / AStarWaterBounded are
+    // value uses redirected to their prepared copies. The ctor's parameter
+    // property is expanded.
+    out = must(
+      out,
+      'import { Game, Player, TerraNullius } from "../../game/Game";',
+      "",
+      "SQ Game import",
+    );
+    out = must(
+      out,
+      'import { TileRef } from "../../game/GameMap";',
+      "",
+      "SQ GameMap import",
+    );
+    const sqTtsRel = "src/core/game/TileTraversalScratch.ts";
+    if (!prepared.has(sqTtsRel)) prepare(sqTtsRel);
+    out = must(
+      out,
+      "import {\n" +
+        "  bumpTraversalGeneration,\n" +
+        "  tileTraversalScratch,\n" +
+        '} from "../../game/TileTraversalScratch";',
+      `import {\n` +
+        "  bumpTraversalGeneration,\n" +
+        "  tileTraversalScratch,\n" +
+        `} from "./${prepared.get(sqTtsRel)}";`,
+      "SQ TileTraversalScratch import",
+    );
+    const sqDbgRel = "src/core/utilities/DebugSpan.ts";
+    if (!prepared.has(sqDbgRel)) prepare(sqDbgRel);
+    out = must(
+      out,
+      'import { DebugSpan } from "../../utilities/DebugSpan";',
+      `import { DebugSpan } from "./${prepared.get(sqDbgRel)}";`,
+      "SQ DebugSpan import",
+    );
+    const sqPfRel = "src/core/pathfinding/PathFinder.ts";
+    if (!prepared.has(sqPfRel)) prepare(sqPfRel);
+    out = must(
+      out,
+      'import { PathFinding } from "../PathFinder";',
+      `import { PathFinding } from "./${prepared.get(sqPfRel)}";`,
+      "SQ PathFinding import",
+    );
+    const sqWbRel = "src/core/pathfinding/algorithms/AStar.WaterBounded.ts";
+    if (!prepared.has(sqWbRel)) prepare(sqWbRel);
+    out = must(
+      out,
+      'import { AStarWaterBounded } from "../algorithms/AStar.WaterBounded";',
+      `import { AStarWaterBounded } from "./${prepared.get(sqWbRel)}";`,
+      "SQ WaterBounded import",
+    );
+    out = must(
+      out,
+      "  constructor(private game: Game) {}",
+      "  private game: Game;\n\n" +
+        "  constructor(game: Game) {\n" +
+        "    this.game = game;\n" +
+        "  }",
+      "SQ ctor",
+    );
+  }
+  if (rel.endsWith("game/TransportShipUtils.ts")) {
+    // G3c5: captured for PlayerImpl's canBuild "Transport" path. SpatialQuery
+    // is a value use redirected to the prepared copy; Game / Player are
+    // type-only and UnitType a value use (the boat-cap comparison) riding the
+    // prepared Game.ts copy; TileRef is type-only -> dropped.
+    const tsuSqRel = "src/core/pathfinding/spatial/SpatialQuery.ts";
+    if (!prepared.has(tsuSqRel)) prepare(tsuSqRel);
+    out = must(
+      out,
+      'import { SpatialQuery } from "../pathfinding/spatial/SpatialQuery";',
+      `import { SpatialQuery } from "./${prepared.get(tsuSqRel)}";`,
+      "TSU SpatialQuery import",
+    );
+    const tsuGameRel = "src/core/game/Game.ts";
+    if (!prepared.has(tsuGameRel)) prepare(tsuGameRel);
+    out = must(
+      out,
+      'import { Game, Player, UnitType } from "./Game";',
+      `import { UnitType } from "./${prepared.get(tsuGameRel)}";`,
+      "TSU Game import",
+    );
+    out = must(
+      out,
+      'import { TileRef } from "./GameMap";',
+      "",
+      "TSU GameMap import",
+    );
+  }
 
   if (rel.endsWith("game/WaterManager.ts")) {
     // Orchestrator class: GameMap/TileRef (interface + branded type) and
@@ -1812,10 +1944,11 @@ function prepare(rel) {
     // AllPlayers / ColoredTeams / MAX_UPGRADE_AMOUNT / PlayerBuildable /
     // Structures constants are exported by the prepared copy). Schemas
     // (ClientID), GameImpl and the Game type names are annotation-only ->
-    // dropped. TransportShipUtils is NOT loadable (its SpatialQuery import
-    // pulls the pathfinding graph) and both functions are outside the G3c1
-    // surface -> stub consts. `implements Player` dropped; the Donation and
-    // PlayerImpl ctor parameter properties expanded (UnitImpl precedent).
+    // dropped. G3c5: TransportShipUtils and its SpatialQuery pathfinding
+    // graph are now loadable (AStar.WaterBounded + the transformer chain) -
+    // redirected to their prepared copies. `implements Player` dropped; the
+    // Donation and PlayerImpl ctor parameter properties expanded (UnitImpl
+    // precedent).
     const plPRel = "src/core/PseudoRandom.ts";
     out = must(
       out,
@@ -1944,14 +2077,18 @@ function prepare(rel) {
         `} from "./${prepared.get(plTtsRel)}";\n`,
       "PlayerImpl TileTraversalScratch import",
     );
+    const plTsuRel = "src/core/game/TransportShipUtils.ts";
+    if (!prepared.has(plTsuRel)) prepare(plTsuRel);
     out = must(
       out,
       "import {\n" +
         "  bestShoreDeploymentSource,\n" +
         "  canBuildTransportShip,\n" +
         '} from "./TransportShipUtils";\n',
-      "const bestShoreDeploymentSource = () => null;\n" +
-        "const canBuildTransportShip = () => false;\n",
+      `import {\n` +
+        "  bestShoreDeploymentSource,\n" +
+        "  canBuildTransportShip,\n" +
+        `} from "./${prepared.get(plTsuRel)}";\n`,
       "PlayerImpl TransportShipUtils import",
     );
     const plUiRel = "src/core/game/UnitImpl.ts";
@@ -2909,19 +3046,36 @@ function prepare(rel) {
   }
 
   if (rel.endsWith("pathfinding/PathFinder.ts")) {
-    // Only WaterPathMemo is captured; everything else in the file rides on the
-    // Game facade. Every import here is either type-only (Game, GameMap/TileRef,
-    // TrainStation, the ./types names — PathStatus is an enum the strip loader
-    // rejects, but it is only referenced inside tileStepperConfig, which never
-    // runs) or a *value* import of the pathfinding graph (AStar.Rail,
-    // AStar.Water, PathFinder.Air/Parabola/Station, PathFinderBuilder,
-    // PathFinderStepper, the four transformers) that strip mode would really
-    // execute and pull in whole. WaterPathMemo's class body references none of
-    // them, so the entire import block is dropped. The module-level
-    // `_waterChainCache = new WeakMap(...)` still executes (global WeakMap,
-    // type args erased) and is harmless. The ctor is parameter properties,
-    // which strip mode rejects; expand them, same as MinHeap / BFS — the
-    // maxBytes default keeps referencing WaterPathMemo.DEFAULT_MAX_BYTES.
+    // WaterPathMemo is captured, and G3c5 also really runs PathFinding.Water
+    // (the SpatialQuery capture in TransportShipUtils). The import block is
+    // split: Game / GameMap+TileRef / TrainStation are type-only and dropped;
+    // AStarRail / AirPathFinder / Parabola / StationPathFinder are referenced
+    // only by static method bodies the capture never calls (Rail / Air /
+    // Stations / UniversalPathFinding.Parabola), and JS resolves identifiers
+    // lazily, so those imports are dropped too. AStarWater, PathFinderBuilder,
+    // PathFinderStepper and the four transformers are *value* uses on the
+    // Water path, redirected to their prepared copies. The ./types import
+    // mixes the PathStatus enum (a runtime value inside tileStepperConfig —
+    // inlined as a plain object; the strip loader rejects export enum) with
+    // type names (dropped). The module-level `_waterChainCache = new
+    // WeakMap(...)` still executes (global WeakMap, type args erased) and is
+    // harmless. The ctor is parameter properties, which strip mode rejects;
+    // expand them, same as MinHeap / BFS — the maxBytes default keeps
+    // referencing WaterPathMemo.DEFAULT_MAX_BYTES.
+    const pfAwRel = "src/core/pathfinding/algorithms/AStar.Water.ts";
+    if (!prepared.has(pfAwRel)) prepare(pfAwRel);
+    const pfPfbRel = "src/core/pathfinding/PathFinderBuilder.ts";
+    if (!prepared.has(pfPfbRel)) prepare(pfPfbRel);
+    const pfPfsRel = "src/core/pathfinding/PathFinderStepper.ts";
+    if (!prepared.has(pfPfsRel)) prepare(pfPfsRel);
+    const pfCctRel = "src/core/pathfinding/transformers/ComponentCheckTransformer.ts";
+    if (!prepared.has(pfCctRel)) prepare(pfCctRel);
+    const pfMmtRel = "src/core/pathfinding/transformers/MiniMapTransformer.ts";
+    if (!prepared.has(pfMmtRel)) prepare(pfMmtRel);
+    const pfSctRel = "src/core/pathfinding/transformers/ShoreCoercingTransformer.ts";
+    if (!prepared.has(pfSctRel)) prepare(pfSctRel);
+    const pfSwtRel = "src/core/pathfinding/transformers/SmoothingWaterTransformer.ts";
+    if (!prepared.has(pfSwtRel)) prepare(pfSwtRel);
     out = must(
       out,
       'import { Game } from "../game/Game";\n' +
@@ -2947,7 +3101,14 @@ function prepare(rel) {
         "  PathStatus,\n" +
         "  SteppingPathFinder,\n" +
         '} from "./types";\n',
-      "",
+      `import { AStarWater } from "./${prepared.get(pfAwRel)}";\n` +
+        `import { PathFinderBuilder } from "./${prepared.get(pfPfbRel)}";\n` +
+        `import { PathFinderStepper } from "./${prepared.get(pfPfsRel)}";\n` +
+        `import { ComponentCheckTransformer } from "./${prepared.get(pfCctRel)}";\n` +
+        `import { MiniMapTransformer } from "./${prepared.get(pfMmtRel)}";\n` +
+        `import { ShoreCoercingTransformer } from "./${prepared.get(pfSctRel)}";\n` +
+        `import { SmoothingWaterTransformer } from "./${prepared.get(pfSwtRel)}";\n` +
+        "const PathStatus = { NEXT: 0, COMPLETE: 2, NOT_FOUND: 3 };\n",
       "PathFinder imports",
     );
     out = must(

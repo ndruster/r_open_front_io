@@ -197,13 +197,79 @@
 //!   the real comparator run; field values come from the typed full).
 //! * Alliance mocks gain `id()` / `createdAt()` constants (legacy 5-field
 //!   construct tuples default `id = i`, `createdAt = 100 + i`).
+//!
+//! G3c5 adds the build / upgrade / spawn family (mids 118-129, facade events
+//! 139-157):
+//!
+//! * 118 `buildUnit(type, tile, params)` (1368-1397) — the 148-disabled
+//!   short-circuit, then `149 unitInfo(type).cost(mg, this, 1)` crossing as
+//!   bigint, troops removal, `139 mg.nextUnitID()` and the ctor param
+//!   defaults; `b.toUpdate()` emits the full ctor-state shape (the warship
+//!   spread appends `isInCombat` LAST via a 102 read, `transportShipState`
+//!   only for Transport, the mock `shimUpdate` health crossing as
+//!   `Number(Util.toInt(mh))`) before `101 addUpdate` + `140 addUnit`;
+//!   `152 stats().unitBuild` + `157 bumpUnitsVersion` close it out.
+//! * 119-121 the upgrade chain (1399-1477): `findUnitToUpgrade` /
+//!   `canUpgradeUnit` / `upgradeUnit` over the unit mocks' ten fields
+//!   (type/level/uc/hash/tile/targetTile/loaded/trainType/warshipState/
+//!   owner), the `cost(mg, this, level)` bigint crossing.
+//! * 122 `buildableUnits(tile, units)` (1479-1547) — per-type
+//!   `{type, canBuild, canUpgrade, cost, upgradeCosts?}`; the upgradeCosts
+//!   cumulate `cost(mg, this, n)` for n in 0..50 as bigints crossing as f64
+//!   (`MAX_UPGRADE_AMOUNT = 50`); the 153/154 rail probes fire only on the
+//!   build-new branch.
+//! * 123 `canBuild(type, tile, validTiles)` (1549-1599) — `canSpawnUnitType`'s
+//!   switch: the 144 `inSpawnPhase` gate, 143 `getWinner`, 148 disabled,
+//!   then the per-type spawn helper.
+//! * 124 `nukeSpawn` (1601-1651) — the untraced impassable / owner reads,
+//!   143 + the untraced gameType, the Team-mode teammate-structure probe
+//!   (147 nukeMagnitudes then 142 anyUnitNearby), the ready-silo filter and
+//!   the manhattan-stable sort.
+//! * 125-128 `portSpawn` / `warshipSpawn` / `landBasedUnitSpawn` /
+//!   `landBasedStructureSpawn` (1653-1787) — `validStructureSpawnTiles`'s
+//!   145 structureMinDist radius filter, the 146 radiusPortSpawn BFS.
+//! * 129 `tradeShipSpawn` — the 141 nearbyUnits port scan.
+//!
+//! The G3c5 scenarios run against a MAP BLOCK: a real `GameMapImpl` +
+//! `WaterManager` pair the mg map facade reads UNTRACED (map, width, height,
+//! isValidRef, isWater, isLand, isShore, hasOwner, ownerID, bfs,
+//! getWaterComponent, hasWaterComponent, manhattanDist,
+//! euclideanDistSquared, isImpassable, isValidRef, waterGraphVersion,
+//! miniMap / miniWaterHPA / miniWaterGraph). The ported
+//! [`crate::spatial_query::SpatialQuery`] (bfsNearest, closestShore,
+//! closestReachableShore with the (tileChangeVersion × waterVersion)-keyed
+//! reachable-components memo, closestShoreByWater, refineStartTile) and
+//! [`crate::transport_ship_utils`] (the boatMaxNumber 150 gate FIRST, then
+//! targetTransportTile, the `other === player` / canAttackPlayer gates, then
+//! closestShoreByWater; `bestTransportShipSpawn` at 1937-1939 rides
+//! bestShoreDeploymentSource) therefore replay their REAL search order.
+//!
+//! * 139 `mg.nextUnitID()` -> `[139, ret]`; 140 `mg.addUnit(unit)` ->
+//!   `[140, uid]`; 141 `mg.nearbyUnits(tile, radius, types)` -> scripted
+//!   `[unitTok|~-1, tile, dist]` triples; 142 `mg.anyUnitNearby(...)` ->
+//!   `[142, ret01]`; 143 `mg.getWinner()` -> `[143, ...encVal(v)]` (only
+//!   `!== null` is observable); 144 `mg.inSpawnPhase()` -> `[144, ret01]`;
+//!   145 `config().structureMinDist()`; 146 `config().radiusPortSpawn()`;
+//!   147 `config().nukeMagnitudes()` -> `[147, mag, range]`; 148
+//!   `config().isUnitDisabled(type)` -> `[148, ...encS(type), ret01]`; 149
+//!   `unitInfo(type).cost(mg, this, n)` -> `[149, ...plEnc(n),
+//!   ...plEnc(BigInt(v))]` (a non-integer script throws); 150
+//!   `config().boatMaxNumber()`; 151 `unitInfo(type).maxHealth` (a scripted
+//!   NaN crosses as `undefined`); 152 `mg.stats().unitBuild(owner, type)`;
+//!   153 `railNetwork().overlappingRailroads(type, tile)` / 154
+//!   `railNetwork().computeGhostRailPaths(type, tile)`; 155
+//!   `config().samRange(1)` / 156 `config().samUpgradeDuration()` (the
+//!   SAMLauncher ctor branch); 157 `mg.bumpUnitsVersion()` (side-effect only
+//!   in this scope).
 
 use crate::game_update_utils::{
     diff_changed_indices, diff_player_update, pack_attack_troop_deltas, Arr, AttackUpdate,
     AllianceView as TypedAllianceView, EmojiMessage as TypedEmoji, PlayerUpdate,
     ATTACK_DELTA_INCOMING, ATTACK_DELTA_OUTGOING,
 };
+use crate::game_map::GameMap;
 use crate::js_json::{push_str, push_val, read_str, read_val, val_field, JsVal};
+use crate::spatial_query::SpatialQuery;
 use crate::tile_set::TileSet;
 
 const MAX_SAFE: i64 = 9_007_199_254_740_991;
@@ -345,6 +411,23 @@ fn push_ok_bool(out: &mut Vec<f64>, v: bool) {
 fn push_err(out: &mut Vec<f64>, msg: &str) {
     out.push(1.0);
     push_str(out, msg);
+}
+
+/// The plEnc-encoded `validTiles` argument (`TileRef[] | null`): an array of
+/// tile refs crosses as `Arr` of `Num`s; anything else is the `null` default.
+fn decode_valid_tiles(v: &JsVal) -> Option<Vec<f64>> {
+    match v {
+        JsVal::Arr(items) => Some(
+            items
+                .iter()
+                .filter_map(|it| match it {
+                    JsVal::Num(t) => Some(*t),
+                    _ => None,
+                })
+                .collect(),
+        ),
+        _ => None,
+    }
 }
 
 /// The property name in the `pl === null` TypeError for each mid (mirrors
@@ -753,13 +836,26 @@ struct AllianceMock {
 }
 
 /// One unit mock (`type()` / `level()` / `isUnderConstruction()` untraced
-/// constants, `hash()` traced as event 131).
+/// constants, `hash()` traced as event 131). G3c5 widens it to the full
+/// spawn-family surface: `id()` / `owner()` identity / `isActive()` /
+/// `isInCooldown()` (the mock's scripted stand-in for the missile-queue
+/// `length === level` test) / `tile()` / `isMarkedForDeletion()`.
 #[derive(Clone, Debug)]
 struct UnitMock {
     typ: String,
+    id: f64,
+    owner_sid: f64,
     level: f64,
     uc: bool,
+    active: bool,
+    cooldown: bool,
+    tile: f64,
+    mfd: bool,
     hash: f64,
+    /// The mock's `_missileTimerQueue` — starts empty, grows only through the
+    /// `increaseLevel` shim's Silo/SAM push. Never serialized (always empty
+    /// at construct time).
+    queue: Vec<f64>,
 }
 
 /// One attack mock (`attacker()` / `target()` untraced identity reads); the
@@ -781,6 +877,38 @@ struct Embargo {
     created_at: f64,
     is_temporary: JsVal,
     target: usize,
+}
+
+/// The `mg.owner(tile)` identity model for the G3c5 map face. In the TS
+/// capture the map is a real `GameMapImpl`, so `ownerID(tile)` returns a real
+/// numeric id; `PlayerImpl` only ever compares it against `this.smallID()` /
+/// `0` or forwards it as a player reference (`owner.isPlayer()` on
+/// TerraNullius tiles short-circuits to `false`). We mirror those three
+/// identities without fabricating full player objects.
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum OwnerRef {
+    /// The harness player itself (`ownerID(tile) === smallID()`).
+    SelfP,
+    /// TerraNullius (`ownerID(tile) === 0`); `smallID()` returns 0,
+    /// `isPlayer()` returns false.
+    TN,
+    /// Another scripted player mock (`owner.isPlayer()` → true,
+    /// `smallID()` → the pid).
+    Mock(f64),
+}
+
+impl OwnerRef {
+    fn small_id(&self) -> f64 {
+        match self {
+            OwnerRef::SelfP | OwnerRef::TN => 0.0,
+            OwnerRef::Mock(pid) => *pid,
+        }
+    }
+    /// `owner.isPlayer()` — true for the harness player and other mocks,
+    /// false for TerraNullius.
+    fn is_player(&self) -> bool {
+        !matches!(self, OwnerRef::TN)
+    }
 }
 
 /// The EMPTY_* singleton refids (JS reference identity for the diff/pack
@@ -1078,6 +1206,61 @@ pub struct PlayerHarness {
     sia_i: usize,
     nsia: Vec<f64>,
     nsia_i: usize,
+    // G3c5: the real-map block. `sq` owns the WaterManager (map + mini map)
+    // and the per-game traversal scratch; `None` when the scenario injects no
+    // map (the mg map facade then panics — the capture would too, its mock
+    // `map()` being undefined).
+    sq: Option<SpatialQuery>,
+    // G3c5 config/mg scripts (FIFO). `gwin` is getWinner (Null | Num(token));
+    // `nu` the nearbyUnits per-call scripts; `orail` / `gravel` the rail
+    // network returns (JsVals crossing verbatim); `uimh` uses NaN as the
+    // `undefined` marker (maxHealth is optional in UnitInfo).
+    upg: Vec<(String, bool)>,
+    gt: String,
+    gmd: String,
+    gwin: Vec<JsVal>,
+    gwin_i: usize,
+    isp: Vec<f64>,
+    isp_i: usize,
+    smd: Vec<f64>,
+    smd_i: usize,
+    rps: Vec<f64>,
+    rps_i: usize,
+    nmag: Vec<(f64, f64)>,
+    nmag_i: usize,
+    bmn: Vec<f64>,
+    bmn_i: usize,
+    nuid: Vec<f64>,
+    nuid_i: usize,
+    nu: Vec<NuCall>,
+    nu_i: usize,
+    anyn: Vec<f64>,
+    anyn_i: usize,
+    idis: Vec<f64>,
+    idis_i: usize,
+    uicost: Vec<f64>,
+    uicost_i: usize,
+    uimh: Vec<f64>,
+    uimh_i: usize,
+    sam_r: Vec<f64>,
+    sam_r_i: usize,
+    sam_d: Vec<f64>,
+    sam_d_i: usize,
+    orail: Vec<JsVal>,
+    orail_i: usize,
+    gravel: Vec<JsVal>,
+    gravel_i: usize,
+}
+
+/// One scripted `mg.nearbyUnits(tile, radius, types, ...)` call: the call
+/// identity (tile, radius, the type set) is re-pinned by the 141 event, the
+/// entries reference unit mocks by `id()`.
+#[derive(Clone, Debug)]
+struct NuCall {
+    tile: f64,
+    radius: f64,
+    types: Vec<String>,
+    entries: Vec<(f64, f64, f64)>,
 }
 
 impl PlayerHarness {
@@ -1355,6 +1538,1043 @@ impl PlayerHarness {
         tr.push(v);
         v != 0.0 && !v.is_nan()
     }
+
+    // --- G3c5: the spawn-family mg scripts and the real-map facade ---
+
+    /// `mg.nextUnitID()` — event 139.
+    fn mg_next_unit_id(&mut self, tr: &mut Vec<f64>) -> f64 {
+        let v = take_f64(&self.nuid, &mut self.nuid_i);
+        tr.push(139.0);
+        tr.push(v);
+        v
+    }
+
+    /// `mg.addUnit(unit)` — event 140 (the unit's `id()`).
+    fn mg_add_unit(&mut self, tr: &mut Vec<f64>, uid: f64) {
+        tr.push(140.0);
+        tr.push(uid);
+    }
+
+    /// `mg.nearbyUnits(tile, radius, types, ...)` — event 141; the scripted
+    /// entries resolve against the unit mocks by `id()` (the TS harness looks
+    /// the same ids up in `pl._units`; an unknown id yields a `unit:
+    /// undefined` entry whose later reads throw).
+    fn mg_nearby_units(&mut self, tr: &mut Vec<f64>, tile: f64, radius: f64, types: &[String]) -> Result<Vec<(Option<usize>, f64, f64)>, String> {
+        let call = self.nu.get(self.nu_i).ok_or_else(|| "pl harness: nearbyUnits script exhausted".to_string())?;
+        self.nu_i += 1;
+        tr.push(141.0);
+        tr.push(call.tile);
+        tr.push(call.radius);
+        tr.push(call.types.len() as f64);
+        for t in &call.types {
+            push_str(tr, t);
+        }
+        tr.push(call.entries.len() as f64);
+        for (uid, etile, dist) in &call.entries {
+            tr.push(*uid);
+            tr.push(*etile);
+            tr.push(*dist);
+        }
+        let _ = (tile, radius, types);
+        Ok(call
+            .entries
+            .iter()
+            .map(|(uid, etile, dist)| {
+                let idx = self
+                    .p
+                    .units
+                    .iter()
+                    .position(|u| u.id == *uid);
+                (idx, *etile, *dist)
+            })
+            .collect())
+    }
+
+    /// `mg.anyUnitNearby(tile, radius, types, pred)` — event 142 (the
+    /// predicate never runs: the scripted return pins its result).
+    fn mg_any_unit_nearby(&mut self, tr: &mut Vec<f64>, tile: f64, radius: f64, types: &[String]) -> Result<bool, String> {
+        let v = take_f64(&self.anyn, &mut self.anyn_i);
+        tr.push(142.0);
+        tr.push(tile);
+        tr.push(radius);
+        tr.push(types.len() as f64);
+        for t in types {
+            push_str(tr, t);
+        }
+        tr.push(v);
+        Ok(v != 0.0 && !v.is_nan())
+    }
+
+    /// `mg.getWinner()` — event 143 (`Null` = no winner, `Num(tok)` = a mock
+    /// player; only `!== null` is observable).
+    fn mg_get_winner(&mut self, tr: &mut Vec<f64>) -> Result<bool, String> {
+        let v = take_jsval(&self.gwin, &mut self.gwin_i);
+        tr.push(143.0);
+        push_val(tr, &v);
+        Ok(!matches!(v, JsVal::Null | JsVal::Undef | JsVal::Absent))
+    }
+
+    /// `mg.inSpawnPhase()` — event 144.
+    fn mg_in_spawn_phase(&mut self, tr: &mut Vec<f64>) -> bool {
+        let v = take_f64(&self.isp, &mut self.isp_i);
+        tr.push(144.0);
+        tr.push(v);
+        v != 0.0 && !v.is_nan()
+    }
+
+    /// `config().structureMinDist()` — event 145.
+    fn cfg_structure_min_dist(&mut self, tr: &mut Vec<f64>) -> f64 {
+        let v = take_f64(&self.smd, &mut self.smd_i);
+        tr.push(145.0);
+        tr.push(v);
+        v
+    }
+
+    /// `config().radiusPortSpawn()` — event 146.
+    fn cfg_radius_port_spawn(&mut self, tr: &mut Vec<f64>) -> f64 {
+        let v = take_f64(&self.rps, &mut self.rps_i);
+        tr.push(146.0);
+        tr.push(v);
+        v
+    }
+
+    /// `config().nukeMagnitudes(type)` — event 147 (`[inner, outer]` FIFO).
+    fn cfg_nuke_magnitudes(&mut self, tr: &mut Vec<f64>) -> Result<(f64, f64), String> {
+        let (inner, outer) = self
+            .nmag
+            .get(self.nmag_i)
+            .copied()
+            .ok_or_else(|| "pl harness: nukeMagnitudes script exhausted".to_string())?;
+        self.nmag_i += 1;
+        tr.push(147.0);
+        tr.push(inner);
+        tr.push(outer);
+        Ok((inner, outer))
+    }
+
+    /// `config().isUnitDisabled(type)` — event 148.
+    fn cfg_is_unit_disabled(&mut self, tr: &mut Vec<f64>, typ: &str) -> bool {
+        let v = take_f64(&self.idis, &mut self.idis_i);
+        tr.push(148.0);
+        push_str(tr, typ);
+        tr.push(v);
+        v != 0.0 && !v.is_nan()
+    }
+
+    /// `unitInfo(type).cost(mg, this, n)` — event 149; `n_raw` is the third
+    /// argument (`Undef` when absent) and the scripted cost returns as a
+    /// bigint (`BigInt(v)`; NaN would throw exactly like the capture).
+    fn ui_cost(&mut self, tr: &mut Vec<f64>, n_raw: JsVal) -> Result<i64, String> {
+        let v = take_f64(&self.uicost, &mut self.uicost_i);
+        tr.push(149.0);
+        push_val(tr, &n_raw);
+        let b = bigint_from_num(v)?;
+        push_val(tr, &JsVal::Num(b as f64));
+        Ok(b)
+    }
+
+    /// `unitInfo(type).maxHealth` — event 151; NaN in the script is the
+    /// `undefined` marker (`maxHealth ?? 1` / `hasHealth` read it).
+    fn ui_max_health(&mut self, tr: &mut Vec<f64>) -> Result<Option<f64>, String> {
+        let v = take_f64(&self.uimh, &mut self.uimh_i);
+        tr.push(151.0);
+        if v.is_nan() {
+            push_val(tr, &JsVal::Undef);
+            Ok(None)
+        } else {
+            push_val(tr, &JsVal::Num(v));
+            Ok(Some(v))
+        }
+    }
+
+    /// `config().boatMaxNumber()` — event 150.
+    fn cfg_boat_max_number(&mut self, tr: &mut Vec<f64>) -> f64 {
+        let v = take_f64(&self.bmn, &mut self.bmn_i);
+        tr.push(150.0);
+        tr.push(v);
+        v
+    }
+
+    /// `config().samRange(1)` — event 155 (only the SAMLauncher ctor branch).
+    fn cfg_sam_range(&mut self, tr: &mut Vec<f64>, level: f64) -> f64 {
+        let v = take_f64(&self.sam_r, &mut self.sam_r_i);
+        tr.push(155.0);
+        tr.push(level);
+        tr.push(v);
+        v
+    }
+
+    /// `config().samUpgradeDuration()` — event 156.
+    fn cfg_sam_upgrade_duration(&mut self, tr: &mut Vec<f64>) -> f64 {
+        let v = take_f64(&self.sam_d, &mut self.sam_d_i);
+        tr.push(156.0);
+        tr.push(v);
+        v
+    }
+
+    /// `mg.stats().unitBuild(owner, type)` — event 152 (side-effect only).
+    fn mg_stats_unit_build(&mut self, tr: &mut Vec<f64>, typ: &str) {
+        tr.push(152.0);
+        tr.push(self.p.small_id);
+        push_str(tr, typ);
+    }
+
+    /// `mg.bumpUnitsVersion()` — event 157 (side-effect only in this scope).
+    fn mg_bump_units_version(&mut self, tr: &mut Vec<f64>) {
+        tr.push(157.0);
+    }
+
+    /// `railNetwork().overlappingRailroads(type, tile)` — event 153; the
+    /// scripted return crosses verbatim.
+    fn rail_overlapping(&mut self, tr: &mut Vec<f64>, tile: f64) -> Result<JsVal, String> {
+        let v = take_jsval(&self.orail, &mut self.orail_i);
+        tr.push(153.0);
+        tr.push(tile);
+        push_val(tr, &v);
+        Ok(v)
+    }
+
+    /// `railNetwork().computeGhostRailPaths(type, tile)` — event 154.
+    fn rail_ghost_paths(&mut self, tr: &mut Vec<f64>, tile: f64) -> Result<JsVal, String> {
+        let v = take_jsval(&self.gravel, &mut self.gravel_i);
+        tr.push(154.0);
+        tr.push(tile);
+        push_val(tr, &v);
+        Ok(v)
+    }
+
+    // --- G3c5: the real-map facade (all untraced — pure reads over the same
+    // injected GameMap / WaterManager both worlds hold) ---
+
+    /// `mg.map()` — panics without a map block, mirroring the capture (its
+    /// mock has no `map` member; TS would throw on the call itself).
+    fn map(&self) -> &GameMap {
+        self.sq
+            .as_ref()
+            .expect("pl harness: map scenario without a map block")
+            .debug_map()
+    }
+
+    fn spatial(&mut self) -> &mut SpatialQuery {
+        self.sq
+            .as_mut()
+            .expect("pl harness: map scenario without a map block")
+    }
+
+    /// `mg.owner(tile)` for map scenarios — the real ownerID mapped to the
+    /// owner objects: `0` is terra nullius, `smallID` is `this`, anything
+    /// else is the mock with that pid.
+    fn owner_ref(&self, tile: f64) -> OwnerRef {
+        match self.map().owner_id(tile) {
+            sid if sid == self.p.small_id => OwnerRef::SelfP,
+            0.0 => OwnerRef::TN,
+            pid => OwnerRef::Mock(pid),
+        }
+    }
+
+    /// `mg.hasOwner(tile)` / `mg.isImpassable(tile)` / `mg.isWater(tile)` /
+    /// `mg.isLand(tile)` / `mg.isShore(tile)` — direct map reads.
+    fn mg_has_owner(&self, tile: f64) -> bool {
+        self.map().has_owner(tile)
+    }
+    fn mg_is_impassable(&self, tile: f64) -> bool {
+        self.map().is_impassable(tile)
+    }
+    fn mg_is_water(&self, tile: f64) -> bool {
+        self.map().is_water(tile)
+    }
+    fn mg_is_land(&self, tile: f64) -> bool {
+        self.map().is_land(tile)
+    }
+    fn mg_is_shore(&self, tile: f64) -> bool {
+        self.map().is_shore(tile)
+    }
+
+    /// `mg.getWaterComponent(tile)` / `mg.hasWaterComponent(tile, comp)` —
+    /// the WaterManager labeling through the persistent SpatialQuery.
+    fn mg_get_water_component(&mut self, tile: f64) -> Option<f64> {
+        self.spatial().get_water_component(tile)
+    }
+    fn mg_has_water_component(&mut self, tile: f64, comp: f64) -> bool {
+        self.spatial().has_water_component(tile, comp)
+    }
+
+    /// The upgradable table lookup (`config().unitInfo(u).upgradable` —
+    /// untraced constant).
+    fn ui_upgradable(&self, typ: &str) -> bool {
+        self.upg
+            .iter()
+            .find(|(t, _)| t == typ)
+            .map(|(_, b)| *b)
+            .unwrap_or(false)
+    }
+
+    // --- G3c5: the spawn-family bodies ---
+
+    /// `Structures.types` — the shared unit-type group (Game.ts:233-240).
+    const STRUCTURE_TYPES: [&'static str; 6] = [
+        "City",
+        "Defense Post",
+        "SAM Launcher",
+        "Missile Silo",
+        "Port",
+        "Factory",
+    ];
+
+    /// The mock-player token for a scripted map-owner pid; a miss means the
+    /// TS `mocks.find(...)` returned `undefined` and the next member read
+    /// throws.
+    fn owner_tok(&self, pid: f64) -> Option<usize> {
+        self.players.iter().position(|p| p.pid == pid)
+    }
+
+    /// The border tiles in TileSet insertion order (the `borderTiles()`
+    /// iteration the water queries walk).
+    fn border_vec(&mut self) -> Vec<f64> {
+        self.p.border_tiles.iter_begin();
+        let mut cur = 0usize;
+        let mut vals = Vec::new();
+        while let Some(v) = self.p.border_tiles.iter_next(&mut cur) {
+            vals.push(v);
+        }
+        self.p.border_tiles.iter_end();
+        vals
+    }
+
+    /// The mock unit's `toUpdate()` shim — the real `UnitUpdate` key shape
+    /// over the 10-field mock. Event 101 keeps `undefined`-valued keys; the
+    /// `health` read fires 151 once per update (the real `hasHealth()` →
+    /// `info().maxHealth` read).
+    fn mock_unit_update(&mut self, tr: &mut Vec<f64>, idx: usize) -> Result<JsVal, String> {
+        let u = self.p.units[idx].clone();
+        let health = match self.ui_max_health(tr)? {
+            Some(v) => JsVal::Num(to_int_big(v)? as f64),
+            None => JsVal::Undef,
+        };
+        Ok(JsVal::Obj(vec![
+            ("type".to_string(), JsVal::Num(1.0)), // GameUpdateType.Unit
+            ("unitType".to_string(), JsVal::Str(u.typ)),
+            ("id".to_string(), JsVal::Num(u.id)),
+            ("troops".to_string(), JsVal::Num(0.0)),
+            ("ownerID".to_string(), JsVal::Num(u.owner_sid)),
+            ("lastOwnerID".to_string(), JsVal::Undef),
+            ("isActive".to_string(), JsVal::Bool(u.active)),
+            ("reachedTarget".to_string(), JsVal::Bool(false)),
+            ("warshipState".to_string(), JsVal::Undef),
+            ("transportShipState".to_string(), JsVal::Undef),
+            ("nukeState".to_string(), JsVal::Undef),
+            ("samUpgrade".to_string(), JsVal::Undef),
+            ("pos".to_string(), JsVal::Num(u.tile)),
+            ("markedForDeletion".to_string(), JsVal::Bool(u.mfd)),
+            ("targetable".to_string(), JsVal::Bool(true)),
+            ("lastPos".to_string(), JsVal::Num(u.tile)),
+            ("health".to_string(), health),
+            ("underConstruction".to_string(), JsVal::Bool(u.uc)),
+            ("targetUnitId".to_string(), JsVal::Undef),
+            ("targetTile".to_string(), JsVal::Undef),
+            (
+                "missileTimerQueue".to_string(),
+                JsVal::Arr(u.queue.iter().map(|&x| JsVal::Num(x)).collect()),
+            ),
+            ("level".to_string(), JsVal::Num(u.level)),
+            ("hasTrainStation".to_string(), JsVal::Bool(false)),
+            ("trainType".to_string(), JsVal::Undef),
+            ("loaded".to_string(), JsVal::Undef),
+        ]))
+    }
+
+    /// The mock unit's `increaseLevel()` shim — the real facade order
+    /// (UnitImpl.ts:709-728) minus the unobservable state writes: [SAM: 102]
+    /// -> `_level++` -> 157 -> `_myUnitsVersion++` -> [Silo/SAM: 102 + queue
+    /// push] -> 101 (+151 from the shim update's health read).
+    fn mock_increase_level(&mut self, tr: &mut Vec<f64>, idx: usize) -> Result<(), String> {
+        let typ = self.p.units[idx].typ.clone();
+        if typ == "SAM Launcher" {
+            self.mg_ticks(tr);
+        }
+        self.p.units[idx].level += 1.0;
+        self.mg_bump_units_version(tr);
+        self.p.my_units_version += 1.0;
+        if typ == "Missile Silo" || typ == "SAM Launcher" {
+            let tick = self.mg_ticks(tr);
+            self.p.units[idx].queue.push(tick);
+        }
+        let upd = self.mock_unit_update(tr, idx)?;
+        self.mg_add_update(tr, &upd);
+        Ok(())
+    }
+
+    /// `canBuildUnitType` (1425-1440) — 148 first, then the cost (149)
+    /// unless the caller already knows it, the cross-type `_gold < cost`
+    /// gate, and the MIRV-warhead isAlive exemption.
+    fn can_build_unit_type(
+        &mut self,
+        tr: &mut Vec<f64>,
+        typ: &str,
+        known_cost: Option<i64>,
+    ) -> Result<bool, String> {
+        if self.cfg_is_unit_disabled(tr, typ) {
+            return Ok(false);
+        }
+        let cost = match known_cost {
+            Some(c) => c,
+            None => self.ui_cost(tr, JsVal::Undef)?,
+        };
+        let gold_lt = match &self.p.gold {
+            Acc::Big(g) => *g < cost,
+            Acc::Str(s) => crate::game_config_helpers::js_number(s) < cost as f64,
+        };
+        if gold_lt {
+            return Ok(false);
+        }
+        if typ != "MIRV Warhead" && !self.is_alive() {
+            return Ok(false);
+        }
+        Ok(true)
+    }
+
+    /// `isUnitValidToUpgrade` (1446-1457) — untraced field reads; the owner
+    /// gate compares the mock's `ownerSID` against this player's.
+    fn is_unit_valid_to_upgrade(&self, idx: usize) -> bool {
+        let u = &self.p.units[idx];
+        !(u.uc || u.mfd || u.owner_sid != self.p.small_id)
+    }
+
+    /// `findExistingUnitToUpgrade` (1407-1423): 145 (argument evaluation)
+    /// then 141; `findClosestBy` keeps the first minimum `distSquared`, and
+    /// `closest?.unit ?? false` maps an unknown id to `false` without
+    /// touching the (throwing) `unit.tile()` read.
+    fn find_existing_unit_to_upgrade(
+        &mut self,
+        tr: &mut Vec<f64>,
+        typ: &str,
+        tile: f64,
+    ) -> Result<Option<usize>, String> {
+        let smd = self.cfg_structure_min_dist(tr);
+        let types = [typ.to_string()];
+        let entries = self.mg_nearby_units(tr, tile, smd, &types)?;
+        let mut best: Option<(Option<usize>, f64)> = None;
+        for (uid, _etile, dist) in entries {
+            if dist < best.map(|(_, d)| d).unwrap_or(f64::INFINITY) {
+                best = Some((uid, dist));
+            }
+        }
+        Ok(best.and_then(|(uid, _)| uid))
+    }
+
+    /// `canUpgradeUnit` (1459-1470) — the upgradable table, the cost probe
+    /// (148 + 149) and the validity read.
+    fn can_upgrade_unit(&mut self, tr: &mut Vec<f64>, idx: usize) -> Result<bool, String> {
+        let typ = self.p.units[idx].typ.clone();
+        if !self.ui_upgradable(&typ) {
+            return Ok(false);
+        }
+        if !self.can_build_unit_type(tr, &typ, None)? {
+            return Ok(false);
+        }
+        Ok(self.is_unit_valid_to_upgrade(idx))
+    }
+
+    /// `findUnitToUpgrade` (1399-1405) — the unit crosses as its id.
+    fn find_unit_to_upgrade(
+        &mut self,
+        tr: &mut Vec<f64>,
+        typ: &str,
+        tile: f64,
+    ) -> Result<Option<f64>, String> {
+        match self.find_existing_unit_to_upgrade(tr, typ, tile)? {
+            None => Ok(None),
+            Some(idx) => {
+                if self.can_upgrade_unit(tr, idx)? {
+                    Ok(Some(self.p.units[idx].id))
+                } else {
+                    Ok(None)
+                }
+            }
+        }
+    }
+
+    /// `upgradeUnit` (1472-1477) over the mock: 149, `removeGold`, the mock
+    /// `increaseLevel` shim, `recordUnitConstructed`.
+    fn upgrade_unit(&mut self, tr: &mut Vec<f64>, idx: usize) -> Result<(), String> {
+        let typ = self.p.units[idx].typ.clone();
+        let cost = self.ui_cost(tr, JsVal::Undef)?;
+        self.remove_gold_body(&Op::Big(cost))?;
+        self.mock_increase_level(tr, idx)?;
+        self.record_unit_constructed(typ);
+        Ok(())
+    }
+
+    /// `buildUnit` (1368-1397) — the capture side constructs a REAL
+    /// `UnitImpl`, so the ctor's observable reads fire here: 148 (the
+    /// disabled throw gate), 149 (cost), 139 (`nextUnitID`), 151
+    /// (`maxHealth`), [SAM: 155 + 156], [structure: 152]; then
+    /// `recordUnitConstructed`, the gold / troop debits, 101 (the full real
+    /// `toUpdate` — its `hasHealth` read fires 151 again, a Warship
+    /// `warshipState` getter fires 102 via `isInCombat`) and 140
+    /// (`addUnit`). `params` may carry `troops` / `targetTile` /
+    /// `patrolTile` / `trajectory` / `waitTicks` / `trainType` / `loaded`;
+    /// `targetUnit` is out of scope (the scenarios never pass it).
+    fn build_unit(
+        &mut self,
+        tr: &mut Vec<f64>,
+        typ: String,
+        spawn_tile: f64,
+        params: JsVal,
+    ) -> Result<f64, String> {
+        if self.cfg_is_unit_disabled(tr, &typ) {
+            let name = js_to_string_val(&self.pi_field("name"));
+            return Err(format!(
+                "Attempted to build disabled unit {typ} at tile {spawn_tile} by player {name}"
+            ));
+        }
+        let cost = self.ui_cost(tr, JsVal::Undef)?;
+        let uid = self.mg_next_unit_id(tr);
+        let mh = self.ui_max_health(tr)?;
+        let _health = to_int_big(mh.unwrap_or(1.0))?;
+        let pobj = match &params {
+            JsVal::Obj(kv) => Some(kv.clone()),
+            _ => None,
+        };
+        let pk = |k: &str| -> Option<JsVal> {
+            pobj
+                .as_ref()
+                .and_then(|kv| kv.iter().find(|(key, _)| key == k))
+                .map(|(_, v)| v.clone())
+        };
+        let has_k = |k: &str| -> bool {
+            pobj
+                .as_ref()
+                .map(|kv| kv.iter().any(|(key, _)| key == k))
+                .unwrap_or(false)
+        };
+        if typ == "SAM Launcher" {
+            let sr = self.cfg_sam_range(tr, 1.0);
+            let _ = sr;
+            let sd = self.cfg_sam_upgrade_duration(tr);
+            let _ = sd;
+        }
+        let troops_val: JsVal = if has_k("troops") {
+            match pk("troops") {
+                None | Some(JsVal::Undef) | Some(JsVal::Null) | Some(JsVal::Absent) => {
+                    JsVal::Num(0.0)
+                }
+                Some(v) => v,
+            }
+        } else {
+            JsVal::Num(0.0)
+        };
+        let mut warship: Option<Vec<(String, JsVal)>> = None;
+        if has_k("patrolTile") {
+            warship = Some(vec![
+                ("state".to_string(), JsVal::Str("patrolling".to_string())),
+                (
+                    "patrolTile".to_string(),
+                    pk("patrolTile").unwrap_or(JsVal::Undef),
+                ),
+                ("lastCombatTick".to_string(), JsVal::Num(-100.0)),
+                ("veterancy".to_string(), JsVal::Num(0.0)),
+                ("veterancyProgress".to_string(), JsVal::Num(0.0)),
+            ]);
+        }
+        let mut nuke: Option<Vec<(String, JsVal)>> = None;
+        if has_k("trajectory") || has_k("waitTicks") {
+            let traj = match pk("trajectory") {
+                None | Some(JsVal::Undef) | Some(JsVal::Null) => JsVal::Arr(vec![]),
+                Some(v) => v,
+            };
+            nuke = Some(vec![
+                ("trajectory".to_string(), traj),
+                ("waitTicks".to_string(), JsVal::Num(0.0)),
+                ("trajectoryIndex".to_string(), JsVal::Num(0.0)),
+                ("targetedBySam".to_string(), JsVal::Bool(false)),
+            ]);
+        }
+        if Self::STRUCTURE_TYPES.contains(&typ.as_str()) || typ == "Warship" {
+            self.mg_stats_unit_build(tr, &typ);
+        }
+        let sid = self.p.small_id;
+        self.p.units.push(UnitMock {
+            typ: typ.clone(),
+            id: uid,
+            owner_sid: sid,
+            level: 1.0,
+            uc: false,
+            active: true,
+            cooldown: false,
+            tile: spawn_tile,
+            mfd: false,
+            hash: 0.0,
+            queue: Vec::new(),
+        });
+        self.p.my_units_version += 1.0;
+        self.record_unit_constructed(typ.clone());
+        self.remove_gold_body(&Op::Big(cost))?;
+        let troops = to_num(&troops_val);
+        self.remove_troops(troops)?;
+        // b.toUpdate() — the full real shape over the ctor state.
+        let mut m: Vec<(String, JsVal)> = vec![
+            ("type".to_string(), JsVal::Num(1.0)),
+            ("unitType".to_string(), JsVal::Str(typ.clone())),
+            ("id".to_string(), JsVal::Num(uid)),
+            ("troops".to_string(), troops_val.clone()),
+            ("ownerID".to_string(), JsVal::Num(sid)),
+            ("lastOwnerID".to_string(), JsVal::Undef),
+            ("isActive".to_string(), JsVal::Bool(true)),
+            ("reachedTarget".to_string(), JsVal::Bool(false)),
+        ];
+        let ws = match &warship {
+            Some(st) => {
+                // The getter mutates `isInCombat` via `isInCombat()` →
+                // `mg.ticks() - lastCombatTick <= 3` (event 102), and the
+                // spread appends the new key last.
+                let tick = self.mg_ticks(tr);
+                let mut st2 = st.clone();
+                st2.push(("isInCombat".to_string(), JsVal::Bool(tick - -100.0 <= 3.0)));
+                JsVal::Obj(st2)
+            }
+            None => JsVal::Undef,
+        };
+        m.push(("warshipState".to_string(), ws));
+        let ts = if typ == "Transport" {
+            // transportShipState(): `{ isRetreating, troops: this._troops }`.
+            JsVal::Obj(vec![
+                ("isRetreating".to_string(), JsVal::Bool(false)),
+                ("troops".to_string(), troops_val.clone()),
+            ])
+        } else {
+            JsVal::Undef
+        };
+        m.push(("transportShipState".to_string(), ts));
+        m.push((
+            "nukeState".to_string(),
+            nuke.map(JsVal::Obj).unwrap_or(JsVal::Undef),
+        ));
+        m.push(("samUpgrade".to_string(), JsVal::Undef));
+        m.push(("pos".to_string(), JsVal::Num(spawn_tile)));
+        m.push(("markedForDeletion".to_string(), JsVal::Bool(false)));
+        m.push(("targetable".to_string(), JsVal::Bool(true)));
+        m.push(("lastPos".to_string(), JsVal::Num(spawn_tile)));
+        let health = match self.ui_max_health(tr)? {
+            Some(v) => JsVal::Num(to_int_big(v)? as f64),
+            None => JsVal::Undef,
+        };
+        m.push(("health".to_string(), health));
+        m.push(("underConstruction".to_string(), JsVal::Bool(false)));
+        m.push(("targetUnitId".to_string(), JsVal::Undef));
+        let tt = match pk("targetTile") {
+            None | Some(JsVal::Undef) | Some(JsVal::Null) => JsVal::Undef,
+            Some(v) => v,
+        };
+        m.push(("targetTile".to_string(), tt));
+        m.push(("missileTimerQueue".to_string(), JsVal::Arr(vec![])));
+        m.push(("level".to_string(), JsVal::Num(1.0)));
+        m.push(("hasTrainStation".to_string(), JsVal::Bool(false)));
+        m.push((
+            "trainType".to_string(),
+            pk("trainType").unwrap_or(JsVal::Undef),
+        ));
+        let ld = match pk("loaded") {
+            None | Some(JsVal::Undef) | Some(JsVal::Null) => JsVal::Undef,
+            Some(v) => v,
+        };
+        m.push(("loaded".to_string(), ld));
+        self.mg_add_update(tr, &JsVal::Obj(m));
+        self.mg_add_unit(tr, uid);
+        Ok(uid)
+    }
+
+    /// `nukeSpawn` (1601-1651): 135, the untraced impassable / owner map
+    /// reads, 143 (`getWinner`) + the untraced gameType, the Team-mode
+    /// teammate-structure probe (147 then 142), then the ready-silo filter
+    /// and the manhattan-stable sort over the mock tiles. An undefined
+    /// script owner throws like the capture's `owner.isPlayer()` read.
+    fn nuke_spawn(
+        &mut self,
+        tr: &mut Vec<f64>,
+        tile: f64,
+        nuke_type: &str,
+    ) -> Result<Option<f64>, String> {
+        if self.mg_spawn_immunity(tr) {
+            return Ok(None);
+        }
+        if self.mg_is_impassable(tile) {
+            return Ok(None);
+        }
+        let owner = self.owner_ref(tile);
+        if let OwnerRef::Mock(pid) = owner {
+            if self.owner_tok(pid).is_none() {
+                return Err(
+                    "Cannot read properties of undefined (reading 'isPlayer')".to_string()
+                );
+            }
+        }
+        let winner = self.mg_get_winner(tr)?;
+        let game_over = winner && self.gt != "Singleplayer";
+        if owner.is_player() {
+            let same = match owner {
+                // `other === this` returns false before any facade.
+                OwnerRef::SelfP => false,
+                OwnerRef::Mock(pid) => {
+                    let tok = self.owner_tok(pid).expect("checked above");
+                    self.same_team(tr, tok)?
+                }
+                OwnerRef::TN => false,
+            };
+            if same && !game_over {
+                return Ok(None);
+            }
+        }
+        if self.gmd == "Team" && nuke_type != "MIRV" && !game_over {
+            let (inner, outer) = self.cfg_nuke_magnitudes(tr)?;
+            let _ = inner;
+            let structures: Vec<String> =
+                Self::STRUCTURE_TYPES.iter().map(|s| s.to_string()).collect();
+            if self.mg_any_unit_nearby(tr, tile, outer, &structures)? {
+                return Ok(None);
+            }
+        }
+        let idxs = self.units_filtered(Some(&["Missile Silo".to_string()]));
+        let mut ready: Vec<(usize, f64)> = Vec::new();
+        for i in idxs {
+            let (active, cooldown, uc, utile) = {
+                let u = &self.p.units[i];
+                (u.active, u.cooldown, u.uc, u.tile)
+            };
+            if active && !cooldown && !uc {
+                let d = self.map().manhattan_dist(utile, tile);
+                ready.push((i, d));
+            }
+        }
+        ready.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
+        Ok(ready
+            .first()
+            .map(|&(i, _)| self.p.units[i].tile))
+    }
+
+    /// `portSpawn` (1653-1674): 146 (radius), the untraced bfs / owner /
+    /// shore filter and manhattan sort, then the valid-tile set — the
+    /// pass-through list or a fresh `validStructureSpawnTiles` (141 + 145).
+    fn port_spawn(
+        &mut self,
+        tr: &mut Vec<f64>,
+        tile: f64,
+        valid_tiles: Option<Vec<f64>>,
+    ) -> Result<Option<f64>, String> {
+        let radius = self.cfg_radius_port_spawn(tr);
+        let spawns: Vec<f64> = {
+            let map = self.map();
+            map.bfs(tile, &|gm, t| {
+                crate::game_map::manhattan_dist_fn(gm, tile, radius, false, t)
+            })
+        };
+        let mut owned_shores: Vec<(f64, f64)> = Vec::new();
+        for t in spawns {
+            if self.owner_ref(t) == OwnerRef::SelfP && self.mg_is_shore(t) {
+                let d = self.map().manhattan_dist(t, tile);
+                owned_shores.push((t, d));
+            }
+        }
+        owned_shores.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
+        let valid_set: Vec<f64> = match valid_tiles {
+            Some(v) => v,
+            None => self.valid_structure_spawn_tiles(tr, tile)?,
+        };
+        for (t, _) in owned_shores {
+            if valid_set.contains(&t) {
+                return Ok(Some(t));
+            }
+        }
+        Ok(None)
+    }
+
+    /// `warshipSpawn` (1676-1693): the water gate, one `getWaterComponent`,
+    /// then `findClosestBy` over the Port mocks — the filter (active /
+    /// construction / component membership) runs before the score.
+    fn warship_spawn(&mut self, tr: &mut Vec<f64>, tile: f64) -> Result<Option<f64>, String> {
+        let _ = tr;
+        if !self.mg_is_water(tile) {
+            return Ok(None);
+        }
+        let tile_component = self.mg_get_water_component(tile);
+        let idxs = self.units_filtered(Some(&["Port".to_string()]));
+        let mut best: Option<(usize, f64)> = None;
+        for i in idxs {
+            let (active, uc, ptile) = {
+                let u = &self.p.units[i];
+                (u.active, u.uc, u.tile)
+            };
+            if !active || uc {
+                continue;
+            }
+            let c = match tile_component {
+                Some(c) => c,
+                None => continue,
+            };
+            if !self.mg_has_water_component(ptile, c) {
+                continue;
+            }
+            let d = self.map().manhattan_dist(ptile, tile);
+            if d < best.map(|(_, bd)| bd).unwrap_or(f64::INFINITY) {
+                best = Some((i, d));
+            }
+        }
+        Ok(best.map(|(i, _)| self.p.units[i].tile))
+    }
+
+    /// `landBasedUnitSpawn` (1695-1697).
+    fn land_based_unit_spawn(&mut self, tr: &mut Vec<f64>, tile: f64) -> Result<Option<f64>, String> {
+        let _ = tr;
+        Ok(if self.mg_is_land(tile) && !self.mg_is_impassable(tile) {
+            Some(tile)
+        } else {
+            None
+        })
+    }
+
+    /// `landBasedStructureSpawn` (1699-1708).
+    fn land_based_structure_spawn(
+        &mut self,
+        tr: &mut Vec<f64>,
+        tile: f64,
+        valid_tiles: Option<Vec<f64>>,
+    ) -> Result<Option<f64>, String> {
+        let tiles = match valid_tiles {
+            Some(v) => v,
+            None => self.valid_structure_spawn_tiles(tr, tile)?,
+        };
+        Ok(tiles.first().copied())
+    }
+
+    /// `tradeShipSpawn` (1783-1787).
+    fn trade_ship_spawn(&mut self, tr: &mut Vec<f64>, target: f64) -> Result<Option<f64>, String> {
+        let _ = tr;
+        let idxs = self.units_filtered(Some(&["Port".to_string()]));
+        let found = idxs.into_iter().any(|i| self.p.units[i].tile == target);
+        Ok(if found { Some(target) } else { None })
+    }
+
+    /// `validStructureSpawnTiles` (1710-1781): the owner gate (untraced),
+    /// 141 (`nearbyUnits` at radius 30 over `Structures.types`), the shared-
+    /// scratch flood (untraced), 145 (`structureMinDist` — read AFTER the
+    /// flood), then the euclidean block filter and the stable distance
+    /// sort. An unknown nearby id throws on the first `unit.tile()` read.
+    fn valid_structure_spawn_tiles(
+        &mut self,
+        tr: &mut Vec<f64>,
+        tile: f64,
+    ) -> Result<Vec<f64>, String> {
+        if self.owner_ref(tile) != OwnerRef::SelfP {
+            return Ok(Vec::new());
+        }
+        let structures: Vec<String> =
+            Self::STRUCTURE_TYPES.iter().map(|s| s.to_string()).collect();
+        let nearby = self.mg_nearby_units(tr, tile, 30.0, &structures)?;
+        let small = self.p.small_id;
+        let nearby_tiles = self.spatial().flood_owned_tiles(tile, small, 15.0);
+        let min_sq = {
+            let smd = self.cfg_structure_min_dist(tr);
+            smd * smd
+        };
+        let mut valid: Vec<f64> = Vec::new();
+        for &t in &nearby_tiles {
+            let mut blocked = false;
+            for (uid, _etile, _dist) in &nearby {
+                let idx = match uid {
+                    Some(i) => *i,
+                    None => {
+                        return Err(
+                            "Cannot read properties of undefined (reading 'tile')".to_string()
+                        )
+                    }
+                };
+                let utile = self.p.units[idx].tile;
+                if self.map().euclidean_dist_squared(utile, t) < min_sq {
+                    blocked = true;
+                    break;
+                }
+            }
+            if !blocked {
+                valid.push(t);
+            }
+        }
+        let mut pairs: Vec<(f64, f64)> = valid
+            .into_iter()
+            .map(|t| (t, self.map().euclidean_dist_squared(t, tile)))
+            .collect();
+        pairs.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
+        Ok(pairs.into_iter().map(|(t, _)| t).collect())
+    }
+
+    /// `canBuildTransportShip` (TransportShipUtils.ts:5-31) inlined for the
+    /// event order: `unitCount` (untraced), 150 (`boatMaxNumber`),
+    /// `targetTransportTile` (the reachable-shore query — untraced map
+    /// reads over the persistent SpatialQuery), the `owner === player`
+    /// gate, `canAttackPlayer` (137 / 106 facades), then
+    /// `closestShoreByWater`. The capture news a `SpatialQuery` per call;
+    /// the persistent instance is equivalent (the bounded A* re-stamps and
+    /// the memos were shared per-game in TS already).
+    fn transport_ship_spawn(&mut self, tr: &mut Vec<f64>, tile: f64) -> Result<Option<f64>, String> {
+        let count = self.unit_count("Transport");
+        let boat_max = self.cfg_boat_max_number(tr);
+        if count >= boat_max {
+            return Ok(None);
+        }
+        let border = self.border_vec();
+        let tile_version = self.p.tile_change_version;
+        let target = self.owner_ref(tile);
+        let dst = self
+            .spatial()
+            .closest_reachable_shore(target.small_id(), &border, tile_version, tile, 50.0);
+        let dst = match dst {
+            Some(d) => d,
+            None => return Ok(None),
+        };
+        if let OwnerRef::Mock(pid) = self.owner_ref(tile) {
+            let tok = self
+                .owner_tok(pid)
+                .ok_or_else(|| "Cannot read properties of undefined (reading 'isPlayer')".to_string())?;
+            if !self.can_attack_player(tr, tok, false)? {
+                return Ok(None);
+            }
+        } else if matches!(self.owner_ref(tile), OwnerRef::SelfP) {
+            return Ok(None);
+        }
+        Ok(self.spatial().closest_shore_by_water(&border, dst))
+    }
+
+    /// `canSpawnUnitType` (1561-1599) — the switch. `validTiles` is the
+    /// canBuild / buildableUnits pass-through; the default arm is
+    /// `assertNever` ("Unexpected value: ...").
+    #[allow(clippy::too_many_lines)]
+    fn can_spawn_unit_type(
+        &mut self,
+        tr: &mut Vec<f64>,
+        typ: &str,
+        tile: f64,
+        valid_tiles: Option<Vec<f64>>,
+    ) -> Result<Option<f64>, String> {
+        match typ {
+            "MIRV" => {
+                if !self.mg_has_owner(tile) {
+                    return Ok(None);
+                }
+                self.nuke_spawn(tr, tile, typ)
+            }
+            "Atom Bomb" | "Hydrogen Bomb" => self.nuke_spawn(tr, tile, typ),
+            "MIRV Warhead" | "Shell" | "SAMMissile" => Ok(Some(tile)),
+            "Port" => self.port_spawn(tr, tile, valid_tiles),
+            "Warship" => self.warship_spawn(tr, tile),
+            "Transport" => self.transport_ship_spawn(tr, tile),
+            "Trade Ship" => self.trade_ship_spawn(tr, tile),
+            "Train" => self.land_based_unit_spawn(tr, tile),
+            "Missile Silo" | "Defense Post" | "SAM Launcher" | "City" | "Factory" => {
+                self.land_based_structure_spawn(tr, tile, valid_tiles)
+            }
+            other => Err(format!("Unexpected value: {other}")),
+        }
+    }
+
+    /// `canBuild` (1549-1559) — the cost probe (148 + 149, no known cost)
+    /// then the spawn switch.
+    fn can_build(
+        &mut self,
+        tr: &mut Vec<f64>,
+        typ: &str,
+        tile: f64,
+        valid: Option<Vec<f64>>,
+    ) -> Result<Option<f64>, String> {
+        if !self.can_build_unit_type(tr, typ, None)? {
+            return Ok(None);
+        }
+        self.can_spawn_unit_type(tr, typ, tile, valid)
+    }
+
+    /// `buildableUnits` (1479-1547): 144 once, the spawn-tile set (141 + 145
+    /// when a structure type is present, else the empty `[]` fallback),
+    /// then per unit: 149, 148 (via `canBuildUnitType` with the known cost),
+    /// [145 + 141, the spawn switch], the 50-step cumulative upgrade costs
+    /// (149 with n = 0..49) and 153 / 154 when `buildNew`. The result
+    /// objects drop `upgradeCosts` when no upgrade is possible (the normPU
+    /// undefined-key rule).
+    fn buildable_units(
+        &mut self,
+        tr: &mut Vec<f64>,
+        tile: Option<f64>,
+        units: &[String],
+    ) -> Result<JsVal, String> {
+        let in_spawn = self.mg_in_spawn_phase(tr);
+        let structures: Vec<String> =
+            Self::STRUCTURE_TYPES.iter().map(|s| s.to_string()).collect();
+        let valid_tiles: Option<Vec<f64>> = match tile {
+            Some(t) if units.iter().any(|u| structures.contains(u)) => {
+                Some(self.valid_structure_spawn_tiles(tr, t)?)
+            }
+            _ => Some(Vec::new()),
+        };
+        let mut result: Vec<JsVal> = Vec::new();
+        for u in units {
+            let cost = self.ui_cost(tr, JsVal::Undef)?;
+            let mut can_upgrade: Option<f64> = None;
+            let mut can_build: Option<f64> = None;
+            let eligible = match tile {
+                Some(_) => self.can_build_unit_type(tr, u, Some(cost))? && !in_spawn,
+                None => false,
+            };
+            if eligible {
+                let t = tile.expect("checked above");
+                if self.ui_upgradable(u) {
+                    if let Some(idx) = self.find_existing_unit_to_upgrade(tr, u, t)? {
+                        if self.is_unit_valid_to_upgrade(idx) {
+                            can_upgrade = Some(self.p.units[idx].id);
+                        }
+                    }
+                }
+                can_build = self.can_spawn_unit_type(tr, u, t, valid_tiles.clone())?;
+            }
+            let build_new = can_build.is_some() && can_upgrade.is_none();
+            let mut upgrade_costs: Option<Vec<JsVal>> = None;
+            if can_upgrade.is_some() {
+                // MAX_UPGRADE_AMOUNT = 50 (Game.ts:173): cost(mg, this, n)
+                // for n = 0..49, cumulated as bigints; they cross as f64.
+                let mut totals: Vec<JsVal> = Vec::with_capacity(50);
+                let mut total: i64 = 0;
+                for n in 0..50 {
+                    total += self.ui_cost(tr, JsVal::Num(n as f64))?;
+                    totals.push(JsVal::Num(total as f64));
+                }
+                upgrade_costs = Some(totals);
+            }
+            let mut obj: Vec<(String, JsVal)> = vec![
+                ("type".to_string(), JsVal::Str(u.clone())),
+                (
+                    "canBuild".to_string(),
+                    can_build.map(JsVal::Num).unwrap_or(JsVal::Bool(false)),
+                ),
+                (
+                    "canUpgrade".to_string(),
+                    can_upgrade.map(JsVal::Num).unwrap_or(JsVal::Bool(false)),
+                ),
+                ("cost".to_string(), JsVal::Num(cost as f64)),
+            ];
+            if let Some(uc) = upgrade_costs {
+                obj.push(("upgradeCosts".to_string(), JsVal::Arr(uc)));
+            }
+            if build_new {
+                let ct = can_build.expect("build_new");
+                let or = self.rail_overlapping(tr, ct)?;
+                let gp = self.rail_ghost_paths(tr, ct)?;
+                obj.push(("overlappingRailroads".to_string(), or));
+                obj.push(("ghostRailPaths".to_string(), gp));
+            } else {
+                obj.push(("overlappingRailroads".to_string(), JsVal::Arr(vec![])));
+                obj.push(("ghostRailPaths".to_string(), JsVal::Arr(vec![])));
+            }
+            result.push(JsVal::Obj(obj));
+        }
+        Ok(JsVal::Arr(result))
+    }
+
 
     /// `isImmune()` (1883-1891) — the type gates read `playerInfo.playerType`
     /// (untraced); the self-slot 137 caller runs this real body.
@@ -2827,9 +4047,16 @@ impl PlayerHarness {
                 let units: Vec<UnitMock> = (0..c.u())
                     .map(|_| UnitMock {
                         typ: c.s(),
+                        id: c.f(),
+                        owner_sid: c.f(),
                         level: c.f(),
                         uc: c.f() != 0.0,
+                        active: c.f() != 0.0,
+                        cooldown: c.f() != 0.0,
+                        tile: c.f(),
+                        mfd: c.f() != 0.0,
                         hash: c.f(),
+                        queue: Vec::new(),
                     })
                     .collect();
                 let out_attacks = atk_block(&mut c);
@@ -2838,6 +4065,77 @@ impl PlayerHarness {
                 let owner = c.val_list();
                 let sia = c.list();
                 let nsia = c.list();
+                // G3c5 tail: the real-map block and the spawn-family scripts.
+                // map: [0] | [1, w, h, numLand, nTerr, (bytes)*, mW, mH,
+                // mNumLand, nMini, (bytes)*, nOwners, (tile, ownerID)*].
+                // Guarded with `c.has()` so pre-G3c5 vectors still replay.
+                let (sq, upg, gt, gmd, gwin, isp, smd, rps, nmag, bmn, nuid, nu,
+                     anyn, idis, uicost, uimh, sam_r, sam_d, orail, gravel) = if c.has() {
+                    let sq = if c.f() != 0.0 {
+                        let w = c.f();
+                        let h = c.f();
+                        let num_land = c.f();
+                        let terr: Vec<u8> = c.list().into_iter().map(|b| b as u8).collect();
+                        let mw = c.f();
+                        let mh = c.f();
+                        let m_num_land = c.f();
+                        let m_terr: Vec<u8> = c.list().into_iter().map(|b| b as u8).collect();
+                        // Initial ownership applied before the WaterManager
+                        // sees the map (owner writes don't touch water state).
+                        let owners: Vec<(f64, f64)> =
+                            (0..c.u()).map(|_| (c.f(), c.f())).collect();
+                        let mut main = GameMap::new(w, h, terr, num_land);
+                        for (t, o) in owners {
+                            main.set_owner_id(t, o);
+                        }
+                        Some(SpatialQuery::new(
+                            main,
+                            GameMap::new(mw, mh, m_terr, m_num_land),
+                            false,
+                        ))
+                    } else {
+                        None
+                    };
+                    let upg: Vec<(String, bool)> =
+                        (0..c.u()).map(|_| (c.s(), c.f() != 0.0)).collect();
+                    let gt = c.s();
+                    let gmd = c.s();
+                    let gwin = c.val_list();
+                    let isp = c.list();
+                    let smd = c.list();
+                    let rps = c.list();
+                    let nmag: Vec<(f64, f64)> =
+                        (0..c.u()).map(|_| (c.f(), c.f())).collect();
+                    let bmn = c.list();
+                    let nuid = c.list();
+                    let nu: Vec<NuCall> = (0..c.u())
+                        .map(|_| NuCall {
+                            tile: c.f(),
+                            radius: c.f(),
+                            types: (0..c.u()).map(|_| c.s()).collect(),
+                            entries: (0..c.u())
+                                .map(|_| (c.f(), c.f(), c.f()))
+                                .collect(),
+                        })
+                        .collect();
+                    let anyn = c.list();
+                    let idis = c.list();
+                    let uicost = c.list();
+                    let uimh = c.list();
+                    let sam_r = c.list();
+                    let sam_d = c.list();
+                    let orail = c.val_list();
+                    let gravel = c.val_list();
+                    (sq, upg, gt, gmd, gwin, isp, smd, rps, nmag, bmn, nuid, nu,
+                     anyn, idis, uicost, uimh, sam_r, sam_d, orail, gravel)
+                } else {
+                    let def: Vec<f64> = Vec::new();
+                    let defv: Vec<JsVal> = Vec::new();
+                    (None, Vec::new(), String::new(), String::new(), defv.clone(),
+                     def.clone(), def.clone(), def.clone(), Vec::new(), def.clone(),
+                     def.clone(), Vec::new(), def.clone(), def.clone(), def.clone(),
+                     def.clone(), def.clone(), def.clone(), defv.clone(), defv)
+                };
                 self.sg = sg;
                 self.ticks = ticks;
                 self.team_tiles = team_tiles;
@@ -2865,6 +4163,26 @@ impl PlayerHarness {
                 self.owner = owner;
                 self.sia = sia;
                 self.nsia = nsia;
+                self.sq = sq;
+                self.upg = upg;
+                self.gt = gt;
+                self.gmd = gmd;
+                self.gwin = gwin;
+                self.isp = isp;
+                self.smd = smd;
+                self.rps = rps;
+                self.nmag = nmag;
+                self.bmn = bmn;
+                self.nuid = nuid;
+                self.nu = nu;
+                self.anyn = anyn;
+                self.idis = idis;
+                self.uicost = uicost;
+                self.uimh = uimh;
+                self.sam_r = sam_r;
+                self.sam_d = sam_d;
+                self.orail = orail;
+                self.gravel = gravel;
                 self.self_tok = if self_tok >= 0.0 {
                     Some(self_tok as usize)
                 } else {
@@ -3738,15 +5056,26 @@ impl PlayerHarness {
                     }
                     104 => {
                         // addUnit(type, level, uc) — buildUnit bookkeeping
-                        // (the added mock's hash is the 0 default).
+                        // (the added mock's hash is the 0 default). The six
+                        // fields the 4-tuple does not carry cross as the TS
+                        // normaliser's defaults: id 0, ownerSid smallID,
+                        // active true, cooldown false, tile -1, mfd false.
                         let typ = c.s();
                         let level = c.f();
                         let uc = c.f() != 0.0;
+                        let sid = self.p.small_id;
                         self.p.units.push(UnitMock {
                             typ,
+                            id: 0.0,
+                            owner_sid: sid,
                             level,
                             uc,
+                            active: true,
+                            cooldown: false,
+                            tile: -1.0,
+                            mfd: false,
                             hash: 0.0,
+                            queue: Vec::new(),
                         });
                         self.p.my_units_version += 1.0;
                         push_ok(&mut out, &JsVal::Undef);
@@ -3857,6 +5186,129 @@ impl PlayerHarness {
                             a.ret = v;
                         }
                         push_ok(&mut out, &JsVal::Undef);
+                    }
+                    // ---- G3c5: build / upgrade / spawn family ----
+                    118 => {
+                        // buildUnit(type, tile, params) — the returned unit
+                        // crosses as `[0, 1, uid]`.
+                        let typ = c.s();
+                        let tile = c.f();
+                        let params = c.val();
+                        match self.build_unit(&mut tr, typ, tile, params) {
+                            Ok(uid) => {
+                                out.push(0.0);
+                                out.push(1.0);
+                                out.push(uid);
+                            }
+                            Err(m) => push_err(&mut out, &m),
+                        }
+                    }
+                    119 => {
+                        // findUnitToUpgrade(type, tile) — Unit | false crosses
+                        // as `[0, 1, uid]` | `[0, 0]`.
+                        let typ = c.s();
+                        let tile = c.f();
+                        match self.find_unit_to_upgrade(&mut tr, &typ, tile) {
+                            Ok(Some(uid)) => {
+                                out.push(0.0);
+                                out.push(1.0);
+                                out.push(uid);
+                            }
+                            Ok(None) => {
+                                out.push(0.0);
+                                out.push(0.0);
+                            }
+                            Err(m) => push_err(&mut out, &m),
+                        }
+                    }
+                    120 => {
+                        let idx = c.u();
+                        match self.can_upgrade_unit(&mut tr, idx) {
+                            Ok(b) => push_ok_bool(&mut out, b),
+                            Err(m) => push_err(&mut out, &m),
+                        }
+                    }
+                    121 => {
+                        let idx = c.u();
+                        match self.upgrade_unit(&mut tr, idx) {
+                            Ok(()) => push_ok(&mut out, &JsVal::Undef),
+                            Err(m) => push_err(&mut out, &m),
+                        }
+                    }
+                    122 => {
+                        // buildableUnits(tile, units) — `[plEnc(tile|null),
+                        // n, (encS)*n]`.
+                        let tile = match c.val() {
+                            JsVal::Num(t) => Some(t),
+                            _ => None,
+                        };
+                        let n = c.u();
+                        let units: Vec<String> = (0..n).map(|_| c.s()).collect();
+                        match self.buildable_units(&mut tr, tile, &units) {
+                            Ok(v) => push_ok(&mut out, &v),
+                            Err(m) => push_err(&mut out, &m),
+                        }
+                    }
+                    123 => {
+                        let typ = c.s();
+                        let tile = c.f();
+                        let valid = decode_valid_tiles(&c.val());
+                        match self.can_build(&mut tr, &typ, tile, valid) {
+                            Ok(Some(t)) => push_ok_num(&mut out, t),
+                            Ok(None) => push_ok_bool(&mut out, false),
+                            Err(m) => push_err(&mut out, &m),
+                        }
+                    }
+                    124 => {
+                        let tile = c.f();
+                        let typ = c.s();
+                        match self.nuke_spawn(&mut tr, tile, &typ) {
+                            Ok(Some(t)) => push_ok_num(&mut out, t),
+                            Ok(None) => push_ok_bool(&mut out, false),
+                            Err(m) => push_err(&mut out, &m),
+                        }
+                    }
+                    125 => {
+                        let tile = c.f();
+                        let valid = decode_valid_tiles(&c.val());
+                        match self.port_spawn(&mut tr, tile, valid) {
+                            Ok(Some(t)) => push_ok_num(&mut out, t),
+                            Ok(None) => push_ok_bool(&mut out, false),
+                            Err(m) => push_err(&mut out, &m),
+                        }
+                    }
+                    126 => {
+                        let tile = c.f();
+                        match self.warship_spawn(&mut tr, tile) {
+                            Ok(Some(t)) => push_ok_num(&mut out, t),
+                            Ok(None) => push_ok_bool(&mut out, false),
+                            Err(m) => push_err(&mut out, &m),
+                        }
+                    }
+                    127 => {
+                        let tile = c.f();
+                        match self.land_based_unit_spawn(&mut tr, tile) {
+                            Ok(Some(t)) => push_ok_num(&mut out, t),
+                            Ok(None) => push_ok_bool(&mut out, false),
+                            Err(m) => push_err(&mut out, &m),
+                        }
+                    }
+                    128 => {
+                        let tile = c.f();
+                        let valid = decode_valid_tiles(&c.val());
+                        match self.land_based_structure_spawn(&mut tr, tile, valid) {
+                            Ok(Some(t)) => push_ok_num(&mut out, t),
+                            Ok(None) => push_ok_bool(&mut out, false),
+                            Err(m) => push_err(&mut out, &m),
+                        }
+                    }
+                    129 => {
+                        let tile = c.f();
+                        match self.trade_ship_spawn(&mut tr, tile) {
+                            Ok(Some(t)) => push_ok_num(&mut out, t),
+                            Ok(None) => push_ok_bool(&mut out, false),
+                            Err(m) => push_err(&mut out, &m),
+                        }
                     }
                     k => unreachable!("player harness: unknown method id {k}"),
                 }

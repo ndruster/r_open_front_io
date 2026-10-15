@@ -21762,6 +21762,9 @@ function runPL(name, ops) {
       smallID: () => p.pid,
       id: () => p.pid,
       type: () => p.typ,
+      // G3c5: the map-owner normalization target (`other.isPlayer()` in
+      // nukeSpawn / canBuildTransportShip) — a constant true, untraced.
+      isPlayer: () => true,
       isAlive: () => {
         const v = uiTake(st, p.alive, "al");
         curTr.push(127, p.pid, v ? 1 : 0);
@@ -21786,12 +21789,15 @@ function runPL(name, ops) {
     return o;
   };
 
-  const mkMg = (m) => {
+  const mkMg = (m, mapEnv) => {
     const st = {
       sg: 0, tk: 0, tt: 0, tl: 0, td: 0,
       off: 0, da: 0, arc: 0, tc: 0, tdur: 0, emd: 0, emc: 0, qc: 0,
       dg: 0, dt: 0, dc: 0, duc: 0, eac: 0, car: 0,
       gs: 0, ow: 0, sia: 0, nsia: 0,
+      gwin: 0, isp: 0, smd: 0, rps: 0, nmag: 0, bmn: 0, nuid: 0,
+      nu: 0, anyn: 0, idis: 0, uicost: 0, uimh: 0, sam_r: 0, sam_d: 0,
+      orail: 0, gravel: 0,
     };
     const cf = (list, key, code) => () => {
       const v = uiTake(st, list, key);
@@ -21803,7 +21809,61 @@ function runPL(name, ops) {
       curTr.push(code, ...plEnc(v));
       return v;
     };
+    // G3c5: the scripted unitInfo entry shared by mg.unitInfo and
+    // config().unitInfo. cost is a method (fires 149 per call, bigint
+    // return); maxHealth a getter (fires 151 per read, NaN = undefined);
+    // upgradable an untraced constant from the construct's upg table.
+    const upgTab = new Map(m.upg ?? []);
+    const uiEntry = (type) => ({
+      cost: (_g, _p, n) => {
+        const v = uiTake(st, m.uicost, "uicost");
+        curTr.push(149, ...plEnc(n));
+        if (!Number.isInteger(v)) {
+          throw new Error(
+            `The number ${v} cannot be converted to a BigInt because it is not an integer`,
+          );
+        }
+        curTr.push(...plEnc(BigInt(v)));
+        return BigInt(v);
+      },
+      get maxHealth() {
+        const v = uiTake(st, m.uimh, "uimh");
+        const r = Number.isNaN(v) ? undefined : v;
+        curTr.push(151, ...plEnc(r));
+        return r;
+      },
+      upgradable: upgTab.get(type) ?? false,
+    });
+    // G3c5: the real-map facade — untraced pure reads over the injected
+    // GameMapImpl / WaterManager, mirroring the Rust harness's SpatialQuery
+    // reads. Only present when the construct carries a map block.
+    const mapFace = mapEnv
+      ? {
+          map: () => mapEnv.map,
+          miniMap: () => mapEnv.mini,
+          // No HPA graph: buildWaterChain takes the simple branch (the Rust
+          // port assembles the same simple chain per call).
+          miniWaterHPA: () => null,
+          miniWaterGraph: () => null,
+          waterGraphVersion: () => mapEnv.wm.waterGraphVersion(),
+          width: () => mapEnv.map.width(),
+          height: () => mapEnv.map.height(),
+          isValidRef: (r) => mapEnv.map.isValidRef(r),
+          manhattanDist: (a, b) => mapEnv.map.manhattanDist(a, b),
+          euclideanDistSquared: (a, b) => mapEnv.map.euclideanDistSquared(a, b),
+          isImpassable: (t) => mapEnv.map.isImpassable(t),
+          ownerID: (t) => mapEnv.map.ownerID(t),
+          isWater: (t) => mapEnv.map.isWater(t),
+          isLand: (t) => mapEnv.map.isLand(t),
+          isShore: (t) => mapEnv.map.isShore(t),
+          hasOwner: (t) => mapEnv.map.hasOwner(t),
+          bfs: (tile, fn) => mapEnv.map.bfs(tile, fn),
+          getWaterComponent: (t) => mapEnv.wm.getWaterComponent(t),
+          hasWaterComponent: (t, c) => mapEnv.wm.hasWaterComponent(t, c),
+        }
+      : {};
     return {
+      ...mapFace,
       allianceRequests: (m.allianceRequests ?? []).map(([r, c]) => ({
         requestor: () => mocks[r],
         recipient: () => mocks[c],
@@ -21833,7 +21893,36 @@ function runPL(name, ops) {
         donateCooldown: cf(m.dc, "dc", 119),
         deleteUnitCooldown: cf(m.duc, "duc", 120),
         embargoAllCooldown: cf(m.eac, "eac", 121),
+        // G3c5: the spawn-family config surface. gameConfig is an untraced
+        // constant read; unitInfo shares the scripted entry with mg.unitInfo.
+        structureMinDist: cf(m.smd, "smd", 145),
+        radiusPortSpawn: cf(m.rps, "rps", 146),
+        nukeMagnitudes: (_type) => {
+          if (st.nmag >= m.nmag.length) {
+            throw new Error("pl harness: nukeMagnitudes script exhausted");
+          }
+          const [inner, outer] = m.nmag[st.nmag++];
+          curTr.push(147, inner, outer);
+          return { inner, outer };
+        },
+        isUnitDisabled: (type) => {
+          const v = uiTake(st, m.idis, "idis");
+          curTr.push(148, ...encS(type), v);
+          return v !== 0 && !Number.isNaN(v);
+        },
+        boatMaxNumber: cf(m.bmn, "bmn", 150),
+        samRange: (level) => {
+          const v = uiTake(st, m.sam_r, "sam_r");
+          curTr.push(155, level, v);
+          return v;
+        },
+        samUpgradeDuration: cf(m.sam_d, "sam_d", 156),
+        gameConfig: () => ({ gameType: m.gt, gameMode: m.gmd }),
+        unitInfo: uiEntry,
       }),
+      // G3c5: mg.unitInfo (buildUnit / canBuildUnitType / upgradeUnit read
+      // cost through here; buildableUnits goes through config().unitInfo).
+      unitInfo: uiEntry,
       addUpdate: (u) => {
         curTr.push(101, ...plEnc(u));
       },
@@ -21860,6 +21949,10 @@ function runPL(name, ops) {
           const v = uiTake(st, m.gs, "gs");
           curTr.push(138, ...plEnc(v));
           return v;
+        },
+        // G3c5: the UnitImpl ctor's structure/warship record.
+        unitBuild: (owner, type) => {
+          curTr.push(152, owner.smallID(), ...encS(type));
         },
       }),
       createAllianceRequest: (from, to) => {
@@ -21888,6 +21981,16 @@ function runPL(name, ops) {
         curTr.push(132, tile);
       },
       owner: (tile) => {
+        // G3c5: map scenarios read the REAL ownerID (untraced); the scripted
+        // 133 FIFO only serves map-less scenarios (relinquish).
+        if (mapEnv) {
+          const oid = mapEnv.map.ownerID(tile);
+          return oid === pl.smallID()
+            ? pl
+            : oid === 0
+              ? TN_OBJ
+              : mocks.find((p) => p.id() === oid);
+        }
         const v = uiTake(st, m.owner, "ow");
         curTr.push(133, tile, ...plEnc(v));
         return v === null ? null : mocks[v];
@@ -21904,6 +22007,153 @@ function runPL(name, ops) {
         const v = uiTake(st, m.nsia, "nsia");
         curTr.push(136, v);
         return v !== 0 && !Number.isNaN(v);
+      },
+      // ---- G3c5: the spawn-family mg surface ----
+      nextUnitID: () => {
+        const v = uiTake(st, m.nuid, "nuid");
+        curTr.push(139, v);
+        return v;
+      },
+      addUnit: (u) => {
+        curTr.push(140, u.id());
+      },
+      nearbyUnits: (tile, radius, types, _pred, _sq) => {
+        if (st.nu >= m.nu.length) {
+          throw new Error("pl harness: nearbyUnits script exhausted");
+        }
+        const call = m.nu[st.nu++];
+        curTr.push(
+          141,
+          call.tile,
+          call.radius,
+          call.types.length,
+          ...call.types.flatMap(encS),
+          call.entries.length,
+          ...call.entries.flat(),
+        );
+        return call.entries.map(([uid, _etile, dist]) => ({
+          unit: pl._units.find((u) => u.id() === uid),
+          distSquared: dist,
+        }));
+      },
+      anyUnitNearby: (tile, radius, types, _pred) => {
+        const v = uiTake(st, m.anyn, "anyn");
+        curTr.push(142, tile, radius, types.length, ...types.flatMap(encS), v);
+        return v !== 0 && !Number.isNaN(v);
+      },
+      getWinner: () => {
+        const v = uiTake(st, m.gwin, "gwin");
+        curTr.push(143, ...plEnc(v));
+        return v == null ? null : mocks[v];
+      },
+      inSpawnPhase: () => {
+        const v = uiTake(st, m.isp, "isp");
+        curTr.push(144, v);
+        return v !== 0 && !Number.isNaN(v);
+      },
+      bumpUnitsVersion: () => {
+        curTr.push(157);
+      },
+      railNetwork: () => ({
+        overlappingRailroads: (_type, tile) => {
+          const v = uiTake(st, m.orail, "orail");
+          curTr.push(153, tile, ...plEnc(v));
+          return v;
+        },
+        computeGhostRailPaths: (_type, tile) => {
+          const v = uiTake(st, m.gravel, "gravel");
+          curTr.push(154, tile, ...plEnc(v));
+          return v;
+        },
+      }),
+    };
+  };
+
+  // G3c5: the terra-nullius duck for the map-owner normalization (untraced;
+  // mkMg's owner and the unit mocks' owner return it for ownerID 0).
+  const TN_OBJ = {
+    smallID: () => 0,
+    id: () => "tn",
+    isPlayer: () => false,
+    team: () => null,
+  };
+
+  // Assigned at construct time; the unit-mock shim closures read it.
+  let mgObj = null;
+
+  // G3c5: full-surface unit mock from the 10-field wire tuple. The
+  // increaseLevel shim mirrors the Rust harness's mock_increase_level:
+  // [SAM: 102] -> level++ -> 157 -> _myUnitsVersion++ -> [Silo/SAM: 102 +
+  // queue push] -> 101 (one 151 health read inside the fixed-key-order shim
+  // update). dynamicSamRange is deliberately omitted (the real UnitImpl
+  // would read config().dynamicSamRange, which the harness does not model).
+  const mkUnitMock = ([typ, id, ownerSid, level, uc, active, cooldown, tile, mfd, hash]) => {
+    const u = {
+      level,
+      uc: !!uc,
+      active: !!active,
+      cooldown: !!cooldown,
+      mfd: !!mfd,
+      queue: [],
+    };
+    const shimUpdate = () => {
+      const mh = mgObj.unitInfo(typ).maxHealth; // the getter fires 151
+      return {
+        type: 1, // GameUpdateType.Unit
+        unitType: typ,
+        id,
+        troops: 0,
+        ownerID: ownerSid,
+        lastOwnerID: undefined,
+        isActive: u.active,
+        reachedTarget: false,
+        warshipState: undefined,
+        transportShipState: undefined,
+        nukeState: undefined,
+        samUpgrade: undefined,
+        pos: tile,
+        markedForDeletion: u.mfd,
+        targetable: true,
+        lastPos: tile,
+        health: mh === undefined ? undefined : Number(Util.toInt(mh)),
+        underConstruction: u.uc,
+        targetUnitId: undefined,
+        targetTile: undefined,
+        missileTimerQueue: [...u.queue],
+        level: u.level,
+        hasTrainStation: false,
+        trainType: undefined,
+        loaded: undefined,
+      };
+    };
+    return {
+      type: () => typ,
+      id: () => id,
+      level: () => u.level,
+      isUnderConstruction: () => u.uc,
+      isActive: () => u.active,
+      isInCooldown: () => u.cooldown,
+      isMarkedForDeletion: () => u.mfd,
+      tile: () => tile,
+      owner: () =>
+        ownerSid === pl.smallID()
+          ? pl
+          : ownerSid === 0
+            ? TN_OBJ
+            : mocks.find((p) => p.id() === ownerSid),
+      hash: () => {
+        curTr.push(131, hash);
+        return hash;
+      },
+      increaseLevel: () => {
+        if (typ === "SAM Launcher") mgObj.ticks();
+        u.level++;
+        mgObj.bumpUnitsVersion();
+        pl._myUnitsVersion++;
+        if (typ === "Missile Silo" || typ === "SAM Launcher") {
+          u.queue.push(mgObj.ticks());
+        }
+        mgObj.addUpdate(shimUpdate());
       },
     };
   };
@@ -21930,6 +22180,13 @@ function runPL(name, ops) {
       const areq = mg.allianceRequests ?? [];
       const past = mg.pastOutgoing ?? [];
       const plist = mg.playersList ?? [];
+      // G3c5: the units block is a 10-field wire; the legacy 4-tuple
+      // [typ, level, uc, h] normalizes to it (h is the hash).
+      const units10 = units.map((u) =>
+        u.length === 4
+          ? [u[0], 0, smallID, u[1], u[2], 1, 0, -1, 0, u[3]]
+          : u,
+      );
       args = [
         ...plEnc(pi),
         uenc(smallID),
@@ -21966,17 +22223,65 @@ function runPL(name, ops) {
         [mg.car.length, ...mg.car.flatMap(plEnc)],
         // G3c4 tail: the unit/attack mocks and the mg surfaces toFullUpdate
         // reads (getPlayerStats / owner / the two spawn-immunity flags).
-        [units.length, ...units.flatMap(([typ, level, uc, h]) => [...encS(typ), uenc(level), uc ? 1 : 0, uenc(h)])],
+        // G3c5: the units block is the 10-field wire (see units10).
+        [units10.length, ...units10.flatMap(([typ, id, osid, level, uc, act, cd, tile, mfd, h]) => [...encS(typ), uenc(id), uenc(osid), uenc(level), uc ? 1 : 0, act ? 1 : 0, cd ? 1 : 0, uenc(tile), mfd ? 1 : 0, uenc(h)])],
         [atkOut.length, ...atkOut.flatMap(([att, tgt, tr, id, ret]) => [uenc(att), uenc(tgt), uenc(tr), ...encS(id), ret ? 1 : 0])],
         [atkIn.length, ...atkIn.flatMap(([att, tgt, tr, id, ret]) => [uenc(att), uenc(tgt), uenc(tr), ...encS(id), ret ? 1 : 0])],
         [mg.gs.length, ...mg.gs.flatMap(plEnc)],
         [mg.owner.length, ...mg.owner.flatMap(plEnc)],
         [mg.sia.length, ...mg.sia.map(uenc)],
         [mg.nsia.length, ...mg.nsia.map(uenc)],
-      ].flat();
+        // G3c5 tail: the real-map block and the spawn-family scripts, in the
+        // Rust reader's order (player_impl.rs G3c5 tail).
+        mg.map
+          ? [1, uenc(mg.map.w), uenc(mg.map.h), uenc(mg.map.numLand),
+             [mg.map.terr.length, ...mg.map.terr.map(uenc)],
+             uenc(mg.map.mw), uenc(mg.map.mh), uenc(mg.map.mNumLand),
+             [mg.map.mTerr.length, ...mg.map.mTerr.map(uenc)],
+             [mg.map.owners.length, ...mg.map.owners.flatMap(([t, o]) => [uenc(t), uenc(o)])]]
+          : [0],
+        [mg.upg.length, ...mg.upg.flatMap(([t, b]) => [...encS(t), b ? 1 : 0])],
+        ...encS(mg.gt),
+        ...encS(mg.gmd),
+        [mg.gwin.length, ...mg.gwin.flatMap(plEnc)],
+        [mg.isp.length, ...mg.isp.map(uenc)],
+        [mg.smd.length, ...mg.smd.map(uenc)],
+        [mg.rps.length, ...mg.rps.map(uenc)],
+        [mg.nmag.length, ...mg.nmag.flatMap(([i, o]) => [uenc(i), uenc(o)])],
+        [mg.bmn.length, ...mg.bmn.map(uenc)],
+        [mg.nuid.length, ...mg.nuid.map(uenc)],
+        [mg.nu.length, ...mg.nu.flatMap((call) => [
+          uenc(call.tile), uenc(call.radius),
+          call.types.length, ...call.types.flatMap(encS),
+          call.entries.length, ...call.entries.flat().map(uenc),
+        ])],
+        [mg.anyn.length, ...mg.anyn.map(uenc)],
+        [mg.idis.length, ...mg.idis.map(uenc)],
+        [mg.uicost.length, ...mg.uicost.map(uenc)],
+        [mg.uimh.length, ...mg.uimh.map(uenc)],
+        [mg.sam_r.length, ...mg.sam_r.map(uenc)],
+        [mg.sam_d.length, ...mg.sam_d.map(uenc)],
+        [mg.orail.length, ...mg.orail.flatMap(plEnc)],
+        [mg.gravel.length, ...mg.gravel.flatMap(plEnc)],
+        // flat(Infinity): the map block nests [len, ...items] groups a
+        // second level deep; a one-level flat() leaves them as arrays that
+        // utilResLit would stringify into broken Rust literals.
+      ].flat(Infinity);
       try {
+        // G3c5: the real-map block — two GameMapImpls (initial ownership
+        // applied before the WaterManager sees the map) plus the real
+        // WaterManager, mirroring the Rust harness's SpatialQuery::new.
+        let mapEnv = null;
+        if (mg.map) {
+          const mp = mg.map;
+          const map = new GameMapImpl(mp.w, mp.h, Uint8Array.from(mp.terr), mp.numLand);
+          for (const [t, o] of mp.owners) map.setOwnerID(t, o);
+          const mini = new GameMapImpl(mp.mw, mp.mh, Uint8Array.from(mp.mTerr), mp.mNumLand);
+          mapEnv = { map, mini, wm: new WM.WaterManager(map, mini, false) };
+        }
+        mgObj = mkMg(mg, mapEnv);
         pl = new PL_CLS.PlayerImpl(
-          mkMg(mg),
+          mgObj,
           smallID,
           pi,
           startTroops,
@@ -22010,15 +22315,9 @@ function runPL(name, ops) {
         // G3c4: the unit/attack mocks. The unit surface is what units() and
         // hash() read; the attack surface what toFullUpdate reads plus the
         // direct setTroops/setRetreating mutation ops.
-        pl._units = units.map(([typ, level, uc, h]) => ({
-          type: () => typ,
-          level: () => level,
-          isUnderConstruction: () => !!uc,
-          hash: () => {
-            curTr.push(131, h);
-            return h;
-          },
-        }));
+        // G3c5: the unit mocks carry the full 10-field surface plus the
+        // increaseLevel shim (mkUnitMock).
+        pl._units = units10.map(mkUnitMock);
         const mkAtk = ([att, tgt, troops, id, ret]) => {
           const m = { tr: troops, rt: !!ret };
           return {
@@ -22060,6 +22359,26 @@ function runPL(name, ops) {
         for (let i = 1; i < rest.length; i++) args.push(uenc(rest[i]));
       } else if (mid === 96 || mid === 97 || mid === 98 || mid === 100 || mid === 101 || mid === 102 || mid === 103) {
         for (const x of rest) args.push(...encS(x));
+      } else if (mid === 118 || mid === 123) {
+        // buildUnit(type, tile, params) / canBuild(type, tile, validTiles)
+        args.push(...encS(rest[0]), uenc(rest[1]), ...plEnc(rest[2]));
+      } else if (mid === 119) {
+        // findUnitToUpgrade(type, tile)
+        args.push(...encS(rest[0]), uenc(rest[1]));
+      } else if (mid === 124) {
+        // nukeSpawn(tile, type)
+        args.push(uenc(rest[0]), ...encS(rest[1]));
+      } else if (mid === 122) {
+        // buildableUnits(tile|null, units)
+        args.push(...plEnc(rest[0]), uenc(rest[1].length));
+        for (const x of rest[1]) args.push(...encS(x));
+      } else if (mid === 125 || mid === 128) {
+        // portSpawn(tile, validTiles) / landBasedStructureSpawn(tile, validTiles)
+        args.push(uenc(rest[0]), ...plEnc(rest[1]));
+      } else if (mid === 120 || mid === 121 || mid === 126 || mid === 127 || mid === 129) {
+        // canUpgradeUnit(idx) / upgradeUnit(idx) / warshipSpawn(tile) /
+        // landBasedUnitSpawn(tile) / tradeShipSpawn(tile)
+        for (const x of rest) args.push(uenc(x));
       } else {
         for (const x of rest) args.push(...plEnc(x));
       }
@@ -22175,16 +22494,10 @@ function runPL(name, ops) {
           case 103: pl.recordUnitConstructed(rest[0]); v = undefined; break;
           case 104: {
             // Harness buildUnit bookkeeping: push the unit mock (hash 0) and
-            // bump the version — no mg, no recordUnitConstructed.
-            pl._units.push({
-              type: () => rest[0],
-              level: () => rest[1],
-              isUnderConstruction: () => !!rest[2],
-              hash: () => {
-                curTr.push(131, 0);
-                return 0;
-              },
-            });
+            // bump the version — no mg, no recordUnitConstructed. G3c5: the
+            // mock carries the full 10-field surface; the six fields the
+            // 3-arg op does not carry take the normaliser's defaults.
+            pl._units.push(mkUnitMock([rest[0], 0, pl.smallID(), rest[1], rest[2], 1, 0, -1, 0, 0]));
             pl._myUnitsVersion++;
             v = undefined;
             break;
@@ -22217,9 +22530,38 @@ function runPL(name, ops) {
             v = undefined;
             break;
           }
+          // ---- G3c5: build / upgrade / spawn family ----
+          case 118: {
+            // buildUnit(type, tile, params) — the real UnitImpl is swapped
+            // for the firing mock (hash 0) after the call, matching the Rust
+            // harness's build_unit UnitMock push.
+            const u = pl.buildUnit(rest[0], rest[1], rest[2]);
+            v = u.id();
+            pl._units[pl._units.length - 1] = mkUnitMock([rest[0], v, pl.smallID(), 1, 0, 1, 0, rest[1], 0, 0]);
+            break;
+          }
+          case 119: {
+            // findUnitToUpgrade(type, tile) — Unit | false crosses via its id.
+            const u2 = pl.findUnitToUpgrade(rest[0], rest[1]);
+            v = u2 === false ? false : u2.id();
+            break;
+          }
+          case 120: v = pl.canUpgradeUnit(pl._units[rest[0]]); break;
+          case 121: pl.upgradeUnit(pl._units[rest[0]]); v = undefined; break;
+          case 122: v = pl.buildableUnits(rest[0], rest[1]); break;
+          case 123: v = pl.canBuild(rest[0], rest[1], rest[2] ?? null); break;
+          case 124: v = pl.nukeSpawn(rest[0], rest[1]); break;
+          case 125: v = pl.portSpawn(rest[0], rest[1] ?? null); break;
+          case 126: v = pl.warshipSpawn(rest[0]); break;
+          case 127: v = pl.landBasedUnitSpawn(rest[0]); break;
+          case 128: v = pl.landBasedStructureSpawn(rest[0], rest[1] ?? null); break;
+          case 129: v = pl.tradeShipSpawn(rest[0]); break;
           default: throw new Error(`pl harness: unknown mid ${mid}`);
         }
         if (mid === 38) r = v === null ? [0, 2] : [0, 7, 2, 3, v.req, 3, v.rec];
+        else if (mid === 118) r = [0, 1, v];
+        else if (mid === 119) r = v === false ? [0, 0] : [0, 1, v];
+        else if (mid === 122) r = [0, ...plEnc(normPU(v))];
         else if (mid === 115) {
           // [0, normPU(v), soLen, ...so, aoLen, ...ao] — the quint/quad
           // arrays cross as RAW numbers (the Rust pushes them verbatim).
@@ -22272,6 +22614,27 @@ const PL_MG = (o = {}) => ({
   owner: o.owner ?? [null],
   sia: o.sia ?? [0],
   nsia: o.nsia ?? [0],
+  // G3c5: the spawn-family scripts and the optional real-map block.
+  map: o.map ?? null,
+  upg: o.upg ?? [],
+  gt: o.gt ?? "",
+  gmd: o.gmd ?? "",
+  gwin: o.gwin ?? [null],
+  isp: o.isp ?? [0],
+  smd: o.smd ?? [0],
+  rps: o.rps ?? [0],
+  nmag: o.nmag ?? [],
+  bmn: o.bmn ?? [0],
+  nuid: o.nuid ?? [0],
+  nu: o.nu ?? [],
+  anyn: o.anyn ?? [0],
+  idis: o.idis ?? [0],
+  uicost: o.uicost ?? [0],
+  uimh: o.uimh ?? [NaN],
+  sam_r: o.sam_r ?? [0],
+  sam_d: o.sam_d ?? [0],
+  orail: o.orail ?? [[]],
+  gravel: o.gravel ?? [[]],
 });
 
 runPL("pl_ctor", [
@@ -22673,6 +23036,283 @@ runPL("pl_units_attack_self", [
   [1, 115, 1, 1],
   [1, 115, 1, 1],
   [1, 111],
+]);
+
+// ---- G3c5: the spawn family — buildUnit / upgrades / buildableUnits /
+// canBuild + the per-type spawn probes, over the scripted unitInfo surface
+// and (for the spawn probes) the real-map block ------------------------------
+
+const STRUCT6 = ["City", "Defense Post", "SAM Launcher", "Missile Silo", "Port", "Factory"];
+const terr8 = (over) => {
+  const t = new Array(64).fill(0x85);
+  for (const [i, b] of over) t[i] = b;
+  return t;
+};
+
+// buildUnit: the real UnitImpl ctor / toUpdate surface (151 twice, the SAM
+// 155/156 pair, the Warship 102 inside the warshipState getter), the 148
+// disabled throw and the 149 non-integer-cost bigint throw.
+runPL("pl_build_unit", [
+  [0, plPI({ id: "bu1", name: "builder", playerType: "HUMAN" }), 60, 100000, null, [], [1], [],
+    PL_MG({
+      sg: [100000],
+      ticks: [1100],
+      idis: [0, 0, 0, 0, 0, 1, 0],
+      uicost: [1000, 2000, 3000, 500, 100, 1.5],
+      uimh: [500, 500, 300, 300, 1000, 1000, NaN, NaN, NaN, NaN],
+      nuid: [7, 8, 9, 10, 11],
+      sam_r: [40],
+      sam_d: [90],
+    }),
+    [plP()], -1],
+  [1, 118, "City", 10, {}],
+  [1, 118, "SAM Launcher", 20, {}],
+  [1, 118, "Warship", 30, { patrolTile: 31, troops: 5 }],
+  [1, 118, "Transport", 40, { troops: 50 }],
+  [1, 118, "Atom Bomb", 50, { trajectory: [1, 2, 3], targetTile: 60 }],
+  [1, 118, "City", 60, {}],
+  [1, 118, "City", 70, {}],
+]);
+
+// Upgrades: canUpgradeUnit (the upg table + the 148/149 probe + the validity
+// reads), findUnitToUpgrade (145 + the scripted 141 entries — the empty,
+// unknown-id and non-upgradable false branches) and upgradeUnit (the
+// increaseLevel shim: 157, the Silo 102 queue push, the 151 health read
+// inside the shim update). The last op exhausts the nearbyUnits script.
+runPL("pl_upgrade_units", [
+  [0, plPI({ id: "up1", name: "upgrader", playerType: "HUMAN" }), 61, 1000, null, [], [1], [],
+    PL_MG({
+      sg: [100000],
+      ticks: [77],
+      smd: [3, 3, 3, 3, 3],
+      idis: [0, 0, 0, 0],
+      uicost: [500, 500, 500, 500, 700, 500],
+      uimh: [800, 500],
+      upg: [["City", true], ["Missile Silo", true], ["Defense Post", false]],
+      nu: [
+        { tile: 10, radius: 3, types: ["City"], entries: [[100, 10, 4], [101, 12, 9]] },
+        { tile: 11, radius: 3, types: ["City"], entries: [] },
+        { tile: 12, radius: 3, types: ["City"], entries: [[999, 12, 1]] },
+        { tile: 10, radius: 3, types: ["Defense Post"], entries: [[104, 18, 2]] },
+      ],
+    }),
+    [plP({ pid: 62 })], -1, [],
+    [
+      ["City", 100, 61, 1, 0, 1, 0, 10, 0, 11],
+      ["City", 101, 61, 2, 1, 1, 0, 12, 0, 22],
+      ["City", 102, 62, 1, 0, 1, 0, 14, 0, 33],
+      ["Missile Silo", 103, 61, 1, 0, 1, 0, 16, 0, 44],
+      ["Defense Post", 104, 61, 1, 0, 1, 0, 18, 0, 55],
+    ]],
+  [1, 120, 0],
+  [1, 120, 1],
+  [1, 120, 2],
+  [1, 119, "City", 10],
+  [1, 119, "City", 11],
+  [1, 119, "City", 12],
+  [1, 119, "Defense Post", 10],
+  [1, 121, 3],
+  [1, 121, 0],
+  [1, 119, "City", 10],
+]);
+
+// buildableUnits over the real map: the 144 gate, validStructureSpawnTiles
+// (141 + the shared-scratch flood + 145 blocking), the upgrade path with the
+// 50 cumulative 149 costs and the rail pair (153/154) on buildNew, the
+// spawn-phase skip, the null-tile and the no-structure fast paths.
+runPL("pl_buildable_rail", [
+  [0, plPI({ id: "br1", name: "rail", playerType: "HUMAN" }), 60, 1000, null, [], [27, 28, 35, 36], [],
+    PL_MG({
+      sg: [100000],
+      isp: [0, 0, 0, 0, 1],
+      smd: [3, 3, 3, 3, 3],
+      nu: [
+        { tile: 27, radius: 30, types: STRUCT6, entries: [] },
+        { tile: 27, radius: 3, types: ["City"], entries: [] },
+        { tile: 27, radius: 30, types: STRUCT6, entries: [[200, 28, 1]] },
+        { tile: 27, radius: 3, types: ["City"], entries: [[200, 28, 1]] },
+        { tile: 27, radius: 30, types: STRUCT6, entries: [] },
+      ],
+      uicost: [1000, 2000, 1000, ...Array(50).fill(10), 1000, 2000, 1000],
+      idis: [0, 0, 0, 0, 0],
+      upg: [["City", true]],
+      orail: [[]],
+      gravel: [[]],
+      map: { w: 8, h: 8, numLand: 64, terr: terr8([]), mw: 8, mh: 8, mNumLand: 64, mTerr: terr8([]), owners: [[27, 60], [28, 60], [35, 60], [36, 60]] },
+    }),
+    [plP()], -1, [],
+    [["City", 200, 60, 1, 0, 1, 0, 28, 0, 77]]],
+  [1, 122, 27, ["City", "Warship"]],
+  [1, 122, 27, ["City"]],
+  [1, 122, null, ["City"]],
+  [1, 122, 27, ["Warship"]],
+  [1, 122, 27, ["City"]],
+]);
+
+// nukeSpawn over the real map: the 135 / impassable / owner gates, the 143
+// game-over read, the Team-mode teammate-structure probe (147 + 142) and the
+// ready-silo filter + manhattan-stable sort over the mock units.
+runPL("pl_spawn_nuke", [
+  [0, plPI({ id: "nk1", name: "nuker", playerType: "HUMAN" }), 60, 1000, "Blue", [], [10], [],
+    PL_MG({
+      sg: [0],
+      sia: [1, 0, 0, 0, 0, 0, 0, 0],
+      gwin: [null, null, 0, null, null, null],
+      gt: "Public",
+      gmd: "Team",
+      nmag: [[10, 20], [10, 20], [10, 20], [10, 20]],
+      anyn: [0, 1, 0, 0],
+      map: { w: 8, h: 8, numLand: 64, terr: terr8([[5, 0x9f]]), mw: 8, mh: 8, mNumLand: 64, mTerr: terr8([[5, 0x9f]]), owners: [[10, 60], [14, 61]] },
+    }),
+    [plP({ pid: 61, team: ["Red"] })], -1, [],
+    [
+      ["Missile Silo", 300, 60, 1, 0, 1, 0, 20, 0, 0],
+      ["Missile Silo", 301, 60, 1, 0, 1, 1, 21, 0, 0],
+      ["Missile Silo", 302, 60, 1, 1, 1, 0, 22, 0, 0],
+      ["Missile Silo", 303, 60, 1, 0, 0, 0, 23, 0, 0],
+      ["Missile Silo", 304, 60, 1, 0, 1, 0, 24, 0, 0],
+    ]],
+  [1, 124, 10, "Atom Bomb"],
+  [1, 124, 5, "Atom Bomb"],
+  [1, 124, 10, "Atom Bomb"],
+  [1, 124, 14, "Atom Bomb"],
+  [1, 124, 14, "Atom Bomb"],
+  [1, 124, 14, "MIRV"],
+  [1, 124, 30, "Atom Bomb"],
+  [1, 124, 14, "Hydrogen Bomb"],
+]);
+
+// portSpawn: the 146 radius, the real bfs + owner/shore filter + manhattan
+// sort, the pass-through validTiles vs. a fresh validStructureSpawnTiles
+// (141 + 145), and the unowned-tile owner gate.
+runPL("pl_spawn_port", [
+  [0, plPI({ id: "pp1", name: "porter", playerType: "HUMAN" }), 60, 1000, null, [], [2, 10, 16, 17, 18, 19, 26, 27], [],
+    PL_MG({
+      sg: [0],
+      rps: [3, 3, 3, 3, 3],
+      smd: [3],
+      nu: [{ tile: 27, radius: 30, types: STRUCT6, entries: [] }],
+      map: {
+        w: 8, h: 8, numLand: 60,
+        terr: terr8([[0, 0x20], [1, 0x20], [8, 0x20], [9, 0x20], [2, 0xc5], [10, 0xc5], [16, 0xc5], [17, 0xc5], [18, 0xc5], [19, 0xc5]]),
+        mw: 8, mh: 8, mNumLand: 60,
+        mTerr: terr8([[0, 0x20], [1, 0x20], [8, 0x20], [9, 0x20], [2, 0xc5], [10, 0xc5], [16, 0xc5], [17, 0xc5], [18, 0xc5], [19, 0xc5]]),
+        owners: [[2, 60], [10, 60], [16, 60], [17, 60], [18, 60], [19, 60], [26, 60], [27, 60]],
+      },
+    }),
+    [plP()], -1],
+  [1, 125, 27, [18, 26]],
+  [1, 125, 27, null],
+  [1, 125, 27, []],
+  [1, 125, 40, null],
+  [1, 125, 19, [19]],
+]);
+
+// warshipSpawn: the isWater gate, the water-component label and the
+// findClosestBy port filter (active / construction / component membership) —
+// no trace events; the parity is in the results.
+runPL("pl_spawn_warship", [
+  [0, plPI({ id: "ws1", name: "warship", playerType: "HUMAN" }), 60, 1000, null, [], [10], [],
+    PL_MG({
+      sg: [0],
+      map: {
+        w: 8, h: 8, numLand: 59,
+        terr: terr8([[0, 0x20], [1, 0x20], [8, 0x20], [9, 0x20], [63, 0x20], [2, 0xc5], [10, 0xc5], [16, 0xc5], [17, 0xc5], [55, 0xc5], [62, 0xc5]]),
+        mw: 8, mh: 8, mNumLand: 59,
+        mTerr: terr8([[0, 0x20], [1, 0x20], [8, 0x20], [9, 0x20], [63, 0x20], [2, 0xc5], [10, 0xc5], [16, 0xc5], [17, 0xc5], [55, 0xc5], [62, 0xc5]]),
+        owners: [],
+      },
+    }),
+    [plP()], -1, [],
+    [
+      ["Port", 400, 60, 1, 0, 1, 0, 10, 0, 0],
+      ["Port", 401, 60, 1, 1, 1, 0, 2, 0, 0],
+      ["Port", 402, 60, 1, 0, 1, 0, 16, 0, 0],
+      ["Port", 403, 60, 1, 0, 1, 0, 24, 0, 0],
+      ["Port", 404, 60, 1, 0, 1, 0, 62, 0, 0],
+      ["City", 405, 60, 1, 0, 1, 0, 18, 0, 0],
+    ]],
+  [1, 126, 20],
+  [1, 126, 0],
+  [1, 126, 63],
+  [1, 126, 1],
+]);
+
+// canBuild over the full switch (the MIRV hasOwner gate, the nuke path, the
+// direct-return types, Port / Warship / Transport / Trade Ship, the structure
+// fallback and the 148-disabled false) plus the direct 127/128/129 probes.
+runPL("pl_spawn_misc", [
+  [0, plPI({ id: "sm1", name: "misc", playerType: "HUMAN" }), 60, 1000, null, [], [30, 31], [30, 31],
+    PL_MG({
+      sg: [100000],
+      idis: [0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0],
+      uicost: [1000, 500, 2000, 100, 200, 3000, 250, 400, 1000, 1500, 1500],
+      sia: [0, 0],
+      gwin: [null, null],
+      bmn: [2],
+      smd: [3, 3],
+      nu: [
+        { tile: 30, radius: 30, types: STRUCT6, entries: [] },
+        { tile: 30, radius: 30, types: STRUCT6, entries: [] },
+      ],
+      map: { w: 8, h: 8, numLand: 63, terr: terr8([[5, 0x20]]), mw: 8, mh: 8, mNumLand: 63, mTerr: terr8([[5, 0x20]]), owners: [[30, 60], [31, 60]] },
+    }),
+    [plP()], -1, [],
+    [["Port", 500, 60, 1, 0, 1, 0, 30, 0, 0]]],
+  [1, 123, "City", 30, null],
+  [1, 123, "MIRV Warhead", 30, null],
+  [1, 123, "Atom Bomb", 31, null],
+  [1, 123, "Shell", 30, null],
+  [1, 123, "Train", 30, null],
+  [1, 123, "Warship", 30, null],
+  [1, 123, "Transport", 30, null],
+  [1, 123, "Trade Ship", 30, null],
+  [1, 123, "Defense Post", 30, [31]],
+  [1, 123, "City", 30, null],
+  [1, 127, 30],
+  [1, 127, 5],
+  [1, 128, 30, null],
+  [1, 128, 30, []],
+  [1, 129, 30],
+  [1, 129, 31],
+  [1, 123, "MIRV", 30, null],
+  [1, 123, "MIRV", 32, null],
+]);
+
+// canBuildTransportShip (via canBuild "Transport"): the 150 boat cap, the
+// reachable-shore query over the real SpatialQuery facade, the owner gates,
+// canAttackPlayer (137 / 105) and the real closestShoreByWater chain over
+// the minimap water graph.
+const tsTerr = terr8([
+  [3, 0x20], [4, 0x20], [11, 0x20], [12, 0x20], [19, 0x20], [20, 0x20], [27, 0x20], [28, 0x20],
+  [35, 0x20], [36, 0x20], [43, 0x20], [44, 0x20], [51, 0x20], [52, 0x20], [59, 0x20], [60, 0x20],
+  [2, 0xc5], [10, 0xc5], [18, 0xc5], [26, 0xc5], [34, 0xc5], [42, 0xc5], [50, 0xc5], [58, 0xc5],
+  [5, 0xc5], [13, 0xc5], [21, 0xc5], [29, 0xc5], [37, 0xc5], [45, 0xc5], [53, 0xc5], [61, 0xc5],
+]);
+runPL("pl_transport_ship", [
+  [0, plPI({ id: "ts1", name: "ship", playerType: "HUMAN" }), 60, 100, null, [],
+    [2, 10, 18, 26, 34, 42, 50, 58], [2, 10, 18, 26, 34, 42, 50, 58],
+    PL_MG({
+      sg: [0],
+      bmn: [0, 3, 3, 3, 3],
+      map: {
+        w: 8, h: 8, numLand: 48, terr: tsTerr,
+        mw: 8, mh: 8, mNumLand: 48, mTerr: tsTerr,
+        owners: [
+          [0, 60], [1, 60], [2, 60], [8, 60], [9, 60], [10, 60], [16, 60], [17, 60], [18, 60],
+          [24, 60], [25, 60], [26, 60], [32, 60], [33, 60], [34, 60], [40, 60], [41, 60], [42, 60],
+          [48, 60], [49, 60], [50, 60], [56, 60], [57, 60], [58, 60],
+          [5, 61], [6, 61], [13, 61], [14, 61], [21, 61], [22, 61], [29, 61], [30, 61], [37, 61],
+          [38, 61], [45, 61], [46, 61], [53, 61], [54, 61], [61, 61], [62, 61],
+        ],
+      },
+    }),
+    [plP({ pid: 61, immune: [0, 1], disc: [0] })], -1],
+  [1, 123, "Transport", 21, null],
+  [1, 123, "Transport", 21, null],
+  [1, 123, "Transport", 10, null],
+  [1, 123, "Transport", 23, null],
+  [1, 123, "Transport", 21, null],
 ]);
 
 // ---- pl_ scenarios end ------------------------------------------------------

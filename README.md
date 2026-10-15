@@ -2317,12 +2317,14 @@ WebSockets — stays excluded, mirroring the `src/core` exclusions).
     expired-alliances / allies cluster + G3c3: the player-to-player social
     surface — alliance-request mgmt, relations, targets, emoji/quickchat,
     donations, deleteUnit, embargo + G3c4: the units-memo / toUpdate / misc
-    cluster; spawn-family lands in G3c5). The harness replicates the
+    cluster + G3c5: the build / upgrade / spawn family). The harness
+    replicates the
     slice's private field block 1:1 and runs the ctor and every method as a
     `kind` of `PlayerHarness::run_op` over the `js_json` codec (precedent
     `unit_impl` / `attack_impl`). The `mg` (GameImpl) surface and the other
     players are scripted facades whose every call rides a flat trace (G3c1
-    segment 100-106, G3c2 adds 107-108, G3c3 adds 109-130, G3c4 adds 131-138): `100 config().startingGold` (the scripted f64 crosses
+    segment 100-106, G3c2 adds 107-108, G3c3 adds 109-130, G3c4 adds
+    131-138, G3c5 adds 139-157): `100 config().startingGold` (the scripted f64 crosses
     `BigInt(v)` BEFORE the trace push — a non-integer throws first), `101
     mg.addUpdate` (full codec dump), `102 mg.ticks`, `103 mg.teamTilesOwned`
     (the team arg crosses in the trace), `104 mg.totalLandTiles`, `105
@@ -2452,9 +2454,47 @@ WebSockets — stays excluded, mirroring the `src/core` exclusions).
     scripted `isImmune()` FIFO, and the alliance tuples gain (id, createdAt).
     `playerProfile` pins the JS plain-object key order: `Object.fromEntries`'s
     smallID keys are canonical array indices that JS re-numbers ascending —
-    the allRelationsSorted order only survives for string-key tails — so the
-    port re-orders the relations obj the same way. `toString`'s literal keeps
-    the trailing `]` and the `numTileOwned` spelling. 39 scenarios
+    the allRelationsSorted order only survives for string-key tails — so the port re-orders the relations obj the same way. `toString`'s literal keeps
+    the trailing `]` and the `numTileOwned` spelling. G3c5: the build /
+    upgrade / spawn family (mids 118-129) runs against a scenario MAP BLOCK —
+    a real `GameMapImpl` + `WaterManager` the mg map facade reads UNTRACED
+    (map / width / height / isValidRef / isWater / isLand / isShore /
+    hasOwner / ownerID / bfs / getWaterComponent / manhattanDist /
+    euclideanDistSquared / ...), so the ported `SpatialQuery` (bfsNearest,
+    closestShore, closestReachableShore with the (tileChangeVersion ×
+    waterVersion)-keyed reachable-components memo, closestShoreByWater,
+    refineStartTile's 5-iteration `lo <= hi` binary search) and
+    `TransportShipUtils` (the `boatMaxNumber` 150 gate FIRST, then
+    `targetTransportTile`, the `other === player` identity and
+    `canAttackPlayer` gates, then `closestShoreByWater`;
+    `bestTransportShipSpawn` rides `bestShoreDeploymentSource`) replay their
+    REAL search order instead of scripted answers — the loader now strips
+    `pathfinding/spatial/SpatialQuery.ts`, `game/TransportShipUtils.ts` and
+    `pathfinding/PathFinderBuilder.ts` (`PathStatus` inlined as a plain
+    object; type-only and never-called imports dropped). `buildUnit` pays the
+    cost (148-disabled short-circuit, 149 `cost(mg, this, 1)` crossing as
+    bigint) and troops BEFORE `139 nextUnitID` and the ctor param defaults,
+    then `b.toUpdate()` emits the full ctor-state shape (the warship spread
+    appends `isInCombat` LAST via a 102 read, `transportShipState` only for
+    Transport) before `101 addUpdate` + `140 addUnit`; `152
+    stats().unitBuild` and `157 bumpUnitsVersion` close it out. The upgrade
+    chain (119-121: findUnitToUpgrade / canUpgradeUnit / upgradeUnit) reads
+    the unit mocks' ten fields and `upgradeUnit`'s `cost(mg, this, level)`
+    bigint; `buildableUnits` (122) cumulates `cost(mg, this, n)` for n in
+    0..50 as bigints crossing as f64, the 153/154 rail probes firing only on
+    the build-new branch. The spawn family (123-129) runs `canBuild`'s
+    `canSpawnUnitType` switch — the 144 spawn-phase gate, 143 getWinner, 145
+    structureMinDist with the Team-mode teammate-structure probe (147
+    nukeMagnitudes then 142 anyUnitNearby), 146 radiusPortSpawn, 155/156 SAM
+    ctor config — and `nukeSpawn`'s manhattan-stable sort over the mock
+    tiles. Capture fidelity: the construct args flatten `.flat(Infinity)`
+    (the map block nests `[len, ...]` groups a second level deep — a
+    one-level flat leaves arrays that stringify into broken Rust literals);
+    the unit mock's `shimUpdate` health crosses as
+    `Number(Util.toInt(mh))` because plEnc's bigint→Number only applies at
+    top level (a nested bigint falls into the codec's empty-object branch);
+    the map facade gains `ownerID` (SpatialQuery calls `gm.ownerID(t)` —
+    present on GameImpl, absent from the Game interface). 47 scenarios
     (`pl_ctor` / NaN start /
     missing-pi / troops / gold / disconnect / no-team disconnect / team /
     team-self / friendly / alliance-gates / tiles / big-gold / traitor /
@@ -2463,8 +2503,10 @@ WebSockets — stays excluded, mirroring the `src/core` exclusions).
     emoji / emoji-self / quickchat / donate / donate-self / delete-unit /
     embargo / embargo-all / alliance-req / alliance-info + G3c4: units-memos /
     update-full-diff / update-social / update-gold-edge / misc-small /
-    units-attack-self, 440 ops),
-    871,652 wasm comparisons bit-identical.
+    units-attack-self + G3c5: build-unit / upgrade-units / buildable-rail /
+    spawn-nuke / spawn-port / spawn-warship / spawn-misc / transport-ship,
+    510 ops),
+    876,871 wasm comparisons bit-identical.
 
 Regenerate whenever a ported source changes:
 
@@ -2498,7 +2540,7 @@ node rust/tools/run_wasm_parity.mjs
 
 `wasm-probe` exposes the ported functions through `extern "C"` scalar
 entrypoints (`src/wasm_probe.rs`); the runner imports `data/vectors.json` and
-compares every value. Last run: **823,292 comparisons, all bit-identical**.
+compares every value. Last run: **876,871 comparisons, all bit-identical**.
 
 ### Windows: the linker environment
 

@@ -657,6 +657,15 @@ impl WaterManager {
     pub fn debug_mini_terrain(&self) -> &[u8] {
         self.mini_map.debug_terrain()
     }
+    /// Borrowed main map (parity harness consumers that need the full
+    /// `GameMap` surface: bfsNearest / terrain / owner reads).
+    pub fn debug_map(&self) -> &GameMap {
+        &self.map
+    }
+    /// Borrowed half-resolution map (the simple water chain runs on it).
+    pub fn debug_mini_map(&self) -> &GameMap {
+        &self.mini_map
+    }
 }
 
 /// Inline neighbor helper (no allocation, cardinal only) — TS `pushNeighbors`.

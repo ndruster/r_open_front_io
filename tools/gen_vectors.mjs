@@ -23511,7 +23511,14 @@ runPL("pl_best_spawn", [
 
 const gfaScenarios = [];
 let gfaT = [];
-const GFA_TN = {};
+const GFA_TN = {
+  // `TerraNullius.isPlayer()` is always false; traced with the TN token -2 so
+  // the Rust twin (`p_is_player_tok`) can tell TN apart from a real player.
+  isPlayer: () => {
+    gfaT.push(110, -2, 0);
+    return false;
+  },
+};
 gTok.set(GFA_TN, -2);
 
 // A player reference return: undefined -> the "-1" token; anything else goes
@@ -23554,6 +23561,8 @@ const gfaCfg = (o = {}) => ({
   spawnImmunity: o.spawnImmunity ?? 0,
   nationSpawnImmunity: o.nationSpawnImmunity ?? 0,
   teamLandShare: o.teamLandShare ?? 0,
+  // G4b: scripted `conquerGoldAmount(conquered)` return (trace 166).
+  conquerGoldAmount: o.conquerGoldAmount ?? 0,
 });
 const gfaUg = (o = {}) => ({
   hasUnitNearby: o.hasUnitNearby ?? 0,
@@ -23577,6 +23586,26 @@ const gfaP = (o = {}) => ({
   al: o.al ?? [],
   units: o.units ?? [],
   uc: o.uc ?? [],
+  // ---- G4b: real territory + scripted method surface ----
+  // `_tiles` / `_borderTiles` are REAL `TileSet`s (see runGFA).
+  tiles: o.tiles ?? [],
+  bTiles: o.bTiles ?? [],
+  lastTC: o.lastTC ?? 0,
+  tcVer: o.tcVer ?? 0,
+  // troops()/type()/id()/displayName()/gold()/isTraitor()/...
+  troops: o.troops ?? 0,
+  typ: o.typ ?? "Nation",
+  dname: o.dname === undefined ? null : o.dname,
+  idv: o.idv ?? o.pid ?? 1,
+  isPlayer: o.isPlayer ?? 1,
+  sameTeam: o.sameTeam ?? 0,
+  alliedWith: o.alliedWith ?? 1,
+  traitor: o.traitor ?? 0,
+  gold: o.gold ?? 0,
+  // toUpdate() scripted surface: pushed stats/attack quads + returned update.
+  tuStats: o.tuStats ?? [],
+  tuAtk: o.tuAtk ?? [],
+  tuRet: o.tuRet === undefined ? null : o.tuRet,
 });
 const gfaU = (o = {}) => ({
   uid: o.uid ?? 1,
@@ -23630,6 +23659,14 @@ const gfaS = (o = {}) => ({
   cfg: gfaCfg(o.cfg),
   ug: gfaUg(o.ug),
   swc: o.swc === undefined ? null : o.swc,
+  // G4b: scripted `_stats.getPlayerStats(conquered)` return (trace 153); the
+  // returned mock carries a BIGINT attacks[0] while the trace carries a plain
+  // number (see runGFA), so `attacksSent === 0n` keeps its bigint semantics.
+  sps: o.sps === undefined ? null : o.sps,
+  // G4b: shared alliance table `{id, createdAt, req, rec}` (player indices).
+  // Each player's `al` lists TABLE indices into this, preserving object
+  // identity across the two participants (`Set.has` / `!==`).
+  alliances: o.alliances ?? [],
 });
 
 function gfaPlayerEnc(p) {
@@ -23651,6 +23688,27 @@ function gfaPlayerEnc(p) {
     ...p.units.map(uenc),
     uenc(p.uc.length),
     ...p.uc.flatMap(([t, n]) => [...encS(t), uenc(n)]),
+    // ---- G4b appended fields (must match game_impl.rs construct order) ----
+    uenc(p.tiles.length),
+    ...p.tiles.map(uenc),
+    uenc(p.bTiles.length),
+    ...p.bTiles.map(uenc),
+    uenc(p.lastTC),
+    uenc(p.tcVer),
+    uenc(p.troops),
+    ...encS(p.typ),
+    ...akEnc(p.dname),
+    ...akEnc(p.idv),
+    uenc(p.isPlayer ? 1 : 0),
+    uenc(p.sameTeam ? 1 : 0),
+    uenc(p.alliedWith ? 1 : 0),
+    uenc(p.traitor ? 1 : 0),
+    uenc(p.gold),
+    uenc(p.tuStats.length),
+    ...p.tuStats.map(uenc),
+    uenc(p.tuAtk.length),
+    ...p.tuAtk.map(uenc),
+    ...akEnc(p.tuRet),
   ];
 }
 function gfaUnitEnc(u) {
@@ -23729,6 +23787,7 @@ function gfaConstruct(S) {
     uenc(S.cfg.spawnImmunity),
     uenc(S.cfg.nationSpawnImmunity),
     uenc(S.cfg.teamLandShare),
+    uenc(S.cfg.conquerGoldAmount),
   );
   a.push(
     uenc(S.ug.hasUnitNearby ? 1 : 0),
@@ -23738,6 +23797,16 @@ function gfaConstruct(S) {
     uenc(S.ug.bfsFilter ? 1 : 0),
   );
   a.push(...akEnc(S.swc));
+  a.push(...akEnc(S.sps));
+  a.push(
+    uenc(S.alliances.length),
+    ...S.alliances.flatMap((al) => [
+      uenc(al.id),
+      uenc(al.createdAt),
+      uenc(al.req),
+      uenc(al.rec),
+    ]),
+  );
   return a;
 }
 
@@ -23747,6 +23816,29 @@ function gfaDump(g) {
     parts.push(t);
     parts.push(g.updates[t].length);
     for (const u of g.updates[t]) parts.push(...gfaNorm(u));
+  }
+  return parts;
+}
+
+// G4b mid 310: flatten one mock player's REAL `_tiles` / `_borderTiles`
+// (insertion order), the change stamps and the CURRENT `_alliances` list into
+// a flat `gfaNorm` token array (mirrors the Rust `gmNorm` leaf encoding).
+function gfaDumpPlayer(p) {
+  const parts = [];
+  const push = (v) => parts.push(...gfaNorm(v));
+  push(p.pid);
+  const tiles = [...p._tiles];
+  push(tiles.length);
+  for (const t of tiles) push(t);
+  const border = [...p._borderTiles];
+  push(border.length);
+  for (const t of border) push(t);
+  push(p._lastTileChange);
+  push(p._tileChangeVersion);
+  push(p._alliances.length);
+  for (const a of p._alliances) {
+    push(a._id);
+    push(a._createdAt);
   }
   return parts;
 }
@@ -23766,6 +23858,14 @@ function runGFA(name, S, ops) {
       isActive: () => {
         gfaT.push(181, i, e[1] ? 1 : 0);
         return !!e[1];
+      },
+      // G4b: executeNextTick drives e.tick(this._ticks) on the live execs and
+      // e.init(this, this._ticks) on the newly-initialised ones.
+      tick: (ticks) => {
+        gfaT.push(182, i, ticks);
+      },
+      init: (game, ticks) => {
+        gfaT.push(183, i, ticks);
       },
     };
     execByIdx.set(i, o);
@@ -23794,11 +23894,47 @@ function runGFA(name, S, ops) {
     gTok.set(o, i);
     return o;
   });
+  // G4b: shared alliance table. Each entry is a mock `Alliance` whose
+  // requestor/recipient return the SAME mock player objects the players were
+  // handed, so `Set.has` / `!==` identity holds across both participants;
+  // `_createdAt` lets the `alliances()` trace mirror the CURRENT list (which
+  // `detachAlliance` may have shortened).
+  const mockA = S.alliances.map((a, ai) => {
+    const o = {
+      _id: a.id,
+      _createdAt: a.createdAt,
+      requestor: () => {
+        gfaT.push(141, ai, a.req);
+        return mockP[a.req];
+      },
+      recipient: () => {
+        gfaT.push(142, ai, a.rec);
+        return mockP[a.rec];
+      },
+      id: () => {
+        gfaT.push(143, ai, a.id);
+        return a.id;
+      },
+      createdAt: () => {
+        gfaT.push(144, ai, a.createdAt);
+        return a.createdAt;
+      },
+    };
+    gTok.set(o, ai);
+    return o;
+  });
   const mockP = S.players.map((p, i) => {
     const o = {
       // Harness diagnostic tag (not a real Player member): the _sharedWaterCache
       // mock reads `player.pid` off the mock it is handed.
       pid: p.pid,
+      // G4b: REAL `TileSet`s the ported conquer/relinquish/updateBorders mutate,
+      // the alliance list (table-index references) and the change stamps.
+      _tiles: new TileSet(p.tiles),
+      _borderTiles: new TileSet(p.bTiles),
+      _alliances: p.al.map((ai) => mockA[ai]),
+      _lastTileChange: p.lastTC,
+      _tileChangeVersion: p.tcVer,
       isAlive: () => {
         gfaT.push(100, p.pid, p.alive ? 1 : 0);
         return !!p.alive;
@@ -23836,8 +23972,13 @@ function runGFA(name, S, ops) {
         return !!p.disc;
       },
       alliances: () => {
-        gfaT.push(113, p.pid, p.al.length, ...p.al.map(uenc));
-        return p.al.map((ts) => ({ createdAt: () => ts }));
+        gfaT.push(
+          113,
+          p.pid,
+          o._alliances.length,
+          ...o._alliances.map((a) => a._createdAt),
+        );
+        return o._alliances;
       },
       units: () => {
         gfaT.push(114, p.pid, p.units.length, ...p.units.map(uenc));
@@ -23852,6 +23993,75 @@ function runGFA(name, S, ops) {
       smallID: () => {
         gfaT.push(117, p.pid, p.sid);
         return p.sid;
+      },
+      // ---- G4b scripted method surface ----
+      troops: () => {
+        gfaT.push(103, p.pid, p.troops);
+        return p.troops;
+      },
+      type: () => {
+        gfaT.push(107, p.pid, ...encS(p.typ));
+        return p.typ;
+      },
+      displayName: () => {
+        gfaT.push(109, p.pid, ...akEnc(p.dname));
+        return p.dname;
+      },
+      id: () => {
+        gfaT.push(116, p.pid, ...akEnc(p.idv));
+        return p.idv;
+      },
+      isPlayer: () => {
+        gfaT.push(110, p.pid, p.isPlayer ? 1 : 0);
+        return !!p.isPlayer;
+      },
+      isOnSameTeam: (other) => {
+        gfaT.push(118, p.pid, gTok.get(other), p.sameTeam ? 1 : 0);
+        return !!p.sameTeam;
+      },
+      captureUnit: (unit) => {
+        gfaT.push(119, p.pid, gTok.get(unit));
+      },
+      isAlliedWith: (other) => {
+        gfaT.push(136, p.pid, gTok.get(other), p.alliedWith ? 1 : 0);
+        return !!p.alliedWith;
+      },
+      isTraitor: () => {
+        gfaT.push(128, p.pid, p.traitor ? 1 : 0);
+        return !!p.traitor;
+      },
+      markTraitor: () => {
+        gfaT.push(129, p.pid);
+        p.traitor = 1;
+      },
+      gold: () => {
+        gfaT.push(124, p.pid, p.gold);
+        return p.gold;
+      },
+      addGold: (amount) => {
+        gfaT.push(126, p.pid, amount);
+        p.gold += amount;
+      },
+      removeGold: (toRemove) => {
+        gfaT.push(125, p.pid, toRemove);
+        if (toRemove <= 0) return 0;
+        const actual = Math.min(p.gold, toRemove);
+        p.gold -= actual;
+        return actual;
+      },
+      toUpdate: (statsOut, attackOut) => {
+        gfaT.push(
+          127,
+          p.pid,
+          p.tuStats.length,
+          ...p.tuStats,
+          p.tuAtk.length,
+          ...p.tuAtk,
+          ...akEnc(p.tuRet),
+        );
+        for (const v of p.tuStats) statsOut.push(v);
+        for (const v of p.tuAtk) attackOut.push(v);
+        return p.tuRet;
       },
     };
     gTok.set(o, i);
@@ -23890,6 +24100,9 @@ function runGFA(name, S, ops) {
   g._nations = S.nations;
   g._unitsVersion = S.unitsVersion;
   g._territoryVersion = S.territoryVersion;
+  // G4b: reusable neighbor buffer read by updateBorders (a prototype field the
+  // constructor would normally initialise; Object.create skips it).
+  g.borderNbuf = [0, 0, 0, 0];
   g.tileUpdatePairs = S.tileUpdates.slice();
   g.playerStatsQuads = S.playerStatsQuads.slice();
   g.attackTroopsQuads = S.attackTroopsQuads.slice();
@@ -23933,6 +24146,12 @@ function runGFA(name, S, ops) {
       gfaT.push(165, S.cfg.teamLandShare);
       return S.cfg.teamLandShare;
     },
+    // G4b: scripted constant facade (trace 166); does NOT re-derive from the
+    // conquered player, so the twin stays a plain constant return.
+    conquerGoldAmount: (captured) => {
+      gfaT.push(166, captured.pid, S.cfg.conquerGoldAmount);
+      return S.cfg.conquerGoldAmount;
+    },
   };
   g._stats = {
     recordFinalTiles: (player, n) => {
@@ -23940,6 +24159,33 @@ function runGFA(name, S, ops) {
     },
     recordAlliancesAtEnd: (player, len, longest) => {
       gfaT.push(151, player.pid, len, longest);
+    },
+    // ---- G4b stats surface ----
+    recordTickSample: (player, nTiles, troops, alliances) => {
+      gfaT.push(152, player.pid, nTiles, troops, alliances);
+    },
+    // Traces a JSON-safe stats object (number attacks[0]) but RETURNS a mock
+    // whose attacks[0] is a BIGINT, so `attacksSent === 0n` keeps bigint
+    // semantics; the twin reads the traced number and compares `== 0`.
+    getPlayerStats: (player) => {
+      gfaT.push(153, player.pid, ...akEnc(S.sps));
+      if (S.sps === null) return null;
+      return { attacks: [BigInt(S.sps.attacks[0])] };
+    },
+    goldWar: (a, b, gold) => {
+      gfaT.push(154, a.pid, b.pid, gold);
+    },
+    recordKill: (a, b, tick) => {
+      gfaT.push(155, a.pid, b.pid, tick);
+    },
+    recordKilledBy: (player, cid) => {
+      gfaT.push(156, player.pid, ...akEnc(cid));
+    },
+    recordDeathPosition: (player, pos) => {
+      gfaT.push(157, player.pid, pos);
+    },
+    allianceEnded: (player, duration, type) => {
+      gfaT.push(158, player.pid, duration, ...akEnc(type));
     },
   };
   g.unitGrid = {
@@ -24595,6 +24841,64 @@ function runGFA(name, S, ops) {
           p1(rest[0]);
           r = [0, ...akEnc(g.sharedWaterComponents(mockP[rest[0]]))];
           break;
+        // G4b: GameImpl methods (args: [mid, ..indices/numbers]).
+        case 300:
+          g.executeNextTick();
+          r = [0, ...akEnc(0)];
+          break;
+        case 301:
+          p1(rest[0]);
+          p1(rest[1]);
+          g.conquer(mockP[rest[0]], rest[1]);
+          r = [0, 1];
+          break;
+        case 302:
+          p1(rest[0]);
+          g.relinquish(rest[0]);
+          r = [0, 1];
+          break;
+        case 303:
+          p1(rest[0]);
+          g.updateBorders(rest[0]);
+          r = [0, 1];
+          break;
+        case 304:
+          p1(rest[0]);
+          g.updateBorderStatus(rest[0]);
+          r = [0, 1];
+          break;
+        case 305:
+          // [mid, breakerIdx, allianceIdx] — matches the Rust `b` then `a` read.
+          p1(rest[0]);
+          p1(rest[1]);
+          g.breakAlliance(mockP[rest[0]], mockA[rest[1]]);
+          r = [0, 1];
+          break;
+        case 306:
+          p1(rest[0]);
+          g.expireAlliance(mockA[rest[0]]);
+          r = [0, 1];
+          break;
+        case 307:
+          p1(rest[0]);
+          g.removeAlliancesByPlayerSilently(mockP[rest[0]]);
+          r = [0, 1];
+          break;
+        case 308:
+          p1(rest[0]);
+          g.detachAlliance(mockA[rest[0]]);
+          r = [0, 1];
+          break;
+        case 309:
+          p1(rest[0]);
+          p1(rest[1]);
+          g.conquerPlayer(mockP[rest[0]], mockP[rest[1]]);
+          r = [0, 1];
+          break;
+        case 310:
+          p1(rest[0]);
+          r = [0, ...akEnc(gfaDumpPlayer(mockP[rest[0]]))];
+          break;
         case 900:
           r = [0, ...akEnc(gfaDump(g))];
           break;
@@ -24764,7 +25068,7 @@ runGFA(
         name: "B",
         disc: 1,
         dsnap: { wasAlive: true, totalLand: 100, teamTiles: 8 },
-        al: [5, 12],
+        al: [0, 1],
       }),
       gfaP({ pid: 3, sid: 3, alive: 0, nt: 0, hash: 1, cid: null, team: "Red", name: "C" }),
     ],
@@ -24775,6 +25079,10 @@ runGFA(
     teamSpawnAreas: { "1": [[1, 2, 3]] },
     cfg: { gmode: "Team", teamLandShare: 5 },
     swc: 7,
+    alliances: [
+      { id: 1, createdAt: 5, req: 0, rec: 1 },
+      { id: 2, createdAt: 12, req: 1, rec: 0 },
+    ],
   }),
   [
     [1, 123, 0],
@@ -25018,6 +25326,348 @@ runGFA(
     [1, 16],
     [1, 17, 0],
     [1, 38],
+    [1, 900],
+  ],
+);
+
+// G4b: conquer() over REAL `_tiles`/`_borderTiles` TileSets, with the
+// unowned-owned / water / impassable / undefined-owner branches, plus
+// dumpPlayer (mid 310) and a packed tile-update drain.
+runGFA(
+  "gf_g4b_conquer",
+  gfaS({
+    map: gfaMap({
+      w: 3,
+      h: 3,
+      numLand: 8,
+      // tile 2 -> 0x03 lake water; tile 5 -> 0x9f impassable land; rest land.
+      terr: [0x83, 0x83, 0x03, 0x83, 0x83, 0x9f, 0x83, 0x83, 0x83],
+      owners: [[0, 1], [1, 2], [6, 9]],
+    }),
+    ticks: 30,
+    startTick: 0,
+    width: 3,
+    height: 3,
+    players: [
+      gfaP({ pid: 1, sid: 1, alive: 1, nt: 1, tiles: [0] }),
+      gfaP({ pid: 2, sid: 2, alive: 1, nt: 1, tiles: [1], bTiles: [1] }),
+    ],
+    playersMap: [[1, 0], [2, 1]],
+    playersBySmallID: [0, 1],
+    cfg: { gmode: "Free For All" },
+  }),
+  [
+    [1, 310, 0],
+    [1, 310, 1],
+    // Conquer an unowned land tile, then an owned tile (p1 loses tile 1).
+    [1, 301, 0, 4],
+    [1, 310, 0],
+    [1, 310, 1],
+    [1, 301, 0, 1],
+    [1, 310, 0],
+    [1, 310, 1],
+    [1, 24, 3],
+    [1, 25],
+    // Error branches: water, impassable, undefined previous owner.
+    [1, 301, 0, 2],
+    [1, 301, 0, 5],
+    [1, 301, 0, 6],
+    [1, 310, 0],
+  ],
+);
+
+// G4b: relinquish() — owned land, unowned, water (owned water reaches the
+// second guard) and undefined previous owner.
+runGFA(
+  "gf_g4b_relinquish",
+  gfaS({
+    map: gfaMap({
+      w: 3,
+      h: 3,
+      numLand: 8,
+      // tile 8 -> 0x03 lake water (given an owner so the water guard fires).
+      terr: [0x83, 0x83, 0x83, 0x83, 0x83, 0x83, 0x83, 0x83, 0x03],
+      owners: [[0, 1], [1, 2], [5, 9], [8, 1]],
+    }),
+    ticks: 15,
+    startTick: 0,
+    width: 3,
+    height: 3,
+    players: [
+      gfaP({ pid: 1, sid: 1, alive: 1, nt: 2, tiles: [0, 8], bTiles: [0] }),
+      gfaP({ pid: 2, sid: 2, alive: 1, nt: 1, tiles: [1], bTiles: [1] }),
+    ],
+    playersMap: [[1, 0], [2, 1]],
+    playersBySmallID: [0, 1],
+    cfg: { gmode: "Free For All" },
+  }),
+  [
+    [1, 310, 0],
+    [1, 310, 1],
+    [1, 302, 0],
+    [1, 310, 0],
+    [1, 25],
+    [1, 302, 3],
+    [1, 302, 8],
+    [1, 302, 5],
+    [1, 310, 0],
+    [1, 310, 1],
+  ],
+);
+
+// G4b: updateBorders / updateBorderStatus border-set add & delete paths.
+runGFA(
+  "gf_g4b_borders",
+  gfaS({
+    map: gfaMap({
+      w: 3,
+      h: 3,
+      numLand: 9,
+      owners: [[0, 1], [1, 1], [3, 1], [4, 2]],
+    }),
+    startTick: 0,
+    width: 3,
+    height: 3,
+    players: [
+      gfaP({ pid: 1, sid: 1, alive: 1, tiles: [0, 1, 3], bTiles: [0] }),
+      gfaP({ pid: 2, sid: 2, alive: 1, tiles: [4], bTiles: [4] }),
+    ],
+    playersMap: [[1, 0], [2, 1]],
+    playersBySmallID: [0, 1],
+    cfg: { gmode: "Free For All" },
+  }),
+  [
+    [1, 310, 0],
+    [1, 310, 1],
+    [1, 303, 0],
+    [1, 310, 0],
+    [1, 303, 1],
+    [1, 310, 0],
+    [1, 304, 4],
+    [1, 310, 1],
+    [1, 304, 7],
+    [1, 303, 4],
+    [1, 310, 1],
+    [1, 310, 0],
+  ],
+);
+
+// G4b: alliance breaking / expiration / silent removal / detach, over a shared
+// mock alliance table (identity preserved via table indices).
+runGFA(
+  "gf_g4b_alliance",
+  gfaS({
+    map: gfaMap({ w: 2, h: 2, numLand: 4 }),
+    ticks: 20,
+    startTick: 0,
+    width: 2,
+    height: 2,
+    players: [
+      gfaP({ pid: 1, sid: 1, alive: 1, al: [0, 1] }),
+      gfaP({ pid: 2, sid: 2, alive: 1, al: [0] }),
+      gfaP({ pid: 3, sid: 3, alive: 1, al: [1] }),
+      gfaP({ pid: 4, sid: 4, alive: 1, al: [2, 3], alliedWith: 0 }),
+      gfaP({ pid: 5, sid: 5, alive: 1, al: [2, 3] }),
+    ],
+    playersMap: [[1, 0], [2, 1], [3, 2], [4, 3], [5, 4]],
+    playersBySmallID: [0, 1, 2, 3, 4],
+    cfg: { gmode: "Free For All" },
+    alliances: [
+      { id: 10, createdAt: 5, req: 0, rec: 1 },
+      { id: 11, createdAt: 8, req: 0, rec: 2 },
+      { id: 12, createdAt: 2, req: 3, rec: 4 },
+      { id: 13, createdAt: 6, req: 4, rec: 3 },
+    ],
+  }),
+  [
+    [1, 310, 0],
+    [1, 310, 1],
+    [1, 310, 2],
+    [1, 310, 3],
+    [1, 310, 4],
+    // expireAlliance happy path (exactly one shared alliance).
+    [1, 306, 0],
+    [1, 310, 0],
+    [1, 310, 1],
+    // breakAlliance happy path (betrayer marks the other a traitor).
+    [1, 305, 2, 1],
+    [1, 310, 0],
+    [1, 310, 2],
+    // detachAlliance directly, then silent removal of the remaining one.
+    [1, 308, 3],
+    [1, 310, 3],
+    [1, 310, 4],
+    [1, 307, 3],
+    [1, 310, 3],
+    [1, 310, 4],
+    [1, 900],
+    // Error branches: expire with 0 shared; break when not allied.
+    [1, 306, 1],
+    [1, 306, 2],
+    [1, 305, 3, 2],
+    [1, 305, 1, 0],
+    [1, 900],
+  ],
+);
+
+// G4b: conquerPlayer — disconnected teammate branch (captures ships) + the
+// no-gold-transfer skip (attacksSent 0 and the conquered is a Human).
+runGFA(
+  "gf_g4b_conquer_player_skip",
+  gfaS({
+    map: gfaMap({ w: 2, h: 2, numLand: 4 }),
+    units: [
+      gfaU({ uid: 10, typ: "Warship" }),
+      gfaU({ uid: 11, typ: "Transport" }),
+      gfaU({ uid: 12, typ: "City" }),
+    ],
+    unitMap: [[10, 0], [11, 1], [12, 2]],
+    ticks: 30,
+    startTick: 0,
+    players: [
+      gfaP({ pid: 1, sid: 1, alive: 1, typ: "HUMAN", cid: "c0", gold: 100, sameTeam: 1, idv: 1 }),
+      gfaP({
+        pid: 2,
+        sid: 2,
+        alive: 1,
+        typ: "HUMAN",
+        cid: "c1",
+        gold: 500,
+        disc: 1,
+        dname: "Conquered",
+        idv: 2,
+        units: [0, 1, 2],
+      }),
+      gfaP({ pid: 3, sid: 3, alive: 1, typ: "BOT", cid: "c2", idv: 3 }),
+      gfaP({ pid: 4, sid: 4, alive: 1, typ: "NATION", cid: null, idv: 4 }),
+    ],
+    playersMap: [[1, 0], [2, 1], [3, 2], [4, 3]],
+    playersBySmallID: [0, 1, 2, 3],
+    cfg: { gmode: "Free For All", conquerGoldAmount: 7 },
+    sps: { attacks: [0] },
+  }),
+  [
+    [1, 309, 0, 1],
+    [1, 900],
+  ],
+);
+
+// G4b: conquerPlayer — gold-transfer branch (attacksSent != 0).
+runGFA(
+  "gf_g4b_conquer_player_gold",
+  gfaS({
+    map: gfaMap({ w: 2, h: 2, numLand: 4 }),
+    ticks: 12,
+    startTick: 0,
+    players: [
+      gfaP({ pid: 1, sid: 1, alive: 1, typ: "HUMAN", cid: "c0", gold: 100, idv: 1 }),
+      gfaP({ pid: 2, sid: 2, alive: 1, typ: "HUMAN", cid: "c1", gold: 500, disc: 0, dname: "Victim", idv: 2 }),
+      gfaP({ pid: 3, sid: 3, alive: 0, typ: "NATION", cid: null, idv: 3 }),
+    ],
+    playersMap: [[1, 0], [2, 1], [3, 2]],
+    playersBySmallID: [0, 1, 2],
+    cfg: { gmode: "Free For All", conquerGoldAmount: 7 },
+    sps: { attacks: [5] },
+  }),
+  [
+    [1, 309, 0, 1],
+    [1, 900],
+  ],
+);
+
+// G4b: conquerPlayer — attacksSent 0 but the conquered is NOT a Human (the
+// type half of the skip gate), and a zero-amount removeGold.
+runGFA(
+  "gf_g4b_conquer_player_nation",
+  gfaS({
+    map: gfaMap({ w: 2, h: 2, numLand: 4 }),
+    ticks: 5,
+    startTick: 0,
+    players: [
+      gfaP({ pid: 1, sid: 1, alive: 1, typ: "HUMAN", cid: "c0", gold: 10, idv: 1 }),
+      gfaP({ pid: 2, sid: 2, alive: 1, typ: "NATION", cid: null, gold: 0, disc: 0, dname: "Native", idv: 2 }),
+    ],
+    playersMap: [[1, 0], [2, 1]],
+    playersBySmallID: [0, 1],
+    cfg: { gmode: "Free For All", conquerGoldAmount: 0 },
+    sps: { attacks: [0] },
+  }),
+  [
+    [1, 309, 0, 1],
+    [1, 900],
+  ],
+);
+
+// G4b: executeNextTick out of the spawn phase — execs tick, un-init execs
+// init, inactive execs are compacted, per-player tick samples + toUpdate, and
+// the %10 hash update.
+runGFA(
+  "gf_g4b_tick",
+  gfaS({
+    map: gfaMap({ w: 2, h: 2, numLand: 4 }),
+    ticks: 10,
+    startTick: 0,
+    execTable: [[1, 1], [0, 1], [1, 0], [0, 1]],
+    execs: [0, 1],
+    unInitExecs: [2, 3],
+    players: [
+      gfaP({
+        pid: 1,
+        sid: 1,
+        alive: 1,
+        spawned: 1,
+        nt: 3,
+        troops: 55,
+        hash: 4,
+        al: [0],
+        tuStats: [1, 3, 55, 1],
+        tuAtk: [2, 3, 0, 55],
+        tuRet: { type: 19, conquerorId: 1, conqueredId: 2, gold: 0 },
+      }),
+      gfaP({
+        pid: 2,
+        sid: 2,
+        alive: 0,
+        spawned: 0,
+        nt: 0,
+        troops: 0,
+        hash: 7,
+        tuRet: null,
+      }),
+    ],
+    playersMap: [[1, 0], [2, 1]],
+    playersBySmallID: [0, 1],
+    cfg: { gmode: "Free For All" },
+    alliances: [{ id: 100, createdAt: 1, req: 0, rec: 0 }],
+  }),
+  [
+    [1, 300],
+    [1, 900],
+    [1, 300],
+    [1, 900],
+  ],
+);
+
+// G4b: executeNextTick inside the spawn phase — the activeDuringSpawnPhase
+// gate short-circuits both e.tick and e.init, and removeInactiveExecutions
+// keeps spawn-permitted execs regardless of isActive.
+runGFA(
+  "gf_g4b_tick_spawn",
+  gfaS({
+    map: gfaMap({ w: 2, h: 2, numLand: 4 }),
+    ticks: 0,
+    execTable: [[1, 1], [0, 1], [1, 0], [0, 1]],
+    execs: [0, 1],
+    unInitExecs: [2, 3],
+    players: [
+      gfaP({ pid: 1, sid: 1, alive: 1, spawned: 0, nt: 0, troops: 0, hash: 2, tuRet: null }),
+    ],
+    playersMap: [[1, 0]],
+    playersBySmallID: [0],
+    cfg: { gmode: "Free For All" },
+  }),
+  [
+    [1, 300],
     [1, 900],
   ],
 );

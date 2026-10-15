@@ -1192,6 +1192,16 @@ function prepare(rel) {
     if (!prepared.has(guRel)) prepare(guRel);
     const mpRel = "src/core/game/MotionPlans.ts";
     if (!prepared.has(mpRel)) prepare(mpRel);
+    // G4b runs the conquerPlayer body, which reads PlayerType / UnitType /
+    // MessageType (inlined string enums), ATTACK_INDEX_SENT and renderNumber -
+    // all *value* imports, so they ride prepared copies instead of staying
+    // unresolved identifiers (the alliance bodies touch only GameUpdateType).
+    const gbGameRel = "src/core/game/Game.ts";
+    if (!prepared.has(gbGameRel)) prepare(gbGameRel);
+    const gbStatsRel = "src/core/StatsSchemas.ts";
+    if (!prepared.has(gbStatsRel)) prepare(gbStatsRel);
+    const gbUtilRel = "src/client/Utils.ts";
+    if (!prepared.has(gbUtilRel)) prepare(gbUtilRel);
     const giHead = out.indexOf("export function createGame(");
     if (giHead === -1) {
       throw new Error("ts_load: GameImpl createGame anchor not found");
@@ -1199,7 +1209,10 @@ function prepare(rel) {
     out =
       'const GameMode = { FFA: "Free For All", Team: "Team" };\n' +
       `import { GameUpdateType } from "./${prepared.get(guRel)}";\n` +
-      `import { packMotionPlans } from "./${prepared.get(mpRel)}";\n\n` +
+      `import { packMotionPlans } from "./${prepared.get(mpRel)}";\n` +
+      `import { MessageType, PlayerType, UnitType } from "./${prepared.get(gbGameRel)}";\n` +
+      `import { ATTACK_INDEX_SENT } from "./${prepared.get(gbStatsRel)}";\n` +
+      `import { renderNumber } from "./${prepared.get(gbUtilRel)}";\n\n` +
       out.slice(giHead);
     out = must(
       out,

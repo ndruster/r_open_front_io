@@ -2543,7 +2543,17 @@ WebSockets — stays excluded, mirroring the `src/core` exclusions).
     winners cross as a player-table index). 11 scenarios (`gf_basic` / `gf_map` /
     `gf_players` / `gf_units` / `gf_updates` / `gf_sc` / `gf_errors` /
     `gf_execs` / `gf_drain_null` / `gf_spawn` / `gf_null_players`, 208 ops),
-    881,109 wasm comparisons bit-identical.
+    plus the G4b mutators — `executeNextTick` (exec gating, `%10` hash,
+    per-player tick samples + `toUpdate`, water tick) and `conquer` /
+    `relinquish` / `updateBorders` / `updateBorderStatus` / `breakAlliance` /
+    `expireAlliance` / `removeAlliancesByPlayerSilently` / `detachAlliance` /
+    `conquerPlayer`. Players now carry real `_tiles` / `_borderTiles` `TileSet`s
+    and a shared alliance table (identity by table index), feeding the new
+    100-window facades 103/107/109/110/116-119 + 124-127, 136 `isAlliedWith`,
+    141-144 alliance accessors, 152-158 stats, 166 config. 9 new scenarios
+    (`gf_g4b_conquer` / `_relinquish` / `_borders` / `_alliance` /
+    `_conquer_player_skip` / `_conquer_player_gold` / `_conquer_player_nation` /
+    `_tick` / `_tick_spawn`, 71 ops), 886,606 wasm comparisons bit-identical.
 
 Regenerate whenever a ported source changes:
 
@@ -2577,7 +2587,7 @@ node rust/tools/run_wasm_parity.mjs
 
 `wasm-probe` exposes the ported functions through `extern "C"` scalar
 entrypoints (`src/wasm_probe.rs`); the runner imports `data/vectors.json` and
-compares every value. Last run: **881,109 comparisons, all bit-identical**.
+compares every value. Last run: **886,606 comparisons, all bit-identical**.
 
 ### Windows: the linker environment
 

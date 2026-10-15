@@ -73,7 +73,7 @@ fn fixed_digits(v: f64) -> u32 {
 /// applies; `fp_flag != 0` uses the explicit `fp` through the `toFixed`
 /// digits coercion (`??` is a nullish gate, so an explicit `0` / `NaN` is
 /// honoured — the capture never passes `null`/`undefined` as a raw f64).
-fn render_number(num: f64, fp_flag: f64, fp: f64) -> String {
+pub(crate) fn render_number(num: f64, fp_flag: f64, fp: f64) -> String {
     let num = js_max(num, 0.0);
     let digits = |dflt: f64| -> u32 {
         if fp_flag == 0.0 {

@@ -123,7 +123,8 @@
 //! 105 `clientID`, 106 `team`, 108 `name`, 111 `disconnectSnapshot`,
 //! 112 `isDisconnected`, 113 `alliances`, 114 `units`, 115 `unitCount`,
 //! 117 `smallID` (103 `troops` / 107 `type` / 109 `displayName` / 110
-//! `isPlayer` / 116 `id` are reserved — not exercised by the G4a slice).
+//! `isPlayer` / 116 `id` were reserved in the G4a slice and are exercised by
+//! G4b).
 //! Units: 120 `toUpdate`, 121 `hasTrainStation`, 122 `id`, 123 `type`.
 //! `unitGrid`: 130 `addUnit`, 131 `removeUnit`, 132 `updateUnitCell`,
 //! 133 `hasUnitNearby`, 134 `anyUnitNearby`, 135 `nearbyUnits`.
@@ -144,11 +145,58 @@
 //! `[1]` undefined, `[2]` null, `[3,gmNum]` number/bigint (with
 //! `"n"`/`"i"`/`"-i"`/`"-0"` special tokens), `[4,b]` bool, `[5,..encS]`
 //! string, `[7,n,..]` array/Set, `[6,n,(..encS key,..value)*]` object.
+//!
+//! ## G4b additions
+//!
+//! New GameImpl method mids: 300 `executeNextTick` (488-546), 301 `conquer`
+//! (761-783), 302 `relinquish` (785-803), 303 `updateBorders` (808-814),
+//! 304 `updateBorderStatus` (816-826), 305 `breakAlliance` (836-870),
+//! 306 `expireAlliance` (872-893), 307 `removeAlliancesByPlayerSilently`
+//! (895-911), 308 `detachAlliance` (914-919), 309 `conquerPlayer` (1371-1452),
+//! and the harness observation mid 310 `dumpPlayer`.
+//!
+//! Player mocks now carry REAL `_tiles` / `_borderTiles` [`TileSet`]s seeded
+//! from the construct, plus `_lastTileChange`, `_tileChangeVersion` and
+//! `_alliances`. `_alliances` holds indices into a shared alliance table
+//! (constructed after `swc`), so identity across two players is preserved
+//! (`expireAlliance`'s `Set.has`, `detachAlliance`'s `!==`). `alliances()`
+//! returns that array; its trace still reports the per-entry `createdAt`
+//! values, so the G4a `alliances` observation is unchanged.
+//!
+//! New facade trace codes. Players: 103 `troops`, 107 `type`, 109
+//! `displayName`, 110 `isPlayer`, 116 `id`, 118 `isOnSameTeam`, 119
+//! `captureUnit`, 124 `gold`, 125 `removeGold`, 126 `addGold`, 127 `toUpdate`,
+//! 128 `isTraitor`, 129 `markTraitor`, 136 `isAlliedWith`. Alliances: 141
+//! `requestor`, 142 `recipient`, 143 `id`, 144 `createdAt`. Stats: 152
+//! `recordTickSample`, 153 `getPlayerStats`, 154 `goldWar`, 155 `recordKill`,
+//! 156 `recordKilledBy`, 157 `recordDeathPosition`, 158 `allianceEnded`.
+//! Config: 166 `conquerGoldAmount`. Exec: 182 `tick`, 183 `init`.
+//!
+//! `dumpPlayer` (mid 310) flattens one mock as a `gmNorm` token array
+//! `[pid, nTiles, ..tiles, nBorder, ..border, _lastTileChange,
+//! _tileChangeVersion, nAll, (id,createdAt)*]` (mirroring `gfaNorm`), wrapped
+//! as one [`JsVal::Arr`] so special numeric leaves expand to `"n"`/`"i"`/
+//! `"-i"`/`"-0"` tokens the same way `dumpUpdates` does.
+//!
+//! Because `alliances()` now hands back the real shared alliance mocks,
+//! `setWinner`'s `for (const a of standing) a.createdAt()` loop emits one 144
+//! per entry (on top of the untouched 113); `p_alliances` mirrors that, while
+//! the `.length`-only callers (the tick sample, `expireAlliance`'s `Set`) use
+//! `p_alliance_toks` and stay 144-free.
+//!
+//! `conquerPlayer`'s skip branch stores the TS literal `0n` (a bigint) into its
+//! `ConquestEvent.gold`; `gfaNorm` has no bigint branch and encodes it as a
+//! keyless object `[6,0]`, so the twin uses an empty [`JsVal::Obj`] for that
+//! leaf (the non-skip branch carries a plain number).
+//!
+//! [`TileSet`]: crate::tile_set::TileSet
 
 use crate::game_map::{GameMap, TerrainType};
 use crate::js_json::{push_str, push_val, read_str, read_val, val_field, JsVal};
 use crate::jsnum::{to_int32, to_uint32};
 use crate::motion_plans::{pack_motion_plans, MotionPlanInput};
+use crate::tile_set::TileSet;
+use crate::utils_format::render_number;
 use crate::water_manager::WaterManager;
 use std::cell::RefCell;
 
@@ -163,6 +211,10 @@ const UPD_DISPLAY_EVENT: f64 = 3.0;
 const UPD_DISPLAY_CHAT: f64 = 4.0;
 const UPD_SPAWN_PHASE_END: f64 = 21.0;
 const UPD_GAME_PAUSED: f64 = 22.0;
+const UPD_BROKE_ALLIANCE: f64 = 7.0;
+const UPD_ALLIANCE_EXPIRED: f64 = 8.0;
+const UPD_HASH: f64 = 13.0;
+const UPD_CONQUEST: f64 = 19.0;
 
 // ------------------------------------------------------------------ helpers
 
@@ -274,7 +326,6 @@ enum GmPlan {
 }
 
 /// A scripted player mock.
-#[derive(Default)]
 struct GmPlayer {
     pid: f64,
     sid: f64,
@@ -287,9 +338,76 @@ struct GmPlayer {
     name: JsVal,
     disconnect_snapshot: JsVal,
     is_disconnected: bool,
-    alliances: Vec<f64>,
+    /// `_alliances` — indices into [`GameHarness::alliance_table`].
+    alliance_toks: Vec<usize>,
     units: Vec<usize>,
     unit_count: Vec<(String, f64)>,
+    // ---- G4b scripted surface ----
+    troops: f64,
+    typ: String,
+    display_name: JsVal,
+    id_val: JsVal,
+    is_player: bool,
+    on_same_team: bool,
+    allied_with: bool,
+    is_traitor: bool,
+    gold: f64,
+    tu_stats: Vec<f64>,
+    tu_atk: Vec<f64>,
+    tu_ret: JsVal,
+    // ---- G4b mutable territory ----
+    tiles: TileSet,
+    border_tiles: TileSet,
+    last_tile_change: f64,
+    tile_change_version: f64,
+}
+
+impl Default for GmPlayer {
+    fn default() -> Self {
+        Self {
+            pid: 0.0,
+            sid: 0.0,
+            alive: false,
+            spawned: false,
+            num_tiles: 0.0,
+            hash: 0.0,
+            client_id: JsVal::Null,
+            team: JsVal::Null,
+            name: JsVal::Null,
+            disconnect_snapshot: JsVal::Null,
+            is_disconnected: false,
+            alliance_toks: Vec::new(),
+            units: Vec::new(),
+            unit_count: Vec::new(),
+            troops: 0.0,
+            typ: String::new(),
+            display_name: JsVal::Null,
+            id_val: JsVal::Null,
+            is_player: false,
+            on_same_team: false,
+            allied_with: false,
+            is_traitor: false,
+            gold: 0.0,
+            tu_stats: Vec::new(),
+            tu_atk: Vec::new(),
+            tu_ret: JsVal::Null,
+            tiles: TileSet::new(None),
+            border_tiles: TileSet::new(None),
+            last_tile_change: 0.0,
+            tile_change_version: 0.0,
+        }
+    }
+}
+
+/// A scripted alliance mock shared (by table index) between players.
+#[derive(Default, Clone)]
+struct GmAlliance {
+    id: f64,
+    created_at: f64,
+    /// Player token for `requestor()` (`-2` TN / `-1` undefined / table index).
+    req: f64,
+    /// Player token for `recipient()`.
+    rec: f64,
 }
 
 /// A scripted unit mock.
@@ -317,6 +435,7 @@ struct Cfg {
     spawn_immunity: f64,
     nation_spawn_immunity: f64,
     team_land_share: f64,
+    conquer_gold_amount: f64,
 }
 
 /// Scripted constants for the `unitGrid` facade.
@@ -369,6 +488,10 @@ pub struct GameHarness {
     cfg: Cfg,
     ug: Ug,
     swc: JsVal,
+    /// Scripted `_stats.getPlayerStats(player)` return.
+    sps: JsVal,
+    /// Shared alliance table (identity for `_alliances`).
+    alliance_table: Vec<GmAlliance>,
 
     tr: Vec<f64>,
     res: Vec<f64>,
@@ -413,6 +536,8 @@ impl Default for GameHarness {
             cfg: Cfg::default(),
             ug: Ug::default(),
             swc: JsVal::Null,
+            sps: JsVal::Null,
+            alliance_table: Vec::new(),
             tr: Vec::new(),
             res: Vec::new(),
         }
@@ -516,13 +641,25 @@ impl GameHarness {
         self.tr.push(if v { 1.0 } else { 0.0 });
         v
     }
-    fn p_alliances(&mut self, idx: usize) -> Vec<f64> {
-        let (pid, v) = (self.players[idx].pid, self.players[idx].alliances.clone());
+    /// `player.alliances()` — trace reports the per-entry `createdAt` values
+    /// (matching G4a) while the returned value is the `_alliances` token list.
+    fn p_alliance_toks(&mut self, idx: usize) -> Vec<usize> {
+        let (pid, toks) = (
+            self.players[idx].pid,
+            self.players[idx].alliance_toks.clone(),
+        );
         self.tr.push(113.0);
         self.tr.push(pid);
-        self.tr.push(v.len() as f64);
-        self.tr.extend(v.iter().copied());
-        v
+        self.tr.push(toks.len() as f64);
+        for t in &toks {
+            let v = self.alliance_table[*t].created_at;
+            self.tr.push(v);
+        }
+        toks
+    }
+    fn p_alliances(&mut self, idx: usize) -> Vec<f64> {
+        let toks = self.p_alliance_toks(idx);
+        toks.iter().map(|t| self.a_created_at(*t)).collect()
     }
     fn p_units(&mut self, idx: usize) -> Vec<usize> {
         let (pid, v) = (self.players[idx].pid, self.players[idx].units.clone());
@@ -554,6 +691,226 @@ impl GameHarness {
         self.tr.push(pid);
         self.tr.push(sid);
         sid
+    }
+
+    // ------------------------------------------------ G4b player/alliance facades
+
+    fn p_troops(&mut self, idx: usize) -> f64 {
+        let (pid, v) = (self.players[idx].pid, self.players[idx].troops);
+        self.tr.push(103.0);
+        self.tr.push(pid);
+        self.tr.push(v);
+        v
+    }
+    fn p_type(&mut self, idx: usize) -> String {
+        let (pid, v) = (self.players[idx].pid, self.players[idx].typ.clone());
+        self.tr.push(107.0);
+        self.tr.push(pid);
+        push_str(&mut self.tr, &v);
+        v
+    }
+    fn p_display_name(&mut self, idx: usize) -> JsVal {
+        let (pid, v) = (
+            self.players[idx].pid,
+            self.players[idx].display_name.clone(),
+        );
+        self.tr.push(109.0);
+        self.tr.push(pid);
+        push_val(&mut self.tr, &v);
+        v
+    }
+    fn p_id(&mut self, idx: usize) -> JsVal {
+        let (pid, v) = (self.players[idx].pid, self.players[idx].id_val.clone());
+        self.tr.push(116.0);
+        self.tr.push(pid);
+        push_val(&mut self.tr, &v);
+        v
+    }
+    /// `previousOwner.isPlayer()`: `-2` is TerraNullius (always false).
+    fn p_is_player_tok(&mut self, tok: f64) -> bool {
+        if tok == -2.0 {
+            self.tr.push(110.0);
+            self.tr.push(-2.0);
+            self.tr.push(0.0);
+            return false;
+        }
+        let idx = tok as usize;
+        let (pid, v) = (self.players[idx].pid, self.players[idx].is_player);
+        self.tr.push(110.0);
+        self.tr.push(pid);
+        self.tr.push(if v { 1.0 } else { 0.0 });
+        v
+    }
+    fn p_is_on_same_team(&mut self, idx: usize, other: f64) -> bool {
+        let (pid, v) = (self.players[idx].pid, self.players[idx].on_same_team);
+        self.tr.push(118.0);
+        self.tr.push(pid);
+        self.tr.push(other);
+        self.tr.push(if v { 1.0 } else { 0.0 });
+        v
+    }
+    fn p_capture_unit(&mut self, idx: usize, unit: usize) {
+        let pid = self.players[idx].pid;
+        self.tr.push(119.0);
+        self.tr.push(pid);
+        self.tr.push(unit as f64);
+    }
+    fn p_gold(&mut self, idx: usize) -> f64 {
+        let (pid, v) = (self.players[idx].pid, self.players[idx].gold);
+        self.tr.push(124.0);
+        self.tr.push(pid);
+        self.tr.push(v);
+        v
+    }
+    fn p_remove_gold(&mut self, idx: usize, amount: f64) {
+        let pid = self.players[idx].pid;
+        self.tr.push(125.0);
+        self.tr.push(pid);
+        self.tr.push(amount);
+        if amount <= 0.0 {
+            return;
+        }
+        let actual = self.players[idx].gold.min(amount);
+        self.players[idx].gold -= actual;
+    }
+    fn p_add_gold(&mut self, idx: usize, amount: f64) {
+        let pid = self.players[idx].pid;
+        self.tr.push(126.0);
+        self.tr.push(pid);
+        self.tr.push(amount);
+        self.players[idx].gold += amount;
+    }
+    fn p_to_update(&mut self, idx: usize) -> JsVal {
+        let pid = self.players[idx].pid;
+        let stats = self.players[idx].tu_stats.clone();
+        let atk = self.players[idx].tu_atk.clone();
+        let ret = self.players[idx].tu_ret.clone();
+        self.tr.push(127.0);
+        self.tr.push(pid);
+        self.tr.push(stats.len() as f64);
+        self.tr.extend(stats.iter().copied());
+        self.tr.push(atk.len() as f64);
+        self.tr.extend(atk.iter().copied());
+        push_val(&mut self.tr, &ret);
+        self.player_stats_quads.extend(stats);
+        self.attack_troops_quads.extend(atk);
+        ret
+    }
+    fn p_is_traitor(&mut self, idx: usize) -> bool {
+        let (pid, v) = (self.players[idx].pid, self.players[idx].is_traitor);
+        self.tr.push(128.0);
+        self.tr.push(pid);
+        self.tr.push(if v { 1.0 } else { 0.0 });
+        v
+    }
+    fn p_mark_traitor(&mut self, idx: usize) {
+        let pid = self.players[idx].pid;
+        self.players[idx].is_traitor = true;
+        self.tr.push(129.0);
+        self.tr.push(pid);
+    }
+    fn p_is_allied_with(&mut self, idx: usize, other: f64) -> bool {
+        let (pid, v) = (self.players[idx].pid, self.players[idx].allied_with);
+        self.tr.push(136.0);
+        self.tr.push(pid);
+        self.tr.push(other);
+        self.tr.push(if v { 1.0 } else { 0.0 });
+        v
+    }
+    fn a_requestor(&mut self, a: usize) -> f64 {
+        let v = self.alliance_table[a].req;
+        self.tr.push(141.0);
+        self.tr.push(a as f64);
+        self.tr.push(v);
+        v
+    }
+    fn a_recipient(&mut self, a: usize) -> f64 {
+        let v = self.alliance_table[a].rec;
+        self.tr.push(142.0);
+        self.tr.push(a as f64);
+        self.tr.push(v);
+        v
+    }
+    fn a_id(&mut self, a: usize) -> f64 {
+        let v = self.alliance_table[a].id;
+        self.tr.push(143.0);
+        self.tr.push(a as f64);
+        self.tr.push(v);
+        v
+    }
+    fn a_created_at(&mut self, a: usize) -> f64 {
+        let v = self.alliance_table[a].created_at;
+        self.tr.push(144.0);
+        self.tr.push(a as f64);
+        self.tr.push(v);
+        v
+    }
+    fn stats_record_tick_sample(&mut self, idx: usize, nt: f64, troops: f64, al: f64) {
+        let pid = self.players[idx].pid;
+        self.tr.push(152.0);
+        self.tr.push(pid);
+        self.tr.push(nt);
+        self.tr.push(troops);
+        self.tr.push(al);
+    }
+    fn stats_get_player_stats(&mut self, idx: usize) -> JsVal {
+        let pid = self.players[idx].pid;
+        let v = self.sps.clone();
+        self.tr.push(153.0);
+        self.tr.push(pid);
+        push_val(&mut self.tr, &v);
+        v
+    }
+    fn stats_gold_war(&mut self, a: usize, b: usize, gold: f64) {
+        let (pa, pb) = (self.players[a].pid, self.players[b].pid);
+        self.tr.push(154.0);
+        self.tr.push(pa);
+        self.tr.push(pb);
+        self.tr.push(gold);
+    }
+    fn stats_record_kill(&mut self, a: usize, b: usize, tick: f64) {
+        let (pa, pb) = (self.players[a].pid, self.players[b].pid);
+        self.tr.push(155.0);
+        self.tr.push(pa);
+        self.tr.push(pb);
+        self.tr.push(tick);
+    }
+    fn stats_record_killed_by(&mut self, idx: usize, cid: &JsVal) {
+        let pid = self.players[idx].pid;
+        self.tr.push(156.0);
+        self.tr.push(pid);
+        push_val(&mut self.tr, cid);
+    }
+    fn stats_record_death_position(&mut self, idx: usize, pos: f64) {
+        let pid = self.players[idx].pid;
+        self.tr.push(157.0);
+        self.tr.push(pid);
+        self.tr.push(pos);
+    }
+    fn stats_alliance_ended(&mut self, idx: usize, dur: f64, typ: &JsVal) {
+        let pid = self.players[idx].pid;
+        self.tr.push(158.0);
+        self.tr.push(pid);
+        self.tr.push(dur);
+        push_val(&mut self.tr, typ);
+    }
+    fn cfg_conquer_gold_amount(&mut self, idx: usize) -> f64 {
+        let pid = self.players[idx].pid;
+        let v = self.cfg.conquer_gold_amount;
+        self.tr.push(166.0);
+        self.tr.push(pid);
+        self.tr.push(v);
+        v
+    }
+    fn exec_tick(&mut self, idx: usize, ticks: f64) {
+        self.tr.push(182.0);
+        self.tr.push(idx as f64);
+        self.tr.push(ticks);
+    }
+    fn exec_init(&mut self, idx: usize, ticks: f64) {
+        self.tr.push(183.0);
+        self.tr.push(idx as f64);
+        self.tr.push(ticks);
     }
 
     fn u_to_update(&mut self, idx: usize) -> JsVal {
@@ -793,11 +1150,27 @@ impl GameHarness {
                 let name = c.v();
                 let disconnect_snapshot = c.v();
                 let is_disconnected = c.b();
-                let alliances = c.nums();
-                let nu = c.f() as usize;
-                let units: Vec<usize> = (0..nu).map(|_| c.f() as usize).collect();
+                let alliance_toks: Vec<usize> =
+                    c.nums().into_iter().map(|v| v as usize).collect();
+                let units: Vec<usize> = c.nums().into_iter().map(|v| v as usize).collect();
                 let nuc = c.f() as usize;
                 let unit_count = (0..nuc).map(|_| (c.s(), c.f())).collect();
+                let tiles = TileSet::new(Some(&c.nums()));
+                let border_tiles = TileSet::new(Some(&c.nums()));
+                let last_tile_change = c.f();
+                let tile_change_version = c.f();
+                let troops = c.f();
+                let typ = c.s();
+                let display_name = c.v();
+                let id_val = c.v();
+                let is_player = c.b();
+                let on_same_team = c.b();
+                let allied_with = c.b();
+                let is_traitor = c.b();
+                let gold = c.f();
+                let tu_stats = c.nums();
+                let tu_atk = c.nums();
+                let tu_ret = c.v();
                 GmPlayer {
                     pid,
                     sid,
@@ -810,9 +1183,25 @@ impl GameHarness {
                     name,
                     disconnect_snapshot,
                     is_disconnected,
-                    alliances,
+                    alliance_toks,
                     units,
                     unit_count,
+                    troops,
+                    typ,
+                    display_name,
+                    id_val,
+                    is_player,
+                    on_same_team,
+                    allied_with,
+                    is_traitor,
+                    gold,
+                    tu_stats,
+                    tu_atk,
+                    tu_ret,
+                    tiles,
+                    border_tiles,
+                    last_tile_change,
+                    tile_change_version,
                 }
             })
             .collect();
@@ -863,12 +1252,23 @@ impl GameHarness {
         self.cfg.spawn_immunity = c.f();
         self.cfg.nation_spawn_immunity = c.f();
         self.cfg.team_land_share = c.f();
+        self.cfg.conquer_gold_amount = c.f();
         self.ug.has_unit_nearby = c.b();
         self.ug.any_unit_nearby = c.b();
         self.ug.nearby_units = c.v();
         self.ug.circle_filter = c.b();
         self.ug.bfs_filter = c.b();
         self.swc = c.v();
+        self.sps = c.v();
+        let nat = c.f() as usize;
+        self.alliance_table = (0..nat)
+            .map(|_| GmAlliance {
+                id: c.f(),
+                created_at: c.f(),
+                req: c.f(),
+                rec: c.f(),
+            })
+            .collect();
         self.constructed = true;
         self.res.push(0.0);
     }
@@ -896,6 +1296,457 @@ impl GameHarness {
         }
         let mini = GameMap::new(mw, mh, mter, mnl);
         self.water = Some(WaterManager::new(map, mini, false));
+    }
+
+    // ------------------------------------------------------- G4b method bodies
+
+    /// `updateBorderStatus(tile)` (TS 815-826) — no traced facades.
+    fn update_border_status(&mut self, t: f64) {
+        if !self.gm().has_owner(t) {
+            return;
+        }
+        let oid = self.gm().owner_id(t);
+        let idx = match self.player_by_small_id(oid) {
+            JsVal::Num(n) if n >= 0.0 && n.fract() == 0.0 => n as usize,
+            _ => return,
+        };
+        if self.gm().is_border(t) {
+            self.players[idx].border_tiles.add(t);
+        } else {
+            self.players[idx].border_tiles.delete(t);
+        }
+    }
+
+    /// `updateBorders(tile)` (TS 807-813).
+    fn update_borders(&mut self, tile: f64) {
+        self.update_border_status(tile);
+        let (n, buf) = {
+            let m = self.gm();
+            let mut b = [0.0f64; 4];
+            let n = m.neighbors4(tile, &mut b);
+            (n, b)
+        };
+        for t in &buf[..n] {
+            self.update_border_status(*t);
+        }
+    }
+
+    /// `detachAlliance(alliance)` (TS 913-919) — identity by table index.
+    fn detach_alliance(&mut self, a: usize) {
+        let req = self.a_requestor(a);
+        let rec = self.a_recipient(a);
+        let ri = req as usize;
+        let ci = rec as usize;
+        self.players[ri].alliance_toks.retain(|x| *x != a);
+        self.players[ci].alliance_toks.retain(|x| *x != a);
+    }
+
+    /// `this.hash()` — `1 + Σ player.hash()` in `_players` order.
+    fn hash_all(&mut self) -> f64 {
+        let order: Vec<usize> = self.players_map.iter().map(|(_, i)| *i).collect();
+        let mut hash = 1.0;
+        for idx in order {
+            hash += self.p_hash(idx);
+        }
+        hash
+    }
+
+    /// `executeNextTick()` (TS 488-546).
+    fn m_execute_next_tick(&mut self) {
+        self.updates = vec![Vec::new(); UPDATE_TYPE_COUNT];
+        self.tile_updates.clear();
+        let isp = self.start_tick.is_none();
+        let ticks = self.ticks;
+        let execs_snapshot: Vec<usize> = self.execs_list.clone();
+        for e in execs_snapshot {
+            let first = if isp { self.exec_adsp(e) } else { true };
+            let act = if first { self.exec_active(e) } else { false };
+            if first && act {
+                self.exec_tick(e, ticks);
+            }
+        }
+        let uninit_snapshot: Vec<usize> = self.uninit_execs.clone();
+        let mut inited: Vec<usize> = Vec::new();
+        let mut un_inited: Vec<usize> = Vec::new();
+        for e in uninit_snapshot {
+            let cond = if !isp { true } else { self.exec_adsp(e) };
+            if cond {
+                self.exec_init(e, ticks);
+                inited.push(e);
+            } else {
+                un_inited.push(e);
+            }
+        }
+        // removeInactiveExecutions() — `execs` only, before `inited` is pushed.
+        let list = std::mem::take(&mut self.execs_list);
+        let mut kept: Vec<usize> = Vec::new();
+        for e in &list {
+            let keep = if isp {
+                !self.exec_adsp(*e) || self.exec_active(*e)
+            } else {
+                self.exec_active(*e)
+            };
+            if keep {
+                kept.push(*e);
+            }
+        }
+        self.execs_list = kept;
+        self.execs_list.extend(inited);
+        self.uninit_execs = un_inited;
+
+        let order: Vec<usize> = self.players_map.iter().map(|(_, i)| *i).collect();
+        for idx in order {
+            if self.p_alive(idx) && self.p_spawned(idx) {
+                let nt = self.p_num_tiles(idx);
+                let tr = self.p_troops(idx);
+                let al = self.p_alliance_toks(idx).len() as f64;
+                self.stats_record_tick_sample(idx, nt, tr, al);
+            }
+            let upd = self.p_to_update(idx);
+            if !matches!(upd, JsVal::Null) {
+                self.add_update(upd);
+            }
+        }
+        if self.ticks % 10.0 == 0.0 {
+            let h = self.hash_all();
+            self.add_update(JsVal::Obj(vec![
+                ("type".to_string(), JsVal::Num(UPD_HASH)),
+                ("tick".to_string(), JsVal::Num(self.ticks)),
+                ("hash".to_string(), JsVal::Num(h)),
+            ]));
+        }
+        let changed = self.water.as_mut().expect("map built").tick(self.ticks);
+        for t in changed {
+            self.record_tile_update(t);
+        }
+        self.ticks += 1.0;
+    }
+
+    /// `conquer(owner, tile)` (TS 759-782).
+    fn m_conquer(&mut self, c: &mut C) {
+        let pidx = c.f() as usize;
+        let tile = c.f();
+        if !self.gm().is_land(tile) {
+            push_err(&mut self.res, "cannot conquer water");
+            return;
+        }
+        if self.gm().is_impassable(tile) {
+            push_err(&mut self.res, "cannot conquer impassable terrain");
+            return;
+        }
+        let oid = self.gm().owner_id(tile);
+        let potok = match self.player_by_small_id(oid) {
+            JsVal::Num(n) => n,
+            _ => -1.0,
+        };
+        if potok == -1.0 {
+            push_err(
+                &mut self.res,
+                "Cannot read properties of undefined (reading 'isPlayer')",
+            );
+            return;
+        }
+        let isp = self.p_is_player_tok(potok);
+        if isp {
+            let i = potok as usize;
+            self.players[i].last_tile_change = self.ticks;
+            self.players[i].tile_change_version += 1.0;
+            self.players[i].tiles.delete(tile);
+            self.players[i].border_tiles.delete(tile);
+        }
+        self.territory_version += 1.0;
+        let sid = self.p_small_id(pidx);
+        self.gm_mut().set_owner_id(tile, sid);
+        self.players[pidx].tiles.add(tile);
+        self.players[pidx].last_tile_change = self.ticks;
+        self.players[pidx].tile_change_version += 1.0;
+        self.update_borders(tile);
+        self.gm_mut().set_fallout(tile, false);
+        self.record_tile_update(tile);
+        push_ok_undef(&mut self.res);
+    }
+
+    /// `relinquish(tile)` (TS 783-802).
+    fn m_relinquish(&mut self, c: &mut C) {
+        let tile = c.f();
+        if !self.gm().has_owner(tile) {
+            push_err(&mut self.res, "Cannot relinquish tile because it is unowned");
+            return;
+        }
+        if self.gm().is_water(tile) {
+            push_err(&mut self.res, "Cannot relinquish water");
+            return;
+        }
+        let oid = self.gm().owner_id(tile);
+        let idx = match self.player_by_small_id(oid) {
+            JsVal::Num(n) if n >= 0.0 && n.fract() == 0.0 => n as usize,
+            _ => {
+                push_err(
+                    &mut self.res,
+                    "Cannot set properties of undefined (setting '_lastTileChange')",
+                );
+                return;
+            }
+        };
+        self.players[idx].last_tile_change = self.ticks;
+        self.players[idx].tile_change_version += 1.0;
+        self.players[idx].tiles.delete(tile);
+        self.players[idx].border_tiles.delete(tile);
+        self.territory_version += 1.0;
+        self.gm_mut().set_owner_id(tile, 0.0);
+        self.update_borders(tile);
+        self.record_tile_update(tile);
+        push_ok_undef(&mut self.res);
+    }
+
+    /// `breakAlliance(breaker, alliance)` (TS 836-870).
+    fn m_break_alliance(&mut self, c: &mut C) {
+        let b = c.f() as usize;
+        let a = c.f() as usize;
+        let req = self.a_requestor(a);
+        let other = if req == b as f64 {
+            self.a_recipient(a)
+        } else {
+            self.a_requestor(a)
+        };
+        if !self.p_is_allied_with(b, other) {
+            push_err(
+                &mut self.res,
+                "[object Object] not allied with [object Object], cannot break alliance",
+            );
+            return;
+        }
+        let oidx = other as usize;
+        let dur = self.ticks - self.a_created_at(a);
+        let mut cond = !self.p_is_traitor(oidx);
+        if cond {
+            cond = !self.p_is_disconnected(oidx);
+        }
+        if cond {
+            self.p_mark_traitor(b);
+            self.stats_alliance_ended(
+                oidx,
+                dur,
+                &JsVal::Str("brokenByOther".to_string()),
+            );
+        } else {
+            self.stats_alliance_ended(oidx, dur, &JsVal::Null);
+        }
+        self.stats_alliance_ended(b, dur, &JsVal::Null);
+        self.detach_alliance(a);
+        let tsid = self.p_small_id(b);
+        let bsid = self.p_small_id(oidx);
+        let aid = self.a_id(a);
+        self.add_update(JsVal::Obj(vec![
+            ("type".to_string(), JsVal::Num(UPD_BROKE_ALLIANCE)),
+            ("traitorID".to_string(), JsVal::Num(tsid)),
+            ("betrayedID".to_string(), JsVal::Num(bsid)),
+            ("allianceID".to_string(), JsVal::Num(aid)),
+        ]));
+        push_ok_undef(&mut self.res);
+    }
+
+    /// `expireAlliance(alliance)` (TS 872-893).
+    fn m_expire_alliance(&mut self, c: &mut C) {
+        let a = c.f() as usize;
+        let rec = self.a_recipient(a);
+        let p1set = self.p_alliance_toks(rec as usize);
+        let req = self.a_requestor(a);
+        let req_toks = self.p_alliance_toks(req as usize);
+        let filtered: Vec<usize> = req_toks
+            .iter()
+            .copied()
+            .filter(|x| p1set.contains(x))
+            .collect();
+        if filtered.len() != 1 {
+            push_err(
+                &mut self.res,
+                &format!(
+                    "cannot expire alliance: must have exactly one alliance, have {}",
+                    filtered.len()
+                ),
+            );
+            return;
+        }
+        let expiring = filtered[0];
+        let dur = self.ticks - self.a_created_at(expiring);
+        let er = self.a_requestor(expiring);
+        self.stats_alliance_ended(er as usize, dur, &JsVal::Str("expired".to_string()));
+        let ec = self.a_recipient(expiring);
+        self.stats_alliance_ended(ec as usize, dur, &JsVal::Str("expired".to_string()));
+        self.detach_alliance(expiring);
+        let r2 = self.a_requestor(a);
+        let s1 = self.p_small_id(r2 as usize);
+        let c2 = self.a_recipient(a);
+        let s2 = self.p_small_id(c2 as usize);
+        self.add_update(JsVal::Obj(vec![
+            ("type".to_string(), JsVal::Num(UPD_ALLIANCE_EXPIRED)),
+            ("player1ID".to_string(), JsVal::Num(s1)),
+            ("player2ID".to_string(), JsVal::Num(s2)),
+        ]));
+        push_ok_undef(&mut self.res);
+    }
+
+    /// `removeAlliancesByPlayerSilently(player)` (TS 895-911).
+    fn m_remove_alliances_by_player_silently(&mut self, c: &mut C) {
+        let p = c.f() as usize;
+        let snapshot: Vec<usize> = self.players[p].alliance_toks.clone();
+        for a in snapshot {
+            let dur = self.ticks - self.a_created_at(a);
+            let rq = self.a_requestor(a);
+            self.stats_alliance_ended(rq as usize, dur, &JsVal::Null);
+            let rc = self.a_recipient(a);
+            self.stats_alliance_ended(rc as usize, dur, &JsVal::Null);
+            self.detach_alliance(a);
+        }
+        push_ok_undef(&mut self.res);
+    }
+
+    /// `conquerPlayer(conqueror, conquered)` (TS 1371-1452).
+    fn m_conquer_player(&mut self, c: &mut C) {
+        let conq = c.f() as usize;
+        let conned = c.f() as usize;
+        let disc = self.p_is_disconnected(conned);
+        let mut same = false;
+        if disc {
+            same = self.p_is_on_same_team(conq, conned as f64);
+        }
+        if disc && same {
+            let units = self.p_units(conned);
+            let mut ships: Vec<usize> = Vec::new();
+            for u in units {
+                let t = self.u_type(u);
+                let mut is = t == "Warship";
+                if !is {
+                    is = self.u_type(u) == "Transport";
+                }
+                if is {
+                    ships.push(u);
+                }
+            }
+            for s in ships {
+                self.p_capture_unit(conq, s);
+            }
+        }
+        let stats = self.stats_get_player_stats(conned);
+        let attacks_sent = match val_field(&stats, "attacks") {
+            Some(JsVal::Arr(a)) => match a.first() {
+                Some(JsVal::Num(n)) => *n,
+                _ => 0.0,
+            },
+            _ => 0.0,
+        };
+        let mut skip = attacks_sent == 0.0;
+        if skip {
+            skip = self.p_type(conned) == "HUMAN";
+        }
+        let gold = if skip { 0.0 } else { self.p_gold(conned) };
+        let gold_captured = if skip {
+            0.0
+        } else {
+            self.cfg_conquer_gold_amount(conned)
+        };
+        if skip {
+            let cid = self.p_id(conq);
+            let dn = self.p_display_name(conned);
+            let fid = self.p_id(conned);
+            let params = JsVal::Obj(vec![("name".to_string(), dn)]);
+            self.display_message(
+                "events_display.conquered_no_gold".to_string(),
+                JsVal::Num(3.0),
+                cid,
+                JsVal::Undef,
+                params,
+                JsVal::Undef,
+                fid,
+            );
+        } else {
+            let cid = self.p_id(conq);
+            let dn = self.p_display_name(conned);
+            let gold_str = JsVal::Str(render_number(gold_captured, 0.0, 0.0));
+            let fid = self.p_id(conned);
+            let params = JsVal::Obj(vec![
+                ("gold".to_string(), gold_str),
+                ("name".to_string(), dn),
+            ]);
+            self.display_message(
+                "events_display.received_gold_from_conquest".to_string(),
+                JsVal::Num(3.0),
+                cid,
+                JsVal::Num(gold),
+                params,
+                JsVal::Undef,
+                fid,
+            );
+            self.p_add_gold(conq, gold_captured);
+            self.p_remove_gold(conned, gold);
+            self.stats_gold_war(conq, conned, gold_captured);
+        }
+        let tick = self.ticks;
+        self.stats_record_kill(conq, conned, tick);
+        let cid2 = self.p_client_id(conq);
+        self.stats_record_killed_by(conned, &cid2);
+        let order: Vec<usize> = self.players_map.iter().map(|(_, i)| *i).collect();
+        let mut alive: Vec<usize> = Vec::new();
+        for idx in order {
+            if self.p_alive(idx) {
+                alive.push(idx);
+            }
+        }
+        let mut cnt = 0.0;
+        for idx in alive {
+            if idx != conned && self.p_type(idx) != "BOT" {
+                cnt += 1.0;
+            }
+        }
+        self.stats_record_death_position(conned, cnt + 1.0);
+        let cid3 = self.p_id(conq);
+        let cid4 = self.p_id(conned);
+        // In the skip branch `goldCaptured` is the TS literal `0n` (a bigint).
+        // The dump codec's `gfaNorm` has no bigint branch, so it treats it as a
+        // keyless object -> `[6, 0]`; Rust mirrors that exact leaf.
+        let gold_field = if skip {
+            JsVal::Obj(Vec::new())
+        } else {
+            JsVal::Num(gold_captured)
+        };
+        self.add_update(JsVal::Obj(vec![
+            ("type".to_string(), JsVal::Num(UPD_CONQUEST)),
+            ("conquerorId".to_string(), cid3),
+            ("conqueredId".to_string(), cid4),
+            ("gold".to_string(), gold_field),
+        ]));
+        push_ok_undef(&mut self.res);
+    }
+
+    /// `dumpPlayer` (harness observation, mid 310): a flat `gmNorm`-encoded
+    /// token array `[pid, nTiles, ..tiles, nBorder, ..border, lastTileChange,
+    /// tileChangeVersion, nAll, (id,createdAt)*]`, wrapped as an array.
+    fn dump_player(&mut self, idx: usize) {
+        let mut parts: Vec<f64> = Vec::new();
+        {
+            let leaf = |v: f64, out: &mut Vec<f64>| norm_val(&JsVal::Num(v), out);
+            leaf(self.players[idx].pid, &mut parts);
+            let tiles = self.players[idx].tiles.collect_values();
+            leaf(tiles.len() as f64, &mut parts);
+            for t in tiles {
+                leaf(t, &mut parts);
+            }
+            let border = self.players[idx].border_tiles.collect_values();
+            leaf(border.len() as f64, &mut parts);
+            for t in border {
+                leaf(t, &mut parts);
+            }
+            leaf(self.players[idx].last_tile_change, &mut parts);
+            leaf(self.players[idx].tile_change_version, &mut parts);
+            let toks = self.players[idx].alliance_toks.clone();
+            leaf(toks.len() as f64, &mut parts);
+            for t in toks {
+                leaf(self.alliance_table[t].id, &mut parts);
+                leaf(self.alliance_table[t].created_at, &mut parts);
+            }
+        }
+        push_arr_nums(&mut self.res, &parts);
     }
 
     // ---------------------------------------------------------------- dispatch
@@ -1624,6 +2475,35 @@ impl GameHarness {
                 let pidx = c.f() as usize;
                 let v = self.swc_get(pidx);
                 push_ok_val(&mut self.res, &v);
+            }
+            300 => {
+                self.m_execute_next_tick();
+                push_ok_num(&mut self.res, 0.0);
+            }
+            301 => self.m_conquer(&mut c),
+            302 => self.m_relinquish(&mut c),
+            303 => {
+                let tile = c.f();
+                self.update_borders(tile);
+                push_ok_undef(&mut self.res);
+            }
+            304 => {
+                let tile = c.f();
+                self.update_border_status(tile);
+                push_ok_undef(&mut self.res);
+            }
+            305 => self.m_break_alliance(&mut c),
+            306 => self.m_expire_alliance(&mut c),
+            307 => self.m_remove_alliances_by_player_silently(&mut c),
+            308 => {
+                let a = c.f() as usize;
+                self.detach_alliance(a);
+                push_ok_undef(&mut self.res);
+            }
+            309 => self.m_conquer_player(&mut c),
+            310 => {
+                let idx = c.f() as usize;
+                self.dump_player(idx);
             }
             900 => {
                 let v = self.dump_updates();

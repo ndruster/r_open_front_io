@@ -21858,12 +21858,24 @@ function runPL(name, ops) {
           isShore: (t) => mapEnv.map.isShore(t),
           hasOwner: (t) => mapEnv.map.hasOwner(t),
           bfs: (tile, fn) => mapEnv.map.bfs(tile, fn),
+          // G3c6: canAttack's BFS frontier scan walks `mg.neighbors(t)`.
+          neighbors: (t) => mapEnv.map.neighbors(t),
           getWaterComponent: (t) => mapEnv.wm.getWaterComponent(t),
           hasWaterComponent: (t, c) => mapEnv.wm.hasWaterComponent(t, c),
         }
       : {};
     return {
       ...mapFace,
+      // G3c6: nearby()/shoreReachableNeighbors() resolve an owner id to a
+      // Player | TerraNullius. Untraced pure read, mirroring the Rust
+      // harness's owner_ref/owner_tok model: self by smallID, 0 -> TerraNullius,
+      // else the matching mock (an unknown pid yields undefined, which crosses
+      // as the -1 token sentinel).
+      playerBySmallID: (id) =>
+        id === pl.smallID() ? pl : id === 0 ? TN_OBJ : mocks.find((p) => p.id() === id),
+      // G3c6: the nearby() memo's territory key. A constant keeps every call a
+      // recompute — observation-equivalent to the Rust side's no-memo recompute.
+      territoryVersion: () => 0,
       allianceRequests: (m.allianceRequests ?? []).map(([r, c]) => ({
         requestor: () => mocks[r],
         recipient: () => mocks[c],
@@ -22087,7 +22099,9 @@ function runPL(name, ops) {
   // queue push] -> 101 (one 151 health read inside the fixed-key-order shim
   // update). dynamicSamRange is deliberately omitted (the real UnitImpl
   // would read config().dynamicSamRange, which the harness does not model).
-  const mkUnitMock = ([typ, id, ownerSid, level, uc, active, cooldown, tile, mfd, hash]) => {
+  const mkUnitMock = ([typ, id, ownerSidInit, level, uc, active, cooldown, tile, mfd, hash]) => {
+    // G3c6: captureUnit() success flips the unit's owner through setOwner.
+    let ownerSid = ownerSidInit;
     const u = {
       level,
       uc: !!uc,
@@ -22144,6 +22158,12 @@ function runPL(name, ops) {
       hash: () => {
         curTr.push(131, hash);
         return hash;
+      },
+      // G3c6: captureUnit()'s success path (event 160); the ownership flips so
+      // later unitsOwned()/units() reads see the new owner.
+      setOwner: (p) => {
+        curTr.push(160);
+        ownerSid = p.smallID();
       },
       increaseLevel: () => {
         if (typ === "SAM Launcher") mgObj.ticks();
@@ -22319,18 +22339,28 @@ function runPL(name, ops) {
         // increaseLevel shim (mkUnitMock).
         pl._units = units10.map(mkUnitMock);
         const mkAtk = ([att, tgt, troops, id, ret]) => {
-          const m = { tr: troops, rt: !!ret };
+          const m = { tr: troops, rt: !!ret, ex: false };
           return {
             attacker: () => mocks[att],
             target: () => mocks[tgt],
             troops: () => m.tr,
             id: () => id,
             retreating: () => m.rt,
+            retreated: () => m.ex,
             setTroops: (v) => {
               m.tr = v;
             },
             setRetreating: (v) => {
               m.rt = !!v;
+            },
+            // G3c6: PlayerImpl.orderRetreat/executeRetreat delegate here.
+            orderRetreat: () => {
+              curTr.push(158);
+              m.rt = true;
+            },
+            executeRetreat: () => {
+              curTr.push(159);
+              m.ex = true;
             },
           };
         };
@@ -22379,6 +22409,13 @@ function runPL(name, ops) {
         // canUpgradeUnit(idx) / upgradeUnit(idx) / warshipSpawn(tile) /
         // landBasedUnitSpawn(tile) / tradeShipSpawn(tile)
         for (const x of rest) args.push(uenc(x));
+      } else if (mid === 132 || mid === 133) {
+        // orderRetreat(id) / executeRetreat(id)
+        args.push(...encS(rest[0]));
+      } else if (mid === 130 || mid === 134 || mid === 135 || mid === 136) {
+        // sharesBorderWith(sid) / captureUnit(idx) / canAttack(tile) /
+        // bestTransportShipSpawn(tile)
+        args.push(uenc(rest[0]));
       } else {
         for (const x of rest) args.push(...plEnc(x));
       }
@@ -22556,6 +22593,14 @@ function runPL(name, ops) {
           case 127: v = pl.landBasedUnitSpawn(rest[0]); break;
           case 128: v = pl.landBasedStructureSpawn(rest[0], rest[1] ?? null); break;
           case 129: v = pl.tradeShipSpawn(rest[0]); break;
+          // G3c6: the remaining PlayerImpl surface.
+          case 130: v = pl.sharesBorderWith({ smallID: () => rest[0] }); break;
+          case 131: v = pl.nearby().map((o) => (gTok.has(o) ? gTok.get(o) : -1)); break;
+          case 132: pl.orderRetreat(rest[0]); v = undefined; break;
+          case 133: pl.executeRetreat(rest[0]); v = undefined; break;
+          case 134: pl.captureUnit(pl._units[rest[0]]); v = undefined; break;
+          case 135: v = pl.canAttack(rest[0]); break;
+          case 136: v = pl.bestTransportShipSpawn(rest[0]); break;
           default: throw new Error(`pl harness: unknown mid ${mid}`);
         }
         if (mid === 38) r = v === null ? [0, 2] : [0, 7, 2, 3, v.req, 3, v.rec];
@@ -23313,6 +23358,135 @@ runPL("pl_transport_ship", [
   [1, 123, "Transport", 10, null],
   [1, 123, "Transport", 23, null],
   [1, 123, "Transport", 21, null],
+]);
+
+// sharesBorderWith: the border-tile neighbours4 scan compared against the real
+// GameMapImpl ownerID (self / a mock pid / TerraNullius 0 / an absent id).
+runPL("pl_shares_border", [
+  [0, plPI({ id: "sb1", name: "borders", playerType: "HUMAN" }), 60, 100, null, [],
+    [0, 1, 2, 3, 4, 5, 6, 7], [3, 4, 19],
+    PL_MG({
+      sg: [0],
+      map: {
+        w: 8, h: 8, numLand: 63, terr: terr8([[63, 0x20]]),
+        mw: 8, mh: 8, mNumLand: 63, mTerr: terr8([[63, 0x20]]),
+        owners: [
+          [0, 60], [1, 60], [2, 60], [3, 60], [4, 60], [5, 60], [6, 60], [7, 60],
+          [8, 61], [9, 61], [10, 61], [11, 61], [12, 61], [13, 61], [14, 61], [15, 61],
+        ],
+      },
+    }),
+    [plP({ pid: 61 })], -1],
+  [1, 130, 60],
+  [1, 130, 61],
+  [1, 130, 0],
+  [1, 130, 99],
+]);
+
+// nearby(): the computeNearby direct-neighbour scan plus the every-10th-shore
+// shoreReachableNeighbors river probe, recomputed each call (the memo is
+// observation-equivalent).
+runPL("pl_nearby", [
+  [0, plPI({ id: "nb1", name: "nearby", playerType: "HUMAN" }), 60, 100, null, [], [0], [16, 17, 18, 19, 20, 21],
+    PL_MG({
+      sg: [0],
+      map: {
+        w: 8, h: 8, numLand: 56,
+        terr: terr8([[24, 0x20], [25, 0x20], [26, 0x20], [27, 0x20], [28, 0x20], [29, 0x20], [30, 0x20], [31, 0x20]]),
+        mw: 8, mh: 8, mNumLand: 56,
+        mTerr: terr8([[24, 0x20], [25, 0x20], [26, 0x20], [27, 0x20], [28, 0x20], [29, 0x20], [30, 0x20], [31, 0x20]]),
+        owners: [
+          [0, 60], [1, 60], [2, 60], [3, 60], [4, 60], [5, 60], [6, 60], [7, 60],
+          [8, 61], [9, 61], [10, 61], [11, 61],
+          [12, 62], [13, 62], [14, 62], [15, 62],
+          [32, 61], [33, 61], [34, 61], [35, 61],
+        ],
+      },
+    }),
+    [plP({ pid: 61 }), plP({ pid: 62 })], -1],
+  [1, 131],
+  [1, 131],
+]);
+
+// orderRetreat / executeRetreat: the _outgoingAttacks id lookup (hit -> event
+// 158/159, miss -> warn/silent, no trace).
+runPL("pl_retreat", [
+  [0, plPI({ id: "rt1", name: "retreat", playerType: "HUMAN" }), 60, 100, null, [], [], [],
+    PL_MG({ sg: [0] }),
+    [plP({ pid: 61 }), plP({ pid: 62 })], -1, [], [],
+    [[0, 1, 100, "a1", 0], [1, 0, 50, "a2", 1]], []],
+  [1, 132, "a1"],
+  [1, 133, "a2"],
+  [1, 132, "zz"],
+  [1, 133, "zz"],
+]);
+
+// captureUnit: the owner() === this throw (message embeds toString(); the POJO
+// mock unit is [object Object]) and the setOwner success flip (event 160).
+runPL("pl_capture_unit", [
+  [0, plPI({ id: "cu1", name: "capture", playerType: "HUMAN" }), 60, 100, null, [], [], [],
+    PL_MG({ sg: [0] }),
+    [plP({ pid: 61 })], -1, [],
+    [["City", 7, 61, 1, 0, 1, 0, 30, 0, 0],
+     ["City", 8, 60, 1, 0, 1, 0, 31, 0, 0]]],
+  [1, 134, 0],
+  [1, 134, 0],
+  [1, 134, 1],
+  [1, 134, 9],
+]);
+
+// canAttack: the mg.owner self short-circuit, the canAttackPlayer(owner) chain
+// (137 / 106), the land/impassable gates, sharesBorderWith, and the bounded
+// BFS frontier scan over mg.neighbors.
+runPL("pl_can_attack", [
+  [0, plPI({ id: "ca1", name: "attack", playerType: "HUMAN" }), 60, 100, null, [], [0, 1, 2, 3], [0, 1, 2, 3],
+    PL_MG({
+      sg: [0],
+      map: {
+        w: 8, h: 8, numLand: 56,
+        terr: terr8([[5, 0x9f], [48, 0x20], [49, 0x20], [50, 0x20], [51, 0x20], [52, 0x20], [53, 0x20], [54, 0x20], [55, 0x20]]),
+        mw: 8, mh: 8, mNumLand: 56,
+        mTerr: terr8([[5, 0x9f], [48, 0x20], [49, 0x20], [50, 0x20], [51, 0x20], [52, 0x20], [53, 0x20], [54, 0x20], [55, 0x20]]),
+        owners: [
+          [0, 60], [1, 60], [3, 60], [5, 61],
+          [8, 61], [9, 61], [10, 61], [11, 61],
+          [32, 62], [33, 62],
+        ],
+      },
+    }),
+    [plP({ pid: 61, team: ["Red"], immune: [0], disc: [0] }), plP({ pid: 62, team: ["Red"], immune: [0], disc: [0] })], -1],
+  [1, 135, 0],
+  [1, 135, 8],
+  [1, 135, 32],
+  [1, 135, 5],
+  [1, 135, 4],
+  [1, 135, 63],
+  [1, 135, 48],
+]);
+
+// bestTransportShipSpawn: the bestShoreDeploymentSource ?? false alias face
+// (closestShoreByWater over the minimap water graph).
+runPL("pl_best_spawn", [
+  [0, plPI({ id: "bs1", name: "spawn", playerType: "HUMAN" }), 60, 100, null, [],
+    [2, 10, 18, 26, 34, 42, 50, 58], [2, 10, 18, 26, 34, 42, 50, 58],
+    PL_MG({
+      sg: [0],
+      map: {
+        w: 8, h: 8, numLand: 48, terr: tsTerr,
+        mw: 8, mh: 8, mNumLand: 48, mTerr: tsTerr,
+        owners: [
+          [0, 60], [1, 60], [2, 60], [8, 60], [9, 60], [10, 60], [16, 60], [17, 60], [18, 60],
+          [24, 60], [25, 60], [26, 60], [32, 60], [33, 60], [34, 60], [40, 60], [41, 60], [42, 60],
+          [48, 60], [49, 60], [50, 60], [56, 60], [57, 60], [58, 60],
+          [5, 61], [6, 61], [13, 61], [14, 61], [21, 61], [22, 61], [29, 61], [30, 61], [37, 61],
+          [38, 61], [45, 61], [46, 61], [53, 61], [54, 61], [61, 61], [62, 61],
+        ],
+      },
+    }),
+    [plP({ pid: 61 })], -1],
+  [1, 136, 5],
+  [1, 136, 61],
+  [1, 136, 21],
 ]);
 
 // ---- pl_ scenarios end ------------------------------------------------------

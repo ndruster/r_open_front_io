@@ -261,6 +261,43 @@
 //!   `config().samRange(1)` / 156 `config().samUpgradeDuration()` (the
 //!   SAMLauncher ctor branch); 157 `mg.bumpUnitsVersion()` (side-effect only
 //!   in this scope).
+//!
+//! G3c6 closes the port out with the border / nearby / retreat / capture /
+//! canAttack / best-spawn tail (mids 130-136, facade events 158-160):
+//!
+//! * 130 `sharesBorderWith(other)` (554-567) — over the real `_borderTiles`
+//!   set, `neighbors4` (N/S/W/E) tests whether any border neighbour is owned
+//!   by `other.smallID()` (the arg is a facade-object read, so the capture
+//!   passes `{smallID: () => sid}`).
+//! * 131 `nearby()` (587-606, incl. computeNearby 608-632 and
+//!   shoreReachableNeighbors 637-677) — the deduped owner list in insertion
+//!   order. computeNearby walks every border's neighbours (land, not
+//!   impassable, `!(no-owner && fallout)`, owner != smallID); then the shore
+//!   pass takes every 10th shore border tile (`shore_idx % 10 == 0`) and
+//!   samples the four N/S/W/E directions (`SHORE_DIRECTIONS_DX/DY`), probing
+//!   5 tiles outward for land. The (tileChangeVersion × territoryVersion)
+//!   memo is observationally equivalent to a recompute (the capture scripts
+//!   `territoryVersion === 0`), so the port recomputes. Owners map to tokens:
+//!   unknown pid / TN -> -1 sentinel.
+//! * 132/133 `orderRetreat(id)` / `executeRetreat(id)` (688-703) — find the
+//!   outgoing attack by id; a hit fires 158 / 159 (orderRetreat also sets
+//!   `retreating`), a miss is a silent no-op (return undefined).
+//! * 134 `captureUnit(unit)` (1361-1366) — self-owned unit -> throw
+//!   `Cannot capture unit, <pl.toString()> already owns [object Object]`
+//!   (the mock is a POJO, so `${unit}` stringifies to `[object Object]`);
+//!   else 160 `unit.setOwner(this)` flips the mock owner and the real
+//!   `_units[idx]` owner.
+//! * 135 `canAttack(tile)` (1904-1935) — self-tile -> false; the enemy
+//!   `isPlayer` / `canAttackPlayer` gates; then `!isLand || isImpassable ->
+//!   false`, `hasOwner -> sharesBorderWith`, else a `bfs` over ownerless
+//!   land (`manhattanDistFN(tile, 200)`) whose frontier `neighbors` are
+//!   tested for self ownership.
+//! * 136 `bestTransportShipSpawn(tile)` (1937-1939) — delegates to
+//!   [`crate::transport_ship_utils::best_shore_deployment_source`].
+//!
+//! * 158 `attack.orderRetreat()` / 159 `attack.executeRetreat()` (the attack
+//!   mock, traced only on an id hit) and 160 `unit.setOwner(this)` (the unit
+//!   mock) are the new mock-facade events.
 
 use crate::game_update_utils::{
     diff_changed_indices, diff_player_update, pack_attack_troop_deltas, Arr, AttackUpdate,
@@ -276,6 +313,11 @@ const MAX_SAFE: i64 = 9_007_199_254_740_991;
 const MIX_ERR: &str = "Cannot mix BigInt and other types, use explicit conversions";
 /// `DECAY_CUE_GRACE_TICKS` (PlayerImpl.ts:71).
 const DECAY_CUE_GRACE_TICKS: f64 = 30.0;
+
+/// `SHORE_DIRECTIONS_DX` / `SHORE_DIRECTIONS_DY` (PlayerImpl.ts:104-105) — the
+/// N, S, W, E sampling directions `shoreReachableNeighbors()` walks.
+const SHORE_DIRECTIONS_DX: [f64; 4] = [0.0, 0.0, -1.0, 1.0];
+const SHORE_DIRECTIONS_DY: [f64; 4] = [-1.0, 1.0, 0.0, 0.0];
 
 /// FIFO script consumption with the capture's exhausted-repeat rule (the
 /// `ui_` rule; event codes 100-106 are documented above).
@@ -551,6 +593,14 @@ fn mid_property(mid: u8) -> &'static str {
         115 => "toUpdate",
         116 => "troops",
         117 => "retreating",
+        // G3c6: the remaining PlayerImpl surface.
+        130 => "sharesBorderWith",
+        131 => "nearby",
+        132 => "orderRetreat",
+        133 => "executeRetreat",
+        134 => "captureUnit",
+        135 => "canAttack",
+        136 => "bestTransportShipSpawn",
         _ => "unknown",
     }
 }
@@ -2612,6 +2662,224 @@ impl PlayerHarness {
         tr.push(131.0);
         tr.push(h);
         h
+    }
+
+    // --- G3c6: the remaining PlayerImpl surface ---
+
+    /// `sharesBorderWith(other)` (554-567): each of `this._borderTiles` in
+    /// insertion order, its four cardinal neighbours (N/S/W/E) compared by
+    /// `map.ownerID(n) === other.smallID()`. The argument crosses as the
+    /// other's smallID (TerraNullius is 0; mocks are their pids) — the only
+    /// facet `sharesBorderWith` reads.
+    fn shares_border_with(&mut self, other_sid: f64) -> bool {
+        let borders = self.border_vec();
+        let map = self.map();
+        let mut buf = [0.0f64; 4];
+        for &b in &borders {
+            let n = map.neighbors4(b, &mut buf);
+            for slot in buf.iter().take(n) {
+                if map.owner_id(*slot) == other_sid {
+                    return true;
+                }
+            }
+        }
+        false
+    }
+
+    /// `nearby()` (587-606) + `computeNearby()` (608-632) +
+    /// `shoreReachableNeighbors()` (637-677), recomputed each call — the
+    /// `(territoryVersion, waterVersion)` memo is observation-equivalent (a
+    /// hit returns `result.slice()`, the same contents and order a recompute
+    /// produces). Returns the neighbour tokens: `-1` for TerraNullius (and any
+    /// owner pid with no matching mock, mirroring `playerBySmallID` yielding
+    /// `undefined`), else the mock token.
+    fn nearby(&mut self) -> Vec<f64> {
+        let small_id = self.p.small_id;
+        let mut ns: Vec<OwnerRef> = Vec::new();
+        let push = |ns: &mut Vec<OwnerRef>, owner: f64| {
+            let r = if owner == 0.0 {
+                OwnerRef::TN
+            } else {
+                OwnerRef::Mock(owner)
+            };
+            if !ns.contains(&r) {
+                ns.push(r);
+            }
+        };
+
+        // computeNearby: the direct neighbours loop (N/S/W/E per border tile).
+        let borders = self.border_vec();
+        {
+            let map = self.map();
+            for &b in &borders {
+                map.for_each_neighbor(b, |n| {
+                    if map.is_land(n) && !map.is_impassable(n) {
+                        if !map.has_owner(n) && map.has_fallout(n) {
+                            return;
+                        }
+                        let owner = map.owner_id(n);
+                        if owner != small_id {
+                            push(&mut ns, owner);
+                        }
+                    }
+                });
+            }
+        }
+
+        // shoreReachableNeighbors: every 10th shore border tile, 5 tiles out
+        // in each cardinal direction that immediately enters water.
+        let borders = self.border_vec();
+        {
+            let map = self.map();
+            let mut shore_idx = 0i64;
+            for &b in &borders {
+                if !map.is_shore(b) {
+                    continue;
+                }
+                if shore_idx % 10 != 0 {
+                    shore_idx += 1;
+                    continue;
+                }
+                shore_idx += 1;
+                let bx = map.x(b);
+                let by = map.y(b);
+                for d in 0..4 {
+                    let dx = SHORE_DIRECTIONS_DX[d];
+                    let dy = SHORE_DIRECTIONS_DY[d];
+                    let x1 = bx + dx;
+                    let y1 = by + dy;
+                    if !map.is_valid_coord(x1, y1) || !map.is_water(map.tile_ref(x1, y1)) {
+                        continue;
+                    }
+                    let nx = bx + dx * 5.0;
+                    let ny = by + dy * 5.0;
+                    if !map.is_valid_coord(nx, ny) {
+                        continue;
+                    }
+                    let tile = map.tile_ref(nx, ny);
+                    if !map.is_land(tile) || map.is_impassable(tile) {
+                        continue;
+                    }
+                    if !map.has_owner(tile) && map.has_fallout(tile) {
+                        continue;
+                    }
+                    let owner = map.owner_id(tile);
+                    if owner != small_id {
+                        push(&mut ns, owner);
+                    }
+                }
+            }
+        }
+
+        ns.iter()
+            .map(|r| match r {
+                OwnerRef::Mock(pid) => self.owner_tok(*pid).map_or(-1.0, |t| t as f64),
+                OwnerRef::TN => -1.0,
+                OwnerRef::SelfP => self.self_tok.map_or(-1.0, |t| t as f64),
+            })
+            .collect()
+    }
+
+    /// `orderRetreat(id)` (688-695): the `_outgoingAttacks` lookup by `id()`
+    /// (untraced identity reads) then `attack.orderRetreat()` (event 158). A
+    /// miss only `console.warn`s — an off-trace side channel, so nothing is
+    /// emitted.
+    fn order_retreat(&mut self, tr: &mut Vec<f64>, id: &str) {
+        if let Some(a) = self.p.out_attacks.iter_mut().find(|a| a.id == id) {
+            a.ret = true;
+            tr.push(158.0);
+        }
+    }
+
+    /// `executeRetreat(id)` (696-703): the same lookup then
+    /// `attack.executeRetreat()` (event 159). A miss silently returns.
+    fn execute_retreat(&mut self, tr: &mut Vec<f64>, id: &str) {
+        if self.p.out_attacks.iter().any(|a| a.id == id) {
+            tr.push(159.0);
+        }
+    }
+
+    /// `captureUnit(unit)` (1361-1366): `unit.owner() === this` throws (the
+    /// message embeds `this.toString()`; the mock unit is a POJO so `${unit}`
+    /// is `[object Object]`), else `unit.setOwner(this)` (event 160) and the
+    /// mock's ownership flips to `this`.
+    fn capture_unit(&mut self, tr: &mut Vec<f64>, idx: usize) -> Result<(), String> {
+        let owner_sid = self
+            .p
+            .units
+            .get(idx)
+            .ok_or_else(|| "Cannot read properties of undefined (reading 'owner')".to_string())?
+            .owner_sid;
+        if owner_sid == self.p.small_id {
+            return Err(format!(
+                "Cannot capture unit, {} already owns [object Object]",
+                self.player_to_string()
+            ));
+        }
+        tr.push(160.0);
+        self.p.units[idx].owner_sid = self.p.small_id;
+        Ok(())
+    }
+
+    /// `canAttack(tile)` (1904-1935): `mg.owner(tile)` (untraced — the real
+    /// ownerID), the self short-circuit, `owner.isPlayer() &&
+    /// canAttackPlayer(owner)` (137 / 105 / 106 facades), the
+    /// land/impassable gates, then either `sharesBorderWith(owner)` or the
+    /// bounded BFS (`andFN(landFilter, manhattanDistFN(tile, 200))`) whose
+    /// tiles must neighbour one owned by `this`.
+    fn can_attack(&mut self, tr: &mut Vec<f64>, tile: f64) -> Result<bool, String> {
+        let owner = self.owner_ref(tile);
+        if owner == OwnerRef::SelfP {
+            return Ok(false);
+        }
+        if owner.is_player() {
+            let tok = self.owner_tok(owner.small_id()).ok_or_else(|| {
+                "Cannot read properties of undefined (reading 'isPlayer')".to_string()
+            })?;
+            if !self.can_attack_player(tr, tok, false)? {
+                return Ok(false);
+            }
+        }
+        if !self.mg_is_land(tile) || self.mg_is_impassable(tile) {
+            return Ok(false);
+        }
+        if self.mg_has_owner(tile) {
+            return Ok(self.shares_border_with(owner.small_id()));
+        }
+        let small_id = self.p.small_id;
+        let mut found = false;
+        {
+            let map = self.map();
+            let reach = map.bfs(tile, &|gm: &GameMap, t: f64| {
+                !gm.has_owner(t)
+                    && gm.is_land(t)
+                    && !gm.is_impassable(t)
+                    && crate::game_map::manhattan_dist_fn(gm, tile, 200.0, false, t)
+            });
+            'outer: for &t in &reach {
+                for n in map.neighbors(t) {
+                    if map.owner_id(n) == small_id {
+                        found = true;
+                        break 'outer;
+                    }
+                }
+            }
+        }
+        Ok(found)
+    }
+
+    /// `bestTransportShipSpawn(targetTile)` (1937-1939) — the
+    /// `bestShoreDeploymentSource(this.mg, this, targetTile) ?? false`
+    /// alias face.
+    fn best_transport_ship_spawn(&mut self, tile: f64) -> Option<f64> {
+        let border = self.border_vec();
+        let tile_version = self.p.tile_change_version;
+        crate::transport_ship_utils::best_shore_deployment_source(
+            self.spatial(),
+            &border,
+            tile_version,
+            tile,
+        )
     }
 
     // --- identity helpers ---
@@ -5308,6 +5576,46 @@ impl PlayerHarness {
                             Ok(Some(t)) => push_ok_num(&mut out, t),
                             Ok(None) => push_ok_bool(&mut out, false),
                             Err(m) => push_err(&mut out, &m),
+                        }
+                    }
+                    // ---- G3c6: the remaining PlayerImpl surface ----
+                    130 => {
+                        let other_sid = c.f();
+                        push_ok_bool(&mut out, self.shares_border_with(other_sid));
+                    }
+                    131 => {
+                        let tokens: Vec<JsVal> = self.nearby().into_iter().map(JsVal::Num).collect();
+                        push_ok(&mut out, &JsVal::Arr(tokens));
+                    }
+                    132 => {
+                        let id = c.s();
+                        self.order_retreat(&mut tr, &id);
+                        push_ok(&mut out, &JsVal::Undef);
+                    }
+                    133 => {
+                        let id = c.s();
+                        self.execute_retreat(&mut tr, &id);
+                        push_ok(&mut out, &JsVal::Undef);
+                    }
+                    134 => {
+                        let idx = c.u();
+                        match self.capture_unit(&mut tr, idx) {
+                            Ok(()) => push_ok(&mut out, &JsVal::Undef),
+                            Err(m) => push_err(&mut out, &m),
+                        }
+                    }
+                    135 => {
+                        let tile = c.f();
+                        match self.can_attack(&mut tr, tile) {
+                            Ok(b) => push_ok_bool(&mut out, b),
+                            Err(m) => push_err(&mut out, &m),
+                        }
+                    }
+                    136 => {
+                        let tile = c.f();
+                        match self.best_transport_ship_spawn(tile) {
+                            Some(t) => push_ok_num(&mut out, t),
+                            None => push_ok_bool(&mut out, false),
                         }
                     }
                     k => unreachable!("player harness: unknown method id {k}"),

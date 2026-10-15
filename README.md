@@ -2317,14 +2317,15 @@ WebSockets — stays excluded, mirroring the `src/core` exclusions).
     expired-alliances / allies cluster + G3c3: the player-to-player social
     surface — alliance-request mgmt, relations, targets, emoji/quickchat,
     donations, deleteUnit, embargo + G3c4: the units-memo / toUpdate / misc
-    cluster + G3c5: the build / upgrade / spawn family). The harness
+    cluster + G3c5: the build / upgrade / spawn family + G3c6: the border /
+    nearby / retreat / capture / canAttack / best-spawn tail). The harness
     replicates the
     slice's private field block 1:1 and runs the ctor and every method as a
     `kind` of `PlayerHarness::run_op` over the `js_json` codec (precedent
     `unit_impl` / `attack_impl`). The `mg` (GameImpl) surface and the other
     players are scripted facades whose every call rides a flat trace (G3c1
     segment 100-106, G3c2 adds 107-108, G3c3 adds 109-130, G3c4 adds
-    131-138, G3c5 adds 139-157): `100 config().startingGold` (the scripted f64 crosses
+    131-138, G3c5 adds 139-157, G3c6 adds 158-160): `100 config().startingGold` (the scripted f64 crosses
     `BigInt(v)` BEFORE the trace push — a non-integer throws first), `101
     mg.addUpdate` (full codec dump), `102 mg.ticks`, `103 mg.teamTilesOwned`
     (the team arg crosses in the trace), `104 mg.totalLandTiles`, `105
@@ -2494,7 +2495,22 @@ WebSockets — stays excluded, mirroring the `src/core` exclusions).
     `Number(Util.toInt(mh))` because plEnc's bigint→Number only applies at
     top level (a nested bigint falls into the codec's empty-object branch);
     the map facade gains `ownerID` (SpatialQuery calls `gm.ownerID(t)` —
-    present on GameImpl, absent from the Game interface). 47 scenarios
+    present on GameImpl, absent from the Game interface). G3c6: the border /
+    nearby / retreat / capture / canAttack / best-spawn tail (mids 130-136)
+    also runs against the map block — `sharesBorderWith` walks the real
+    `_borderTiles` with `neighbors4` (the `other` arg crosses as a
+    `{smallID}` facade object), `nearby` interleaves the computeNearby
+    neighbour sweep with the every-10th shore-tile 5-outward N/S/W/E probe
+    (deduped by owner, unknown pid / TN -> `-1`), `canAttack` runs the
+    self / enemy `isPlayer`+`canAttackPlayer` gates then a `bfs` over
+    ownerless land (`manhattanDistFN(tile, 200)`) whose frontier `neighbors`
+    are tested for self ownership, and `bestTransportShipSpawn` delegates to
+    the ported `TransportShipUtils.bestShoreDeploymentSource`; the retreat
+    ops drive the attack mocks' new `orderRetreat` / `executeRetreat`
+    (158 / 159, traced only on an id hit — a miss is a silent no-op) and
+    `captureUnit` fires the unit mock's `setOwner` (160) on success, a
+    self-owned unit throwing `Cannot capture unit, <pl> already owns [object
+    Object]`. 53 scenarios
     (`pl_ctor` / NaN start /
     missing-pi / troops / gold / disconnect / no-team disconnect / team /
     team-self / friendly / alliance-gates / tiles / big-gold / traitor /
@@ -2504,9 +2520,10 @@ WebSockets — stays excluded, mirroring the `src/core` exclusions).
     embargo / embargo-all / alliance-req / alliance-info + G3c4: units-memos /
     update-full-diff / update-social / update-gold-edge / misc-small /
     units-attack-self + G3c5: build-unit / upgrade-units / buildable-rail /
-    spawn-nuke / spawn-port / spawn-warship / spawn-misc / transport-ship,
-    510 ops),
-    876,871 wasm comparisons bit-identical.
+    spawn-nuke / spawn-port / spawn-warship / spawn-misc / transport-ship +
+    G3c6: shares-border / nearby / retreat / capture-unit / can-attack /
+    best-spawn, 540 ops),
+    877,337 wasm comparisons bit-identical.
 
 Regenerate whenever a ported source changes:
 

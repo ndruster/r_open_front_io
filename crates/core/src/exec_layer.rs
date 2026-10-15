@@ -31,11 +31,17 @@
 //! * `kind 0` construct — `args` is ONE `js_json`-encoded object
 //!   `{c, a, mg, players, alliances, requests, units, neighbors}` (see the
 //!   script format below). Returns `[0, 0]` (trace length 0, then the `0`
-//!   marker): no ctor makes a facade call.
+//!   marker): no ctor trace is kept. Class `31` (`TribeSpawner`) is the sole
+//!   ctor that reads the facade — its `gameMap` / per-cell `isValidCoord` /
+//!   `ref` events are replayed into a scratch buffer so the script cursors
+//!   advance exactly as in the capture.
 //! * `kind 1` `init(ticks)` — `args = [ticks]`.
 //! * `kind 2` `tick(ticks)` — `args = [ticks]`.
 //! * `kind 3` `isActive()` — `args = []`.
 //! * `kind 4` `activeDuringSpawnPhase()` — `args = []`.
+//! * `kind 5` `TribeSpawner.spawnTribes(numTribes, purchasedNames)` —
+//!   `args = [numTribes, nameCount, (len, c0, c1, ...)*nameCount]` (a flat
+//!   list; class `31` only).
 //!
 //! Method ops return `[traceLen, (trace)*, payload]` where `payload` is
 //! `[0, ...encVal(ret)]` on success or `[1, ...encS(errMessage)]` for a thrown
@@ -60,6 +66,11 @@
 //! G5d appends `25` WinCheck, `26` Shell, `27` SAMMissile, `28` Port,
 //! `29` Construction (`WinCheckExecution`, `ShellExecution`,
 //! `SAMMissileExecution`, `PortExecution`, `ConstructionExecution`).
+//!
+//! G5e appends `30` DoomsdayClock, `31` TribeSpawner, `32` Spawn
+//! (`DoomsdayClockExecution` + its module-local `LowestN` helper, `TribeSpawner`,
+//! `SpawnExecution`). Class `31` is NOT an `Execution`: only op kinds `0`
+//! (construct) and `5` (`spawnTribes`) apply to it (kinds 1..4 unreachable).
 //!
 //! # G5b facade additions (codes ≥ 300)
 //!
@@ -273,6 +284,31 @@
 //! `24` 544 `setReachedTarget()`, `25` 545 `move(node)`, `26` 546
 //! `setUnderConstruction(flag)`, `27` 547 `setTargetedBySAM(flag)`.
 //!
+//! ## G5e facade additions
+//!
+//! `mg` slots 60..78: `60` 600 `getWinner()`, `61` 601
+//! `config().doomsdayClockConfig()` (the 15-key cfg object), `62` 602
+//! `setFallout(tile, fallout)`, `63` 603 `x(tile)`, `64` 604 `y(tile)`,
+//! `65` 605 `addPlayer(playerInfo)`, `66` 606 `config().isRandomSpawn()` (BOOL),
+//! `67` 607 `hasOwner(tile)` (BOOL), `68` 608 `isBorder(tile)` (BOOL),
+//! `69` 609 `ref(x, y)`, `70` 610 `width()`, `71` 611 `height()`, `72` 612
+//! `config().minDistanceBetweenPlayers()`, `73` 613 `teamSpawnArea(team)`,
+//! `74` 614 `config().gameConfig().gameMap`, `75` 615
+//! `config().gameConfig().gameMapSize`, `76` 616 `isValidCoord(x, y)` (BOOL),
+//! `77` 617 `isImpassable(tile)` (BOOL), `78` 618 `getSpawnTiles(tile, needFull)`.
+//!
+//! `player` slots 49..52 (codes ≥ 630): `49` 634 `tiles()`, `50` 635
+//! `borderTiles()`, `51` 632 `doomsdayClockTicks()`, `52` 639 `spawnTile()`.
+//! The void G5e additions (`630` clearDoomsdayClock, `631` enterDoomsdayClock,
+//! `633` removeTroops, `636` relinquish, `637` conquer, `638` setSpawnTile,
+//! `640` markRotted) consume no slot.
+//!
+//! `unit` slots 28..29: `28` 620 `maxHealth()`, `29` 621 `health()`.
+//!
+//! New construction-record tags (code 307): `13` `PlayerExecution(player)`
+//! (the ctor has no side effect), `14` `TribeExecution(player)` (its ctor
+//! reads `player.id()` first, then the record).
+//!
 //! ## `neighbor` facade — slots 0..2
 //!
 //! `0` 257 `isPlayer()`, `1` 258 `isOnSameTeam(other)`,
@@ -294,8 +330,9 @@
 //! `["City", "Defense Post", "SAM Launcher", "Missile Silo", "Port", "Factory"]`
 //! (Game.ts:233-240, declaration order of the `unitTypeGroup`).
 
+use crate::doomsday_clock::{DrainConfig, FloorConfig, Profile};
 use crate::js_json::{push_str, push_val, read_val, val_field, JsVal};
-use crate::jsnum::{js_min, js_round};
+use crate::jsnum::{js_max, js_min, js_round};
 use crate::pseudo_random::PseudoRandom;
 
 /// `MessageType.ALLIANCE_ACCEPTED` (numeric enum member 13).
@@ -346,6 +383,9 @@ const TAG_SAM_LAUNCHER: f64 = 9.0;
 const TAG_CITY: f64 = 10.0;
 const TAG_FACTORY: f64 = 11.0;
 const TAG_TRADE_SHIP: f64 = 12.0;
+// G5e downstream-execution tags (`mg.addExecution(new XxxExecution(...))`).
+const TAG_PLAYER_EXEC: f64 = 13.0;
+const TAG_TRIBE_EXEC: f64 = 14.0;
 
 /// G5d `UnitType` string members (`Game.ts`).
 const UNIT_SHELL: &str = "Shell";
@@ -355,6 +395,8 @@ const UNIT_ATOM_BOMB: &str = "Atom Bomb";
 const UNIT_HYDROGEN_BOMB: &str = "Hydrogen Bomb";
 /// `GameMode.FFA`.
 const GAME_MODE_FFA: &str = "Free For All";
+/// `GameMapSize.Compact`.
+const GAME_MAP_SIZE_COMPACT: &str = "Compact";
 /// `RankedType` members.
 const RANKED_ONE_V_ONE: &str = "1v1";
 const RANKED_TWO_V_TWO: &str = "2v2";
@@ -402,6 +444,76 @@ fn is_structure_type(ty: &str) -> bool {
         ty,
         "Port" | "Missile Silo" | "Defense Post" | "SAM Launcher" | "City" | "Factory"
     )
+}
+
+/// `DoomsdayClockSpeed` string -> [`ClockSpeed`]. An unknown string models the
+/// `SCHEDULES[speed] ?? SCHEDULES.normal` fallback.
+fn speed_from_str(s: &str) -> crate::doomsday_clock::ClockSpeed {
+    use crate::doomsday_clock::ClockSpeed;
+    match s {
+        "slow" => ClockSpeed::Slow,
+        "fast" => ClockSpeed::Fast,
+        "veryfast" => ClockSpeed::VeryFast,
+        _ => ClockSpeed::Normal,
+    }
+}
+
+/// Per-player `DoomsdayClockExecution.rotState` entry.
+#[derive(Clone, Debug)]
+struct RotState {
+    id: f64,
+    since: f64,
+    held: f64,
+    front: Vec<(f64, f64)>,
+}
+
+/// `DoomsdayClockExecution`'s module-local `LowestN`: keeps the `n` smallest
+/// `(tile, key)` pairs by `key`, in ascending `key` order (stable for ties, as
+/// the TS `splice` inserts before equal keys).
+struct LowestN {
+    n: f64,
+    items: Vec<(f64, f64)>,
+}
+
+impl LowestN {
+    fn new(n: f64) -> Self {
+        LowestN {
+            n,
+            items: Vec::new(),
+        }
+    }
+
+    fn size(&self) -> f64 {
+        self.items.len() as f64
+    }
+
+    /// `offer(tile, key)`: drop when full and `key >= keys[^1]`; otherwise
+    /// insert after the last entry whose key is `<= key`, then pop the
+    /// overflowing tail.
+    fn offer(&mut self, tile: f64, key: f64) {
+        let len = self.items.len();
+        if len as f64 == self.n {
+            let last = match self.items.last() {
+                Some(&(_, k)) => k,
+                None => f64::NAN,
+            };
+            if key >= last {
+                return;
+            }
+        }
+        let mut i = len;
+        while i > 0 && self.items[i - 1].1 > key {
+            i -= 1;
+        }
+        self.items.insert(i, (tile, key));
+        if self.items.len() as f64 > self.n {
+            self.items.pop();
+        }
+    }
+
+    fn take(self) -> Vec<f64> {
+        self.items.into_iter().map(|(t, _)| t).collect()
+    }
 }
 
 // ---- codec / script helpers ------------------------------------------------
@@ -555,6 +667,23 @@ fn truthy_tile(t: Option<f64>) -> bool {
         Some(x) => x != 0.0 && !x.is_nan(),
         None => false,
     }
+}
+
+// ---- G5e live-config field readers -----------------------------------------
+
+/// Reads a numeric key out of a `js_json`-encoded live config object. The
+/// capture scripts the WHOLE `doomsdayClockConfig()` object; the Rust side reads
+/// its fields by name (`val_field`), so key order is irrelevant.
+fn cfg_num(cfg: &JsVal, key: &str) -> f64 {
+    val_field(cfg, key).map(as_num).unwrap_or(f64::NAN)
+}
+
+fn cfg_bool(cfg: &JsVal, key: &str) -> bool {
+    val_field(cfg, key).map(as_bool).unwrap_or(false)
+}
+
+fn cfg_str(cfg: &JsVal, key: &str) -> String {
+    val_field(cfg, key).map(as_str).unwrap_or_default()
 }
 
 // ---- encoded-argument helpers ---------------------------------------------
@@ -732,6 +861,19 @@ pub struct ExecHarness {
     #[allow(dead_code)]
     checked_ranked_spawns: bool,
 
+    // G5e state.
+    el_game_id: String,
+    el_tribe_data: Option<crate::tribe_names::TribeNameData>,
+    el_nation_cells: Vec<(f64, f64)>,
+    el_nation_tiles: Vec<f64>,
+    el_used_custom_tribes: Vec<String>,
+    el_player_id: String,
+    el_player_type: String,
+    el_from_intent: bool,
+    el_queued_spawn: bool,
+    el_spawn_tile: Option<f64>,
+    el_rot_state: Vec<RotState>,
+
     mg: Mock,
     players: Vec<Mock>,
     alliances: Vec<Mock>,
@@ -795,6 +937,25 @@ const MG_RANKED_TYPE: usize = 55;
 const MG_MAX_PLAYERS: usize = 56;
 const MG_MAX_TIMER_VALUE: usize = 57;
 const MG_PATH_NEXT: usize = 59;
+// G5e mg slots.
+const MG_GET_WINNER: usize = 60;
+const MG_DOOMSDAY_CLOCK_CONFIG: usize = 61;
+const MG_X: usize = 63;
+const MG_Y: usize = 64;
+const MG_ADD_PLAYER: usize = 65;
+const MG_IS_RANDOM_SPAWN: usize = 66;
+const MG_HAS_OWNER: usize = 67;
+const MG_IS_BORDER: usize = 68;
+const MG_REF: usize = 69;
+const MG_WIDTH: usize = 70;
+const MG_HEIGHT: usize = 71;
+const MG_MIN_DISTANCE_BETWEEN_PLAYERS: usize = 72;
+const MG_TEAM_SPAWN_AREA: usize = 73;
+const MG_GAME_MAP: usize = 74;
+const MG_GAME_MAP_SIZE: usize = 75;
+const MG_IS_VALID_COORD: usize = 76;
+const MG_IS_IMPASSABLE: usize = 77;
+const MG_GET_SPAWN_TILES: usize = 78;
 
 // player slot indices.
 const PL_SMALL_ID: usize = 0;
@@ -835,6 +996,12 @@ const PL_NUM_TILES_OWNED: usize = 45;
 const PL_CAN_TRADE: usize = 46;
 const PL_CAN_BUILD: usize = 47;
 const PL_BUILD_UNIT: usize = 48;
+// G5e player slots (void mock methods consume no slot, so only the
+// value-returning ones below are referenced from the Rust side).
+const PL_TILES: usize = 49;
+const PL_BORDER_TILES: usize = 50;
+const PL_DOOMSDAY_CLOCK_TICKS: usize = 51;
+const PL_SPAWN_TILE: usize = 52;
 
 // alliance slot indices.
 const AL_ONLY_ONE_AGREED: usize = 0;
@@ -863,6 +1030,9 @@ const UN_HAS_HEALTH: usize = 19;
 // ones below are referenced from the Rust side).
 const UN_LEVEL: usize = 20;
 const UN_VETERANCY: usize = 21;
+// G5e unit slots.
+const UN_MAX_HEALTH: usize = 28;
+const UN_HEALTH: usize = 29;
 
 // neighbor slot indices.
 const NB_IS_PLAYER: usize = 0;
@@ -1232,6 +1402,97 @@ impl ExecHarness {
         mk_take(&mut self.mg, MG_PATH_NEXT, tr, 525.0, &prefix)
     }
 
+    // ---- G5e mg facade (`Game` methods) ----
+    fn mg_get_winner(&mut self, tr: &mut Vec<f64>) -> JsVal {
+        mk_take(&mut self.mg, MG_GET_WINNER, tr, 600.0, &[])
+    }
+    fn mg_doomsday_clock_config(&mut self, tr: &mut Vec<f64>) -> JsVal {
+        mk_take(&mut self.mg, MG_DOOMSDAY_CLOCK_CONFIG, tr, 601.0, &[])
+    }
+    fn mg_set_fallout(&mut self, tr: &mut Vec<f64>, tile: f64, fallout: bool) {
+        let mut prefix = ev1(tile);
+        prefix.extend_from_slice(&evb(fallout));
+        mk_void(tr, 602.0, &prefix);
+    }
+    fn mg_x(&mut self, tr: &mut Vec<f64>, tile: f64) -> f64 {
+        let v = mk_take(&mut self.mg, MG_X, tr, 603.0, &ev1(tile));
+        as_num(&v)
+    }
+    fn mg_y(&mut self, tr: &mut Vec<f64>, tile: f64) -> f64 {
+        let v = mk_take(&mut self.mg, MG_Y, tr, 604.0, &ev1(tile));
+        as_num(&v)
+    }
+    fn mg_add_player(&mut self, tr: &mut Vec<f64>, player_info: &JsVal) -> Option<usize> {
+        let prefix = ev_enc(player_info);
+        let v = mk_take(&mut self.mg, MG_ADD_PLAYER, tr, 605.0, &prefix);
+        as_opt_tok(&v)
+    }
+    fn mg_is_random_spawn(&mut self, tr: &mut Vec<f64>) -> bool {
+        let v = mk_take(&mut self.mg, MG_IS_RANDOM_SPAWN, tr, 606.0, &[]);
+        as_bool(&v)
+    }
+    fn mg_has_owner(&mut self, tr: &mut Vec<f64>, tile: f64) -> bool {
+        let v = mk_take(&mut self.mg, MG_HAS_OWNER, tr, 607.0, &ev1(tile));
+        as_bool(&v)
+    }
+    fn mg_is_border(&mut self, tr: &mut Vec<f64>, tile: f64) -> bool {
+        let v = mk_take(&mut self.mg, MG_IS_BORDER, tr, 608.0, &ev1(tile));
+        as_bool(&v)
+    }
+    fn mg_ref(&mut self, tr: &mut Vec<f64>, x: f64, y: f64) -> f64 {
+        let mut prefix = ev1(x);
+        prefix.extend_from_slice(&ev1(y));
+        let v = mk_take(&mut self.mg, MG_REF, tr, 609.0, &prefix);
+        as_num(&v)
+    }
+    fn mg_width(&mut self, tr: &mut Vec<f64>) -> f64 {
+        let v = mk_take(&mut self.mg, MG_WIDTH, tr, 610.0, &[]);
+        as_num(&v)
+    }
+    fn mg_height(&mut self, tr: &mut Vec<f64>) -> f64 {
+        let v = mk_take(&mut self.mg, MG_HEIGHT, tr, 611.0, &[]);
+        as_num(&v)
+    }
+    fn mg_min_distance_between_players(&mut self, tr: &mut Vec<f64>) -> f64 {
+        let v = mk_take(
+            &mut self.mg,
+            MG_MIN_DISTANCE_BETWEEN_PLAYERS,
+            tr,
+            612.0,
+            &[],
+        );
+        as_num(&v)
+    }
+    fn mg_team_spawn_area(&mut self, tr: &mut Vec<f64>, team: &str) -> JsVal {
+        mk_take(&mut self.mg, MG_TEAM_SPAWN_AREA, tr, 613.0, &evs(team))
+    }
+    fn mg_game_map(&mut self, tr: &mut Vec<f64>) -> String {
+        let v = mk_take(&mut self.mg, MG_GAME_MAP, tr, 614.0, &[]);
+        as_str(&v)
+    }
+    fn mg_game_map_size(&mut self, tr: &mut Vec<f64>) -> String {
+        let v = mk_take(&mut self.mg, MG_GAME_MAP_SIZE, tr, 615.0, &[]);
+        as_str(&v)
+    }
+    fn mg_is_valid_coord(&mut self, tr: &mut Vec<f64>, x: f64, y: f64) -> bool {
+        let mut prefix = ev1(x);
+        prefix.extend_from_slice(&ev1(y));
+        let v = mk_take(&mut self.mg, MG_IS_VALID_COORD, tr, 616.0, &prefix);
+        as_bool(&v)
+    }
+    fn mg_is_impassable(&mut self, tr: &mut Vec<f64>, tile: f64) -> bool {
+        let v = mk_take(&mut self.mg, MG_IS_IMPASSABLE, tr, 617.0, &ev1(tile));
+        as_bool(&v)
+    }
+    fn mg_get_spawn_tiles(&mut self, tr: &mut Vec<f64>, tile: Option<f64>, need_full: bool) -> JsVal {
+        let mut prefix = ev_enc(&match tile {
+            Some(t) => JsVal::Num(t),
+            None => JsVal::Undef,
+        });
+        prefix.extend_from_slice(&evb(need_full));
+        mk_take(&mut self.mg, MG_GET_SPAWN_TILES, tr, 618.0, &prefix)
+    }
+
     // ---- G5d construction-record adders (`mg.addExecution`) ----
     #[allow(clippy::too_many_arguments)]
     fn mg_add_nuke(
@@ -1320,6 +1581,23 @@ impl ExecHarness {
         );
         push_val(tr, &JsVal::Num(src_port as f64));
         push_val(tr, &JsVal::Num(dst_port as f64));
+        push_val(tr, &JsVal::Undef);
+    }
+    /// `mg.addExecution(new PlayerExecution(player))` (tag 13): the ctor has no
+    /// side effect, so only the construction record follows.
+    fn mg_add_exec_player(&mut self, tr: &mut Vec<f64>, player: usize) {
+        tr.push(307.0);
+        tr.push(TAG_PLAYER_EXEC);
+        push_val(tr, &JsVal::Num(player as f64));
+        push_val(tr, &JsVal::Undef);
+    }
+    /// `mg.addExecution(new TribeExecution(player))` (tag 14): the real ctor
+    /// reads `player.id()` (code 231) first, then the construction record.
+    fn mg_add_exec_tribe(&mut self, tr: &mut Vec<f64>, player: usize) {
+        let _ = self.pl_id(tr, player);
+        tr.push(307.0);
+        tr.push(TAG_TRIBE_EXEC);
+        push_val(tr, &JsVal::Num(player as f64));
         push_val(tr, &JsVal::Undef);
     }
 
@@ -1612,6 +1890,47 @@ impl ExecHarness {
         let v = self.pl(tok, PL_BUILD_UNIT, tr, 535.0, &extra);
         as_opt_tok(&v)
     }
+    // G5e player facade.
+    fn pl_tiles(&mut self, tr: &mut Vec<f64>, tok: usize) -> Vec<f64> {
+        let v = self.pl(tok, PL_TILES, tr, 634.0, &[]);
+        as_num_list(&v)
+    }
+    fn pl_border_tiles(&mut self, tr: &mut Vec<f64>, tok: usize) -> Vec<f64> {
+        let v = self.pl(tok, PL_BORDER_TILES, tr, 635.0, &[]);
+        as_num_list(&v)
+    }
+    fn pl_doomsday_clock_ticks(&mut self, tr: &mut Vec<f64>, tok: usize) -> f64 {
+        let v = self.pl(tok, PL_DOOMSDAY_CLOCK_TICKS, tr, 632.0, &[]);
+        as_num(&v)
+    }
+    fn pl_spawn_tile(&mut self, tr: &mut Vec<f64>, tok: usize) -> Option<f64> {
+        let v = self.pl(tok, PL_SPAWN_TILE, tr, 639.0, &[]);
+        match v {
+            JsVal::Num(n) => Some(n),
+            _ => None,
+        }
+    }
+    fn pl_clear_doomsday_clock(&mut self, tr: &mut Vec<f64>, tok: usize) {
+        self.pl_void(tok, tr, 630.0, &[]);
+    }
+    fn pl_enter_doomsday_clock(&mut self, tr: &mut Vec<f64>, tok: usize) {
+        self.pl_void(tok, tr, 631.0, &[]);
+    }
+    fn pl_remove_troops(&mut self, tr: &mut Vec<f64>, tok: usize, n: f64) {
+        self.pl_void(tok, tr, 633.0, &ev1(n));
+    }
+    fn pl_relinquish(&mut self, tr: &mut Vec<f64>, tok: usize, tile: f64) {
+        self.pl_void(tok, tr, 636.0, &ev1(tile));
+    }
+    fn pl_conquer(&mut self, tr: &mut Vec<f64>, tok: usize, tile: f64) {
+        self.pl_void(tok, tr, 637.0, &ev1(tile));
+    }
+    fn pl_set_spawn_tile(&mut self, tr: &mut Vec<f64>, tok: usize, tile: f64) {
+        self.pl_void(tok, tr, 638.0, &ev1(tile));
+    }
+    fn pl_mark_rotted(&mut self, tr: &mut Vec<f64>, tok: usize) {
+        self.pl_void(tok, tr, 640.0, &[]);
+    }
 
     // alliance facade
     fn al(&mut self, aid: usize, slot: usize, tr: &mut Vec<f64>, code: f64, extra: &[f64]) -> JsVal {
@@ -1801,6 +2120,15 @@ impl ExecHarness {
         let mut prefix = vec![uid as f64];
         prefix.extend_from_slice(&evb(flag));
         mk_void(tr, 547.0, &prefix);
+    }
+    // G5e unit facade.
+    fn un_max_health(&mut self, tr: &mut Vec<f64>, uid: usize) -> f64 {
+        let v = self.un(uid, UN_MAX_HEALTH, tr, 620.0, &[]);
+        as_num(&v)
+    }
+    fn un_health(&mut self, tr: &mut Vec<f64>, uid: usize) -> f64 {
+        let v = self.un(uid, UN_HEALTH, tr, 621.0, &[]);
+        as_num(&v)
     }
 
     // neighbor facade
@@ -2216,8 +2544,70 @@ impl ExecHarness {
                 // `private active = true`.
                 self.flag = true;
             }
+            30 => {
+                // DoomsdayClockExecution(): no ctor args; `private active = true`,
+                // `private mg: Game | null = null`, empty `rotState`.
+                self.flag = true;
+                self.mg_ready = false;
+                self.el_rot_state = Vec::new();
+            }
+            31 => {
+                // TribeSpawner(gameID, nationCells = []).
+                self.el_game_id = ctor.first().map(as_str).unwrap_or_default();
+                self.el_nation_cells = ctor.get(1).map(as_pairs).unwrap_or_default();
+                self.el_used_custom_tribes = Vec::new();
+                // `new PseudoRandom(simpleHash(gameID) + 2)`.
+                self.random = Some(PseudoRandom::new(
+                    crate::util::simple_hash(&self.el_game_id) + 2.0,
+                ));
+                self.replay_tribe_spawner_ctor();
+            }
+            32 => {
+                // SpawnExecution(gameID, playerInfo, tile?, fromIntent = false).
+                self.el_game_id = ctor.first().map(as_str).unwrap_or_default();
+                self.el_player_id = ctor.get(1).map(as_str).unwrap_or_default();
+                self.el_player_type = ctor.get(2).map(as_str).unwrap_or_default();
+                self.el_spawn_tile = as_opt_num(ctor.get(3));
+                self.el_from_intent = ctor.get(4).map(as_bool).unwrap_or(false);
+                self.el_queued_spawn = false;
+                // `new PseudoRandom(simpleHash(playerInfo.id) + simpleHash(gameID))`.
+                self.random = Some(PseudoRandom::new(
+                    crate::util::simple_hash(&self.el_player_id)
+                        + crate::util::simple_hash(&self.el_game_id),
+                ));
+                // `active: boolean = true`.
+                self.flag = true;
+                self.mg_ready = false;
+            }
             _ => {}
         }
+    }
+
+    /// The `TribeSpawner` ctor body. Its facade reads are discarded by the
+    /// capture (kind `0` returns `[0, 0]`), but the script cursors they advance
+    /// must be replayed so later ops line up. `nationCells.filter(...).map(...)`
+    /// runs every `isValidCoord` before any `ref`.
+    fn replay_tribe_spawner_ctor(&mut self) {
+        let mut scratch: Vec<f64> = Vec::new();
+        self.el_rot_state = Vec::new();
+        let map = self.mg_game_map(&mut scratch);
+        let (_, data) = crate::tribe_names::resolve_tribe_name_data(Some(&map), &[], &[]);
+        self.el_tribe_data = data.ok();
+        let cells = self.el_nation_cells.clone();
+        let mut valid: Vec<(f64, f64)> = Vec::new();
+        for (x, y) in cells {
+            if self.mg_is_valid_coord(&mut scratch, x, y) {
+                valid.push((x, y));
+            }
+        }
+        let mut tiles: Vec<f64> = Vec::new();
+        for (x, y) in valid {
+            let t = self.mg_ref(&mut scratch, x, y);
+            if !tiles.iter().any(|v| svz(*v, t)) {
+                tiles.push(t);
+            }
+        }
+        self.el_nation_tiles = tiles;
     }
 
     // ---- the op dispatcher ----
@@ -2230,7 +2620,7 @@ impl ExecHarness {
         }
         let ticks = if args.is_empty() { 0.0 } else { args[0] };
         let mut tr: Vec<f64> = Vec::new();
-        let res = self.dispatch(kind, ticks, &mut tr);
+        let res = self.dispatch(kind, ticks, args, &mut tr);
         let mut out: Vec<f64> = Vec::new();
         match res {
             Ok(v) => {
@@ -2249,7 +2639,13 @@ impl ExecHarness {
         full
     }
 
-    fn dispatch(&mut self, kind: u8, ticks: f64, tr: &mut Vec<f64>) -> Result<JsVal, String> {
+    fn dispatch(
+        &mut self,
+        kind: u8,
+        ticks: f64,
+        args: &[f64],
+        tr: &mut Vec<f64>,
+    ) -> Result<JsVal, String> {
         match self.class_id {
             0 => Ok(self.noop(kind)),
             1 => self.pause(kind, tr),
@@ -2281,6 +2677,9 @@ impl ExecHarness {
             27 => self.sam_missile(kind, tr),
             28 => self.port(kind, tr),
             29 => self.construction(kind, tr),
+            30 => self.doomsday_clock_exec(kind, ticks, tr),
+            31 => self.tribe_spawner(kind, args, tr),
+            32 => self.spawn_execution(kind, ticks, tr),
             k => unreachable!("exec harness: unknown class id {k}"),
         }
     }
@@ -4242,6 +4641,794 @@ impl ExecHarness {
             _ => {}
         }
     }
+
+    // ---- G5e shared helpers -------------------------------------------------
+
+    /// JS `Set.has` over a `TileRef[]`-like (SameValueZero on numbers).
+    fn tile_has(tiles: &[f64], t: f64) -> bool {
+        tiles.iter().any(|x| svz(*x, t))
+    }
+
+    /// JS truthiness of a `js_json` value (`0`, `NaN`, `""`, `null`,
+    /// `undefined` are falsy; every array/object is truthy).
+    fn js_truthy(v: &JsVal) -> bool {
+        match v {
+            JsVal::Undef | JsVal::Null | JsVal::Absent => false,
+            JsVal::Bool(b) => *b,
+            JsVal::Num(n) => *n != 0.0 && !n.is_nan(),
+            JsVal::Str(s) => !s.is_empty(),
+            _ => true,
+        }
+    }
+
+    /// `SpawnArea` (`{x, y, width, height}`) out of a `js_json` value; `None`
+    /// for anything the TS `if (area)` truthiness test would reject.
+    fn area_from_val(v: &JsVal) -> Option<(f64, f64, f64, f64)> {
+        if !matches!(v, JsVal::Obj(_)) {
+            return None;
+        }
+        let x = val_field(v, "x").map(as_num)?;
+        let y = val_field(v, "y").map(as_num)?;
+        let w = val_field(v, "width").map(as_num)?;
+        let h = val_field(v, "height").map(as_num)?;
+        Some((x, y, w, h))
+    }
+
+    // ---- 30 DoomsdayClockExecution -----------------------------------------
+
+    fn doomsday_clock_exec(
+        &mut self,
+        kind: u8,
+        ticks: f64,
+        tr: &mut Vec<f64>,
+    ) -> Result<JsVal, String> {
+        match kind {
+            3 => Ok(JsVal::Bool(self.flag)),
+            4 => Ok(JsVal::Bool(false)),
+            1 => {
+                self.mg_ready = true;
+                Ok(JsVal::Undef)
+            }
+            2 => self.doomsday_clock_body(ticks, tr),
+            _ => unreachable!(),
+        }
+    }
+
+    fn doomsday_clock_body(&mut self, ticks: f64, tr: &mut Vec<f64>) -> Result<JsVal, String> {
+        if ticks % 10.0 != 0.0 {
+            return Ok(JsVal::Undef);
+        }
+        if !self.mg_ready {
+            return Err("Not initialized".into());
+        }
+        let cfg = self.mg_doomsday_clock_config(tr);
+        if !cfg_bool(&cfg, "enabled") {
+            return Ok(JsVal::Undef);
+        }
+
+        let elapsed = self.mg_elapsed_game_seconds(tr);
+        let players = self.mg_players(tr);
+        let mut contenders: Vec<usize> = Vec::new();
+        for p in players {
+            if self.pl_type(tr, p) != PLAYER_TYPE_BOT {
+                contenders.push(p);
+            }
+        }
+
+        let ffa = self.mg_game_mode(tr) == GAME_MODE_FFA;
+        let sides = self.ddc_sides(&contenders, ffa, tr);
+
+        let winner = self.mg_get_winner(tr);
+        if !matches!(winner, JsVal::Null) || sides.len() < 2 {
+            for p in &contenders {
+                self.pl_clear_doomsday_clock(tr, *p);
+            }
+            self.flag = false;
+            return Ok(JsVal::Undef);
+        }
+
+        let land = self.mg_num_land_tiles(tr) - self.mg_num_tiles_with_fallout(tr);
+        let speed = speed_from_str(&cfg_str(&cfg, "speed"));
+        let profile = Profile {
+            speed,
+            team: !ffa,
+        };
+        let required = crate::doomsday_clock::required_tiles(&profile, land, elapsed);
+
+        let mut side_tiles: Vec<f64> = Vec::new();
+        for members in &sides {
+            let mut sum = 0.0;
+            for m in members {
+                sum += self.pl_num_tiles_owned(tr, *m);
+            }
+            side_tiles.push(sum);
+        }
+        let mut leader_idx = 0usize;
+        for i in 1..side_tiles.len() {
+            if side_tiles[i] > side_tiles[leader_idx] {
+                leader_idx = i;
+            }
+        }
+
+        let warn_seconds = cfg_num(&cfg, "warnSeconds");
+        for i in 0..sides.len() {
+            if i != leader_idx && side_tiles[i] < required {
+                for m in &sides[i] {
+                    let m = *m;
+                    self.pl_enter_doomsday_clock(tr, m);
+                    let seconds_under =
+                        (self.pl_doomsday_clock_ticks(tr, m) / 10.0).floor();
+                    if seconds_under >= warn_seconds {
+                        let seconds_past_warn = seconds_under - warn_seconds;
+                        let max_troops = self.mg_max_troops(tr, Rec::P(m));
+                        let floor_cfg = FloorConfig {
+                            drain_floor_percent: cfg_num(&cfg, "drainFloorPercent"),
+                            floor_start_percent: cfg_num(&cfg, "floorStartPercent"),
+                            floor_decay_seconds: cfg_num(&cfg, "floorDecaySeconds"),
+                        };
+                        let troop_floor = crate::doomsday_clock::troop_floor(
+                            max_troops,
+                            seconds_past_warn,
+                            &floor_cfg,
+                        );
+                        let drain_cfg = DrainConfig {
+                            drain_start_percent: cfg_num(&cfg, "drainStartPercent"),
+                            drain_max_percent: cfg_num(&cfg, "drainMaxPercent"),
+                            drain_ramp_seconds: cfg_num(&cfg, "drainRampSeconds"),
+                        };
+                        let chunk = crate::doomsday_clock::drain(
+                            max_troops,
+                            seconds_past_warn,
+                            &drain_cfg,
+                            1.0,
+                        );
+                        let troops = self.pl_troops(tr, m);
+                        self.pl_remove_troops(
+                            tr,
+                            m,
+                            js_min(chunk, js_max(0.0, troops - troop_floor)),
+                        );
+                        if cfg_num(&cfg, "rotDeathSeconds") > 0.0
+                            && seconds_past_warn >= cfg_num(&cfg, "floorDecaySeconds")
+                            && self.pl_troops(tr, m) <= troop_floor
+                        {
+                            self.ddc_rot(tr, m, seconds_under, &cfg);
+                        }
+
+                        let warship_cfg = DrainConfig {
+                            drain_start_percent: cfg_num(&cfg, "warshipDrainStartPercent"),
+                            drain_max_percent: cfg_num(&cfg, "warshipDrainMaxPercent"),
+                            drain_ramp_seconds: cfg_num(&cfg, "drainRampSeconds"),
+                        };
+                        let warships = self.pl_units(tr, m, &["Warship".to_string()]);
+                        for uid in warships {
+                            let mh = self.un_max_health(tr, uid);
+                            let ship_floor =
+                                ((mh * cfg_num(&cfg, "drainFloorPercent")) / 100.0).floor();
+                            let removable =
+                                js_max(0.0, self.un_health(tr, uid) - ship_floor);
+                            if removable <= 0.0 {
+                                continue;
+                            }
+                            let mh2 = self.un_max_health(tr, uid);
+                            let dmg = crate::doomsday_clock::drain(
+                                mh2,
+                                seconds_past_warn,
+                                &warship_cfg,
+                                cfg_num(&cfg, "warshipDrainCurveExponent"),
+                            );
+                            self.un_modify_health(tr, uid, -js_min(dmg, removable), None);
+                        }
+                    }
+                }
+            } else {
+                for m in &sides[i] {
+                    let m = *m;
+                    self.pl_clear_doomsday_clock(tr, m);
+                    let sid = self.pl_small_id(tr, m);
+                    self.el_rot_state.retain(|s| !svz(s.id, sid));
+                }
+            }
+        }
+        Ok(JsVal::Undef)
+    }
+
+    /// `DoomsdayClockExecution.sides`: singletons in FFA, grouped by team (in
+    /// first-seen order) otherwise.
+    fn ddc_sides(&mut self, contenders: &[usize], ffa: bool, tr: &mut Vec<f64>) -> Vec<Vec<usize>> {
+        if ffa {
+            return contenders.iter().map(|p| vec![*p]).collect();
+        }
+        let mut by_team: Vec<(String, Vec<usize>)> = Vec::new();
+        for p in contenders {
+            let team = self.pl_team(tr, *p);
+            if matches!(team, JsVal::Null) {
+                continue;
+            }
+            let key = as_str(&team);
+            match by_team.iter_mut().find(|(k, _)| *k == key) {
+                Some(e) => e.1.push(*p),
+                None => by_team.push((key, vec![*p])),
+            }
+        }
+        by_team.into_iter().map(|(_, v)| v).collect()
+    }
+
+    fn ddc_rot(&mut self, tr: &mut Vec<f64>, player: usize, seconds_under: f64, cfg: &JsVal) {
+        let owned = self.pl_num_tiles_owned(tr, player);
+        if owned <= 0.0 {
+            return;
+        }
+        let id = self.pl_small_id(tr, player);
+        let state = match self.el_rot_state.iter().find(|s| svz(s.id, id)) {
+            Some(s) => s.clone(),
+            None => RotState {
+                id,
+                since: self.mg_ticks(tr),
+                held: owned,
+                front: Vec::new(),
+            },
+        };
+
+        let even_quota = crate::doomsday_clock::rot_quota(
+            owned,
+            seconds_under,
+            cfg_num(cfg, "rotDeathSeconds"),
+        );
+        let grain_seconds = cfg_num(cfg, "rotGrainSeconds");
+        let speckle_percent = cfg_num(cfg, "rotSpecklePercent");
+        let grainy = self.mg_ticks(tr) - state.since < grain_seconds * 10.0;
+        let specks = if grainy {
+            js_max(
+                1.0,
+                ((state.held * speckle_percent) / 100.0 / grain_seconds).ceil(),
+            )
+        } else {
+            0.0
+        };
+        let mut budget = js_min(owned, js_max(even_quota, specks));
+
+        let tiles = self.pl_tiles(tr, player);
+        let mut front: Vec<(f64, f64)> = state
+            .front
+            .iter()
+            .filter(|(t, _)| Self::tile_has(&tiles, *t))
+            .cloned()
+            .collect();
+
+        budget -= self.ddc_speckle(tr, player, js_min(specks, budget), &mut front);
+        budget -= self.ddc_spread(tr, player, budget, &mut front);
+        if budget > 0.0 {
+            self.ddc_speckle(tr, player, budget, &mut front);
+        }
+
+        match self.el_rot_state.iter_mut().find(|s| svz(s.id, id)) {
+            Some(s) => {
+                s.since = state.since;
+                s.held = state.held;
+                s.front = front;
+            }
+            None => self.el_rot_state.push(RotState {
+                id,
+                since: state.since,
+                held: state.held,
+                front,
+            }),
+        }
+    }
+
+    fn ddc_speckle(
+        &mut self,
+        tr: &mut Vec<f64>,
+        player: usize,
+        count: f64,
+        front: &mut Vec<(f64, f64)>,
+    ) -> f64 {
+        if count <= 0.0 {
+            return 0.0;
+        }
+        let salt = self.pl_small_id(tr, player);
+        let border = self.pl_border_tiles(tr, player);
+        let mut interior = LowestN::new(count);
+        let mut edge = LowestN::new(count);
+        let tiles = self.pl_tiles(tr, player);
+        for tile in &tiles {
+            let t = *tile;
+            let key =
+                crate::doomsday_clock::rot_speckle_noise(self.mg_x(tr, t), self.mg_y(tr, t), salt);
+            if Self::tile_has(&border, t) {
+                edge.offer(t, key);
+            } else {
+                interior.offer(t, key);
+            }
+        }
+        let enough = interior.size() >= count;
+        let mut picked = interior.take();
+        if !enough {
+            picked.extend(edge.take());
+        }
+        let mut opened = 0.0;
+        for tile in picked {
+            if opened == count {
+                break;
+            }
+            if self.ddc_consume(tr, player, tile, front) {
+                opened += 1.0;
+            }
+        }
+        opened
+    }
+
+    fn ddc_spread(
+        &mut self,
+        tr: &mut Vec<f64>,
+        player: usize,
+        count: f64,
+        front: &mut Vec<(f64, f64)>,
+    ) -> f64 {
+        if count <= 0.0 || front.is_empty() {
+            return 0.0;
+        }
+        let salt = self.pl_small_id(tr, player);
+        let mut pick = LowestN::new(count);
+        for (tile, rotted) in front.iter() {
+            let key = *rotted * f64::from(crate::doomsday_clock::ROT_NOISE_SCALE)
+                + crate::doomsday_clock::rot_front_noise(*tile, salt);
+            pick.offer(*tile, key);
+        }
+        let mut taken = 0.0;
+        for tile in pick.take() {
+            if taken == count {
+                break;
+            }
+            if self.ddc_consume(tr, player, tile, front) {
+                taken += 1.0;
+            }
+        }
+        taken
+    }
+
+    /// `DoomsdayClockExecution.consume`: rot one tile and tally its owned
+    /// neighbours into `front`.
+    fn ddc_consume(
+        &mut self,
+        tr: &mut Vec<f64>,
+        player: usize,
+        tile: f64,
+        front: &mut Vec<(f64, f64)>,
+    ) -> bool {
+        let tiles = self.pl_tiles(tr, player);
+        if !Self::tile_has(&tiles, tile) {
+            return false;
+        }
+        self.pl_relinquish(tr, player, tile);
+        self.mg_set_fallout(tr, tile, true);
+        self.pl_mark_rotted(tr, player);
+        front.retain(|(t, _)| !svz(*t, tile));
+        let neighbours = self.mg_neighbors(tr, tile);
+        for n in neighbours {
+            if !Self::tile_has(&tiles, n) {
+                continue;
+            }
+            match front.iter_mut().find(|(t, _)| svz(*t, n)) {
+                Some(e) => e.1 += 1.0,
+                None => front.push((n, 1.0)),
+            }
+        }
+        true
+    }
+
+    // ---- 31 TribeSpawner ---------------------------------------------------
+
+    fn tribe_spawner(
+        &mut self,
+        kind: u8,
+        args: &[f64],
+        tr: &mut Vec<f64>,
+    ) -> Result<JsVal, String> {
+        match kind {
+            3 => Ok(JsVal::Bool(self.flag)),
+            4 => Ok(JsVal::Bool(false)),
+            5 => self.tribe_spawn_tribes(args, tr),
+            _ => unreachable!(),
+        }
+    }
+
+    /// `TribeSpawner.spawnTribes(numTribes, purchasedNames)`; `args` is the flat
+    /// `[numTribes, nameCount, (len, c0, c1, …)*nameCount]` encoding.
+    fn tribe_spawn_tribes(&mut self, args: &[f64], tr: &mut Vec<f64>) -> Result<JsVal, String> {
+        let num_tribes = args[0];
+        let name_count = args[1] as usize;
+        let mut i = 2usize;
+        let mut purchased: Vec<String> = Vec::new();
+        for _ in 0..name_count {
+            let len = args[i] as usize;
+            i += 1;
+            let mut units: Vec<u16> = Vec::with_capacity(len);
+            for _ in 0..len {
+                units.push(args[i] as u16);
+                i += 1;
+            }
+            purchased.push(String::from_utf16_lossy(&units));
+        }
+
+        let mut tribes: Vec<(String, String, Option<f64>)> = Vec::new();
+
+        let custom_tribes = self.el_tribe_data.as_ref().and_then(|d| d.custom_tribes);
+        if let Some(cts) = custom_tribes {
+            for ct in cts {
+                if ct.coordinates.is_none() {
+                    continue;
+                }
+                if tribes.len() as f64 >= num_tribes {
+                    break;
+                }
+                if let Some(rec) = self.spawn_positioned_tribe(ct, tr) {
+                    tribes.push(rec);
+                    self.el_used_custom_tribes.push(ct.name.to_string());
+                }
+            }
+        }
+
+        let remaining = num_tribes - tribes.len() as f64;
+        let mut purchased_by_slot: Vec<(usize, String)> = Vec::new();
+        if !purchased.is_empty() && remaining > 0.0 {
+            let rem = remaining as usize;
+            let used: Vec<String> = purchased.iter().take(rem).cloned().collect();
+            let range: Vec<usize> = (0..rem).collect();
+            let shuffled = self
+                .random
+                .as_mut()
+                .expect("tribe spawner random")
+                .shuffle_array(&range);
+            let slots: Vec<usize> = shuffled.into_iter().take(used.len()).collect();
+            for (k, s) in slots.into_iter().enumerate() {
+                purchased_by_slot.push((s, used[k].clone()));
+            }
+        }
+
+        let mut slot = 0usize;
+        while (tribes.len() as f64) < num_tribes {
+            let name = purchased_by_slot
+                .iter()
+                .find(|(s, _)| *s == slot)
+                .map(|(_, n)| n.clone());
+            let name = match name {
+                Some(n) => n,
+                None => self.random_tribe_name(),
+            };
+            tribes.push(self.spawn_tribe(&name));
+            slot += 1;
+        }
+
+        let arr: Vec<JsVal> = tribes
+            .into_iter()
+            .map(|(name, id, tile)| {
+                JsVal::Arr(vec![
+                    JsVal::Str(name),
+                    JsVal::Str(id),
+                    match tile {
+                        Some(t) => JsVal::Num(t),
+                        None => JsVal::Null,
+                    },
+                ])
+            })
+            .collect();
+        Ok(JsVal::Arr(arr))
+    }
+
+    /// `TribeSpawner.spawnPositionedTribe`.
+    fn spawn_positioned_tribe(
+        &mut self,
+        ct: &crate::maps_gen::Tribe,
+        tr: &mut Vec<f64>,
+    ) -> Option<(String, String, Option<f64>)> {
+        let (cx, cy) = ct.coordinates?;
+        let is_compact = self.mg_game_map_size(tr) == GAME_MAP_SIZE_COMPACT;
+        let x = if is_compact { (cx / 2.0).floor() } else { cx };
+        let y = if is_compact { (cy / 2.0).floor() } else { cy };
+        if !self.mg_is_valid_coord(tr, x, y) {
+            return None;
+        }
+        let tile = self.mg_ref(tr, x, y);
+        if !self.mg_is_land(tr, tile)
+            || self.mg_has_owner(tr, tile)
+            || self.mg_is_impassable(tr, tile)
+            || Self::tile_has(&self.el_nation_tiles, tile)
+        {
+            return None;
+        }
+        Some((
+            ct.name.to_string(),
+            self.random.as_mut().expect("tribe spawner random").next_id(),
+            Some(tile),
+        ))
+    }
+
+    /// `TribeSpawner.spawnTribe`.
+    fn spawn_tribe(&mut self, name: &str) -> (String, String, Option<f64>) {
+        (
+            name.to_string(),
+            self.random.as_mut().expect("tribe spawner random").next_id(),
+            None,
+        )
+    }
+
+    /// `TribeSpawner.randomTribeName`.
+    fn random_tribe_name(&mut self) -> String {
+        let custom_tribes = self.el_tribe_data.as_ref().and_then(|d| d.custom_tribes);
+        if let Some(cts) = custom_tribes {
+            let mut available: Vec<&crate::maps_gen::Tribe> = Vec::new();
+            for ct in cts {
+                if ct.coordinates.is_none()
+                    && !self.el_used_custom_tribes.iter().any(|u| u == ct.name)
+                {
+                    available.push(ct);
+                }
+            }
+            if !available.is_empty() {
+                let index = self
+                    .random
+                    .as_mut()
+                    .expect("tribe spawner random")
+                    .next_int(0.0, available.len() as f64) as usize;
+                let chosen = available[index];
+                self.el_used_custom_tribes.push(chosen.name.to_string());
+                return chosen.name.to_string();
+            }
+        }
+
+        let plen = self
+            .el_tribe_data
+            .as_ref()
+            .map(|d| d.prefixes.len())
+            .unwrap_or(0) as f64;
+        let slen = self
+            .el_tribe_data
+            .as_ref()
+            .map(|d| d.suffixes.len())
+            .unwrap_or(0) as f64;
+        let prefix_index = self
+            .random
+            .as_mut()
+            .expect("tribe spawner random")
+            .next_int(0.0, plen) as usize;
+        let suffix_index = self
+            .random
+            .as_mut()
+            .expect("tribe spawner random")
+            .next_int(0.0, slen) as usize;
+        let prefix = self
+            .el_tribe_data
+            .as_ref()
+            .map(|d| d.prefixes[prefix_index].clone())
+            .unwrap_or_default();
+        let suffix = self
+            .el_tribe_data
+            .as_ref()
+            .map(|d| d.suffixes[suffix_index].clone())
+            .unwrap_or_default();
+        format!("{prefix} {suffix}")
+    }
+
+    // ---- 32 SpawnExecution -------------------------------------------------
+
+    fn spawn_execution(
+        &mut self,
+        kind: u8,
+        _ticks: f64,
+        tr: &mut Vec<f64>,
+    ) -> Result<JsVal, String> {
+        match kind {
+            3 => Ok(JsVal::Bool(self.flag)),
+            4 => Ok(JsVal::Bool(true)),
+            1 => {
+                self.mg_ready = true;
+                self.el_queued_spawn = self.mg_in_spawn_phase(tr);
+                Ok(JsVal::Undef)
+            }
+            2 => self.spawn_execution_tick(tr),
+            _ => unreachable!(),
+        }
+    }
+
+    fn spawn_execution_tick(&mut self, tr: &mut Vec<f64>) -> Result<JsVal, String> {
+        self.flag = false;
+
+        if !self.mg_ready {
+            return Err(if self.el_spawn_tile.is_some() {
+                "Cannot read properties of undefined (reading 'isValidRef')".into()
+            } else {
+                "Cannot read properties of undefined (reading 'hasPlayer')".into()
+            });
+        }
+
+        if let Some(tile) = self.el_spawn_tile {
+            if !self.mg_is_valid_ref(tr, tile) {
+                return Ok(JsVal::Undef);
+            }
+        }
+
+        let pid = self.el_player_id.clone();
+        let player = if self.mg_has_player(tr, &pid) {
+            self.mg_player(tr, &pid)
+        } else {
+            let pi = self.player_info_val();
+            self.mg_add_player(tr, &pi)
+        };
+        let player = match player {
+            Some(p) => p,
+            None => {
+                return Err(
+                    "Cannot read properties of null (reading 'hasSpawned')".into(),
+                )
+            }
+        };
+
+        if self.el_from_intent && !self.el_queued_spawn {
+            return Ok(JsVal::Undef);
+        }
+
+        if self.mg_is_random_spawn(tr) && self.pl_has_spawned(tr, player) {
+            return Ok(JsVal::Undef);
+        }
+
+        let prev_tiles = self.pl_tiles(tr, player);
+        for t in &prev_tiles {
+            self.pl_relinquish(tr, player, *t);
+        }
+        let center_arg = if self.mg_is_random_spawn(tr) {
+            None
+        } else {
+            self.el_spawn_tile
+        };
+        let spawn = match self.spawn_exec_get_spawn(tr, center_arg) {
+            Some(s) => s,
+            None => {
+                for t in &prev_tiles {
+                    self.pl_conquer(tr, player, *t);
+                }
+                return Ok(JsVal::Undef);
+            }
+        };
+
+        for t in &spawn.1 {
+            self.pl_conquer(tr, player, *t);
+        }
+
+        if !self.pl_has_spawned(tr, player) {
+            self.mg_add_exec_player(tr, player);
+            if self.pl_type(tr, player) == PLAYER_TYPE_BOT {
+                self.mg_add_exec_tribe(tr, player);
+            }
+        }
+
+        self.pl_set_spawn_tile(tr, player, spawn.0);
+
+        if self.mg_game_type(tr) == GAME_TYPE_SINGLEPLAYER
+            && self.el_player_type == PLAYER_TYPE_HUMAN
+        {
+            self.mg_end_spawn_phase(tr);
+        }
+
+        Ok(JsVal::Undef)
+    }
+
+    /// `SpawnExecution.getSpawn`: `Some((center, tiles))` or `None`.
+    fn spawn_exec_get_spawn(
+        &mut self,
+        tr: &mut Vec<f64>,
+        center: Option<f64>,
+    ) -> Option<(f64, Vec<f64>)> {
+        const MAX_SPAWN_TRIES: f64 = 1_000.0;
+        const RELAX_MIN_DIST_AT: f64 = 750.0;
+
+        if let Some(c) = center {
+            let tiles = as_num_list(&self.mg_get_spawn_tiles(tr, Some(c), false));
+            if tiles.is_empty() {
+                return None;
+            }
+            return Some((c, tiles));
+        }
+
+        let area = self.spawn_exec_team_area(tr);
+        let mut tries = 0.0f64;
+        while tries < MAX_SPAWN_TRIES {
+            tries += 1.0;
+            let center = self.spawn_exec_rand_tile(tr, area);
+            if !self.mg_is_land(tr, center)
+                || self.mg_has_owner(tr, center)
+                || self.mg_is_border(tr, center)
+            {
+                continue;
+            }
+            if tries <= RELAX_MIN_DIST_AT {
+                let all = self.mg_all_players(tr);
+                let mut others: Vec<usize> = Vec::new();
+                for p in all {
+                    if self.pl_id(tr, p) != self.el_player_id {
+                        others.push(p);
+                    }
+                }
+                let mut nearby = false;
+                for p in others {
+                    if let Some(st) = self.pl_spawn_tile(tr, p) {
+                        let d = self.mg_manhattan_dist(tr, st, center);
+                        let md = self.mg_min_distance_between_players(tr);
+                        if d < md {
+                            nearby = true;
+                            break;
+                        }
+                    }
+                }
+                if nearby {
+                    continue;
+                }
+            }
+            let tiles_v = self.mg_get_spawn_tiles(tr, Some(center), true);
+            if !Self::js_truthy(&tiles_v) {
+                continue;
+            }
+            return Some((center, as_num_list(&tiles_v)));
+        }
+        None
+    }
+
+    /// `SpawnExecution.getTeamSpawnArea`.
+    fn spawn_exec_team_area(&mut self, tr: &mut Vec<f64>) -> Option<(f64, f64, f64, f64)> {
+        let pid = self.el_player_id.clone();
+        let p = self.mg_player(tr, &pid)?;
+        let team = self.pl_team(tr, p);
+        if matches!(team, JsVal::Null) {
+            return None;
+        }
+        let key = as_str(&team);
+        let area = self.mg_team_spawn_area(tr, &key);
+        Self::area_from_val(&area)
+    }
+
+    /// `SpawnExecution.randTile`.
+    fn spawn_exec_rand_tile(
+        &mut self,
+        tr: &mut Vec<f64>,
+        area: Option<(f64, f64, f64, f64)>,
+    ) -> f64 {
+        if let Some((ax, ay, w, h)) = area {
+            let x = self
+                .random
+                .as_mut()
+                .expect("spawn exec random")
+                .next_int(ax, ax + w) as f64;
+            let y = self
+                .random
+                .as_mut()
+                .expect("spawn exec random")
+                .next_int(ay, ay + h) as f64;
+            return self.mg_ref(tr, x, y);
+        }
+        let w = self.mg_width(tr);
+        let x = self
+            .random
+            .as_mut()
+            .expect("spawn exec random")
+            .next_int(0.0, w) as f64;
+        let h = self.mg_height(tr);
+        let y = self
+            .random
+            .as_mut()
+            .expect("spawn exec random")
+            .next_int(0.0, h) as f64;
+        self.mg_ref(tr, x, y)
+    }
+
+    /// The plain `PlayerInfo` object as it arrives on `mg.addPlayer`, in the
+    /// scenario's key order (`id`, then `playerType`).
+    fn player_info_val(&self) -> JsVal {
+        JsVal::Obj(vec![
+            ("id".into(), JsVal::Str(self.el_player_id.clone())),
+            ("playerType".into(), JsVal::Str(self.el_player_type.clone())),
+        ])
+    }
 }
 
 #[cfg(test)]
@@ -4256,5 +5443,70 @@ mod tests {
         let mut tr = Vec::new();
         assert!(!h.would_nuke_break_alliance(&mut tr, 1.0, 1.0, 2.0, &[], 5.0));
         assert!(tr.is_empty());
+    }
+
+    #[test]
+    fn lowest_n_bounds_and_orders_by_key() {
+        // `LowestN.offer` keeps the two smallest keys, ascending, and rejects a
+        // key that is not strictly below the worst survivor.
+        let mut ln = LowestN::new(2.0);
+        ln.offer(10.0, 5.0);
+        ln.offer(11.0, 1.0);
+        ln.offer(12.0, 3.0);
+        assert_eq!(ln.items, vec![(11.0, 1.0), (12.0, 3.0)]);
+        ln.offer(13.0, 3.0);
+        assert_eq!(ln.items, vec![(11.0, 1.0), (12.0, 3.0)]);
+        ln.offer(14.0, 0.0);
+        assert_eq!(ln.items, vec![(14.0, 0.0), (11.0, 1.0)]);
+    }
+
+    #[test]
+    fn tile_has_uses_same_value_zero() {
+        assert!(ExecHarness::tile_has(&[1.0, 2.0, 3.0], 2.0));
+        assert!(!ExecHarness::tile_has(&[1.0, 2.0, 3.0], 4.0));
+        // `-0.0` and `0.0` compare equal under SameValueZero (the JS `Set.has`).
+        assert!(ExecHarness::tile_has(&[0.0], -0.0));
+    }
+
+    #[test]
+    fn js_truthy_falsy_matrix() {
+        assert!(!ExecHarness::js_truthy(&JsVal::Undef));
+        assert!(!ExecHarness::js_truthy(&JsVal::Null));
+        assert!(!ExecHarness::js_truthy(&JsVal::Num(0.0)));
+        assert!(!ExecHarness::js_truthy(&JsVal::Num(f64::NAN)));
+        assert!(!ExecHarness::js_truthy(&JsVal::Str(String::new())));
+        assert!(ExecHarness::js_truthy(&JsVal::Bool(true)));
+        assert!(!ExecHarness::js_truthy(&JsVal::Bool(false)));
+        assert!(ExecHarness::js_truthy(&JsVal::Num(1.0)));
+        assert!(ExecHarness::js_truthy(&JsVal::Obj(vec![])));
+    }
+
+    #[test]
+    fn area_from_val_requires_the_four_fields() {
+        let ok = JsVal::Obj(vec![
+            ("x".into(), JsVal::Num(1.0)),
+            ("y".into(), JsVal::Num(2.0)),
+            ("width".into(), JsVal::Num(3.0)),
+            ("height".into(), JsVal::Num(4.0)),
+        ]);
+        assert_eq!(ExecHarness::area_from_val(&ok), Some((1.0, 2.0, 3.0, 4.0)));
+        assert_eq!(ExecHarness::area_from_val(&JsVal::Null), None);
+        assert_eq!(ExecHarness::area_from_val(&JsVal::Undef), None);
+        let missing = JsVal::Obj(vec![("x".into(), JsVal::Num(1.0))]);
+        assert_eq!(ExecHarness::area_from_val(&missing), None);
+    }
+
+    #[test]
+    fn player_info_val_keeps_declared_field_order() {
+        let mut h = ExecHarness::new();
+        h.el_player_id = "p1".into();
+        h.el_player_type = "HUMAN".into();
+        assert_eq!(
+            h.player_info_val(),
+            JsVal::Obj(vec![
+                ("id".into(), JsVal::Str("p1".into())),
+                ("playerType".into(), JsVal::Str("HUMAN".into())),
+            ])
+        );
     }
 }

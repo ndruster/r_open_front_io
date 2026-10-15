@@ -125,6 +125,29 @@ export class TradeShipExecution {
   }
 }
 `,
+  // G5e: `SpawnExecution` constructs `PlayerExecution` (no ctor side effect)
+  // and `TribeExecution` (whose ctor reads `player.id()` — code 231) via
+  // `mg.addExecution`, and calls the module-level `getSpawnTiles` from
+  // `execution/Util.ts`. The real `getSpawnTiles` walks the GameMap (`bfs`), so
+  // it is modelled as a `Game.getSpawnTiles(tile, needFull)` facade call (code
+  // 618) on the scripted mock instead.
+  "__stub/g5e.ts": `export class PlayerExecution {
+  constructor(player) {
+    this.player = player;
+  }
+}
+
+export class TribeExecution {
+  constructor(player) {
+    this.player = player;
+    this.id = player.id();
+  }
+}
+
+export function getSpawnTiles(gm, tile, requireAllValid) {
+  return gm.getSpawnTiles(tile, requireAllValid);
+}
+`,
 };
 
 /** Rewrites one file and returns the path of the loadable .ts copy. */
@@ -1477,6 +1500,183 @@ function prepare(rel) {
         "    this.amount = amount;\n" +
         "  }",
       "Construction ctor",
+    );
+  }
+
+  // ------------------------------------------------------------------ G5e
+  const elG5eRel = "__stub/g5e.ts";
+  const elUtilRel2 = "src/core/Util.ts";
+  const elTnRel = "src/core/execution/utils/TribeNames.ts";
+  const elSpawnRel = "src/core/execution/SpawnExecution.ts";
+  if (rel.endsWith("execution/DoomsdayClockExecution.ts")) {
+    // DoomsdayClock is a *value* module (the row/floor/drain/noise functions +
+    // ROT_NOISE_SCALE) with no imports of its own, so it loads directly from the
+    // TS root. Game is type-only except GameMode / PlayerType / UnitType, which
+    // redirect to the prepared Game.ts copy; TileRef is dropped.
+    if (!prepared.has(elGameRel)) prepare(elGameRel);
+    out = must(
+      out,
+      "import {\n" +
+        "  doomsdayClockDrain,\n" +
+        "  doomsdayClockRequiredTiles,\n" +
+        "  doomsdayClockRotQuota,\n" +
+        "  doomsdayClockTroopFloor,\n" +
+        "  ROT_NOISE_SCALE,\n" +
+        "  rotFrontNoise,\n" +
+        "  rotSpeckleNoise,\n" +
+        '} from "../game/DoomsdayClock";\n' +
+        "import {\n" +
+        "  Execution,\n" +
+        "  Game,\n" +
+        "  GameMode,\n" +
+        "  Player,\n" +
+        "  PlayerType,\n" +
+        "  Team,\n" +
+        "  UnitType,\n" +
+        '} from "../game/Game";\n' +
+        'import { TileRef } from "../game/GameMap";\n',
+      "import {\n" +
+        "  doomsdayClockDrain,\n" +
+        "  doomsdayClockRequiredTiles,\n" +
+        "  doomsdayClockRotQuota,\n" +
+        "  doomsdayClockTroopFloor,\n" +
+        "  ROT_NOISE_SCALE,\n" +
+        "  rotFrontNoise,\n" +
+        "  rotSpeckleNoise,\n" +
+        `} from "${TS_URL}src/core/game/DoomsdayClock.ts";\n` +
+        `import { GameMode, PlayerType, UnitType } from "./${prepared.get(elGameRel)}";\n`,
+      "DoomsdayClock imports",
+    );
+    out = must(
+      out,
+      "export class DoomsdayClockExecution implements Execution {",
+      "export class DoomsdayClockExecution {",
+      "DoomsdayClock implements",
+    );
+    out = must(
+      out,
+      "  constructor(private readonly n: number) {}",
+      "  private readonly n: number;\n" +
+        "  constructor(n: number) {\n" +
+        "    this.n = n;\n" +
+        "  }",
+      "LowestN ctor",
+    );
+  }
+  if (rel.endsWith("execution/TribeSpawner.ts")) {
+    // Cell / Game / PlayerInfo / TileRef / CustomTribe / TribeNameData / GameID
+    // are type-only (erased by strip mode); the *value* uses are GameMapSize /
+    // PlayerInfo / PlayerType (prepared Game.ts copy), PseudoRandom, simpleHash
+    // (prepared Util.ts), SpawnExecution (prepared copy) and resolveTribeNameData
+    // (prepared TribeNames copy). The ctor's two parameter properties are
+    // expanded for strip mode.
+    if (!prepared.has(elGameRel)) prepare(elGameRel);
+    if (!prepared.has(elUtilRel2)) prepare(elUtilRel2);
+    if (!prepared.has(elTnRel)) prepare(elTnRel);
+    if (!prepared.has(elSpawnRel)) prepare(elSpawnRel);
+    out = must(
+      out,
+      'import { Cell, Game, GameMapSize, PlayerInfo, PlayerType } from "../game/Game";\n' +
+        'import { TileRef } from "../game/GameMap";\n' +
+        'import { type CustomTribe } from "../game/Maps.gen";\n' +
+        'import { PseudoRandom } from "../PseudoRandom";\n' +
+        'import { GameID } from "../Schemas";\n' +
+        'import { simpleHash } from "../Util";\n' +
+        'import { SpawnExecution } from "./SpawnExecution";\n' +
+        'import { type TribeNameData, resolveTribeNameData } from "./utils/TribeNames";\n',
+      `import { GameMapSize, PlayerInfo, PlayerType } from "./${prepared.get(elGameRel)}";\n` +
+        `import { PseudoRandom } from "./${prepared.get(elPsrRel)}";\n` +
+        `import { simpleHash } from "./${prepared.get(elUtilRel2)}";\n` +
+        `import { SpawnExecution } from "./${prepared.get(elSpawnRel)}";\n` +
+        `import { resolveTribeNameData } from "./${prepared.get(elTnRel)}";\n`,
+      "TribeSpawner imports",
+    );
+    out = must(
+      out,
+      "  constructor(\n" +
+        "    private gs: Game,\n" +
+        "    private gameID: GameID,\n" +
+        "    nationCells: Cell[] = [],\n" +
+        "  ) {",
+      "  private gs: any;\n" +
+        "  private gameID: any;\n\n" +
+        "  constructor(\n" +
+        "    gs: any,\n" +
+        "    gameID: any,\n" +
+        "    nationCells: any = [],\n" +
+        "  ) {\n" +
+        "    this.gs = gs;\n" +
+        "    this.gameID = gameID;",
+      "TribeSpawner ctor",
+    );
+  }
+  if (rel.endsWith("execution/SpawnExecution.ts")) {
+    // The un-ported neighbours (PlayerExecution / TribeExecution) and the
+    // GameMap-walking getSpawnTiles all redirect to the g5e stub; GameType /
+    // PlayerType to the prepared Game copy, PseudoRandom to its prepared copy,
+    // simpleHash to the prepared Util.ts. The ctor's three parameter properties
+    // are expanded, and `implements Execution` is dropped.
+    if (!prepared.has(elGameRel)) prepare(elGameRel);
+    if (!prepared.has(elPsrRel)) prepare(elPsrRel);
+    if (!prepared.has(elUtilRel2)) prepare(elUtilRel2);
+    if (!prepared.has(elG5eRel)) prepare(elG5eRel);
+    out = must(
+      out,
+      "import {\n" +
+        "  Execution,\n" +
+        "  Game,\n" +
+        "  GameType,\n" +
+        "  Player,\n" +
+        "  PlayerInfo,\n" +
+        "  PlayerType,\n" +
+        "  SpawnArea,\n" +
+        '} from "../game/Game";\n' +
+        'import { TileRef } from "../game/GameMap";\n' +
+        'import { PseudoRandom } from "../PseudoRandom";\n' +
+        'import { GameID } from "../Schemas";\n' +
+        'import { simpleHash } from "../Util";\n' +
+        'import { PlayerExecution } from "./PlayerExecution";\n' +
+        'import { TribeExecution } from "./TribeExecution";\n' +
+        'import { getSpawnTiles } from "./Util";\n',
+      `import { GameType, PlayerType } from "./${prepared.get(elGameRel)}";\n` +
+        `import { PseudoRandom } from "./${prepared.get(elPsrRel)}";\n` +
+        `import { simpleHash } from "./${prepared.get(elUtilRel2)}";\n` +
+        `import { PlayerExecution, TribeExecution, getSpawnTiles } from "./${prepared.get(elG5eRel)}";\n`,
+      "SpawnExecution imports",
+    );
+    out = must(
+      out,
+      "export class SpawnExecution implements Execution {",
+      "export class SpawnExecution {",
+      "SpawnExecution implements",
+    );
+    out = must(
+      out,
+      "  constructor(\n" +
+        "    gameID: GameID,\n" +
+        "    private playerInfo: PlayerInfo,\n" +
+        "    public tile?: TileRef,\n" +
+        "    // True only for spawns built from a client's spawn intent. Internal\n" +
+        "    // callers (PlayerSpawner, NationExecution) are trusted and place players\n" +
+        "    // deliberately, including at the end of the spawn phase; a client may not.\n" +
+        "    private fromIntent: boolean = false,\n" +
+        "  ) {",
+      "  private playerInfo: any;\n" +
+        "  public tile: any;\n" +
+        "  private fromIntent: any;\n\n" +
+        "  constructor(\n" +
+        "    gameID: any,\n" +
+        "    playerInfo: any,\n" +
+        "    tile: any,\n" +
+        "    // True only for spawns built from a client's spawn intent. Internal\n" +
+        "    // callers (PlayerSpawner, NationExecution) are trusted and place players\n" +
+        "    // deliberately, including at the end of the spawn phase; a client may not.\n" +
+        "    fromIntent: any = false,\n" +
+        "  ) {\n" +
+        "    this.playerInfo = playerInfo;\n" +
+        "    this.tile = tile;\n" +
+        "    this.fromIntent = fromIntent;",
+      "SpawnExecution ctor",
     );
   }
 

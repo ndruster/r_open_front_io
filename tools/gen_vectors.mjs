@@ -26539,6 +26539,30 @@ const elPortC = (await loadTs("src/core/execution/PortExecution.ts"))
 const elConstrC = (
   await loadTs("src/core/execution/ConstructionExecution.ts")
 ).ConstructionExecution;
+// G5e classes. `DoomsdayClockExecution`, `TribeSpawner` and `SpawnExecution` are
+// the REAL (prepared-copy) sources; the `PlayerExecution` / `TribeExecution` /
+// `getSpawnTiles` helpers they use are stubs (`__stub/g5e.ts`) redirected by
+// `ts_load.mjs`.
+const elDoomsdayClockC = (
+  await loadTs("src/core/execution/DoomsdayClockExecution.ts")
+).DoomsdayClockExecution;
+const elTribeSpawnerC = (
+  await loadTs("src/core/execution/TribeSpawner.ts")
+).TribeSpawner;
+const elSpawnExecC = (
+  await loadTs("src/core/execution/SpawnExecution.ts")
+).SpawnExecution;
+// A `Game` (mg) ctor argument for `TribeSpawner.gs`; resolved by the `elDef`
+// args map to `elC.mg` (the Rust ctor table sees the facade group token).
+const elMgRef = { __elmg: true };
+// A `TileRef[]`-like value. The doomsday class calls `.has`, `.forEach` and
+// iterates it; built on an Array (only `has` added) so `Array.isArray` stays
+// true and `encVal` still emits the flat `[7, n, …]` list the Rust side reads.
+const elTileSet = (a) => {
+  const o = a.slice();
+  o.has = (t) => a.some((x) => x === t);
+  return o;
+};
 // A `Unit` ctor argument that is resolved to `elC.units[token]` by `elDef`.
 const elUnitRef = (t) => ({ __elu: t });
 // A `null` ctor argument (`DonateTroopsExecution.troops` / `DonateGoldExecution`
@@ -26716,6 +26740,18 @@ function elPlayerObj(tok, slots) {
       ]);
       return elC.units[t];
     },
+    // G5e.
+    tiles: () => elRet(m, 49, 634, [tok]),
+    borderTiles: () => elRet(m, 50, 635, [tok]),
+    doomsdayClockTicks: () => elRet(m, 51, 632, [tok]),
+    spawnTile: () => elRet(m, 52, 639, [tok]),
+    clearDoomsdayClock: () => elVoid(630, [tok]),
+    enterDoomsdayClock: () => elVoid(631, [tok]),
+    removeTroops: (n) => elVoid(633, [tok, ...elEv1(n)]),
+    relinquish: (t) => elVoid(636, [tok, ...elEv1(t)]),
+    conquer: (t) => elVoid(637, [tok, ...elEv1(t)]),
+    setSpawnTile: (t) => elVoid(638, [tok, ...elEv1(t)]),
+    markRotted: () => elVoid(640, [tok]),
   };
 }
 function elAllianceObj(tok, slots) {
@@ -26782,6 +26818,9 @@ function elUnitObj(tok, slots) {
     move: (node) => elVoid(545, [tok, ...encVal(node)]),
     setUnderConstruction: (flag) => elVoid(546, [tok, ...elEvb(flag)]),
     setTargetedBySAM: (flag) => elVoid(547, [tok, ...elEvb(flag)]),
+    // G5e.
+    maxHealth: () => elRet(m, 28, 620, [tok]),
+    health: () => elRet(m, 29, 621, [tok]),
   };
 }
 function elNeighborObj(tok, slots) {
@@ -26822,6 +26861,14 @@ function elMgObj(slots) {
       get maxTimerValue() {
         return elRet(m, 57, 523, []);
       },
+      // G5e (`TribeSpawner.spawnPositionedTribe` reads `gameMapSize`,
+      // `TribeSpawner` ctor reads `gameMap`).
+      get gameMap() {
+        return elRet(m, 74, 614, []);
+      },
+      get gameMapSize() {
+        return elRet(m, 75, 615, []);
+      },
     }),
     trainStationMaxRange: () => elRet(m, 28, 309, []),
     SiloCooldown: () => elRet(m, 29, 310, []),
@@ -26840,6 +26887,10 @@ function elMgObj(slots) {
       elRet(m, 51, 517, [...elEv1(r), ...elEv1(n)]),
     tradeShipShortRangeDebuff: () => elRet(m, 52, 518, []),
     proximityBonusPortsNb: (n) => elRet(m, 53, 519, elEv1(n)),
+    // G5e.
+    doomsdayClockConfig: () => elRet(m, 61, 601, []),
+    isRandomSpawn: () => elRet(m, 66, 606, []),
+    minDistanceBetweenPlayers: () => elRet(m, 72, 612, []),
   };
   return {
     config: () => cfg,
@@ -27000,6 +27051,17 @@ function elMgObj(slots) {
         );
         return;
       }
+      // G5e: `SpawnExecution` constructs a `PlayerExecution` (tag 13, no ctor
+      // side effect) and, for bots, a `TribeExecution` (tag 14 — the stub ctor
+      // already read `player.id()` (231) before `addExecution` was called).
+      if (cn === "PlayerExecution") {
+        elT.push(307, 13, ...elEvTok(exec.player), ...encVal(undefined));
+        return;
+      }
+      if (cn === "TribeExecution") {
+        elT.push(307, 14, ...elEvTok(exec.player), ...encVal(undefined));
+        return;
+      }
       const tag = elExecTags[cn];
       if (tag === undefined) {
         throw new Error(`el: unknown execution ${cn}`);
@@ -27041,6 +27103,32 @@ function elMgObj(slots) {
     isWater: (tile) => elRet(m, 42, 508, elEv1(tile)),
     manhattanDist: (a, b) => elRet(m, 43, 509, [...elEv1(a), ...elEv1(b)]),
     unitInfo: (ty) => elRet(m, 46, 512, elEvs(ty)),
+    // G5e.
+    getWinner: () => {
+      const t = elRet(m, 60, 600, []);
+      return t == null || typeof t !== "number" ? null : elC.players[t];
+    },
+    setFallout: (tile, flag) => elVoid(602, [...elEv1(tile), ...elEvb(flag)]),
+    x: (tile) => elRet(m, 63, 603, elEv1(tile)),
+    y: (tile) => elRet(m, 64, 604, elEv1(tile)),
+    addPlayer: (pi) => {
+      // `mg.addPlayer(playerInfo)` takes the (plain, scenario-supplied)
+      // PlayerInfo object; the trace records its `encVal` and the returned
+      // player token.
+      const t = elTake(m, 65);
+      elT.push(605, ...encVal(pi), ...elEvTok(elC.players[t]));
+      return elC.players[t];
+    },
+    hasOwner: (tile) => elRet(m, 67, 607, elEv1(tile)),
+    isBorder: (tile) => elRet(m, 68, 608, elEv1(tile)),
+    ref: (x, y) => elRet(m, 69, 609, [...elEv1(x), ...elEv1(y)]),
+    width: () => elRet(m, 70, 610, []),
+    height: () => elRet(m, 71, 611, []),
+    teamSpawnArea: (team) => elRet(m, 73, 613, elEvs(team)),
+    isValidCoord: (x, y) => elRet(m, 76, 616, [...elEv1(x), ...elEv1(y)]),
+    isImpassable: (tile) => elRet(m, 77, 617, elEv1(tile)),
+    getSpawnTiles: (tile, requireAllValid) =>
+      elRet(m, 78, 618, [...encVal(tile), ...elEvb(requireAllValid)]),
     // `PathFinding.Air(mg)` returns this object (the `__stub/pathfinding.ts`
     // stub reads `game.__pathFinder`); `next(from, to)` replays the scripted
     // `{status, node}` results.
@@ -27053,21 +27141,21 @@ function elMgObj(slots) {
 function elDef(name, classId, cls, args, spec, ops) {
   elT = [];
   elC = {};
-  elC.players = (spec.players || []).map((mm, i) => elPlayerObj(i, elSlots(49, mm)));
+  elC.players = (spec.players || []).map((mm, i) => elPlayerObj(i, elSlots(53, mm)));
   elC.alliances = (spec.alliances || []).map((mm, i) => elAllianceObj(i, elSlots(4, mm)));
   elC.requests = (spec.requests || []).map((mm, i) => elRequestObj(i, elSlots(5, mm)));
-  elC.units = (spec.units || []).map((mm, i) => elUnitObj(i, elSlots(28, mm)));
+  elC.units = (spec.units || []).map((mm, i) => elUnitObj(i, elSlots(30, mm)));
   elC.neighbors = (spec.neighbors || []).map((mm, i) => elNeighborObj(i, elSlots(3, mm)));
-  elC.mg = elMgObj(elSlots(61, spec.mg));
+  elC.mg = elMgObj(elSlots(79, spec.mg));
 
   const setup = {
     c: classId,
     a: spec.a || [],
-    mg: elSlots(61, spec.mg),
-    players: (spec.players || []).map((mm) => elSlots(49, mm)),
+    mg: elSlots(79, spec.mg),
+    players: (spec.players || []).map((mm) => elSlots(53, mm)),
     alliances: (spec.alliances || []).map((mm) => elSlots(4, mm)),
     requests: (spec.requests || []).map((mm) => elSlots(5, mm)),
-    units: (spec.units || []).map((mm) => elSlots(28, mm)),
+    units: (spec.units || []).map((mm) => elSlots(30, mm)),
     neighbors: (spec.neighbors || []).map((mm) => elSlots(3, mm)),
   };
 
@@ -27082,6 +27170,9 @@ function elDef(name, classId, cls, args, spec, ops) {
       if (x === null) return elC.players[aList[i]];
       if (x !== null && typeof x === "object" && x.__elnull === true) {
         return null;
+      }
+      if (x !== null && typeof x === "object" && x.__elmg === true) {
+        return elC.mg;
       }
       if (x !== null && typeof x === "object" && x.__elu !== undefined) {
         return elC.units[x.__elu];
@@ -27098,6 +27189,37 @@ function elDef(name, classId, cls, args, spec, ops) {
       continue;
     }
     elT = [];
+    if (kind === 5) {
+      // G5e `TribeSpawner.spawnTribes(numTribes, purchasedNames)`. The recorded
+      // args are flat numbers `[numTribes, nameCount, (len, c0, c1, …)*nameCount]`
+      // (the vectors serializer only accepts numeric args); the payload encodes
+      // each returned `SpawnExecution` as `[name, id, tile ?? null]`.
+      const numTribes = rest[0];
+      const names = rest.slice(1);
+      const flat = [numTribes, names.length];
+      for (const s of names) {
+        flat.push(s.length);
+        for (let ci = 0; ci < s.length; ci++) flat.push(s.charCodeAt(ci));
+      }
+      let payload;
+      try {
+        const ret = inst.spawnTribes(numTribes, names);
+        payload = [
+          0,
+          ...encVal(
+            ret.map((e) => [e.playerInfo.name, e.playerInfo.id, e.tile ?? null]),
+          ),
+        ];
+      } catch (e) {
+        payload = [1, ...encS(String(e.message))];
+      }
+      played.push({
+        kind: 5,
+        args: flat.map(uenc),
+        res: [elT.length, ...elT, ...payload].map(uenc),
+      });
+      continue;
+    }
     let payload;
     try {
       let ret;
@@ -28209,6 +28331,247 @@ elDef(
     mg: { 45: [false], 19: [true], 46: [{ constructionDuration: 0 }] },
   },
   [[0], [1, 0], [2, 0], [3]],
+);
+
+// -- 30 DoomsdayClockExecution ----------------------------------------------
+// `tick` early-returns off the `% 10` gate and reads nothing.
+elDef("el_ddc_early_nonmultiple", 30, elDoomsdayClockC, [], {}, [[0], [1, 0], [2, 5], [3], [4]]);
+// `tick` before `init`: the TS throws on `this.mg === null`.
+elDef("el_ddc_uninitialized", 30, elDoomsdayClockC, [], {}, [[0], [2, 10]]);
+// `enabled: false` returns after the single config read.
+elDef("el_ddc_disabled", 30, elDoomsdayClockC, [], { mg: { 61: [{ enabled: false }] } }, [[0], [1, 0], [2, 10], [3]]);
+// A set winner idles: every contender is cleared and `active` drops to false.
+elDef(
+  "el_ddc_winner_set",
+  30,
+  elDoomsdayClockC,
+  [],
+  {
+    players: [{ 21: ["HUMAN"] }, { 21: ["NATION"] }],
+    mg: {
+      11: [[0, 1]],
+      37: [768],
+      54: ["Free For All"],
+      60: [0],
+      61: [{ enabled: true, speed: "Normal" }],
+    },
+  },
+  [[0], [1, 0], [2, 10], [3], [4]],
+);
+// A null winner with under two sides idles the same way.
+elDef(
+  "el_ddc_low_sides",
+  30,
+  elDoomsdayClockC,
+  [],
+  {
+    players: [{ 21: ["HUMAN"] }],
+    mg: {
+      11: [[0]],
+      37: [768],
+      54: ["Free For All"],
+      60: [null],
+      61: [{ enabled: true, speed: "Normal" }],
+    },
+  },
+  [[0], [1, 0], [2, 10], [3], [4]],
+);
+// FFA: the trailing side is doomed and its warship bleeds (no rot).
+elDef(
+  "el_ddc_doom_warship",
+  30,
+  elDoomsdayClockC,
+  [],
+  {
+    players: [
+      { 0: [0], 21: ["HUMAN"], 45: [5000] },
+      { 11: [0], 21: ["NATION"], 41: [300], 45: [100], 51: [100] },
+    ],
+    units: [{ 28: [1000], 29: [500] }],
+    mg: {
+      11: [[0, 1]],
+      32: [1000],
+      35: [10000],
+      36: [0],
+      37: [768],
+      54: ["Free For All"],
+      60: [null],
+      61: [
+        {
+          enabled: true,
+          speed: "Normal",
+          warnSeconds: 3,
+          drainFloorPercent: 5,
+          floorStartPercent: 20,
+          floorDecaySeconds: 5,
+          drainStartPercent: 10,
+          drainMaxPercent: 60,
+          drainRampSeconds: 30,
+          rotDeathSeconds: 0,
+          rotGrainSeconds: 2,
+          rotSpecklePercent: 10,
+          warshipDrainStartPercent: 10,
+          warshipDrainMaxPercent: 60,
+          warshipDrainCurveExponent: 1,
+        },
+      ],
+    },
+  },
+  [[0], [1, 0], [2, 10], [3], [4]],
+);
+// FFA: the trailing side bottoms out at the troop floor and territory rots.
+elDef(
+  "el_ddc_rot",
+  30,
+  elDoomsdayClockC,
+  [],
+  {
+    players: [
+      { 0: [0], 21: ["HUMAN"], 45: [5000] },
+      { 0: [2], 21: ["NATION"], 41: [10], 45: [200], 49: [elTileSet([10, 11])], 50: [elTileSet([10])], 51: [100] },
+    ],
+    mg: {
+      2: [1000],
+      11: [[0, 1]],
+      32: [200],
+      35: [10000],
+      36: [0],
+      37: [768],
+      41: [[]],
+      54: ["Free For All"],
+      60: [null],
+      61: [
+        {
+          enabled: true,
+          speed: "Normal",
+          warnSeconds: 3,
+          drainFloorPercent: 5,
+          floorStartPercent: 20,
+          floorDecaySeconds: 5,
+          drainStartPercent: 15,
+          drainMaxPercent: 65,
+          drainRampSeconds: 30,
+          rotDeathSeconds: 40,
+          rotGrainSeconds: 2,
+          rotSpecklePercent: 10,
+        },
+      ],
+      63: [10, 11],
+      64: [0, 0],
+    },
+  },
+  [[0], [1, 0], [2, 10], [3], [4]],
+);
+
+// -- 31 TribeSpawner ---------------------------------------------------------
+// An unknown map falls back to the default theme; two random prefix+suffix names.
+elDef(
+  "el_tribe_spawner_default_names",
+  31,
+  elTribeSpawnerC,
+  [{ __elmg: true }, "gameA", []],
+  { a: ["gameA", []], mg: { 74: ["UnknownMap"] } },
+  [[0], [5, 2]],
+);
+// Los Angeles' positioned custom tribes spawn at their exact tile.
+elDef(
+  "el_tribe_spawner_positioned",
+  31,
+  elTribeSpawnerC,
+  [{ __elmg: true }, "gameA", []],
+  {
+    a: ["gameA", []],
+    mg: { 74: ["Los Angeles"], 75: ["Normal"], 76: [true], 69: [1000], 23: [true], 67: [false], 77: [false] },
+  },
+  [[0], [5, 3]],
+);
+// Purchased names take shuffled slots; the tail falls back to random names.
+elDef(
+  "el_tribe_spawner_purchased",
+  31,
+  elTribeSpawnerC,
+  [{ __elmg: true }, "gameA", []],
+  { a: ["gameA", []], mg: { 74: ["UnknownMap"] } },
+  [[0], [5, 3, "Alpha", "Beta"]],
+);
+
+// -- 32 SpawnExecution -------------------------------------------------------
+// tick before init, with a tile: the TS throws reading `isValidRef`.
+elDef(
+  "el_spawn_exec_uninit_tile",
+  32,
+  elSpawnExecC,
+  ["gameA", { id: "p1", playerType: "HUMAN" }, 100, false],
+  { a: ["gameA", "p1", "HUMAN", 100, false] },
+  [[0], [2, 0]],
+);
+// tick before init, no tile: the TS throws reading `hasPlayer`.
+elDef(
+  "el_spawn_exec_uninit_noplayer",
+  32,
+  elSpawnExecC,
+  ["gameA", { id: "p1", playerType: "HUMAN" }, null, false],
+  { a: ["gameA", "p1", "HUMAN", null, false] },
+  [[0], [2, 0]],
+);
+// A known player spawns on the intent tile; PlayerExecution is added.
+elDef(
+  "el_spawn_exec_direct_tile_human",
+  32,
+  elSpawnExecC,
+  ["gameA", { id: "p1", playerType: "HUMAN" }, 100, false],
+  {
+    a: ["gameA", "p1", "HUMAN", 100, false],
+    players: [{ 21: ["HUMAN"], 43: [false], 49: [[]] }],
+    mg: { 0: [true], 1: [0], 4: ["Public"], 6: [true], 19: [true], 66: [false], 78: [[10, 11]] },
+  },
+  [[0], [1, 0], [2, 0], [3], [4]],
+);
+// A from-intent spawn issued outside the spawn phase is a clean no-op.
+elDef(
+  "el_spawn_exec_from_intent_rejected",
+  32,
+  elSpawnExecC,
+  ["gameA", { id: "p1", playerType: "BOT" }, null, true],
+  {
+    a: ["gameA", "p1", "BOT", null, true],
+    players: [{ 65: [1], 21: ["BOT"] }],
+    mg: { 0: [false], 6: [false], 65: [0] },
+  },
+  [[0], [1, 0], [2, 0], [3]],
+);
+// Random spawn: the first candidate is near another player's spawn, the second
+// clears the minimum-distance filter and lands.
+elDef(
+  "el_spawn_exec_random_min_dist",
+  32,
+  elSpawnExecC,
+  ["gameA", { id: "p1", playerType: "BOT" }, null, false],
+  {
+    a: ["gameA", "p1", "BOT", null, false],
+    players: [
+      { 1: ["p1"], 18: [null], 21: ["BOT"], 43: [false], 49: [[]] },
+      { 1: ["p2"], 52: [60] },
+    ],
+    mg: {
+      0: [true],
+      1: [0],
+      4: ["Public"],
+      6: [true],
+      23: [true],
+      34: [[0, 1]],
+      43: [5, 50],
+      66: [true],
+      67: [false],
+      68: [false],
+      69: [50, 70],
+      70: [100],
+      71: [100],
+      72: [10],
+      78: [[70, 71]],
+    },
+  },
+  [[0], [1, 0], [2, 0], [3], [4]],
 );
 
 const structures = {
@@ -31954,7 +32317,8 @@ opStream(
     "/// 11 AllianceReject, 12 Retreat, 13 BoatRetreat, 14 MoveWarship, 15\n" +
     "/// DeleteUnit, 16 QuickChat, 17 MissileSilo, 18 UpgradeStructure, 19 City,\n" +
     "/// 20 Factory, 21 DefensePost, 22 Emoji, 23 DonateTroop, 24 DonateGold, 25\n" +
-    "/// WinCheck, 26 Shell, 27 SAMMissile, 28 Port, 29 Construction. Facade trace\n" +
+    "/// WinCheck, 26 Shell, 27 SAMMissile, 28 Port, 29 Construction, 30\n" +
+    "/// DoomsdayClock, 31 TribeSpawner, 32 SpawnExecution. Facade trace\n" +
     "/// events: mg 210 hasPlayer, 211 player,\n" +
     "/// 212 ticks, 213 allianceRequestDuration, 214 gameType, 215\n" +
     "/// numSpawnPhaseTurns, 216 inSpawnPhase, 217 endSpawnPhase, 218 setPaused,\n" +
@@ -31995,9 +32359,21 @@ opStream(
     "/// hasSpawned, 531 isDisconnected, 532 numTilesOwned, 533 canTrade, 534\n" +
     "/// canBuild, 535 buildUnit; unit 540 level, 541 veterancy, 542 recordKill,\n" +
     "/// 543 modifyHealth, 544 setReachedTarget, 545 move, 546 setUnderConstruction,\n" +
-    "/// 547 setTargetedBySAM. Construction-record tags on 307: 0 TrainStation, 1\n" +
+    "/// 547 setTargetedBySAM. G5e: mg 600 getWinner, 601\n" +
+    "/// config.doomsdayClockConfig, 602 setFallout, 603 x, 604 y, 605 addPlayer,\n" +
+    "/// 606 config.isRandomSpawn, 607 hasOwner, 608 isBorder, 609 ref, 610\n" +
+    "/// width, 611 height, 612 config.minDistanceBetweenPlayers, 613\n" +
+    "/// teamSpawnArea, 614 gameMap, 615 gameMapSize, 616 isValidCoord, 617\n" +
+    "/// isImpassable, 618 getSpawnTiles; player 632 doomsdayClockTicks, 634\n" +
+    "/// tiles, 635 borderTiles, 639 spawnTile (void 630 clearDoomsdayClock, 631\n" +
+    "/// enterDoomsdayClock, 633 removeTroops, 636 relinquish, 637 conquer, 638\n" +
+    "/// setSpawnTile, 640 markRotted); unit 620 maxHealth, 621 health.\n" +
+    "/// Construction-record tags on 307: 0 TrainStation, 1\n" +
     "/// Shell, 2 Emoji, 3 Nuke, 4 MIRV, 5 Warship, 6 Port, 7 MissileSilo, 8\n" +
-    "/// DefensePost, 9 SAMLauncher, 10 City, 11 Factory, 12 TradeShip. Objects\n" +
+    "/// DefensePost, 9 SAMLauncher, 10 City, 11 Factory, 12 TradeShip, 13\n" +
+    "/// PlayerExecution, 14 TribeExecution (its ctor reads player.id first).\n" +
+    "/// G5e kind 5 spawnTribes [5,numEnc,namesEnc] -> a list of\n" +
+    "/// [name,token,tile?] rows. Objects\n" +
     "/// cross as TOKENS (indices\n" +
     "/// into the harness tables). Scripted returns are consumed FIFO per\n" +
     "/// scenario; an exhausted list repeats its last value, an empty list\n" +

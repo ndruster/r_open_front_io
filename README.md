@@ -2697,6 +2697,37 @@ WebSockets — stays excluded, mirroring the `src/core` exclusions).
     and omitted. 47 new scenarios (`el_wincheck_*` / `el_shell_*` / `el_sam_*` /
     `el_port_*` / `el_constr_*`, 192 ops), 164 scenarios / 670 ops and 904,374
     wasm comparisons in total.
+86. **`execution/` layer, part 5** (`execution`, G5e) — the doomsday-clock,
+    tribe-spawner and spawn executions added to the same `exec_layer.rs`
+    harness (class ids 30…32): `DoomsdayClockExecution` (30), `TribeSpawner`
+    (31), `SpawnExecution` (32). Facade trace codes pick up where G5d stopped:
+    mg 600-618 (`getWinner` / `config().doomsdayClockConfig` / `setFallout` /
+    `x` / `y` / `addPlayer` / `config().isRandomSpawn` / `hasOwner` /
+    `isBorder` / `ref` / `width` / `height` / `config().minDistanceBetweenPlayers`
+    / `teamSpawnArea` / `config().gameConfig().gameMap` /
+    `config().gameConfig().gameMapSize` / `isValidCoord` / `isImpassable` /
+    `getSpawnTiles`), player 632-640 (`doomsdayClockTicks` / `tiles` /
+    `borderTiles` / `spawnTile`, plus the void `clearDoomsdayClock` /
+    `enterDoomsdayClock` / `removeTroops` / `relinquish` / `conquer` /
+    `setSpawnTile` / `markRotted`) and unit 620-621 (`maxHealth` / `health`).
+    The per-tick orchestration lives in `doomsday_clock_exec` / `ddc_*`, with
+    the clock maths themselves in the ported `doomsday_clock.rs`
+    (`requiredTiles` / `troopFloor` / `drain` / `rotQuota` ...). `TribeSpawner`
+    reuses the ported `tribe_names.rs` (`resolveTribeNameData`, an unknown map
+    falls back to the `default` theme) and `maps_gen.rs` (Los Angeles'
+    positioned custom tribes), returning its rows through kind 5
+    (`[5,numEnc,namesEnc]` → `[name, token, tile?]`). `SpawnExecution` uses the
+    REAL ported `PseudoRandom` seeded from
+    `simpleHash(playerInfo.id) + simpleHash(gameID)`, so the random-spawn
+    sampling is exact. The downstream `PlayerExecution` / `TribeExecution`
+    built by `SpawnExecution` are modelled as construction-recorder tags 13 /
+    14 on `mg.addExecution` (307); `TribeExecution`'s ctor reads `player.id()`
+    first. `DoomsdayClockExecution`'s `mg === null` "Not initialized" throw and
+    `SpawnExecution`'s pre-`init` `isValidRef` / `hasPlayer` reads are
+    reachable and replicated, as are the malformed-intent, from-intent and
+    re-roll no-ops. 15 new scenarios (`el_ddc_*` / `el_tribe_spawner_*` /
+    `el_spawn_exec_*`, 55 ops), 179 scenarios / 723 ops and 906,185 wasm
+    comparisons in total.
 
 Regenerate whenever a ported source changes:
 
@@ -2730,7 +2761,7 @@ node rust/tools/run_wasm_parity.mjs
 
 `wasm-probe` exposes the ported functions through `extern "C"` scalar
 entrypoints (`src/wasm_probe.rs`); the runner imports `data/vectors.json` and
-compares every value. Last run: **897,869 comparisons, all bit-identical**.
+compares every value. Last run: **906,185 comparisons, all bit-identical**.
 
 ### Windows: the linker environment
 

@@ -39,7 +39,7 @@ pub struct Theme {
 }
 
 /// The `TribeNameData` the TS function returns.
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct TribeNameData {
     pub prefixes: Vec<String>,
     pub suffixes: Vec<String>,

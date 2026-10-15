@@ -325,6 +325,20 @@
 //!   minInt raw-non-bigint mix throw), the troops cluster (`toInt` clamp
 //!   matrix), and the disconnect cluster (102/103/104 built-snapshot order,
 //!   the `snapshot ?? built` facade skip, `disconnectedAtTick`'s `?.`/`??`)
+//! * [`game_impl`] — `src/core/game/GameImpl.ts` (G4a slice: the game facade
+//!   harness — `isOnEdgeOfMap` / `owner` / `playerBySmallID`, the update sink
+//!   `addUpdate` observed through the harness-only `dumpUpdates` op, fallout /
+//!   water / nuke-impact queues, unit bookkeeping with its version memos,
+//!   `unitCount` / `nations` / `config`, the paused / spawn-phase clock,
+//!   tile-update packing and motion-plan packing, `hash` / `terraNullius` /
+//!   execution lists, the player / playerByClientID / playerView facades, the
+//!   diplomacy and winner cluster, the display-message / chat / incoming-unit
+//!   updates, the unit add/remove/nearby cluster and the `_map` /
+//!   `_waterManager` pass-throughs. The REAL ported [`game_map`] /
+//!   [`water_manager`] / [`terra_nullius`] stay untraced; players, unit mocks,
+//!   `unitGrid`, `_railNetwork`, `_stats`, `_config`, `_sharedWaterCache`,
+//!   executions and the `updates` sink are scripted facades whose call trace
+//!   rides in the res stream, same pattern as `player_impl`)
 //! * [`config_patch`] — `src/server/ConfigPatch.ts` (`applyGameConfigPatch`'s
 //!   `COPIED_KEYS` copy-if-`!== undefined` loop, the `NULLABLE_KEYS`
 //!   `value ?? undefined` clear-to-undefined loop and the unconditional
@@ -514,6 +528,7 @@ pub mod frame_upload;
 pub mod fx_settings;
 pub mod game_api_cors;
 pub mod game_config_helpers;
+pub mod game_impl;
 pub mod game_info_ranking;
 pub mod game_map;
 pub mod game_mode_gate;

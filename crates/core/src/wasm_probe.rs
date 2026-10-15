@@ -5600,3 +5600,36 @@ pub extern "C" fn probe_pl_op(kind: u32) -> usize {
 pub extern "C" fn probe_pl_out_at(i: usize) -> f64 {
     PL_OUT.with(|o| o.borrow()[i])
 }
+
+// ============ G4a: core/game/GameImpl.ts (gamefacade) =========================
+
+thread_local! {
+    static GIMP_HARNESS: std::cell::RefCell<crate::game_impl::GameHarness> =
+        std::cell::RefCell::new(crate::game_impl::GameHarness::default());
+    static GIMP_ARGS: std::cell::RefCell<Vec<f64>> = const { std::cell::RefCell::new(Vec::new()) };
+    static GIMP_OUT: std::cell::RefCell<Vec<f64>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
+#[no_mangle]
+pub extern "C" fn probe_gimp_reset() {
+    GIMP_HARNESS.with(|h| h.borrow_mut().reset());
+}
+
+#[no_mangle]
+pub extern "C" fn probe_gimp_arg(v: f64) {
+    GIMP_ARGS.with(|t| t.borrow_mut().push(v));
+}
+
+#[no_mangle]
+pub extern "C" fn probe_gimp_op(kind: u32) -> usize {
+    let a = GIMP_ARGS.with(|t| std::mem::take(&mut *t.borrow_mut()));
+    let out = GIMP_HARNESS.with(|h| h.borrow_mut().run_op(kind as u8, &a));
+    let len = out.len();
+    GIMP_OUT.with(|o| *o.borrow_mut() = out);
+    len
+}
+
+#[no_mangle]
+pub extern "C" fn probe_gimp_out_at(i: usize) -> f64 {
+    GIMP_OUT.with(|o| o.borrow()[i])
+}

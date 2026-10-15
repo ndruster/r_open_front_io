@@ -23491,6 +23491,1537 @@ runPL("pl_best_spawn", [
 
 // ---- pl_ scenarios end ------------------------------------------------------
 
+// ================================================================ gf_ scenarios
+// GameImpl facade harness (G4a). Replays a scripted op stream against the real
+// `GameImpl` built with `Object.create` + manual field assignment (the
+// constructor never runs). Mirrors `game_impl::GameHarness::run_op`. Trace
+// events: Players 100 isAlive, 101 hasSpawned, 102 numTilesOwned, 104 hash,
+// 105 clientID, 106 team, 108 name, 111 disconnectSnapshot, 112 isDisconnected,
+// 113 alliances, 114 units, 115 unitCount, 117 smallID. Units 120 toUpdate,
+// 121 hasTrainStation, 122 id, 123 type. unitGrid 130 addUnit, 131 removeUnit,
+// 132 updateUnitCell, 133 hasUnitNearby, 134 anyUnitNearby, 135 nearbyUnits.
+// Rail 140 removeStation. Stats 150 recordFinalTiles, 151 recordAlliancesAtEnd.
+// Config 160 gameConfig, 161 unitInfo, 162 waterNukes, 163
+// spawnImmunityDuration, 164 nationSpawnImmunityDuration, 165
+// teamLandShareWinThresholdTenths. Water cache 170 get. Exec 180
+// activeDuringSpawnPhase, 181 isActive. Callbacks 190 forEachNeighbor, 191
+// forEachNeighborWithDiag, 192 forEachTile, 193 circleSearch filter, 194 bfs
+// filter. Players/units/execs cross as TOKENS (table index; TN -> -2,
+// undefined player -> -1).
+
+const gfaScenarios = [];
+let gfaT = [];
+const GFA_TN = {};
+gTok.set(GFA_TN, -2);
+
+// A player reference return: undefined -> the "-1" token; anything else goes
+// through the shared codec (mock players / TerraNullius are in `gTok`).
+const gfaRefTok = (v) => (v === undefined ? [3, uenc(-1)] : akEnc(v));
+const gfaU16 = (s) => {
+  const a = [];
+  for (let i = 0; i < s.length; i++) a.push(s.charCodeAt(i));
+  return a;
+};
+// `gmNorm` — mirrors `game_impl::norm_val` (flatten a stored update). Numeral
+// leaves go [3, tok]; a NaN/±Inf/-0 token expands to [3, 5, ...utf16] with NO
+// length prefix, unlike the plain string case.
+const gfaNorm = (v) => {
+  if (v === undefined) return [1];
+  if (v === null) return [2];
+  if (typeof v === "number") {
+    const u = uenc(v);
+    return typeof u === "string" ? [3, 5, ...gfaU16(u)] : [3, v];
+  }
+  if (typeof v === "boolean") return [4, v ? 1 : 0];
+  if (typeof v === "string") return [5, gfaU16(v).length, ...gfaU16(v)];
+  if (Array.isArray(v)) return [7, v.length, ...v.flatMap(gfaNorm)];
+  return [
+    6,
+    Object.keys(v).length,
+    ...Object.entries(v).flatMap(([k, x]) => [
+      5,
+      gfaU16(k).length,
+      ...gfaU16(k),
+      ...gfaNorm(x),
+    ]),
+  ];
+};
+
+const gfaCfg = (o = {}) => ({
+  gtype: o.gtype ?? "Singleplayer",
+  gmode: o.gmode ?? "Free For All",
+  waterNukes: o.waterNukes ?? 0,
+  spawnImmunity: o.spawnImmunity ?? 0,
+  nationSpawnImmunity: o.nationSpawnImmunity ?? 0,
+  teamLandShare: o.teamLandShare ?? 0,
+});
+const gfaUg = (o = {}) => ({
+  hasUnitNearby: o.hasUnitNearby ?? 0,
+  anyUnitNearby: o.anyUnitNearby ?? 0,
+  nearbyUnits: o.nearbyUnits ?? [],
+  circleFilter: o.circleFilter ?? 0,
+  bfsFilter: o.bfsFilter ?? 0,
+});
+const gfaP = (o = {}) => ({
+  pid: o.pid ?? 1,
+  sid: o.sid ?? 1,
+  alive: o.alive ?? 1,
+  spawned: o.spawned ?? 1,
+  nt: o.nt ?? 0,
+  hash: o.hash ?? 0,
+  cid: o.cid === undefined ? null : o.cid,
+  team: o.team === undefined ? null : o.team,
+  name: o.name === undefined ? null : o.name,
+  dsnap: o.dsnap === undefined ? null : o.dsnap,
+  disc: o.disc ?? 0,
+  al: o.al ?? [],
+  units: o.units ?? [],
+  uc: o.uc ?? [],
+});
+const gfaU = (o = {}) => ({
+  uid: o.uid ?? 1,
+  typ: o.typ ?? "Warship",
+  hts: o.hts ?? 0,
+  toUpdate: o.toUpdate === undefined ? { type: 1 } : o.toUpdate,
+});
+const gfaMap = (o = {}) => ({
+  w: o.w,
+  h: o.h,
+  numLand: o.numLand ?? o.w * o.h,
+  terr: o.terr ?? new Array(o.w * o.h).fill(0x83),
+  mw: o.mw ?? o.w,
+  mh: o.mh ?? o.h,
+  mNumLand: o.mNumLand ?? (o.mw ?? o.w) * (o.mh ?? o.h),
+  mTerr: o.mTerr ?? o.terr ?? new Array(o.w * o.h).fill(0x83),
+  owners: o.owners ?? [],
+});
+const gfaS = (o = {}) => ({
+  map: o.map ?? null,
+  ticks: o.ticks ?? 0,
+  startTick: o.startTick ?? null,
+  nextPlayerID: o.nextPlayerID ?? 1,
+  nextUnitID: o.nextUnitID ?? 1,
+  width: o.width ?? 0,
+  height: o.height ?? 0,
+  nukeQueue: o.nukeQueue ?? [],
+  unInitExecs: o.unInitExecs ?? [],
+  execs: o.execs ?? [],
+  execTable: o.execTable ?? [],
+  playersMap: o.playersMap ?? [],
+  playersBySmallID: o.playersBySmallID ?? [],
+  players: o.players ?? [],
+  units: o.units ?? [],
+  unitMap: o.unitMap ?? [],
+  planDriven: o.planDriven ?? [],
+  playerTeams: o.playerTeams ?? [],
+  botTeam: o.botTeam ?? "Bot",
+  isPaused: o.isPaused ?? 0,
+  winner: o.winner === undefined ? null : o.winner,
+  teamSpawnAreas: o.teamSpawnAreas,
+  nations: o.nations ?? [],
+  unitsVersion: o.unitsVersion ?? 0,
+  territoryVersion: o.territoryVersion ?? 0,
+  tileUpdates: o.tileUpdates ?? [],
+  playerStatsQuads: o.playerStatsQuads ?? [],
+  attackTroopsQuads: o.attackTroopsQuads ?? [],
+  motionRecords: o.motionRecords ?? [],
+  unitsByTypeMemo: o.unitsByTypeMemo ?? [],
+  unitCountMemo: o.unitCountMemo ?? [],
+  cfg: gfaCfg(o.cfg),
+  ug: gfaUg(o.ug),
+  swc: o.swc === undefined ? null : o.swc,
+});
+
+function gfaPlayerEnc(p) {
+  return [
+    uenc(p.pid),
+    uenc(p.sid),
+    uenc(p.alive ? 1 : 0),
+    uenc(p.spawned ? 1 : 0),
+    uenc(p.nt),
+    uenc(p.hash),
+    ...akEnc(p.cid),
+    ...akEnc(p.team),
+    ...akEnc(p.name),
+    ...akEnc(p.dsnap),
+    uenc(p.disc ? 1 : 0),
+    uenc(p.al.length),
+    ...p.al.map(uenc),
+    uenc(p.units.length),
+    ...p.units.map(uenc),
+    uenc(p.uc.length),
+    ...p.uc.flatMap(([t, n]) => [...encS(t), uenc(n)]),
+  ];
+}
+function gfaUnitEnc(u) {
+  return [uenc(u.uid), ...encS(u.typ), uenc(u.hts ? 1 : 0), ...akEnc(u.toUpdate)];
+}
+function gfaConstruct(S) {
+  const a = [];
+  if (S.map) {
+    const mp = S.map;
+    a.push(uenc(1));
+    a.push(uenc(mp.w), uenc(mp.h), uenc(mp.numLand));
+    a.push(uenc(mp.terr.length), ...mp.terr.map(uenc));
+    a.push(uenc(mp.mw), uenc(mp.mh), uenc(mp.mNumLand));
+    a.push(uenc(mp.mTerr.length), ...mp.mTerr.map(uenc));
+    a.push(
+      uenc(mp.owners.length),
+      ...mp.owners.flatMap(([t, o]) => [uenc(t), uenc(o)]),
+    );
+  } else {
+    a.push(uenc(0));
+  }
+  a.push(uenc(S.ticks));
+  if (S.startTick === null || S.startTick === undefined) a.push(uenc(0));
+  else a.push(uenc(1), uenc(S.startTick));
+  a.push(uenc(S.nextPlayerID), uenc(S.nextUnitID), uenc(S.width), uenc(S.height));
+  a.push(uenc(S.nukeQueue.length), ...S.nukeQueue.map(uenc));
+  a.push(uenc(S.unInitExecs.length), ...S.unInitExecs.map(uenc));
+  a.push(uenc(S.execs.length), ...S.execs.map(uenc));
+  a.push(
+    uenc(S.execTable.length),
+    ...S.execTable.flatMap(([p, q]) => [uenc(p ? 1 : 0), uenc(q ? 1 : 0)]),
+  );
+  a.push(
+    uenc(S.playersMap.length),
+    ...S.playersMap.flatMap(([pid, idx]) => [uenc(pid), uenc(idx)]),
+  );
+  a.push(uenc(S.playersBySmallID.length), ...S.playersBySmallID.map(uenc));
+  a.push(uenc(S.players.length), ...S.players.flatMap(gfaPlayerEnc));
+  a.push(uenc(S.units.length), ...S.units.flatMap(gfaUnitEnc));
+  a.push(
+    uenc(S.unitMap.length),
+    ...S.unitMap.flatMap(([uid, idx]) => [uenc(uid), uenc(idx)]),
+  );
+  a.push(uenc(S.planDriven.length), ...S.planDriven.map(uenc));
+  a.push(uenc(S.playerTeams.length), ...S.playerTeams.flatMap(encS));
+  a.push(...encS(S.botTeam));
+  a.push(uenc(S.isPaused ? 1 : 0));
+  a.push(...akEnc(S.winner));
+  a.push(...akEnc(S.teamSpawnAreas));
+  a.push(...akEnc(S.nations));
+  a.push(uenc(S.unitsVersion), uenc(S.territoryVersion));
+  a.push(uenc(S.tileUpdates.length), ...S.tileUpdates.map(uenc));
+  a.push(uenc(S.playerStatsQuads.length), ...S.playerStatsQuads.map(uenc));
+  a.push(uenc(S.attackTroopsQuads.length), ...S.attackTroopsQuads.map(uenc));
+  a.push(
+    uenc(S.motionRecords.length),
+    ...S.motionRecords.flatMap((r) => akEnc(r)),
+  );
+  a.push(
+    uenc(S.unitsByTypeMemo.length),
+    ...S.unitsByTypeMemo.flatMap(([t, ver, us]) => [
+      ...encS(t),
+      uenc(ver),
+      uenc(us.length),
+      ...us.map(uenc),
+    ]),
+  );
+  a.push(
+    uenc(S.unitCountMemo.length),
+    ...S.unitCountMemo.flatMap(([t, ver, c]) => [...encS(t), uenc(ver), uenc(c)]),
+  );
+  a.push(
+    ...encS(S.cfg.gtype),
+    ...encS(S.cfg.gmode),
+    uenc(S.cfg.waterNukes ? 1 : 0),
+    uenc(S.cfg.spawnImmunity),
+    uenc(S.cfg.nationSpawnImmunity),
+    uenc(S.cfg.teamLandShare),
+  );
+  a.push(
+    uenc(S.ug.hasUnitNearby ? 1 : 0),
+    uenc(S.ug.anyUnitNearby ? 1 : 0),
+    ...akEnc(S.ug.nearbyUnits),
+    uenc(S.ug.circleFilter ? 1 : 0),
+    uenc(S.ug.bfsFilter ? 1 : 0),
+  );
+  a.push(...akEnc(S.swc));
+  return a;
+}
+
+function gfaDump(g) {
+  const parts = [24];
+  for (let t = 0; t < 24; t++) {
+    parts.push(t);
+    parts.push(g.updates[t].length);
+    for (const u of g.updates[t]) parts.push(...gfaNorm(u));
+  }
+  return parts;
+}
+
+function runGFA(name, S, ops) {
+  const played = [];
+  const execByIdx = new Map();
+  const mkExec = (i) => {
+    let o = execByIdx.get(i);
+    if (o) return o;
+    const e = S.execTable[i] || [0, 0];
+    o = {
+      activeDuringSpawnPhase: () => {
+        gfaT.push(180, i, e[0] ? 1 : 0);
+        return !!e[0];
+      },
+      isActive: () => {
+        gfaT.push(181, i, e[1] ? 1 : 0);
+        return !!e[1];
+      },
+    };
+    execByIdx.set(i, o);
+    gTok.set(o, i);
+    return o;
+  };
+  const mockU = S.units.map((u, i) => {
+    const o = {
+      toUpdate: () => {
+        gfaT.push(120, ...akEnc(u.toUpdate));
+        return u.toUpdate;
+      },
+      hasTrainStation: () => {
+        gfaT.push(121, u.uid, u.hts ? 1 : 0);
+        return !!u.hts;
+      },
+      id: () => {
+        gfaT.push(122, u.uid);
+        return u.uid;
+      },
+      type: () => {
+        gfaT.push(123, ...encS(u.typ));
+        return u.typ;
+      },
+    };
+    gTok.set(o, i);
+    return o;
+  });
+  const mockP = S.players.map((p, i) => {
+    const o = {
+      // Harness diagnostic tag (not a real Player member): the _sharedWaterCache
+      // mock reads `player.pid` off the mock it is handed.
+      pid: p.pid,
+      isAlive: () => {
+        gfaT.push(100, p.pid, p.alive ? 1 : 0);
+        return !!p.alive;
+      },
+      hasSpawned: () => {
+        gfaT.push(101, p.pid, p.spawned ? 1 : 0);
+        return !!p.spawned;
+      },
+      numTilesOwned: () => {
+        gfaT.push(102, p.pid, p.nt);
+        return p.nt;
+      },
+      hash: () => {
+        gfaT.push(104, p.pid, p.hash);
+        return p.hash;
+      },
+      clientID: () => {
+        gfaT.push(105, p.pid, ...akEnc(p.cid));
+        return p.cid;
+      },
+      team: () => {
+        gfaT.push(106, p.pid, ...akEnc(p.team));
+        return p.team;
+      },
+      name: () => {
+        gfaT.push(108, p.pid, ...akEnc(p.name));
+        return p.name;
+      },
+      disconnectSnapshot: () => {
+        gfaT.push(111, p.pid, ...akEnc(p.dsnap));
+        return p.dsnap;
+      },
+      isDisconnected: () => {
+        gfaT.push(112, p.pid, p.disc ? 1 : 0);
+        return !!p.disc;
+      },
+      alliances: () => {
+        gfaT.push(113, p.pid, p.al.length, ...p.al.map(uenc));
+        return p.al.map((ts) => ({ createdAt: () => ts }));
+      },
+      units: () => {
+        gfaT.push(114, p.pid, p.units.length, ...p.units.map(uenc));
+        return p.units.map((t) => mockU[t]);
+      },
+      unitCount: (type) => {
+        const e = p.uc.find(([k]) => k === type);
+        const n = e ? e[1] : 0;
+        gfaT.push(115, p.pid, ...encS(type), n);
+        return n;
+      },
+      smallID: () => {
+        gfaT.push(117, p.pid, p.sid);
+        return p.sid;
+      },
+    };
+    gTok.set(o, i);
+    return o;
+  });
+  let map = null;
+  let mini = null;
+  let wm = null;
+  if (S.map) {
+    const mp = S.map;
+    map = new GameMapImpl(mp.w, mp.h, Uint8Array.from(mp.terr), mp.numLand);
+    for (const [t, o] of mp.owners) map.setOwnerID(t, o);
+    mini = new GameMapImpl(mp.mw, mp.mh, Uint8Array.from(mp.mTerr), mp.mNumLand);
+    wm = new WM.WaterManager(map, mini, false);
+  }
+  const g = Object.create(GI.GameImpl.prototype);
+  g._ticks = S.ticks;
+  g.startTick = S.startTick === undefined ? null : S.startTick;
+  g._nextUnitID = S.nextUnitID;
+  g._width = S.width;
+  g._height = S.height;
+  g._nukeImpactQueue = S.nukeQueue.slice();
+  g.unInitExecs = S.unInitExecs.map(mkExec);
+  g.execs = S.execs.map(mkExec);
+  g._players = new Map(S.playersMap.map(([pid, ii]) => [pid, mockP[ii]]));
+  g._playersBySmallID = S.playersBySmallID.map((ii) =>
+    ii < 0 ? undefined : mockP[ii],
+  );
+  g._unitMap = new Map(S.unitMap.map(([uid, ii]) => [uid, mockU[ii]]));
+  g.planDrivenUnitIds = new Set(S.planDriven);
+  g.playerTeams = S.playerTeams.slice();
+  g.botTeam = S.botTeam;
+  g._isPaused = !!S.isPaused;
+  g._winner = S.winner;
+  g._teamGameSpawnAreas = S.teamSpawnAreas;
+  g._nations = S.nations;
+  g._unitsVersion = S.unitsVersion;
+  g._territoryVersion = S.territoryVersion;
+  g.tileUpdatePairs = S.tileUpdates.slice();
+  g.playerStatsQuads = S.playerStatsQuads.slice();
+  g.attackTroopsQuads = S.attackTroopsQuads.slice();
+  g.motionPlanRecords = S.motionRecords.slice();
+  g.unitsByTypeMemo = new Map(
+    S.unitsByTypeMemo.map(([t, ver, us]) => [
+      t,
+      { version: ver, units: us.map((ii) => mockU[ii]) },
+    ]),
+  );
+  g.unitCountMemo = new Map(
+    S.unitCountMemo.map(([t, ver, c]) => [t, { version: ver, count: c }]),
+  );
+  g._terraNullius = GFA_TN;
+  g._map = map;
+  g.miniGameMap = mini;
+  g._waterManager = wm;
+  g.updates = GI.createGameUpdatesMap();
+  g._config = {
+    gameConfig: () => {
+      gfaT.push(160, ...akEnc(S.cfg.gmode));
+      return { gameMode: S.cfg.gmode, gameType: S.cfg.gtype };
+    },
+    unitInfo: (type) => {
+      gfaT.push(161, ...encS(type));
+      return null;
+    },
+    waterNukes: () => {
+      gfaT.push(162, S.cfg.waterNukes ? 1 : 0);
+      return !!S.cfg.waterNukes;
+    },
+    spawnImmunityDuration: () => {
+      gfaT.push(163, S.cfg.spawnImmunity);
+      return S.cfg.spawnImmunity;
+    },
+    nationSpawnImmunityDuration: () => {
+      gfaT.push(164, S.cfg.nationSpawnImmunity);
+      return S.cfg.nationSpawnImmunity;
+    },
+    teamLandShareWinThresholdTenths: () => {
+      gfaT.push(165, S.cfg.teamLandShare);
+      return S.cfg.teamLandShare;
+    },
+  };
+  g._stats = {
+    recordFinalTiles: (player, n) => {
+      gfaT.push(150, player.pid, n);
+    },
+    recordAlliancesAtEnd: (player, len, longest) => {
+      gfaT.push(151, player.pid, len, longest);
+    },
+  };
+  g.unitGrid = {
+    addUnit: (u) => {
+      gfaT.push(130, gTok.get(u));
+    },
+    removeUnit: (u) => {
+      gfaT.push(131, gTok.get(u));
+    },
+    updateUnitCell: (u) => {
+      gfaT.push(132, gTok.get(u));
+    },
+    hasUnitNearby: (tile, range, type, pid, uc) => {
+      gfaT.push(
+        133,
+        tile,
+        range,
+        ...encS(type),
+        ...akEnc(pid),
+        ...akEnc(uc),
+        S.ug.hasUnitNearby ? 1 : 0,
+      );
+      return !!S.ug.hasUnitNearby;
+    },
+    anyUnitNearby: (tile, range, types, pred, pid, uc) => {
+      gfaT.push(
+        134,
+        tile,
+        range,
+        types.length,
+        ...types.flatMap(encS),
+        ...akEnc(pid),
+        ...akEnc(uc),
+        S.ug.anyUnitNearby ? 1 : 0,
+      );
+      return !!S.ug.anyUnitNearby;
+    },
+    nearbyUnits: (tile, range, types, pred, uc) => {
+      gfaT.push(
+        135,
+        tile,
+        range,
+        ...akEnc(types),
+        ...akEnc(pred),
+        ...akEnc(uc),
+        ...akEnc(S.ug.nearbyUnits),
+      );
+      return S.ug.nearbyUnits;
+    },
+  };
+  g._railNetwork = {
+    removeStation: (u) => {
+      gfaT.push(140, gTok.get(u));
+    },
+  };
+  g._sharedWaterCache = {
+    get: (player) => {
+      gfaT.push(170, player.pid);
+      return S.swc;
+    },
+  };
+
+  // kind 0 construct (auto-emitted before the method ops).
+  gfaT = [];
+  played.push({ kind: 0, args: gfaConstruct(S).map(uenc), res: [0, 0] });
+
+  for (const [k, ...a] of ops) {
+    const mid = a[0];
+    const rest = a.slice(1);
+    gfaT = [];
+    const args = [uenc(mid)];
+    const p1 = (x) => args.push(uenc(x));
+    let r;
+    try {
+      switch (mid) {
+        case 0:
+          p1(rest[0]);
+          r = [0, ...akEnc(g.isOnEdgeOfMap(rest[0]))];
+          break;
+        case 1:
+          p1(rest[0]);
+          r = [0, ...gfaRefTok(g.owner(rest[0]))];
+          break;
+        case 2:
+          p1(rest[0]);
+          r = [0, ...gfaRefTok(g.playerBySmallID(rest[0]))];
+          break;
+        case 3:
+        case 4:
+        case 18:
+        case 34:
+        case 115:
+        case 116:
+        case 117:
+        case 118:
+          r = [0, ...akEnc(0)];
+          break;
+        case 5:
+          args.push(...akEnc(rest[0]));
+          g.addUpdate(rest[0]);
+          r = [0, 1];
+          break;
+        case 6:
+          r = [0, ...akEnc(g.nextUnitID())];
+          break;
+        case 7:
+          p1(rest[0]);
+          p1(rest[1] ? 1 : 0);
+          g.setFallout(rest[0], !!rest[1]);
+          r = [0, 1];
+          break;
+        case 8:
+          p1(rest[0]);
+          g.setWater(rest[0]);
+          r = [0, 1];
+          break;
+        case 9:
+          p1(rest[0]);
+          g.queueWaterConversion(rest[0]);
+          r = [0, 1];
+          break;
+        case 10:
+          p1(rest[0]);
+          g.queueNukeImpact(rest[0]);
+          r = [0, 1];
+          break;
+        case 11:
+          r = [0, ...akEnc([...g.drainNukeImpacts()])];
+          break;
+        case 12: {
+          p1(rest[0]);
+          const u = g.unit(rest[0]);
+          r = [0, ...(u === undefined ? akEnc(undefined) : akEnc(u))];
+          break;
+        }
+        case 13: {
+          const [first, second, third] = rest;
+          args.push(...akEnc(first), ...akEnc(second), ...akEnc(third));
+          let out;
+          if (Array.isArray(first)) out = g.units(first);
+          else if (second === undefined) out = g.units(first);
+          else if (third === undefined) out = g.units(first, second);
+          else out = g.units(first, second, third);
+          r = [0, ...akEnc(out)];
+          break;
+        }
+        case 14:
+          args.push(...akEnc(rest[0]));
+          r = [0, ...akEnc(g.unitCount(rest[0]))];
+          break;
+        case 15:
+          args.push(...akEnc(rest[0]));
+          r = [0, ...akEnc(g.unitInfo(rest[0]))];
+          break;
+        case 16:
+          r = [0, ...akEnc(g.nations())];
+          break;
+        case 17:
+          p1(rest[0]);
+          r = [0, ...akEnc(g.hasPlayer(rest[0]))];
+          break;
+        case 19:
+          r = [0, ...akEnc(g.isPaused())];
+          break;
+        case 20:
+          args.push(...akEnc(rest[0]));
+          g.setPaused(rest[0]);
+          r = [0, 1];
+          break;
+        case 21:
+          r = [0, ...akEnc(g.inSpawnPhase())];
+          break;
+        case 22:
+          g.endSpawnPhase();
+          r = [0, 1];
+          break;
+        case 23:
+          r = [0, ...akEnc(g.ticks())];
+          break;
+        case 24:
+          p1(rest[0]);
+          g.recordTileUpdate(rest[0]);
+          r = [0, 1];
+          break;
+        case 25:
+          r = [0, ...akEnc([...g.drainPackedTileUpdates()])];
+          break;
+        case 26: {
+          const v = g.drainPackedPlayerUpdates();
+          r = [0, ...(v === null ? akEnc(null) : akEnc([...v]))];
+          break;
+        }
+        case 27: {
+          const v = g.drainPackedAttackUpdates();
+          r = [0, ...(v === null ? akEnc(null) : akEnc([...v]))];
+          break;
+        }
+        case 28:
+          args.push(...akEnc(rest[0]));
+          g.recordMotionPlan(rest[0]);
+          r = [0, 1];
+          break;
+        case 29:
+          p1(rest[0]);
+          r = [0, ...akEnc(g.isUnitPlanDriven(rest[0]))];
+          break;
+        case 30:
+          p1(rest[0]);
+          g.maybeAddUnitUpdate(mockU[rest[0]]);
+          r = [0, 1];
+          break;
+        case 31:
+          p1(rest[0]);
+          g.onUnitMoved(mockU[rest[0]]);
+          r = [0, 1];
+          break;
+        case 32: {
+          const v = g.drainPackedMotionPlans();
+          r = [0, ...(v === null ? akEnc(null) : akEnc([...v]))];
+          break;
+        }
+        case 33:
+          r = [0, ...akEnc(g.hash())];
+          break;
+        case 35:
+          g.removeInactiveExecutions();
+          r = [0, 1];
+          break;
+        case 36:
+          r = [0, ...akEnc(g.players().map((p) => gTok.get(p)))];
+          break;
+        case 37:
+          r = [0, ...akEnc(g.allPlayers().map((p) => gTok.get(p)))];
+          break;
+        case 38:
+          r = [0, ...akEnc(g.executions().map((e) => gTok.get(e)))];
+          break;
+        case 39: {
+          const idxs = rest[0];
+          p1(idxs.length);
+          for (const x of idxs) p1(x);
+          g.addExecution(...idxs.map(mkExec));
+          r = [0, 1];
+          break;
+        }
+        case 40:
+          p1(rest[0]);
+          g.removeExecution(mkExec(rest[0]));
+          r = [0, 1];
+          break;
+        case 41:
+          p1(rest[0]);
+          r = [0, ...akEnc(gTok.get(g.playerView(rest[0])))];
+          break;
+        case 42:
+          p1(rest[0]);
+          r = [0, ...akEnc(gTok.get(g.player(rest[0])))];
+          break;
+        case 43: {
+          args.push(...akEnc(rest[0]));
+          const f = g.playerByClientID(rest[0]);
+          r = [0, ...(f === null ? akEnc(null) : akEnc(f))];
+          break;
+        }
+        case 44:
+          args.push(...akEnc(rest[0]));
+          r = [0, ...akEnc(g.isOnMap(rest[0]))];
+          break;
+        case 45:
+          p1(rest[0]);
+          r = [0, ...akEnc(g.neighborsWithDiag(rest[0]))];
+          break;
+        case 46:
+          p1(rest[0]);
+          g.forEachNeighborWithDiag(rest[0], (t) => {
+            gfaT.push(191, t);
+          });
+          r = [0, 1];
+          break;
+        case 47:
+          p1(rest[0]);
+          p1(rest[1]);
+          g.target(mockP[rest[0]], mockP[rest[1]]);
+          r = [0, 1];
+          break;
+        case 48:
+          r = [0, ...akEnc(g.isSpawnImmunityActive())];
+          break;
+        case 49:
+          r = [0, ...akEnc(g.elapsedGameSeconds())];
+          break;
+        case 50:
+          r = [0, ...akEnc(g.isNationSpawnImmunityActive())];
+          break;
+        case 51:
+          r = [0, ...akEnc(g.ticksSinceStart())];
+          break;
+        case 52:
+          args.push(...akEnc(rest[0]));
+          g.sendEmojiUpdate(rest[0]);
+          r = [0, 1];
+          break;
+        case 53:
+          args.push(...akEnc(rest[0]), ...akEnc(rest[1]));
+          // A numeric winner crosses as a player-table index (Rust reads it
+          // with `num_of`); a string is a team name.
+          g.setWinner(
+            typeof rest[0] === "number" ? mockP[rest[0]] : rest[0],
+            rest[1],
+          );
+          r = [0, 1];
+          break;
+        case 54:
+          r = [0, ...akEnc(g.getWinner())];
+          break;
+        case 55:
+          p1(rest[0]);
+          args.push(...akEnc(rest[1]), ...akEnc(rest[2]));
+          r = [0, ...akEnc(g.isEligibleForTeamWin(mockP[rest[0]], rest[1], rest[2]))];
+          break;
+        case 56: {
+          args.push(...akEnc(rest[0]));
+          // Numeric winner = player-table index (see case 53).
+          const v = g.makeWinner(
+            typeof rest[0] === "number" ? mockP[rest[0]] : rest[0],
+          );
+          r = [0, ...(v === undefined ? akEnc(undefined) : akEnc(v))];
+          break;
+        }
+        case 57:
+          r = [0, ...akEnc(g.teams())];
+          break;
+        case 58:
+          args.push(...akEnc(rest[0]));
+          r = [0, ...akEnc(g.teamTilesOwned(rest[0]))];
+          break;
+        case 59:
+          r = [0, ...akEnc(g.totalLandTiles())];
+          break;
+        case 60: {
+          args.push(...akEnc(rest[0]));
+          const v = g.teamSpawnArea(rest[0]);
+          r = [0, ...(v === undefined ? akEnc(undefined) : akEnc(v))];
+          break;
+        }
+        case 61:
+          args.push(
+            ...akEnc(rest[0]),
+            ...akEnc(rest[1]),
+            ...akEnc(rest[2]),
+            ...akEnc(rest[3]),
+            ...akEnc(rest[4]),
+            ...akEnc(rest[5]),
+            ...akEnc(rest[6]),
+          );
+          g.displayMessage(rest[0], rest[1], rest[2], rest[3], rest[4], rest[5], rest[6]);
+          r = [0, 1];
+          break;
+        case 62:
+          args.push(
+            ...akEnc(rest[0]),
+            ...akEnc(rest[1]),
+            ...akEnc(rest[2]),
+            ...akEnc(rest[3]),
+            ...akEnc(rest[4]),
+            ...akEnc(rest[5]),
+          );
+          g.displayChat(rest[0], rest[1], rest[2], rest[3], rest[4], rest[5]);
+          r = [0, 1];
+          break;
+        case 63:
+          args.push(
+            ...akEnc(rest[0]),
+            ...akEnc(rest[1]),
+            ...akEnc(rest[2]),
+            ...akEnc(rest[3]),
+          );
+          g.displayIncomingUnit(rest[0], rest[1], rest[2], rest[3]);
+          r = [0, 1];
+          break;
+        case 64:
+          g.bumpUnitsVersion();
+          r = [0, 1];
+          break;
+        case 65:
+          r = [0, ...akEnc(g.territoryVersion())];
+          break;
+        case 66:
+          p1(rest[0]);
+          g.addUnit(mockU[rest[0]]);
+          r = [0, 1];
+          break;
+        case 67:
+          p1(rest[0]);
+          g.removeUnit(mockU[rest[0]]);
+          r = [0, 1];
+          break;
+        case 68:
+          p1(rest[0]);
+          g.updateUnitTile(mockU[rest[0]]);
+          r = [0, 1];
+          break;
+        case 69:
+          p1(rest[0]);
+          p1(rest[1]);
+          args.push(...akEnc(rest[2]), ...akEnc(rest[3]), ...akEnc(rest[4]));
+          r = [0, ...akEnc(g.hasUnitNearby(rest[0], rest[1], rest[2], rest[3], rest[4]))];
+          break;
+        case 70:
+          p1(rest[0]);
+          p1(rest[1]);
+          args.push(
+            ...akEnc(rest[2]),
+            ...akEnc(rest[3]),
+            ...akEnc(rest[4]),
+            ...akEnc(rest[5]),
+          );
+          r = [0, ...akEnc(g.anyUnitNearby(rest[0], rest[1], rest[2], rest[3], rest[4], rest[5]))];
+          break;
+        case 71:
+          p1(rest[0]);
+          p1(rest[1]);
+          args.push(...akEnc(rest[2]), ...akEnc(rest[3]), ...akEnc(rest[4]));
+          r = [0, ...akEnc(g.nearbyUnits(rest[0], rest[1], rest[2], rest[3], rest[4]))];
+          break;
+        case 72:
+          p1(rest[0]);
+          p1(rest[1]);
+          r = [0, ...akEnc(g.ref(rest[0], rest[1]))];
+          break;
+        case 73:
+          p1(rest[0]);
+          r = [0, ...akEnc(g.isValidRef(rest[0]))];
+          break;
+        case 74:
+          p1(rest[0]);
+          r = [0, ...akEnc(g.x(rest[0]))];
+          break;
+        case 75:
+          p1(rest[0]);
+          r = [0, ...akEnc(g.y(rest[0]))];
+          break;
+        case 76:
+          p1(rest[0]);
+          r = [0, ...akEnc(g.cell(rest[0]))];
+          break;
+        case 77:
+          r = [0, ...akEnc(g.width())];
+          break;
+        case 78:
+          r = [0, ...akEnc(g.height())];
+          break;
+        case 79:
+          r = [0, ...akEnc(g.numLandTiles())];
+          break;
+        case 80:
+          r = [0, ...akEnc(g.waterVersion())];
+          break;
+        case 81:
+          p1(rest[0]);
+          p1(rest[1]);
+          r = [0, ...akEnc(g.isValidCoord(rest[0], rest[1]))];
+          break;
+        case 82:
+          p1(rest[0]);
+          r = [0, ...akEnc(g.isLand(rest[0]))];
+          break;
+        case 83:
+          p1(rest[0]);
+          r = [0, ...akEnc(g.isImpassable(rest[0]))];
+          break;
+        case 84:
+          p1(rest[0]);
+          r = [0, ...akEnc(g.isOceanShore(rest[0]))];
+          break;
+        case 85:
+          p1(rest[0]);
+          r = [0, ...akEnc(g.isOcean(rest[0]))];
+          break;
+        case 86:
+          p1(rest[0]);
+          r = [0, ...akEnc(g.isShoreline(rest[0]))];
+          break;
+        case 87:
+          p1(rest[0]);
+          r = [0, ...akEnc(g.magnitude(rest[0]))];
+          break;
+        case 88: {
+          p1(rest[0]);
+          const v = g.terrainByte(rest[0]);
+          r = [0, ...(v === undefined ? akEnc(null) : akEnc(v))];
+          break;
+        }
+        case 89:
+          p1(rest[0]);
+          g.setShorelineBit(rest[0]);
+          r = [0, 1];
+          break;
+        case 90:
+          p1(rest[0]);
+          g.clearShorelineBit(rest[0]);
+          r = [0, 1];
+          break;
+        case 91:
+          p1(rest[0]);
+          g.setOcean(rest[0]);
+          r = [0, 1];
+          break;
+        case 92:
+          p1(rest[0]);
+          p1(rest[1]);
+          g.setMagnitude(rest[0], rest[1]);
+          r = [0, 1];
+          break;
+        case 93:
+          p1(rest[0]);
+          r = [0, ...akEnc(g.ownerID(rest[0]))];
+          break;
+        case 94:
+          p1(rest[0]);
+          r = [0, ...akEnc(g.hasOwner(rest[0]))];
+          break;
+        case 95:
+          p1(rest[0]);
+          p1(rest[1]);
+          g.setOwnerID(rest[0], rest[1]);
+          r = [0, 1];
+          break;
+        case 96:
+          p1(rest[0]);
+          r = [0, ...akEnc(g.hasFallout(rest[0]))];
+          break;
+        case 97:
+          p1(rest[0]);
+          r = [0, ...akEnc(g.isBorder(rest[0]))];
+          break;
+        case 98:
+          p1(rest[0]);
+          r = [0, ...akEnc(g.neighbors(rest[0]))];
+          break;
+        case 99:
+          p1(rest[0]);
+          g.forEachNeighbor(rest[0], (t) => {
+            gfaT.push(190, t);
+          });
+          r = [0, 1];
+          break;
+        case 100:
+        case 101: {
+          p1(rest[0]);
+          args.push(...akEnc(rest[1]));
+          const buf = new Array(rest[1].length).fill(0);
+          const count =
+            mid === 100 ? g.neighbors4(rest[0], buf) : g.neighbors8(rest[0], buf);
+          r = [0, ...akEnc([count, ...buf.slice(0, count)])];
+          break;
+        }
+        case 102:
+          p1(rest[0]);
+          r = [0, ...akEnc(g.isWater(rest[0]))];
+          break;
+        case 103:
+          p1(rest[0]);
+          r = [0, ...akEnc(g.isShore(rest[0]))];
+          break;
+        case 104:
+          p1(rest[0]);
+          r = [0, ...akEnc(g.cost(rest[0]))];
+          break;
+        case 105:
+          p1(rest[0]);
+          r = [0, ...akEnc(g.terrainType(rest[0]))];
+          break;
+        case 106:
+          g.forEachTile((t) => {
+            gfaT.push(192, t);
+          });
+          r = [0, 1];
+          break;
+        case 107:
+          p1(rest[0]);
+          p1(rest[1]);
+          r = [0, ...akEnc(g.manhattanDist(rest[0], rest[1]))];
+          break;
+        case 108:
+          p1(rest[0]);
+          p1(rest[1]);
+          r = [0, ...akEnc(g.euclideanDistSquared(rest[0], rest[1]))];
+          break;
+        case 109:
+          p1(rest[0]);
+          p1(rest[1]);
+          r = [
+            0,
+            ...akEnc([
+              ...g.circleSearch(rest[0], rest[1], (t, d2) => {
+                gfaT.push(193, t, d2, S.ug.circleFilter ? 1 : 0);
+                return !!S.ug.circleFilter;
+              }),
+            ]),
+          ];
+          break;
+        case 110:
+          p1(rest[0]);
+          r = [
+            0,
+            ...akEnc([
+              ...g.bfs(rest[0], (gm, t) => {
+                gfaT.push(194, t, S.ug.bfsFilter ? 1 : 0);
+                return !!S.ug.bfsFilter;
+              }),
+            ]),
+          ];
+          break;
+        case 111: {
+          p1(rest[0]);
+          const v = g.tileState(rest[0]);
+          r = [0, ...akEnc(v === undefined ? NaN : v)];
+          break;
+        }
+        case 112:
+          r = [0, ...akEnc([...g.tileStateBuffer()])];
+          break;
+        case 113:
+          p1(rest[0]);
+          p1(rest[1]);
+          r = [0, ...akEnc(g.updateTile(rest[0], rest[1]))];
+          break;
+        case 114:
+          r = [0, ...akEnc(g.numTilesWithFallout())];
+          break;
+        case 119:
+          r = [0, ...akEnc(g.waterGraphVersion())];
+          break;
+        case 120: {
+          p1(rest[0]);
+          const v = g.getWaterComponent(rest[0]);
+          r = [0, ...(v === null || v === undefined ? akEnc(null) : akEnc(v))];
+          break;
+        }
+        case 121:
+          p1(rest[0]);
+          p1(rest[1]);
+          r = [0, ...akEnc(g.hasWaterComponent(rest[0], rest[1]))];
+          break;
+        case 122: {
+          p1(rest[0]);
+          const v = g.getWaterComponentSize(rest[0]);
+          r = [0, ...(v === null || v === undefined ? akEnc(null) : akEnc(v))];
+          break;
+        }
+        case 123:
+          p1(rest[0]);
+          r = [0, ...akEnc(g.sharedWaterComponents(mockP[rest[0]]))];
+          break;
+        case 900:
+          r = [0, ...akEnc(gfaDump(g))];
+          break;
+        default:
+          r = [0, 1];
+      }
+    } catch (e) {
+      r = [1, ...encS(e.message)];
+    }
+    played.push({
+      kind: k,
+      args: args.map(uenc),
+      res: [gfaT.length, ...gfaT, ...r].map(uenc),
+    });
+  }
+  gfaScenarios.push({ name, ops: played });
+}
+
+// --- construct / entity blocks reused across scenarios ----------------------
+const GFA_C1 = {
+  players: [
+    gfaP({ pid: 1, sid: 1, alive: 1, nt: 5, hash: 11, cid: "c1", team: "Red", name: "A" }),
+    gfaP({ pid: 2, sid: 2, alive: 1, nt: 3, hash: 7, cid: "c2", team: "Blue", name: "B" }),
+    gfaP({ pid: 3, sid: 3, alive: 0, nt: 0, hash: 1, cid: "c3", team: "Blue", name: "C" }),
+  ],
+  playersMap: [[1, 0], [2, 1], [3, 2]],
+  playersBySmallID: [0, 1, 2],
+};
+
+runGFA(
+  "gf_basic",
+  gfaS({
+    map: gfaMap({ w: 4, h: 4, numLand: 16 }),
+    ticks: 30,
+    startTick: 20,
+    nextPlayerID: 4,
+    nextUnitID: 9,
+    width: 4,
+    height: 4,
+    cfg: { gmode: "Team", gtype: "Singleplayer" },
+    ...GFA_C1,
+  }),
+  [
+    [1, 0, 0],
+    [1, 1, 0],
+    [1, 2, 0],
+    [1, 2, 0],
+    [1, 2, 1],
+    [1, 2, 3],
+    [1, 3],
+    [1, 4],
+    [1, 6],
+    [1, 17, 1],
+    [1, 17, 9],
+    [1, 18],
+    [1, 19],
+    [1, 21],
+    [1, 23],
+    [1, 33],
+    [1, 34],
+    [1, 36],
+    [1, 37],
+    [1, 49],
+    [1, 50],
+    [1, 51],
+    [1, 57],
+    [1, 59],
+    [1, 65],
+    [1, 115],
+    [1, 116],
+    [1, 117],
+    [1, 118],
+    [1, 900],
+  ],
+);
+
+runGFA(
+  "gf_map",
+  gfaS({
+    map: gfaMap({
+      w: 5,
+      h: 4,
+      numLand: 14,
+      owners: [[6, 1], [7, 1], [11, 2]],
+    }),
+    units: [gfaU({}), gfaU({ uid: 2, typ: "City", hts: 1 })],
+    unitMap: [[1, 0], [2, 1]],
+    startTick: 0,
+    cfg: { gmode: "Free For All" },
+    ug: { circleFilter: 1, bfsFilter: 1 },
+  }),
+  [
+    [1, 72, 0, 0],
+    [1, 72, 3, 2],
+    [1, 73, 6],
+    [1, 73, 999],
+    [1, 74, 6],
+    [1, 75, 6],
+    [1, 76, 6],
+    [1, 77],
+    [1, 78],
+    [1, 79],
+    [1, 80],
+    [1, 81, 2, 2],
+    [1, 81, -1, 0],
+    [1, 82, 6],
+    [1, 83, 6],
+    [1, 84, 6],
+    [1, 85, 6],
+    [1, 86, 6],
+    [1, 87, 6],
+    [1, 88, 6],
+    [1, 88, 999],
+    [1, 89, 6],
+    [1, 90, 6],
+    [1, 91, 6],
+    [1, 92, 6, 3],
+    [1, 93, 6],
+    [1, 94, 6],
+    [1, 95, 6, 1],
+    [1, 96, 6],
+    [1, 97, 6],
+    [1, 98, 6],
+    [1, 99, 6],
+    [1, 100, 6, [0, 0, 0, 0]],
+    [1, 101, 6, [0, 0, 0, 0, 0, 0, 0, 0]],
+    [1, 102, 6],
+    [1, 103, 6],
+    [1, 104, 6],
+    [1, 105, 6],
+    [1, 106],
+    [1, 107, 6, 11],
+    [1, 108, 6, 11],
+    [1, 109, 6, 2],
+    [1, 110, 6],
+    [1, 111, 6],
+    [1, 111, 999],
+    [1, 112],
+    [1, 113, 6, 5],
+    [1, 114],
+    [1, 119],
+    [1, 120, 6],
+    [1, 120, 0],
+    [1, 121, 6, 1],
+    [1, 122, 6],
+  ],
+);
+
+runGFA(
+  "gf_players",
+  gfaS({
+    map: gfaMap({ w: 3, h: 3, numLand: 9 }),
+    ticks: 40,
+    startTick: 10,
+    width: 3,
+    height: 3,
+    players: [
+      gfaP({ pid: 1, sid: 1, alive: 1, nt: 4, hash: 2, cid: "c1", team: "Red", name: "A" }),
+      gfaP({
+        pid: 2,
+        sid: 2,
+        alive: 1,
+        nt: 2,
+        hash: 3,
+        cid: "c2",
+        team: "Red",
+        name: "B",
+        disc: 1,
+        dsnap: { wasAlive: true, totalLand: 100, teamTiles: 8 },
+        al: [5, 12],
+      }),
+      gfaP({ pid: 3, sid: 3, alive: 0, nt: 0, hash: 1, cid: null, team: "Red", name: "C" }),
+    ],
+    playersMap: [[1, 0], [2, 1], [3, 2]],
+    playersBySmallID: [0, 1, 2],
+    playerTeams: ["Red"],
+    botTeam: "Bot",
+    teamSpawnAreas: { "1": [[1, 2, 3]] },
+    cfg: { gmode: "Team", teamLandShare: 5 },
+    swc: 7,
+  }),
+  [
+    [1, 123, 0],
+    [1, 123, 1],
+    [1, 36],
+    [1, 37],
+    [1, 41, 2],
+    [1, 42, 1],
+    [1, 43, "c2"],
+    [1, 43, "zz"],
+    [1, 45, 4],
+    [1, 46, 4],
+    [1, 47, 0, 1],
+    [1, 55, 1, "Red", 5],
+    [1, 55, 2, "Red", 5],
+    [1, 56, "Red"],
+    [1, 56, 0],
+    [1, 58, "Red"],
+    [1, 60, "Red"],
+    [1, 60, "Green"],
+    [1, 53, 0, { a: 1 }],
+    [1, 53, "Red", null],
+    [1, 53, 1, 2],
+    [1, 54],
+    [1, 33],
+  ],
+);
+
+runGFA(
+  "gf_units",
+  gfaS({
+    map: gfaMap({ w: 3, h: 3, numLand: 9 }),
+    startTick: 0,
+    units: [
+      gfaU({ uid: 10, typ: "Warship", hts: 0, toUpdate: { type: 1, id: 10 } }),
+      gfaU({ uid: 11, typ: "City", hts: 1, toUpdate: { type: 1, id: 11 } }),
+      gfaU({ uid: 12, typ: "Warship", hts: 0, toUpdate: { type: 1, id: 12 } }),
+    ],
+    unitMap: [[10, 0], [11, 1], [12, 2]],
+    planDriven: [10],
+    players: [
+      gfaP({ pid: 1, sid: 1, alive: 1, cid: "c1", team: "Red", name: "A", units: [0, 1], uc: [["Warship", 2], ["City", 1]] }),
+      gfaP({ pid: 2, sid: 2, alive: 1, cid: "c2", team: "Blue", name: "B", units: [2] }),
+    ],
+    playersMap: [[1, 0], [2, 1]],
+    playersBySmallID: [0, 1],
+    unitsByTypeMemo: [["City", 0, [1]]],
+    unitCountMemo: [["Warship", 0, 2]],
+    ug: { hasUnitNearby: 1, anyUnitNearby: 0, nearbyUnits: [{ unit: 0, distSquared: 2 }] },
+    cfg: { gmode: "Free For All" },
+  }),
+  [
+    [1, 12, 11],
+    [1, 12, 99],
+    [1, 13, undefined, undefined, undefined],
+    [1, 13, ["Warship"], undefined, undefined],
+    [1, 13, "City", undefined, undefined],
+    [1, 13, "Warship", "City", undefined],
+    [1, 13, "Warship", "City", "City"],
+    [1, 14, "Warship"],
+    [1, 14, "City"],
+    [1, 15, "Warship"],
+    [1, 16],
+    [1, 29, 10],
+    [1, 29, 99],
+    [1, 30, 0],
+    [1, 30, 2],
+    [1, 31, 1],
+    [1, 66, 2],
+    [1, 67, 1],
+    [1, 68, 2],
+    [1, 69, 4, 3, "Warship", 1, true],
+    [1, 70, 4, 3, ["Warship", "City"], () => true, 1, false],
+    [1, 71, 4, 3, "Warship", undefined, 1],
+    [1, 65],
+  ],
+);
+
+runGFA(
+  "gf_updates",
+  gfaS({
+    map: gfaMap({ w: 3, h: 3, numLand: 9 }),
+    ticks: 22,
+    startTick: 5,
+    width: 3,
+    height: 3,
+    nukeQueue: [3],
+    players: [
+      gfaP({ pid: 1, sid: 1, alive: 1, cid: "c1", team: "Red", name: "A" }),
+      gfaP({ pid: 2, sid: 2, alive: 1, cid: "c2", team: "Red", name: "B" }),
+    ],
+    playersMap: [[1, 0], [2, 1]],
+    playersBySmallID: [0, 1],
+    cfg: { gmode: "Free For All" },
+  }),
+  [
+    [1, 5, { type: 3, message: "hi", x: 1 }],
+    [1, 6],
+    [1, 10, 4],
+    [1, 11],
+    [1, 20, true],
+    [1, 19],
+    [1, 22],
+    [1, 21],
+    [1, 52, { text: "gg", n: 2 }],
+    [1, 61, "hello", "info", 1, null, { a: 1 }, 4, 2],
+    [1, 61, "hey", "warn", null, null, undefined, undefined, undefined],
+    [1, 62, "chat", "cat", 1, 2, true, "rec"],
+    [1, 62, "chat2", "cat", undefined, null, false, ""],
+    [1, 63, 4, "inc", "info", 2],
+    [1, 900],
+  ],
+);
+
+runGFA(
+  "gf_sc",
+  gfaS({
+    map: gfaMap({
+      w: 3,
+      h: 3,
+      numLand: 9,
+      owners: [[0, 1], [4, 2]],
+    }),
+    startTick: 0,
+    width: 3,
+    height: 3,
+    cfg: { gmode: "Free For All", waterNukes: 1 },
+  }),
+  [
+    [1, 24, 4],
+    [1, 7, 8, true],
+    [1, 8, 4],
+    [1, 9, 4],
+    [1, 10, 4],
+    [1, 11],
+    [1, 25],
+    [1, 26],
+    [1, 27],
+    [1, 32],
+    [1, 112],
+    [1, 200, 0],
+  ],
+);
+
+runGFA(
+  "gf_errors",
+  gfaS({
+    map: gfaMap({ w: 2, h: 2, numLand: 4, owners: [[0, 1]] }),
+    startTick: 0,
+    width: 2,
+    height: 2,
+    players: [gfaP({ pid: 1, sid: 5, alive: 1, cid: "c1", team: "Red", name: "A" })],
+    playersMap: [[1, 0]],
+    playersBySmallID: [0],
+    cfg: { gmode: "Free For All" },
+  }),
+  [
+    [1, 41, 7],
+    [1, 42, 7],
+    [1, 7, 0, true],
+    [1, 8, 0],
+    [1, 9, 0],
+    [1, 62, "c", "k", undefined, 7, true, "r"],
+    [1, 63, 1, "m", "info", 7],
+    [1, 2, 9],
+    [1, 2, -1],
+    [1, 1, 1],
+    [1, 1, 0],
+    [1, 2, 0],
+  ],
+);
+
+runGFA(
+  "gf_execs",
+  gfaS({
+    startTick: 0,
+    execTable: [[1, 1], [0, 1], [1, 0]],
+    execs: [0, 1, 2],
+    unInitExecs: [],
+    nextUnitID: 1,
+  }),
+  [
+    [1, 35],
+    [1, 38],
+    [1, 39, [1, 2]],
+    [1, 38],
+    [1, 40, 0],
+    [1, 38],
+    [1, 35],
+  ],
+);
+
+runGFA(
+  "gf_drain_null",
+  gfaS({
+    startTick: 0,
+    playerStatsQuads: [],
+    attackTroopsQuads: [],
+    tileUpdates: [],
+  }),
+  [
+    [1, 25],
+    [1, 26],
+    [1, 27],
+    [1, 32],
+  ],
+);
+
+runGFA(
+  "gf_spawn",
+  gfaS({
+    map: gfaMap({ w: 2, h: 2, numLand: 4 }),
+    startTick: 0,
+    ticks: 12,
+    cfg: { gmode: "Free For All", spawnImmunity: 50, nationSpawnImmunity: 80 },
+  }),
+  [
+    [1, 21],
+    [1, 48],
+    [1, 49],
+    [1, 50],
+    [1, 51],
+    [1, 23],
+    [1, 22],
+    [1, 21],
+    [1, 48],
+    [1, 49],
+    [1, 900],
+  ],
+);
+
+runGFA(
+  "gf_null_players",
+  gfaS({
+    startTick: 0,
+  }),
+  [
+    [1, 36],
+    [1, 37],
+    [1, 33],
+    [1, 16],
+    [1, 17, 0],
+    [1, 38],
+    [1, 900],
+  ],
+);
+
 const structures = {
   votetally: vtScenarios,
   rankedcheckin: rgScenarios,
@@ -23638,6 +25169,7 @@ const structures = {
   alliancerequest: arScenarios,
   attack: akScenarios,
   playerimpl: plScenarios,
+  gamefacade: gfaScenarios,
 };
 
 // ================================================================ JSON
@@ -27179,6 +28711,33 @@ opStream(
     "/// immunities (raw values), 137 other.isImmune [pid,01], 138\n" +
     "/// getPlayerStats. Mids 115-117 cross RAW args; 115's result is\n" +
     "/// [0,...encVal(normPU),soLen,...so,aoLen,...ao].",
+);
+opStream(
+  "gamefacade",
+  "Gf",
+  "/// One `core/game/GameImpl.ts` facade op (see `game_impl::GameHarness::run_op`\n" +
+    "/// docs). kind 0 construct [map block, ticks, startTick flag+value,\n" +
+    "/// nextPlayerID, nextUnitID, width, height, nukeQueue, unInitExecs, execs,\n" +
+    "/// execTable, playersMap, playersBySmallID, playerTable, unitTable,\n" +
+    "/// unitMap, planDriven, playerTeams, botTeam, isPaused, winner,\n" +
+    "/// teamSpawnAreas, nations, unitsVersion, territoryVersion, tileUpdates,\n" +
+    "/// playerStatsQuads, attackTroopsQuads, motionRecords, unitsByTypeMemo,\n" +
+    "/// unitCountMemo, config block, unitGrid block, sharedWaterCache] ->\n" +
+    "/// [0,0]; kind 1 method [mid,...] -> [traceLen,(trace)*,[0,...encVal] |\n" +
+    "/// [1,encS]]. Trace events: players 100 isAlive, 101 hasSpawned, 102\n" +
+    "/// numTilesOwned, 104 hash, 105 clientID, 106 team, 108 name, 111\n" +
+    "/// disconnectSnapshot, 112 isDisconnected, 113 alliances, 114 units, 115\n" +
+    "/// unitCount, 117 smallID; units 120 toUpdate, 121 hasTrainStation, 122\n" +
+    "/// id, 123 type; unitGrid 130 addUnit, 131 removeUnit, 132 updateUnitCell,\n" +
+    "/// 133 hasUnitNearby, 134 anyUnitNearby, 135 nearbyUnits; rail 140\n" +
+    "/// removeStation; stats 150 recordFinalTiles, 151 recordAlliancesAtEnd;\n" +
+    "/// config 160 gameConfig, 161 unitInfo, 162 waterNukes, 163\n" +
+    "/// spawnImmunityDuration, 164 nationSpawnImmunityDuration, 165\n" +
+    "/// teamLandShareWinThresholdTenths; water cache 170 get; exec 180\n" +
+    "/// activeDuringSpawnPhase, 181 isActive; callbacks 190 forEachNeighbor,\n" +
+    "/// 191 forEachNeighborWithDiag, 192 forEachTile, 193 circleSearch filter,\n" +
+    "/// 194 bfs filter. mid 900 dumpUpdates. Objects cross as TOKENS (indices\n" +
+    "/// into the harness tables; TN = -2, undefined = -1).",
 );
 
 const dataDir = join(root, "crates", "core", "tests", "data");

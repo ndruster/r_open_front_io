@@ -662,6 +662,11 @@ impl WaterManager {
     pub fn debug_map(&self) -> &GameMap {
         &self.map
     }
+    /// Mutably borrowed main map (parity harness consumers that drive the
+    /// `GameImpl` facade's `setOwnerID` / `setWater` / `setFallout` writes).
+    pub fn debug_map_mut(&mut self) -> &mut GameMap {
+        &mut self.map
+    }
     /// Borrowed half-resolution map (the simple water chain runs on it).
     pub fn debug_mini_map(&self) -> &GameMap {
         &self.mini_map

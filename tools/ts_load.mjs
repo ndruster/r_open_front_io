@@ -94,13 +94,20 @@ function prepare(rel) {
   }
   if (rel.endsWith("game/GameMap.ts")) {
     // The import (and the whole Game.ts graph behind it) is dropped; the
-    // numeric enum is inlined so terrainType() still works. `Cell` is only
-    // referenced by cell(), which the GameMap scenarios never call. The
-    // ctor's parameter property is expanded, same as MinHeap's.
+    // numeric enum is inlined so terrainType() still works, and `Cell` is
+    // inlined as an inert class so cell() (`new Cell(x, y)`, called by the
+    // GameImpl facade scenarios) still works. The ctor's parameter property
+    // is expanded, same as MinHeap's.
     out = must(
       out,
       'import { Cell, TerrainType } from "./Game";\n',
-      "const TerrainType = { Plains: 0, Highland: 1, Mountain: 2, Ocean: 3, Impassable: 4 };\n",
+      "const TerrainType = { Plains: 0, Highland: 1, Mountain: 2, Ocean: 3, Impassable: 4 };\n" +
+        "class Cell {\n" +
+        "  constructor(x, y) {\n" +
+        "    this.x = x;\n" +
+        "    this.y = y;\n" +
+        "  }\n" +
+        "}\n",
       "Game import",
     );
     out = must(
@@ -1169,25 +1176,79 @@ function prepare(rel) {
   }
 
   if (rel.endsWith("game/GameImpl.ts")) {
-    // Only the module-tail `createGameUpdatesMap` is ported; the GameImpl
-    // class body and the createGame factory ride on the Config / PlayerImpl /
-    // StatsImpl facades (out of scope). Truncate the file to the tail
-    // function, export it for the capture, and import the (reverse-mapped)
-    // GameUpdateType object from the prepared GameUpdates copy. The whole
-    // import header is dropped with the head slice; strip mode erases the
-    // `GameUpdates` type annotations syntactically, so no import is needed
-    // for them.
-    const marker = "// Or a more dynamic approach";
-    const idx = out.indexOf(marker);
-    if (idx < 0) {
-      throw new Error(
-        "ts_load: expected pattern not found (GameImpl tail marker) - the TS source changed, update this shim",
-      );
-    }
+    // G4a: the capture drives the in-scope GameImpl facade methods, so the
+    // whole class must load (createGameUpdatesMap stays exported too - the
+    // gi_ capture still calls it). The import header is replaced with the only
+    // two *value* imports the executed bodies touch - GameUpdateType and
+    // packMotionPlans, both redirected to prepared copies - plus an inlined
+    // GameMode string enum (Game.ts precedent). Every other named import is
+    // either type-only or referenced solely from the out-of-scope constructor
+    // / alliance / conquer bodies, which the capture never runs (Object.create
+    // + manual field assignment), so those imports are dropped and the
+    // identifiers stay unresolved (harmless). The class-field initializers
+    // (createRailNetwork / ColoredTeams / createGameUpdatesMap) are instance
+    // fields too, never evaluated under the capture.
     const guRel = "src/core/game/GameUpdates.ts";
     if (!prepared.has(guRel)) prepare(guRel);
+    const mpRel = "src/core/game/MotionPlans.ts";
+    if (!prepared.has(mpRel)) prepare(mpRel);
+    const giHead = out.indexOf("export function createGame(");
+    if (giHead === -1) {
+      throw new Error("ts_load: GameImpl createGame anchor not found");
+    }
+    out =
+      'const GameMode = { FFA: "Free For All", Team: "Team" };\n' +
+      `import { GameUpdateType } from "./${prepared.get(guRel)}";\n` +
+      `import { packMotionPlans } from "./${prepared.get(mpRel)}";\n\n` +
+      out.slice(giHead);
     out = must(
-      `import { GameUpdateType } from "./${prepared.get(guRel)}";\n` + out.slice(idx),
+      out,
+      "export class GameImpl implements Game {",
+      "export class GameImpl {",
+      "GameImpl implements clause",
+    );
+    out = must(
+      out,
+      "  constructor(\n" +
+        "    private _humans: PlayerInfo[],\n" +
+        "    private _nations: Nation[],\n" +
+        "    private _map: GameMap,\n" +
+        "    private miniGameMap: GameMap,\n" +
+        "    private _config: Config,\n" +
+        "    private _stats: Stats,\n" +
+        "    teamGameSpawnAreas?: TeamGameSpawnAreas,\n" +
+        "  ) {\n" +
+        "    const constructorStart = performance.now();\n" +
+        "\n" +
+        "    this._teamGameSpawnAreas = teamGameSpawnAreas;",
+      "  private _humans: PlayerInfo[];\n" +
+        "  private _nations: Nation[];\n" +
+        "  private _map: GameMap;\n" +
+        "  private miniGameMap: GameMap;\n" +
+        "  private _config: Config;\n" +
+        "  private _stats: Stats;\n\n" +
+        "  constructor(\n" +
+        "    _humans: PlayerInfo[],\n" +
+        "    _nations: Nation[],\n" +
+        "    _map: GameMap,\n" +
+        "    miniGameMap: GameMap,\n" +
+        "    _config: Config,\n" +
+        "    _stats: Stats,\n" +
+        "    teamGameSpawnAreas?: TeamGameSpawnAreas,\n" +
+        "  ) {\n" +
+        "    this._humans = _humans;\n" +
+        "    this._nations = _nations;\n" +
+        "    this._map = _map;\n" +
+        "    this.miniGameMap = miniGameMap;\n" +
+        "    this._config = _config;\n" +
+        "    this._stats = _stats;\n" +
+        "    const constructorStart = performance.now();\n" +
+        "\n" +
+        "    this._teamGameSpawnAreas = teamGameSpawnAreas;",
+      "GameImpl ctor param properties",
+    );
+    out = must(
+      out,
       "const createGameUpdatesMap",
       "export const createGameUpdatesMap",
       "GameImpl createGameUpdatesMap export",

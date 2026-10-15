@@ -4702,3 +4702,34 @@ fn replay_player_scenarios() {
         }
     }
 }
+
+// game/GameImpl.ts: replay the GameImpl facade harness (map/water pass-through
+// ops, the scripted player/unit/unitGrid/rail/stats/config/exec facades, the
+// updates sink and the opaque-marker returns) through `GameHarness::run_op`
+// and compare the flat token streams bit-for-bit.
+#[test]
+fn replay_gameimpl_harness_scenarios() {
+    use openfront_core::game_impl::GameHarness;
+    for s in vectors::GF_SCENARIOS {
+        let mut h = GameHarness::default();
+        for (i, op) in s.ops.iter().enumerate() {
+            let got = h.run_op(op.kind, op.args);
+            assert_eq!(
+                got.len(),
+                op.res.len(),
+                "{} op#{i} args {:?}: res len got {got:?} want {:?}",
+                s.name,
+                op.args,
+                op.res
+            );
+            for (j, (g, w)) in got.iter().zip(op.res.iter()).enumerate() {
+                assert!(
+                    obj_is(*g, *w),
+                    "{} op#{i} args {:?} res[{j}]: got {g} want {w}",
+                    s.name,
+                    op.args
+                );
+            }
+        }
+    }
+}

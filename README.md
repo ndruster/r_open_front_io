@@ -2524,6 +2524,26 @@ WebSockets — stays excluded, mirroring the `src/core` exclusions).
     G3c6: shares-border / nearby / retreat / capture-unit / can-attack /
     best-spawn, 540 ops),
     877,337 wasm comparisons bit-identical.
+81. **`game/GameImpl.ts` facade** (`gamefacade`) — the `GameImpl` surface the
+    player harness only stubbed: the `_map` pass-throughs (`ref` … cell / width /
+    height / neighbors / `circleSearch` / `bfs` / the water components), the
+    player / unit / unitGrid / rail / stats / config / exec / callback scripted
+    facades, the `updates` sink, and the opaque live-object markers (`map` /
+    `miniMap` / `config` / `stats` / `railNetwork` / `terraNullius` / the mini
+    water structures — one shared token). `GameHarness::run_op` replays the ctor
+    block plus every method over the `js_json` codec (precedent `unit_impl` /
+    `player_impl`); each facade call rides a flat trace (100-window players
+    `isAlive` … `smallID`; 120-window units `toUpdate` … `type`; 130 unitGrid;
+    140 rail; 150 stats; 160 config; 170 shared-water-cache; 180 exec; 190
+    `forEachNeighbor` / `forEachNeighborWithDiag` / `forEachTile` / the
+    `circleSearch` / `bfs` filters). `hash` folds `player.hash()` in `_players`
+    order; the `units` / `unitCount` memos reuse version-gated caches;
+    `setWinner` / `makeWinner` / `isEligibleForTeamWin` run the alive /
+    eligibility pass in `players` order before any `clientID()` read (numeric
+    winners cross as a player-table index). 11 scenarios (`gf_basic` / `gf_map` /
+    `gf_players` / `gf_units` / `gf_updates` / `gf_sc` / `gf_errors` /
+    `gf_execs` / `gf_drain_null` / `gf_spawn` / `gf_null_players`, 208 ops),
+    881,109 wasm comparisons bit-identical.
 
 Regenerate whenever a ported source changes:
 
@@ -2557,7 +2577,7 @@ node rust/tools/run_wasm_parity.mjs
 
 `wasm-probe` exposes the ported functions through `extern "C"` scalar
 entrypoints (`src/wasm_probe.rs`); the runner imports `data/vectors.json` and
-compares every value. Last run: **876,871 comparisons, all bit-identical**.
+compares every value. Last run: **881,109 comparisons, all bit-identical**.
 
 ### Windows: the linker environment
 

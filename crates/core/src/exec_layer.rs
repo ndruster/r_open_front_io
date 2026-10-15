@@ -53,6 +53,10 @@
 //! DeleteUnit, `16` QuickChat, `17` MissileSilo, `18` UpgradeStructure,
 //! `19` City, `20` Factory, `21` DefensePost.
 //!
+//! G5c appends `22` Emoji, `23` DonateTroop, `24` DonateGold
+//! (`DonateTroopsExecution` / `DonateGoldExecution` also exercise the
+//! module-level `respondToEmoji` from `nation/NationEmojiBehavior.ts`).
+//!
 //! # G5b facade additions (codes ≥ 300)
 //!
 //! `mg`: `300` isValidRef, `301` getWaterComponent, `302` hasWaterComponent,
@@ -69,6 +73,23 @@
 //! `346` missileTimerQueue, `347` reloadMissile, `348` markForDeletion,
 //! `349` isOverdueDeletion, `350` hasTrainStation, `351` setTrainStation,
 //! `352` hasHealth (only reachable from the unreachable `DefensePost.shoot`).
+//!
+//! # G5c facade additions (codes ≥ 400)
+//!
+//! `mg`: `400` config().defaultDonationAmount(player),
+//! `401` config().maxTroops(player), `402` config().gameConfig().difficulty
+//! (the `gameConfig()` object is already reached for `214` gameType).
+//! `player`: `410` canSendEmoji(recipient), `411` sendEmoji(recipient, str),
+//! `412` relation(other), `413` canDonateTroops(other),
+//! `414` donateTroops(other, troops), `415` canDonateGold(other),
+//! `416` donateGold(other, gold), `417` gold(), `418` troops(), `419` name().
+//! A facade argument that may hold the `AllPlayers` sentinel (the plain string
+//! `"AllPlayers"`) or a Player token is encoded as `[5, …]` / `[3, tok]`
+//! (`undefined` `[1]`, `null` `[2]`); JS `===` on `AllPlayers` is a value
+//! comparison. `new EmojiExecution(...)` (from `DonateTroopsExecution` /
+//! `DonateGoldExecution` / `respondToEmoji`) is an `addExecution` construction
+//! record on code `307` with tag `2` (ctor args: requestor token, recipientID
+//! string, emoji id).
 //!
 //! # Constructing un-ported downstream executions
 //!
@@ -201,6 +222,8 @@
 //! (Game.ts:233-240, declaration order of the `unitTypeGroup`).
 
 use crate::js_json::{push_str, push_val, read_val, val_field, JsVal};
+use crate::jsnum::{js_min, js_round};
+use crate::pseudo_random::PseudoRandom;
 
 /// `MessageType.ALLIANCE_ACCEPTED` (numeric enum member 13).
 const MSG_ALLIANCE_ACCEPTED: f64 = 13.0;
@@ -208,6 +231,8 @@ const MSG_ALLIANCE_ACCEPTED: f64 = 13.0;
 const MSG_RENEW_ALLIANCE: f64 = 21.0;
 /// `PlayerType.Bot`.
 const PLAYER_TYPE_BOT: &str = "BOT";
+/// `PlayerType.Nation`.
+const PLAYER_TYPE_NATION: &str = "NATION";
 /// `GameType.Singleplayer`.
 const GAME_TYPE_SINGLEPLAYER: &str = "Singleplayer";
 /// `UnitType.MIRV` / `UnitType.MIRVWarhead` string members.
@@ -236,6 +261,7 @@ const RETREAT_CANCEL_DELAY: f64 = 20.0;
 /// Construction-record tags (the order the capture's recorder assigns).
 const TAG_TRAIN_STATION: f64 = 0.0;
 const TAG_SHELL: f64 = 1.0;
+const TAG_EMOJI: f64 = 2.0;
 
 // ---- codec / script helpers ------------------------------------------------
 
@@ -328,6 +354,14 @@ fn as_opt_tok(v: &JsVal) -> Option<usize> {
         Some(*n as usize)
     } else {
         None
+    }
+}
+
+/// A ctor arg that is either a number or `null` / `undefined`.
+fn as_opt_num(v: Option<&JsVal>) -> Option<f64> {
+    match v {
+        Some(JsVal::Num(n)) => Some(*n),
+        _ => None,
     }
 }
 
@@ -444,6 +478,58 @@ fn mk_void(tr: &mut Vec<f64>, code: f64, prefix: &[f64]) {
     push_val(tr, &JsVal::Undef);
 }
 
+/// `AllPlayers` (`Game.ts`) is a plain string, so JS `===` against it is a
+/// value comparison — the sentinel needs no object identity.
+const ALL_PLAYERS: &str = "AllPlayers";
+
+/// The `recipient` slot of `EmojiExecution` / `respondToEmoji`: a Player token,
+/// the `AllPlayers` sentinel, or a not-yet-resolved `undefined` / `null`.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+enum Rec {
+    #[default]
+    Unset,
+    All,
+    Null,
+    P(usize),
+}
+
+/// Encodes a [`Rec`] exactly like the capture's `elEvRecipient`.
+fn ev_rec(r: Rec) -> Vec<f64> {
+    match r {
+        Rec::Unset => vec![1.0],
+        Rec::Null => vec![2.0],
+        Rec::All => evs(ALL_PLAYERS),
+        Rec::P(t) => vec![3.0, t as f64],
+    }
+}
+
+/// `EMOJI_*` id arrays: `lits.map(emojiId)` for one of the 23 constants.
+fn emoji_ids(name: &str) -> Vec<f64> {
+    for (n, lits) in crate::nation_emoji::EMOJI_CONSTS {
+        if n == name {
+            return lits
+                .iter()
+                .map(|e| crate::nation_emoji::emoji_id(e) as f64)
+                .collect();
+        }
+    }
+    Vec::new()
+}
+
+/// JS string comparison gate shared by `respondToEmoji`.
+fn is_one_of(s: &str, set: &[&str]) -> bool {
+    set.contains(&s)
+}
+
+/// `flattenedEmojiTable[this.emoji]` — a JS array index must be a
+/// non-negative integer; anything else yields `undefined`.
+fn emoji_at(idx: f64) -> Option<&'static str> {
+    if idx.is_nan() || idx.fract() != 0.0 || idx < 0.0 {
+        return None;
+    }
+    crate::nation_emoji::FLATTENED_EMOJI_TABLE.get(idx as usize).copied()
+}
+
 // ---- the harness -----------------------------------------------------------
 
 /// The mutable class state shared by the 12 executions. The names are the
@@ -481,6 +567,13 @@ pub struct ExecHarness {
     #[allow(dead_code)]
     already_sent_shell: Vec<usize>,
 
+    // G5c state.
+    emoji: f64,
+    rec: Rec,
+    troops: Option<f64>,
+    gold: Option<i64>,
+    random: Option<PseudoRandom>,
+
     mg: Mock,
     players: Vec<Mock>,
     alliances: Vec<Mock>,
@@ -516,6 +609,9 @@ const MG_NEARBY_UNITS: usize = 25;
 const MG_TRAIN_STATION_MAX_RANGE: usize = 28;
 const MG_SILO_COOLDOWN: usize = 29;
 const MG_DEFENSE_POST_SHELL_ATTACK_RATE: usize = 30;
+const MG_DEFAULT_DONATION_AMOUNT: usize = 31;
+const MG_MAX_TROOPS: usize = 32;
+const MG_DIFFICULTY: usize = 33;
 
 // player slot indices.
 const PL_SMALL_ID: usize = 0;
@@ -540,6 +636,15 @@ const PL_IS_PLAYER: usize = 26;
 const PL_CAN_SEND_QUICK_CHAT: usize = 29;
 const PL_CAN_DELETE_UNIT: usize = 31;
 const PL_CAN_UPGRADE_UNIT: usize = 33;
+const PL_CAN_SEND_EMOJI: usize = 34;
+const PL_RELATION: usize = 35;
+const PL_CAN_DONATE_TROOPS: usize = 36;
+const PL_DONATE_TROOPS: usize = 37;
+const PL_CAN_DONATE_GOLD: usize = 38;
+const PL_DONATE_GOLD: usize = 39;
+const PL_GOLD: usize = 40;
+const PL_TROOPS: usize = 41;
+const PL_NAME: usize = 42;
 
 // alliance slot indices.
 const AL_ONLY_ONE_AGREED: usize = 0;
@@ -779,6 +884,40 @@ impl ExecHarness {
         );
         as_num(&v)
     }
+    fn mg_default_donation_amount(&mut self, tr: &mut Vec<f64>, player: Rec) -> f64 {
+        let v = mk_take(
+            &mut self.mg,
+            MG_DEFAULT_DONATION_AMOUNT,
+            tr,
+            400.0,
+            &ev_rec(player),
+        );
+        as_num(&v)
+    }
+    fn mg_max_troops(&mut self, tr: &mut Vec<f64>, player: Rec) -> f64 {
+        let v = mk_take(&mut self.mg, MG_MAX_TROOPS, tr, 401.0, &ev_rec(player));
+        as_num(&v)
+    }
+    fn mg_difficulty(&mut self, tr: &mut Vec<f64>) -> String {
+        let v = mk_take(&mut self.mg, MG_DIFFICULTY, tr, 402.0, &[]);
+        as_str(&v)
+    }
+    /// `mg.addExecution(new EmojiExecution(requestor, recipientID, emoji))` —
+    /// construction record (code 307, tag 2).
+    fn mg_add_execution_emoji(
+        &mut self,
+        tr: &mut Vec<f64>,
+        requestor: usize,
+        recipient_id: &str,
+        emoji: f64,
+    ) {
+        tr.push(307.0);
+        tr.push(TAG_EMOJI);
+        push_val(tr, &JsVal::Num(requestor as f64));
+        push_val(tr, &JsVal::Str(recipient_id.to_string()));
+        push_val(tr, &JsVal::Num(emoji));
+        push_val(tr, &JsVal::Undef);
+    }
 
     fn mg_any_unit_nearby(
         &mut self,
@@ -981,6 +1120,57 @@ impl ExecHarness {
     }
     fn pl_upgrade_unit(&mut self, tr: &mut Vec<f64>, tok: usize, unit: usize) {
         self.pl_void(tok, tr, 327.0, &ev1(unit as f64));
+    }
+    fn pl_can_send_emoji(&mut self, tr: &mut Vec<f64>, tok: usize, other: Rec) -> bool {
+        let v = self.pl(tok, PL_CAN_SEND_EMOJI, tr, 410.0, &ev_rec(other));
+        as_bool(&v)
+    }
+    fn pl_send_emoji(&mut self, tr: &mut Vec<f64>, tok: usize, other: Rec, emoji: &str) {
+        let mut extra = ev_rec(other);
+        extra.extend_from_slice(&evs(emoji));
+        self.pl_void(tok, tr, 411.0, &extra);
+    }
+    fn pl_relation(&mut self, tr: &mut Vec<f64>, tok: usize, other: Option<usize>) -> f64 {
+        let v = self.pl(tok, PL_RELATION, tr, 412.0, &evtok(other));
+        as_num(&v)
+    }
+    fn pl_can_donate_troops(&mut self, tr: &mut Vec<f64>, tok: usize, other: Rec) -> bool {
+        let v = self.pl(tok, PL_CAN_DONATE_TROOPS, tr, 413.0, &ev_rec(other));
+        as_bool(&v)
+    }
+    fn pl_donate_troops(
+        &mut self,
+        tr: &mut Vec<f64>,
+        tok: usize,
+        other: Rec,
+        troops: f64,
+    ) -> bool {
+        let mut extra = ev_rec(other);
+        extra.extend_from_slice(&ev1(troops));
+        let v = self.pl(tok, PL_DONATE_TROOPS, tr, 414.0, &extra);
+        as_bool(&v)
+    }
+    fn pl_can_donate_gold(&mut self, tr: &mut Vec<f64>, tok: usize, other: Rec) -> bool {
+        let v = self.pl(tok, PL_CAN_DONATE_GOLD, tr, 415.0, &ev_rec(other));
+        as_bool(&v)
+    }
+    fn pl_donate_gold(&mut self, tr: &mut Vec<f64>, tok: usize, other: Rec, gold: i64) -> bool {
+        let mut extra = ev_rec(other);
+        extra.extend_from_slice(&ev1(gold as f64));
+        let v = self.pl(tok, PL_DONATE_GOLD, tr, 416.0, &extra);
+        as_bool(&v)
+    }
+    fn pl_gold(&mut self, tr: &mut Vec<f64>, tok: usize) -> i64 {
+        let v = self.pl(tok, PL_GOLD, tr, 417.0, &[]);
+        as_num(&v) as i64
+    }
+    fn pl_troops(&mut self, tr: &mut Vec<f64>, tok: usize) -> f64 {
+        let v = self.pl(tok, PL_TROOPS, tr, 418.0, &[]);
+        as_num(&v)
+    }
+    fn pl_name(&mut self, tr: &mut Vec<f64>, tok: usize) -> String {
+        let v = self.pl(tok, PL_NAME, tr, 419.0, &[]);
+        as_str(&v)
     }
 
     // alliance facade
@@ -1480,6 +1670,31 @@ impl ExecHarness {
                 // City / Factory / DefensePost: `private active = true`.
                 self.flag = true;
             }
+            22 => {
+                self.a_tok = n(0) as usize;
+                self.id_a = ctor.get(1).map(as_str).unwrap_or_default();
+                self.emoji = n(2);
+                // EmojiExecution: `private active = true`.
+                self.flag = true;
+            }
+            23 => {
+                self.a_tok = n(0) as usize;
+                self.id_a = ctor.get(1).map(as_str).unwrap_or_default();
+                self.troops = as_opt_num(ctor.get(2));
+                // DonateTroopsExecution: `private active = true`.
+                self.flag = true;
+            }
+            24 => {
+                self.a_tok = n(0) as usize;
+                self.id_a = ctor.get(1).map(as_str).unwrap_or_default();
+                // `this.gold = goldNum !== null ? toInt(goldNum) : null`.
+                self.gold = match ctor.get(2) {
+                    None | Some(JsVal::Null) | Some(JsVal::Undef) => None,
+                    Some(v) => crate::util::to_int(as_num(v)),
+                };
+                // DonateGoldExecution: `private active = true`.
+                self.flag = true;
+            }
             _ => {}
         }
     }
@@ -1537,6 +1752,9 @@ impl ExecHarness {
             19 => self.city(kind, tr),
             20 => self.factory(kind, tr),
             21 => self.defense_post(kind, tr),
+            22 => self.emoji(kind, tr),
+            23 => self.donate_troops_exec(kind, tr),
+            24 => self.donate_gold_exec(kind, ticks, tr),
             k => unreachable!("exec harness: unknown class id {k}"),
         }
     }
@@ -2424,6 +2642,347 @@ impl ExecHarness {
                 self.target = None;
             }
         }
+    }
+
+    // 22 Emoji
+    fn emoji(&mut self, kind: u8, tr: &mut Vec<f64>) -> Result<JsVal, String> {
+        match kind {
+            3 => Ok(JsVal::Bool(self.flag)),
+            4 => Ok(JsVal::Bool(false)),
+            1 => {
+                self.mg_ready = true;
+                let seed = self.mg_ticks(tr);
+                self.random = Some(PseudoRandom::new(seed));
+                let id = self.id_a.clone();
+                // `this.recipientID !== AllPlayers && !mg.hasPlayer(...)`.
+                if id != ALL_PLAYERS && !self.mg_has_player(tr, &id) {
+                    self.flag = false;
+                    return Ok(JsVal::Undef);
+                }
+                self.rec = if id == ALL_PLAYERS {
+                    Rec::All
+                } else {
+                    match self.mg_player(tr, &id) {
+                        Some(t) => Rec::P(t),
+                        None => Rec::Null,
+                    }
+                };
+                Ok(JsVal::Undef)
+            }
+            2 => {
+                if let Some(emoji_string) = emoji_at(self.emoji) {
+                    if self.pl_can_send_emoji(tr, self.a_tok, self.rec) {
+                        self.pl_send_emoji(tr, self.a_tok, self.rec, emoji_string);
+                        let mut rng = self
+                            .random
+                            .take()
+                            .unwrap_or_else(|| PseudoRandom::new(0.0));
+                        let r = self.respond_to_emoji(
+                            tr,
+                            &mut rng,
+                            self.a_tok,
+                            self.rec,
+                            emoji_string,
+                        );
+                        self.random = Some(rng);
+                        r?;
+                    }
+                }
+                self.flag = false;
+                Ok(JsVal::Undef)
+            }
+            _ => unreachable!(),
+        }
+    }
+
+    // 23 DonateTroops
+    fn donate_troops_exec(&mut self, kind: u8, tr: &mut Vec<f64>) -> Result<JsVal, String> {
+        match kind {
+            3 => Ok(JsVal::Bool(self.flag)),
+            4 => Ok(JsVal::Bool(false)),
+            1 => {
+                self.mg_ready = true;
+                let seed = self.mg_ticks(tr);
+                self.random = Some(PseudoRandom::new(seed));
+                let id = self.id_a.clone();
+                if !self.mg_has_player(tr, &id) {
+                    self.flag = false;
+                    return Ok(JsVal::Undef);
+                }
+                let rt = self.mg_player(tr, &id);
+                self.recipient = rt;
+                if self.troops.is_none() {
+                    let d = self.mg_default_donation_amount(tr, Rec::P(self.a_tok));
+                    self.troops = Some(d);
+                }
+                let max_troops = self
+                    .mg_max_troops(tr, rt.map(Rec::P).unwrap_or(Rec::Null));
+                let cur = match rt {
+                    Some(t) => self.pl_troops(tr, t),
+                    None => {
+                        return Err("Cannot read properties of null (reading 'troops')".into())
+                    }
+                };
+                let max_donation = max_troops - cur;
+                let t = self.troops.unwrap();
+                self.troops = Some(js_min(t, max_donation));
+                if self.troops.unwrap() <= 0.0 {
+                    self.flag = false;
+                }
+                Ok(JsVal::Undef)
+            }
+            2 => {
+                if self.troops.is_none() {
+                    return Err("not initialized".into());
+                }
+                let min_troops = self.get_min_troops(tr)?;
+                let rt = match self.recipient {
+                    Some(t) => t,
+                    None => {
+                        return Err(
+                            "Cannot read properties of null (reading 'canDonateTroops')".into()
+                        )
+                    }
+                };
+                let troops = self.troops.unwrap();
+                if self.pl_can_donate_troops(tr, self.a_tok, Rec::P(rt))
+                    && self.pl_donate_troops(tr, self.a_tok, Rec::P(rt), troops)
+                {
+                    if troops >= min_troops {
+                        self.pl_update_relation(tr, rt, Some(self.a_tok), 50.0);
+                    }
+                    if self.pl_type(tr, rt) == PLAYER_TYPE_NATION
+                        && self.pl_can_send_emoji(tr, rt, Rec::P(self.a_tok))
+                    {
+                        let arr = if troops >= min_troops {
+                            emoji_ids("EMOJI_LOVE")
+                        } else {
+                            emoji_ids("EMOJI_DONATION_TOO_SMALL")
+                        };
+                        let sid = self.pl_id(tr, self.a_tok);
+                        let mut rng = self
+                            .random
+                            .take()
+                            .unwrap_or_else(|| PseudoRandom::new(0.0));
+                        let e = rng.rand_element(&arr).copied().unwrap_or(f64::NAN);
+                        self.random = Some(rng);
+                        self.mg_add_execution_emoji(tr, rt, &sid, e);
+                    }
+                }
+                self.flag = false;
+                Ok(JsVal::Undef)
+            }
+            _ => unreachable!(),
+        }
+    }
+
+    /// `DonateTroopsExecution.getMinTroopsForRelationUpdate` (TS:91-123).
+    fn get_min_troops(&mut self, tr: &mut Vec<f64>) -> Result<f64, String> {
+        let difficulty = self.mg_difficulty(tr);
+        let max = match self.recipient {
+            Some(t) => self.mg_max_troops(tr, Rec::P(t)),
+            None => self.mg_max_troops(tr, Rec::Null),
+        };
+        let mut rng = self
+            .random
+            .take()
+            .unwrap_or_else(|| PseudoRandom::new(0.0));
+        let v = match difficulty.as_str() {
+            "Easy" => rng.next_int(max / 13.0, max / 11.0) as f64,
+            "Medium" => rng.next_int(max / 11.0, max / 9.0) as f64,
+            "Hard" => rng.next_int(max / 9.0, max / 7.0) as f64,
+            "Impossible" => rng.next_int(max / 7.0, max / 5.0) as f64,
+            other => {
+                self.random = Some(rng);
+                // `assertNever(x)` -> `throw new Error("Unexpected value: " + x)`.
+                return Err(format!("Unexpected value: {other}"));
+            }
+        };
+        self.random = Some(rng);
+        Ok(v)
+    }
+
+    // 24 DonateGold
+    fn donate_gold_exec(
+        &mut self,
+        kind: u8,
+        ticks: f64,
+        tr: &mut Vec<f64>,
+    ) -> Result<JsVal, String> {
+        match kind {
+            3 => Ok(JsVal::Bool(self.flag)),
+            4 => Ok(JsVal::Bool(false)),
+            1 => {
+                self.mg_ready = true;
+                let seed = self.mg_ticks(tr);
+                self.random = Some(PseudoRandom::new(seed));
+                let id = self.id_a.clone();
+                if !self.mg_has_player(tr, &id) {
+                    self.flag = false;
+                    return Ok(JsVal::Undef);
+                }
+                let rt = self.mg_player(tr, &id);
+                self.recipient = rt;
+                if self.gold.is_none() {
+                    // `this.gold ??= this.sender.gold() / 3n` (i64 truncation).
+                    let g = self.pl_gold(tr, self.a_tok);
+                    self.gold = Some(g / 3);
+                }
+                Ok(JsVal::Undef)
+            }
+            2 => {
+                if self.gold.is_none() {
+                    return Err("not initialized".into());
+                }
+                let g = self.gold.unwrap();
+                let rt = match self.recipient {
+                    Some(t) => t,
+                    None => {
+                        return Err(
+                            "Cannot read properties of null (reading 'canDonateGold')".into()
+                        )
+                    }
+                };
+                if self.pl_can_donate_gold(tr, self.a_tok, Rec::P(rt))
+                    && self.pl_donate_gold(tr, self.a_tok, Rec::P(rt), g)
+                {
+                    let relation_update = self.calculate_relation_update(tr, g, ticks)?;
+                    if relation_update > 0.0 {
+                        self.pl_update_relation(tr, rt, Some(self.a_tok), relation_update);
+                    }
+                    if self.pl_type(tr, rt) == PLAYER_TYPE_NATION
+                        && self.pl_can_send_emoji(tr, rt, Rec::P(self.a_tok))
+                    {
+                        let name = if relation_update >= 50.0 {
+                            "EMOJI_LOVE"
+                        } else if relation_update > 0.0 {
+                            "EMOJI_DONATION_OK"
+                        } else {
+                            "EMOJI_DONATION_TOO_SMALL"
+                        };
+                        let arr = emoji_ids(name);
+                        let sid = self.pl_id(tr, self.a_tok);
+                        let mut rng = self
+                            .random
+                            .take()
+                            .unwrap_or_else(|| PseudoRandom::new(0.0));
+                        let e = rng.rand_element(&arr).copied().unwrap_or(f64::NAN);
+                        self.random = Some(rng);
+                        self.mg_add_execution_emoji(tr, rt, &sid, e);
+                    }
+                } else {
+                    let _ = self.pl_name(tr, self.a_tok);
+                    let _ = self.pl_name(tr, rt);
+                }
+                self.flag = false;
+                Ok(JsVal::Undef)
+            }
+            _ => unreachable!(),
+        }
+    }
+
+    /// `DonateGoldExecution.getGoldChunkSize` (TS:93-107).
+    fn get_gold_chunk_size(&mut self, tr: &mut Vec<f64>) -> Result<f64, String> {
+        let difficulty = self.mg_difficulty(tr);
+        match difficulty.as_str() {
+            "Easy" => Ok(2500.0),
+            "Medium" => Ok(5000.0),
+            "Hard" => Ok(12500.0),
+            "Impossible" => Ok(25000.0),
+            other => Err(format!("Unexpected value: {other}")),
+        }
+    }
+
+    /// `DonateGoldExecution.calculateRelationUpdate` (TS:109-124) — the bigint
+    /// division `goldSent / adjustedChunkSize` truncates toward zero, mirrored
+    /// by `i64 / i64`.
+    fn calculate_relation_update(
+        &mut self,
+        tr: &mut Vec<f64>,
+        gold_sent: i64,
+        ticks: f64,
+    ) -> Result<f64, String> {
+        let chunk_size = self.get_gold_chunk_size(tr)?;
+        let nsp = self.mg_num_spawn_phase_turns(tr);
+        let multiplier = ticks / (3000.0 + nsp);
+        let adjusted = js_round(chunk_size + chunk_size * multiplier) as i64;
+        if adjusted == 0 {
+            // `BigInt(x) / 0n` throws a RangeError in JS (not exercised).
+            return Err("RangeError: Division by zero".into());
+        }
+        let chunks = (gold_sent / adjusted) as f64;
+        let relation_update = chunks * 5.0;
+        if relation_update > 100.0 {
+            Ok(100.0)
+        } else {
+            Ok(relation_update)
+        }
+    }
+
+    /// `respondToEmoji` (`nation/NationEmojiBehavior.ts`:279-327) — the three
+    /// blocks are independent `if`s; `sender` is the original requestor and
+    /// `recipient` the player that received the emoji.
+    fn respond_to_emoji(
+        &mut self,
+        tr: &mut Vec<f64>,
+        rng: &mut PseudoRandom,
+        sender_tok: usize,
+        rec: Rec,
+        emoji_string: &str,
+    ) -> Result<(), String> {
+        let rt = match rec {
+            Rec::All => return Ok(()),
+            Rec::Unset => {
+                return Err("Cannot read properties of undefined (reading 'type')".into())
+            }
+            Rec::Null => return Err("Cannot read properties of null (reading 'type')".into()),
+            Rec::P(t) => t,
+        };
+        if self.pl_type(tr, rt) != PLAYER_TYPE_NATION {
+            return Ok(());
+        }
+        if !self.pl_can_send_emoji(tr, rt, Rec::P(sender_tok)) {
+            return Ok(());
+        }
+
+        if emoji_string == "\u{1F595}" {
+            self.pl_update_relation(tr, rt, Some(sender_tok), -100.0);
+            let arr = emoji_ids("EMOJI_GOT_INSULTED");
+            let e = rng.rand_element(&arr).copied().unwrap_or(f64::NAN);
+            let sid = self.pl_id(tr, sender_tok);
+            self.mg_add_execution_emoji(tr, rt, &sid, e);
+        }
+
+        if emoji_string == "\u{1F921}" {
+            self.pl_update_relation(tr, rt, Some(sender_tok), -10.0);
+            let arr = emoji_ids("EMOJI_CONFUSED");
+            let e = rng.rand_element(&arr).copied().unwrap_or(f64::NAN);
+            let sid = self.pl_id(tr, sender_tok);
+            self.mg_add_execution_emoji(tr, rt, &sid, e);
+        }
+
+        const LOVE_LIST: [&str; 5] = [
+            "\u{1F54A}\u{FE0F}",
+            "\u{1F3F3}\u{FE0F}",
+            "\u{2764}\u{FE0F}",
+            "\u{1F970}",
+            "\u{1F44F}",
+        ];
+        if is_one_of(emoji_string, &LOVE_LIST) {
+            if self.mg_difficulty(tr) == "Easy" {
+                self.pl_update_relation(tr, rt, Some(sender_tok), 15.0);
+            }
+            let sid = self.pl_id(tr, sender_tok);
+            let rel = self.pl_relation(tr, sender_tok, Some(rt));
+            let arr = if rel >= 2.0 {
+                emoji_ids("EMOJI_LOVE")
+            } else {
+                emoji_ids("EMOJI_CONFUSED")
+            };
+            let e = rng.rand_element(&arr).copied().unwrap_or(f64::NAN);
+            self.mg_add_execution_emoji(tr, rt, &sid, e);
+        }
+        Ok(())
     }
 }
 

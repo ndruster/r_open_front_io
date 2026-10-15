@@ -2641,6 +2641,30 @@ WebSockets — stays excluded, mirroring the `src/core` exclusions).
     `el_movewarship*` / `el_deleteunit*` / `el_quickchat*` / `el_silo*` /
     `el_upgrade*` / `el_city*` / `el_factory*` / `el_defpost*`, 204 ops),
     87 scenarios / 371 ops and 897,869 wasm comparisons in total.
+84. **`execution/` layer, part 3** (`execution`, G5c) — the emoji + donation
+    executions added to the same `exec_layer.rs` harness (class ids 22…24):
+    `EmojiExecution` (22), `DonateTroopsExecution` (23), `DonateGoldExecution`
+    (24), plus the module-level `respondToEmoji`
+    (`execution/nation/NationEmojiBehavior.ts:279-327`) reused by
+    `EmojiExecution.tick`. Facade trace codes extend G5b: mg 400-402
+    (`defaultDonationAmount` / `maxTroops` / `gameConfig().difficulty`) and
+    player 410-419 (`canSendEmoji` / `sendEmoji` / `relation` /
+    `canDonateTroops` / `donateTroops` / `canDonateGold` / `donateGold` /
+    `gold` / `troops` / `name`). `gold()` is a `bigint`; the mock records the
+    scripted JS number and the Rust side returns the `i64` produced by
+    `toInt` / `/ 3n` truncation. `Game.AllPlayers` (`"AllPlayers" as const`) is
+    a plain STRING, so the `Player | typeof AllPlayers` recipient is
+    value-compared like any other player id and encoded as an ordinary string
+    (no sentinel object needed). The nested `new EmojiExecution(...)` built by
+    `DonateTroops` / `DonateGold` / `respondToEmoji` is modelled as a
+    construction-recorder event on `mg.addExecution` (307, new tag `2`, ctor
+    args `requestor` / `recipientID` / `emoji`), following the TrainStation (0)
+    / Shell (1) precedent. `respondToEmoji`'s string gates stay code-unit exact
+    (variation selectors / ZWJ preserved); the `Difficulty` switch, `Math.min`
+    clamp, `Math.round` (half-up) chunk maths and `assertNever` throw are
+    replicated. 30 new scenarios (`el_emoji*` / `el_donatetroop*` /
+    `el_donategold*`, 107 ops), 117 scenarios / 478 ops and 900,236 wasm
+    comparisons in total.
 
 Regenerate whenever a ported source changes:
 

@@ -10817,6 +10817,8 @@ runRN("rn_grid_query_order", rnSpec({
 const encVal = (v) => {
   if (v === undefined) return [1];
   if (v === null) return [2];
+  // `elNull`: an explicit `null` ctor argument (see the elScenarios harness).
+  if (typeof v === "object" && v.__elnull === true) return [2];
   if (typeof v === "number") return [3, uenc(v)];
   if (typeof v === "boolean") return [4, v ? 1 : 0];
   if (typeof v === "string") return [5, ...encS(v)];
@@ -26488,11 +26490,29 @@ const elFactoryC = (await loadTs("src/core/execution/FactoryExecution.ts"))
   .FactoryExecution;
 const elDefensePostC = (await loadTs("src/core/execution/DefensePostExecution.ts"))
   .DefensePostExecution;
+const elEmojiC = (await loadTs("src/core/execution/EmojiExecution.ts"))
+  .EmojiExecution;
+const elDonateTroopC = (
+  await loadTs("src/core/execution/DonateTroopExecution.ts")
+).DonateTroopsExecution;
+const elDonateGoldC = (
+  await loadTs("src/core/execution/DonateGoldExecution.ts")
+).DonateGoldExecution;
+// G5c: `DonateTroopsExecution` / `DonateGoldExecution` call the module-level
+// `respondToEmoji`; the x10 module imports it from the prepared NationEmoji
+// copy (the same one class 22 uses).
+const elRespondToEmoji = (
+  await loadTs("src/core/execution/nation/NationEmojiBehavior.ts")
+).respondToEmoji;
 // `mg.addExecution(exec)` records the construction of one of these un-ported
 // executions; the tag is looked up by the constructed instance's class name.
-const elExecTags = { TrainStationExecution: 0, ShellExecution: 1 };
+const elExecTags = { TrainStationExecution: 0, ShellExecution: 1, EmojiExecution: 2 };
 // A `Unit` ctor argument that is resolved to `elC.units[token]` by `elDef`.
 const elUnitRef = (t) => ({ __elu: t });
+// A `null` ctor argument (`DonateTroopsExecution.troops` / `DonateGoldExecution`
+// goldNum). Plain `null` is reserved for the player-token reference, so this
+// sentinel encodes as `[2]` (null) via the `encVal` case below.
+const elNull = { __elnull: true };
 
 const elScenarios = [];
 let elT = [];
@@ -26529,6 +26549,16 @@ const elEvTokList = (a) => {
   return o;
 };
 const elEvTok = (o) => (o == null || o._tok == null ? [1] : [3, o._tok]);
+// A `Player | typeof AllPlayers` argument. `AllPlayers` is the plain string
+// `"AllPlayers"`, so the sentinel encodes as an ordinary string.
+const elEvRecipient = (o) =>
+  o === undefined
+    ? [1]
+    : o === null
+      ? [2]
+      : o === "AllPlayers"
+        ? elEvs("AllPlayers")
+        : [3, o._tok];
 function elRet(m, slot, code, prefix) {
   const v = elTake(m, slot);
   elT.push(code, ...prefix, ...encVal(v));
@@ -26596,6 +26626,25 @@ function elPlayerObj(tok, slots) {
     recordQuickChat: (o) => elVoid(323, [tok, ...elEvTok(o)]),
     recordDeleteUnit: () => elVoid(325, [tok]),
     upgradeUnit: (u) => elVoid(327, [tok, ...elEvTok(u)]),
+    // G5c.
+    canSendEmoji: (o) => elRet(m, 34, 410, [tok, ...elEvRecipient(o)]),
+    sendEmoji: (o, e) => elVoid(411, [tok, ...elEvRecipient(o), ...elEvs(e)]),
+    relation: (o) => elRet(m, 35, 412, [tok, ...elEvTok(o)]),
+    canDonateTroops: (o) => elRet(m, 36, 413, [tok, ...elEvRecipient(o)]),
+    donateTroops: (o, n) =>
+      elRet(m, 37, 414, [tok, ...elEvRecipient(o), ...elEv1(n)]),
+    canDonateGold: (o) => elRet(m, 38, 415, [tok, ...elEvRecipient(o)]),
+    donateGold: (o, g) =>
+      elRet(m, 39, 416, [tok, ...elEvRecipient(o), ...elEv1(Number(g))]),
+    // `gold()` returns a `bigint`; the trace records the scripted JS number
+    // (the f64 side of `Gold`), the mock returns it as a BigInt.
+    gold: () => {
+      const v = elTake(m, 40);
+      elT.push(417, tok, ...encVal(v));
+      return BigInt(v);
+    },
+    troops: () => elRet(m, 41, 418, [tok]),
+    name: () => elRet(m, 42, 419, [tok]),
   };
 }
 function elAllianceObj(tok, slots) {
@@ -26671,10 +26720,23 @@ function elMgObj(slots) {
     numSpawnPhaseTurns: () => elRet(m, 5, 215, []),
     nukeMagnitudes: (ty) => elRet(m, 14, 224, elEvs(ty)),
     nukeAllianceBreakThreshold: () => elRet(m, 15, 225, []),
-    gameConfig: () => ({ gameType: elRet(m, 4, 214, []) }),
+    // Both fields are lazy getters: only the field actually read by the ported
+    // class consumes its slot script (PauseExecution reads gameType, the G5c
+    // donation/emoji executions read difficulty).
+    gameConfig: () => ({
+      get gameType() {
+        return elRet(m, 4, 214, []);
+      },
+      get difficulty() {
+        return elRet(m, 33, 402, []);
+      },
+    }),
     trainStationMaxRange: () => elRet(m, 28, 309, []),
     SiloCooldown: () => elRet(m, 29, 310, []),
     defensePostShellAttackRate: () => elRet(m, 30, 311, []),
+    // G5c.
+    defaultDonationAmount: (p) => elRet(m, 31, 400, elEvRecipient(p)),
+    maxTroops: (p) => elRet(m, 32, 401, elEvRecipient(p)),
   };
   return {
     config: () => cfg,
@@ -26743,6 +26805,19 @@ function elMgObj(slots) {
       return (ts || []).map((t) => ({ unit: elC.units[t] }));
     },
     addExecution: (exec) => {
+      if (exec.constructor.name === "EmojiExecution") {
+        // G5c: the ctor args are the requestor Player, the recipientID string
+        // and the emoji id (`exec.recipientID` is `sender.id()`).
+        elT.push(
+          307,
+          2,
+          ...elEvTok(exec.requestor),
+          ...encVal(exec.recipientID),
+          ...encVal(exec.emoji),
+          ...encVal(undefined),
+        );
+        return;
+      }
       const tag = elExecTags[exec.constructor.name];
       if (tag === undefined) {
         throw new Error(`el: unknown execution ${exec.constructor.name}`);
@@ -26771,18 +26846,18 @@ function elMgObj(slots) {
 function elDef(name, classId, cls, args, spec, ops) {
   elT = [];
   elC = {};
-  elC.players = (spec.players || []).map((mm, i) => elPlayerObj(i, elSlots(34, mm)));
+  elC.players = (spec.players || []).map((mm, i) => elPlayerObj(i, elSlots(43, mm)));
   elC.alliances = (spec.alliances || []).map((mm, i) => elAllianceObj(i, elSlots(4, mm)));
   elC.requests = (spec.requests || []).map((mm, i) => elRequestObj(i, elSlots(5, mm)));
   elC.units = (spec.units || []).map((mm, i) => elUnitObj(i, elSlots(20, mm)));
   elC.neighbors = (spec.neighbors || []).map((mm, i) => elNeighborObj(i, elSlots(3, mm)));
-  elC.mg = elMgObj(elSlots(31, spec.mg));
+  elC.mg = elMgObj(elSlots(34, spec.mg));
 
   const setup = {
     c: classId,
     a: spec.a || [],
-    mg: elSlots(31, spec.mg),
-    players: (spec.players || []).map((mm) => elSlots(34, mm)),
+    mg: elSlots(34, spec.mg),
+    players: (spec.players || []).map((mm) => elSlots(43, mm)),
     alliances: (spec.alliances || []).map((mm) => elSlots(4, mm)),
     requests: (spec.requests || []).map((mm) => elSlots(5, mm)),
     units: (spec.units || []).map((mm) => elSlots(20, mm)),
@@ -26798,6 +26873,9 @@ function elDef(name, classId, cls, args, spec, ops) {
   const inst = new cls(
     ...args.map((x, i) => {
       if (x === null) return elC.players[aList[i]];
+      if (x !== null && typeof x === "object" && x.__elnull === true) {
+        return null;
+      }
       if (x !== null && typeof x === "object" && x.__elu !== undefined) {
         return elC.units[x.__elu];
       }
@@ -27243,6 +27321,196 @@ elDef("el_factory_inactive", 20, elFactoryC, [elUnitRef(0)], { units: [{ 11: [10
 elDef("el_defpost_active", 21, elDefensePostC, [elUnitRef(0)], { units: [{ 0: [true], 12: [false] }], a: [0] }, [[0], [1, 0], [3], [4], [2, 0], [3]]);
 elDef("el_defpost_underconstruction", 21, elDefensePostC, [elUnitRef(0)], { units: [{ 0: [true], 12: [true] }], a: [0] }, [[0], [1, 0], [2, 0], [3]]);
 elDef("el_defpost_inactive", 21, elDefensePostC, [elUnitRef(0)], { units: [{ 0: [false] }], a: [0] }, [[0], [1, 0], [2, 0], [3]]);
+
+// -- 22 EmojiExecution -------------------------------------------------------
+// The emoji argument is the index into the *shared* `flattenedEmojiTable`, read
+// from the prepared copy so the intended string is guaranteed.
+const elEmojiIdx = async (s) =>
+  (await loadTs("src/core/Util.ts")).flattenedEmojiTable.indexOf(s);
+const EL_HEART = await elEmojiIdx("❤️");
+const EL_DOVE = await elEmojiIdx("🕊️");
+const EL_LOVEFACE = await elEmojiIdx("🥰");
+const EL_FINGER = await elEmojiIdx("🖕");
+const EL_CLOWN = await elEmojiIdx("🤡");
+
+function elEmojiDef(name, recipientID, emoji, players, mg, ops) {
+  elDef(name, 22, elEmojiC, [null, recipientID, emoji], { players, mg, a: [0, recipientID, emoji] }, ops);
+}
+elEmojiDef(
+  "el_emoji_love_easy",
+  "recv",
+  EL_HEART,
+  [{ 1: ["snd"], 34: [true], 35: [2] }, { 21: ["NATION"], 34: [true] }],
+  { 2: [5], 0: [true], 1: [1], 33: ["Easy"] },
+  [[0], [1, 0], [3], [4], [2, 0], [3], [4]],
+);
+elEmojiDef(
+  "el_emoji_love_hard",
+  "recv",
+  EL_DOVE,
+  [{ 1: ["snd"], 34: [true], 35: [2] }, { 21: ["NATION"], 34: [true] }],
+  { 2: [5], 0: [true], 1: [1], 33: ["Hard"] },
+  [[0], [1, 0], [2, 0]],
+);
+elEmojiDef(
+  "el_emoji_love_confused",
+  "recv",
+  EL_LOVEFACE,
+  [{ 1: ["snd"], 34: [true], 35: [0] }, { 21: ["NATION"], 34: [true] }],
+  { 2: [5], 0: [true], 1: [1], 33: ["Hard"] },
+  [[0], [1, 0], [2, 0]],
+);
+elEmojiDef(
+  "el_emoji_insult",
+  "recv",
+  EL_FINGER,
+  [{ 1: ["snd"], 34: [true] }, { 21: ["NATION"], 34: [true] }],
+  { 2: [5], 0: [true], 1: [1] },
+  [[0], [1, 0], [2, 0]],
+);
+elEmojiDef(
+  "el_emoji_clown",
+  "recv",
+  EL_CLOWN,
+  [{ 1: ["snd"], 34: [true] }, { 21: ["NATION"], 34: [true] }],
+  { 2: [5], 0: [true], 1: [1] },
+  [[0], [1, 0], [2, 0]],
+);
+elEmojiDef(
+  "el_emoji_allplayers",
+  "AllPlayers",
+  EL_DOVE,
+  [{ 1: ["snd"], 34: [true] }],
+  { 2: [5] },
+  [[0], [1, 0], [2, 0]],
+);
+elEmojiDef(
+  "el_emoji_cantsend",
+  "recv",
+  EL_HEART,
+  [{ 34: [false] }, { 21: ["NATION"] }],
+  { 2: [5], 0: [true], 1: [1] },
+  [[0], [1, 0], [2, 0], [3]],
+);
+elEmojiDef(
+  "el_emoji_outofrange",
+  "recv",
+  99,
+  [{ 34: [true] }, { 21: ["NATION"] }],
+  { 2: [5], 0: [true], 1: [1] },
+  [[0], [1, 0], [2, 0], [3]],
+);
+elEmojiDef(
+  "el_emoji_notfound",
+  "gone",
+  EL_HEART,
+  [{ 34: [false] }],
+  { 2: [5], 0: [false] },
+  [[0], [1, 0], [3], [2, 0]],
+);
+
+// -- 23 DonateTroopsExecution ------------------------------------------------
+function elTroopDef(name, troops, difficulty, players, mg, ops) {
+  elDef(
+    name,
+    23,
+    elDonateTroopC,
+    [null, "recv", troops],
+    { players, mg: { 2: [5], 0: [true], 1: [1], 33: [difficulty], ...mg }, a: [0, "recv", troops] },
+    ops,
+  );
+}
+const EL_TROOP_NATION = [{ 36: [true], 37: [true], 1: ["snd"] }, { 21: ["NATION"], 34: [true], 41: [10000] }];
+elTroopDef("el_donatetroop_love", 13000, "Easy", EL_TROOP_NATION, { 32: [60000] }, [[0], [1, 0], [2, 0], [3], [4]]);
+elTroopDef("el_donatetroop_d_easy", 4000, "Easy", EL_TROOP_NATION, { 32: [60000] }, [[0], [1, 0], [2, 0], [3]]);
+elTroopDef("el_donatetroop_d_medium", 4000, "Medium", EL_TROOP_NATION, { 32: [60000] }, [[0], [1, 0], [2, 0], [3]]);
+elTroopDef("el_donatetroop_d_hard", 4000, "Hard", EL_TROOP_NATION, { 32: [60000] }, [[0], [1, 0], [2, 0], [3]]);
+elTroopDef("el_donatetroop_d_impossible", 4000, "Impossible", EL_TROOP_NATION, { 32: [60000] }, [[0], [1, 0], [2, 0], [3]]);
+elTroopDef(
+  "el_donatetroop_default",
+  elNull,
+  "Easy",
+  [{ 36: [true], 37: [true], 1: ["snd"] }, { 21: ["NATION"], 34: [true], 41: [55000] }],
+  { 31: [8000], 32: [60000] },
+  [[0], [1, 0], [2, 0], [3]],
+);
+elTroopDef(
+  "el_donatetroop_zero",
+  elNull,
+  "Easy",
+  [{ 36: [true], 37: [true], 1: ["snd"] }, { 21: ["NATION"], 41: [60000] }],
+  { 31: [8000], 32: [60000] },
+  [[0], [1, 0], [3], [4]],
+);
+elTroopDef(
+  "el_donatetroop_notfound",
+  elNull,
+  "Easy",
+  [{}],
+  { 0: [false], 32: [60000] },
+  [[0], [1, 0], [3], [2, 0]],
+);
+elTroopDef(
+  "el_donatetroop_cantdonate",
+  4000,
+  "Easy",
+  [{ 36: [false] }, { 41: [10000] }],
+  { 32: [60000] },
+  [[0], [1, 0], [2, 0]],
+);
+elTroopDef(
+  "el_donatetroop_nonation",
+  13000,
+  "Easy",
+  [{ 36: [true], 37: [true] }, { 21: ["HUMAN"], 41: [10000] }],
+  { 32: [60000] },
+  [[0], [1, 0], [2, 0]],
+);
+elTroopDef(
+  "el_donatetroop_assertnever",
+  4000,
+  "Weird",
+  [{ 36: [true] }, { 41: [10000] }],
+  { 32: [60000] },
+  [[0], [1, 0], [2, 0]],
+);
+
+// -- 24 DonateGoldExecution --------------------------------------------------
+function elGoldDef(name, goldNum, difficulty, players, mg, ops) {
+  elDef(
+    name,
+    24,
+    elDonateGoldC,
+    [null, "recv", goldNum],
+    { players, mg: { 2: [5], 0: [true], 1: [1], 33: [difficulty], ...mg }, a: [0, "recv", goldNum] },
+    ops,
+  );
+}
+const EL_GOLD_NATION = [{ 38: [true], 39: [true], 1: ["snd"] }, { 21: ["NATION"], 34: [true] }];
+elGoldDef("el_donategold_default", elNull, "Easy", [{ 38: [true], 39: [true], 1: ["snd"], 40: [300] }, { 21: ["NATION"], 34: [true] }], { 5: [0] }, [[0], [1, 0], [2, 0]]);
+elGoldDef("el_donategold_cap", 2000000, "Hard", EL_GOLD_NATION, { 5: [0] }, [[0], [1, 0], [2, 0]]);
+elGoldDef("el_donategold_ok", 15000, "Easy", EL_GOLD_NATION, { 5: [0] }, [[0], [1, 0], [2, 0]]);
+elGoldDef("el_donategold_d_medium", 25000, "Medium", EL_GOLD_NATION, { 5: [0] }, [[0], [1, 0], [2, 0]]);
+elGoldDef("el_donategold_d_impossible", 25000, "Impossible", EL_GOLD_NATION, { 5: [0] }, [[0], [1, 0], [2, 0]]);
+elGoldDef("el_donategold_multiplier", 60000, "Easy", EL_GOLD_NATION, { 5: [100] }, [[0], [1, 0], [2, 3000]]);
+elGoldDef("el_donategold_nonation", 15000, "Easy", [{ 38: [true], 39: [true] }, { 21: ["HUMAN"] }], { 5: [0] }, [[0], [1, 0], [2, 0]]);
+elGoldDef(
+  "el_donategold_cantdonate",
+  15000,
+  "Easy",
+  [{ 38: [false], 1: ["snd"], 42: ["Alice"] }, { 42: ["Bob"] }],
+  {},
+  [[0], [1, 0], [2, 0]],
+);
+elGoldDef(
+  "el_donategold_notfound",
+  elNull,
+  "Easy",
+  [{}],
+  { 0: [false] },
+  [[0], [1, 0], [3], [2, 0]],
+);
+elGoldDef("el_donategold_assertnever", 15000, "Weird", [{ 38: [true], 39: [true] }, {}], {}, [[0], [1, 0], [2, 0]]);
 
 const structures = {
   votetally: vtScenarios,

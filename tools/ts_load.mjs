@@ -3785,7 +3785,18 @@ function prepare(rel) {
         '  Relation,\n' +
         '  Tick,\n' +
         '} from "../../game/Game";\n',
-      "",
+      // G5c runs `respondToEmoji`, so the value uses must exist: inject the
+      // enum-likes as plain literals rather than pulling the whole Game.ts
+      // graph.
+      'const AllPlayers: any = "AllPlayers";\n' +
+        'const Difficulty: any = {\n' +
+        '  Easy: "Easy",\n' +
+        '  Medium: "Medium",\n' +
+        '  Hard: "Hard",\n' +
+        '  Impossible: "Impossible",\n' +
+        '};\n' +
+        'const PlayerType: any = { Bot: "BOT", Human: "HUMAN", Nation: "NATION" };\n' +
+        'const Relation: any = { Hostile: 0, Distrustful: 1, Neutral: 2, Friendly: 3 };\n',
       "NationEmoji Game import",
     );
     out = must(
@@ -3797,7 +3808,18 @@ function prepare(rel) {
     out = must(
       out,
       'import { EmojiExecution } from "../EmojiExecution";\n',
-      "",
+      // A local stub: `respondToEmoji` only ever *constructs* it and hands it
+      // to `game.addExecution`, which the elScenarios mock records.
+      'class EmojiExecution {\n' +
+        '  requestor: any;\n' +
+        '  recipientID: any;\n' +
+        '  emoji: any;\n' +
+        '  constructor(requestor: any, recipientID: any, emoji: any) {\n' +
+        '    this.requestor = requestor;\n' +
+        '    this.recipientID = recipientID;\n' +
+        '    this.emoji = emoji;\n' +
+        '  }\n' +
+        '}\n',
       "NationEmoji EmojiExecution import",
     );
     const utilRel = "src/core/Util.ts";
@@ -3831,6 +3853,249 @@ function prepare(rel) {
     );
   }
 
+  if (rel.endsWith("execution/EmojiExecution.ts")) {
+    // G5c class 22. `AllPlayers` is a *value* use (a plain string); the
+    // `flattenedEmojiTable` and `respondToEmoji` imports are runtime redirects;
+    // `Execution` / `Game` / `Player` / `PlayerID` feed type positions only.
+    out = must(
+      out,
+      'import { AllPlayers, Execution, Game, Player, PlayerID } from "../game/Game";\n',
+      'const AllPlayers: any = "AllPlayers";\n',
+      "EmojiExecution Game import",
+    );
+    out = must(
+      out,
+      'import { PseudoRandom } from "../PseudoRandom";\n',
+      `import { PseudoRandom } from "${TS_URL}src/core/PseudoRandom.ts";\n`,
+      "EmojiExecution PseudoRandom import",
+    );
+    const utilRel = "src/core/Util.ts";
+    if (!prepared.has(utilRel)) prepare(utilRel);
+    out = must(
+      out,
+      'import { flattenedEmojiTable } from "../Util";',
+      `import { flattenedEmojiTable } from "./${prepared.get(utilRel)}";`,
+      "EmojiExecution Util import",
+    );
+    const nebRel = "src/core/execution/nation/NationEmojiBehavior.ts";
+    if (!prepared.has(nebRel)) prepare(nebRel);
+    out = must(
+      out,
+      'import { respondToEmoji } from "./nation/NationEmojiBehavior";',
+      `import { respondToEmoji } from "./${prepared.get(nebRel)}";`,
+      "EmojiExecution respondToEmoji import",
+    );
+    out = must(
+      out,
+      "export class EmojiExecution implements Execution {\n" +
+        "  private recipient: Player | typeof AllPlayers;\n\n" +
+        "  private mg: Game;\n" +
+        "  private random: PseudoRandom;\n\n" +
+        "  private active = true;\n\n" +
+        "  constructor(\n" +
+        "    private requestor: Player,\n" +
+        "    private recipientID: PlayerID | typeof AllPlayers,\n" +
+        "    private emoji: number,\n" +
+        "  ) {}",
+      "export class EmojiExecution {\n" +
+        "  private recipient: Player | typeof AllPlayers;\n\n" +
+        "  private mg: Game;\n" +
+        "  private random: PseudoRandom;\n\n" +
+        "  private active = true;\n\n" +
+        "  constructor(\n" +
+        "    requestor: Player,\n" +
+        "    recipientID: PlayerID | typeof AllPlayers,\n" +
+        "    emoji: number,\n" +
+        "  ) {\n" +
+        "    this.requestor = requestor;\n" +
+        "    this.recipientID = recipientID;\n" +
+        "    this.emoji = emoji;\n" +
+        "  }",
+      "EmojiExecution ctor",
+    );
+  }
+  if (rel.endsWith("execution/DonateTroopExecution.ts")) {
+    // G5c class 23.
+    out = must(
+      out,
+      'import {\n' +
+        '  Difficulty,\n' +
+        '  Execution,\n' +
+        '  Game,\n' +
+        '  Player,\n' +
+        '  PlayerID,\n' +
+        '  PlayerType,\n' +
+        '} from "../game/Game";\n',
+      'const Difficulty: any = {\n' +
+        '  Easy: "Easy",\n' +
+        '  Medium: "Medium",\n' +
+        '  Hard: "Hard",\n' +
+        '  Impossible: "Impossible",\n' +
+        '};\n' +
+        'const PlayerType: any = { Bot: "BOT", Human: "HUMAN", Nation: "NATION" };\n',
+      "DonateTroop Game import",
+    );
+    out = must(
+      out,
+      'import { PseudoRandom } from "../PseudoRandom";\n',
+      `import { PseudoRandom } from "${TS_URL}src/core/PseudoRandom.ts";\n`,
+      "DonateTroop PseudoRandom import",
+    );
+    const utilRel = "src/core/Util.ts";
+    if (!prepared.has(utilRel)) prepare(utilRel);
+    out = must(
+      out,
+      'import { assertNever } from "../Util";',
+      `import { assertNever } from "./${prepared.get(utilRel)}";`,
+      "DonateTroop Util import",
+    );
+    const emojiRel = "src/core/execution/EmojiExecution.ts";
+    if (!prepared.has(emojiRel)) prepare(emojiRel);
+    out = must(
+      out,
+      'import { EmojiExecution } from "./EmojiExecution";',
+      `import { EmojiExecution } from "./${prepared.get(emojiRel)}";`,
+      "DonateTroop EmojiExecution import",
+    );
+    const nebRel = "src/core/execution/nation/NationEmojiBehavior.ts";
+    if (!prepared.has(nebRel)) prepare(nebRel);
+    out = must(
+      out,
+      'import {\n' +
+        '  EMOJI_DONATION_TOO_SMALL,\n' +
+        '  EMOJI_LOVE,\n' +
+        '} from "./nation/NationEmojiBehavior";',
+      'import {\n' +
+        '  EMOJI_DONATION_TOO_SMALL,\n' +
+        '  EMOJI_LOVE,\n' +
+        `} from "./${prepared.get(nebRel)}";`,
+      "DonateTroop NationEmoji import",
+    );
+    out = must(
+      out,
+      "export class DonateTroopsExecution implements Execution {\n" +
+        "  private recipient: Player;\n\n" +
+        "  private random: PseudoRandom;\n" +
+        "  private mg: Game;\n\n" +
+        "  private active = true;\n\n" +
+        "  constructor(\n" +
+        "    private sender: Player,\n" +
+        "    private recipientID: PlayerID,\n" +
+        "    private troops: number | null,\n" +
+        "  ) {}",
+      "export class DonateTroopsExecution {\n" +
+        "  private recipient: Player;\n\n" +
+        "  private random: PseudoRandom;\n" +
+        "  private mg: Game;\n\n" +
+        "  private active = true;\n\n" +
+        "  constructor(\n" +
+        "    sender: Player,\n" +
+        "    recipientID: PlayerID,\n" +
+        "    troops: number | null,\n" +
+        "  ) {\n" +
+        "    this.sender = sender;\n" +
+        "    this.recipientID = recipientID;\n" +
+        "    this.troops = troops;\n" +
+        "  }",
+      "DonateTroop ctor",
+    );
+  }
+  if (rel.endsWith("execution/DonateGoldExecution.ts")) {
+    // G5c class 24. `goldNum: number | null` stays a value param (the ctor body
+    // still runs); only `sender` / `recipientID` expand.
+    out = must(
+      out,
+      'import {\n' +
+        '  Difficulty,\n' +
+        '  Execution,\n' +
+        '  Game,\n' +
+        '  Gold,\n' +
+        '  Player,\n' +
+        '  PlayerID,\n' +
+        '  PlayerType,\n' +
+        '} from "../game/Game";\n',
+      'const Difficulty: any = {\n' +
+        '  Easy: "Easy",\n' +
+        '  Medium: "Medium",\n' +
+        '  Hard: "Hard",\n' +
+        '  Impossible: "Impossible",\n' +
+        '};\n' +
+        'const PlayerType: any = { Bot: "BOT", Human: "HUMAN", Nation: "NATION" };\n',
+      "DonateGold Game import",
+    );
+    out = must(
+      out,
+      'import { PseudoRandom } from "../PseudoRandom";\n',
+      `import { PseudoRandom } from "${TS_URL}src/core/PseudoRandom.ts";\n`,
+      "DonateGold PseudoRandom import",
+    );
+    const utilRel = "src/core/Util.ts";
+    if (!prepared.has(utilRel)) prepare(utilRel);
+    out = must(
+      out,
+      'import { assertNever, toInt } from "../Util";',
+      `import { assertNever, toInt } from "./${prepared.get(utilRel)}";`,
+      "DonateGold Util import",
+    );
+    const emojiRel = "src/core/execution/EmojiExecution.ts";
+    if (!prepared.has(emojiRel)) prepare(emojiRel);
+    out = must(
+      out,
+      'import { EmojiExecution } from "./EmojiExecution";',
+      `import { EmojiExecution } from "./${prepared.get(emojiRel)}";`,
+      "DonateGold EmojiExecution import",
+    );
+    const nebRel = "src/core/execution/nation/NationEmojiBehavior.ts";
+    if (!prepared.has(nebRel)) prepare(nebRel);
+    out = must(
+      out,
+      'import {\n' +
+        '  EMOJI_DONATION_OK,\n' +
+        '  EMOJI_DONATION_TOO_SMALL,\n' +
+        '  EMOJI_LOVE,\n' +
+        '} from "./nation/NationEmojiBehavior";',
+      'import {\n' +
+        '  EMOJI_DONATION_OK,\n' +
+        '  EMOJI_DONATION_TOO_SMALL,\n' +
+        '  EMOJI_LOVE,\n' +
+        `} from "./${prepared.get(nebRel)}";`,
+      "DonateGold NationEmoji import",
+    );
+    out = must(
+      out,
+      "export class DonateGoldExecution implements Execution {\n" +
+        "  private recipient: Player;\n" +
+        "  private gold: Gold | null = null;\n\n" +
+        "  private mg: Game;\n" +
+        "  private random: PseudoRandom;\n\n" +
+        "  private active = true;\n\n" +
+        "  constructor(\n" +
+        "    private sender: Player,\n" +
+        "    private recipientID: PlayerID,\n" +
+        "    goldNum: number | null,\n" +
+        "  ) {\n" +
+        "    this.gold = goldNum !== null ? toInt(goldNum) : null;\n" +
+        "  }",
+      "export class DonateGoldExecution {\n" +
+        "  private recipient: Player;\n" +
+        "  private gold: Gold | null = null;\n\n" +
+        "  private mg: Game;\n" +
+        "  private random: PseudoRandom;\n\n" +
+        "  private active = true;\n\n" +
+        "  private sender: Player;\n" +
+        "  private recipientID: PlayerID;\n\n" +
+        "  constructor(\n" +
+        "    sender: Player,\n" +
+        "    recipientID: PlayerID,\n" +
+        "    goldNum: number | null,\n" +
+        "  ) {\n" +
+        "    this.sender = sender;\n" +
+        "    this.recipientID = recipientID;\n" +
+        "    this.gold = goldNum !== null ? toInt(goldNum) : null;\n" +
+        "  }",
+      "DonateGold ctor",
+    );
+  }
   if (rel.endsWith("pathfinding/PathFinder.ts")) {
     // WaterPathMemo is captured, and G3c5 also really runs PathFinding.Water
     // (the SpatialQuery capture in TransportShipUtils). The import block is

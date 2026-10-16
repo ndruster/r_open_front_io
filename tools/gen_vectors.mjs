@@ -26580,6 +26580,16 @@ const elTransportC = (
 const elTradeShipC = (
   await loadTs("src/core/execution/TradeShipExecution.ts")
 ).TradeShipExecution;
+// G5i classes: `TrainStationExecution` / `TrainExecution` are the REAL
+// (prepared-copy) sources; `TrainStation` / `getOrientedRailroad` resolve to
+// the `__stub/TrainStation.ts` / `__stub/Railroad.ts` canonicalizing facades
+// (station identity == unit token).
+const elTrainStationC = (
+  await loadTs("src/core/execution/TrainStationExecution.ts")
+).TrainStationExecution;
+const elTrainExecC = (
+  await loadTs("src/core/execution/TrainExecution.ts")
+).TrainExecution;
 // A `Game` (mg) ctor argument for `TribeSpawner.gs`; resolved by the `elDef`
 // args map to `elC.mg` (the Rust ctor table sees the facade group token).
 const elMgRef = { __elmg: true };
@@ -26593,6 +26603,15 @@ const elTileSet = (a) => {
 };
 // A `Unit` ctor argument that is resolved to `elC.units[token]` by `elDef`.
 const elUnitRef = (t) => ({ __elu: t });
+// G5i: a `Player` ctor argument resolved to `elC.players[token]` (unlike the
+// `null` shorthand, which reads the player token from `spec.a` at the same
+// index — unusable when the player is not the first ctor argument).
+const elPlayerRef = (t) => ({ __elp: t });
+// G5i: a `TrainStation` ctor argument resolved to the canonical station facade
+// for `elC.units[token]` (`mg.__railStationFor`).
+const elStationRef = (t) => ({ __elstation: t });
+// G5i: the `RailNetwork` ctor argument (`mg.railNetwork()`).
+const elRailRef = { __elrail: true };
 // A `null` ctor argument (`DonateTroopsExecution.troops` / `DonateGoldExecution`
 // goldNum). Plain `null` is reserved for the player-token reference, so this
 // sentinel encodes as `[2]` (null) via the `encVal` case below.
@@ -26929,6 +26948,8 @@ function elUnitObj(tok, slots) {
     isMarkedForDeletion: () => elRet(m, 49, 913, [tok]),
     setTargetUnit: (u) => elVoid(914, [tok, ...elEvTok(u)]),
     setSafeFromPirates: () => elVoid(915, [tok]),
+    // G5i (`TrainExecution.loadCargo`).
+    setLoaded: (flag) => elVoid(927, [tok, ...elEvb(flag)]),
   };
 }
 // G5g: the `Attack` object returned by `Player.createAttack` and read through
@@ -27053,6 +27074,8 @@ function elMgObj(slots) {
     attackLogic: (input) => elRet(m, 27, 809, [...encVal(input)]),
     // G5h (`TradeShipExecution.complete`).
     tradeShipGold: (r, p) => elRet(m, 92, 900, [...elEv1(r), ...elEvTok(p)]),
+    // G5i (`TrainStationExecution.shouldSpawnTrain`).
+    trainSpawnRate: (f, t) => elRet(m, 101, 918, [...elEv1(f), ...elEv1(t)]),
   };
   return {
     config: () => cfg,
@@ -27278,6 +27301,20 @@ function elMgObj(slots) {
         );
         return;
       }
+      // G5i: `TrainStationExecution.spawnTrain` spawns a `TrainExecution`
+      // (tag 17; the ctor has no observable side effect).
+      if (cn === "TrainExecution") {
+        elT.push(
+          307,
+          17,
+          ...elEvTok(exec.player),
+          ...elEv1(exec.source.unit._tok),
+          ...elEv1(exec.destination.unit._tok),
+          ...elEv1(exec.numCars),
+          ...encVal(undefined),
+        );
+        return;
+      }
       const tag = elExecTags[cn];
       if (tag === undefined) {
         throw new Error(`el: unknown execution ${cn}`);
@@ -27460,6 +27497,88 @@ function elMgObj(slots) {
         return ts == null ? null : ts || [];
       },
     },
+    // G5i (`TrainStationExecution` / `TrainExecution`). The station identity is
+    // the unit token: `__railStationFor(unit)` canonicalizes station facades
+    // per unit (the `__stub/TrainStation.ts` ctor returns the cached object, so
+    // `destination === station` compares unit tokens). Station slot 0 =
+    // `getCluster` (920, a `clusters` table index or null), slot 1 =
+    // `getRailroadTo` (921, a `railroads` table index or null — FIFO scripted
+    // so `resolveSplitRailroad` can flip a pair to null mid-scenario).
+    __railCache: new Map(),
+    __railStationFor: (unit) => {
+      const cached = elC.mg.__railCache.get(unit._tok);
+      if (cached) return cached;
+      const sm = elC.stationM[unit._tok] || { slots: [], i: [] };
+      const station = {
+        unit,
+        _tok: unit._tok,
+        isActive: () => unit.isActive(),
+        tile: () => unit.tile(),
+        getCluster: () => {
+          const ctok = elRet(sm, 0, 920, [unit._tok]);
+          return ctok == null ? null : elC.mg.__railClusterFacade(ctok);
+        },
+        getRailroadTo: (nb) => {
+          const railTok = elRet(sm, 1, 921, [unit._tok, ...elEv1(nb.unit._tok)]);
+          if (railTok == null) return null;
+          const r = elC.railData.railroads[railTok];
+          return { railTok, fromTok: r.from, toTok: r.to, tiles: r.tiles };
+        },
+        onTrainStop: () => elVoid(922, [unit._tok]),
+        tradeAvailable: (other) => {
+          const owner = unit.owner();
+          return other === owner || owner.canTrade(other);
+        },
+      };
+      elC.mg.__railCache.set(unit._tok, station);
+      return station;
+    },
+    // The cluster wrappers run the REAL trade-iteration logic over the static
+    // `clusters` table (each embedded `tradeAvailable` traces 286/533 inline);
+    // the wrapper itself traces code 923 / 924 with the final result.
+    __railClusterFacade: (ctok) => {
+      const trade = elC.railData.clusters[ctok].trade;
+      return {
+        _tok: ctok,
+        hasAnyTradeDestination: (owner) => {
+          elT.push(923, ctok, ...elEvTok(owner));
+          let result = false;
+          for (const utok of trade) {
+            if (elC.mg.__railStationFor(elC.units[utok]).tradeAvailable(owner)) {
+              result = true;
+              break;
+            }
+          }
+          elT.push(...encVal(result));
+          return result;
+        },
+        randomTradeDestination: (owner, random) => {
+          elT.push(924, ctok, ...elEvTok(owner));
+          let selected = null;
+          let eligibleSeen = 0;
+          for (const utok of trade) {
+            const st = elC.mg.__railStationFor(elC.units[utok]);
+            if (!st.tradeAvailable(owner)) continue;
+            eligibleSeen++;
+            if (random.nextInt(0, eligibleSeen) === 0) selected = st;
+          }
+          elT.push(...encVal(selected === null ? null : selected.unit._tok));
+          return selected;
+        },
+      };
+    },
+    railNetwork: () => ({
+      connectStation: (station) => elVoid(916, [...elEv1(station.unit._tok)]),
+      findStationsPath: (from, to) => {
+        const ts = elRet(m, 97, 917, [
+          ...elEv1(from.unit._tok),
+          ...elEv1(to.unit._tok),
+        ]);
+        return ts == null
+          ? null
+          : ts.map((t) => elC.mg.__railStationFor(elC.units[t]));
+      },
+    }),
   };
 }
 
@@ -27472,6 +27591,17 @@ function elDef(name, classId, cls, args, spec, ops) {
   elC.units = (spec.units || []).map((mm, i) => elUnitObj(i, elSlots(49, mm)));
   elC.neighbors = (spec.neighbors || []).map((mm, i) => elNeighborObj(i, elSlots(3, mm)));
   elC.attacks = (spec.attacks || []).map((mm, i) => elAttackObj(i, elSlots(13, mm)));
+  // G5i: station mocks indexed by unit token (slot 0 = getCluster / 920, slot 1
+  // = getRailroadTo / 921) plus the static rail data tables. `stationM` may be
+  // sparse (stations only exist for station units).
+  elC.stationM = (spec.stations || []).map((mm) => ({
+    slots: elSlots(2, mm),
+    i: [0, 0],
+  }));
+  elC.railData = {
+    clusters: spec.clusters || [],
+    railroads: spec.railroads || [],
+  };
   elC.mg = elMgObj(elSlots(110, spec.mg));
 
   const setup = {
@@ -27484,13 +27614,21 @@ function elDef(name, classId, cls, args, spec, ops) {
     units: (spec.units || []).map((mm) => elSlots(49, mm)),
     neighbors: (spec.neighbors || []).map((mm) => elSlots(3, mm)),
     attacks: (spec.attacks || []).map((mm) => elSlots(13, mm)),
+    // G5i: appended ONLY when scripted, so the pre-G5i vectors stay identical.
+    ...(spec.stations
+      ? { stations: spec.stations.map((mm) => elSlots(2, mm)) }
+      : {}),
+    ...(spec.clusters ? { clusters: spec.clusters } : {}),
+    ...(spec.railroads ? { railroads: spec.railroads } : {}),
   };
 
   // Constructor args: a `null` entry is the `spec.a` player-token reference at
   // the same index (the real TS ctors take a `Player`, the Rust ctor table a
   // token); an `elUnitRef(t)` entry resolves to `elC.units[t]` (the Rust ctor
   // table reads the token `t`); any other entry (rail mock / id string / bool /
-  // action / number) is kept.
+  // action / number) is kept. G5i adds `elPlayerRef(t)` (player by token),
+  // `elStationRef(t)` (canonical station facade for unit `t`) and `elRailRef`
+  // (`mg.railNetwork()`).
   const aList = spec.a || [];
   const inst = new cls(
     ...args.map((x, i) => {
@@ -27503,6 +27641,15 @@ function elDef(name, classId, cls, args, spec, ops) {
       }
       if (x !== null && typeof x === "object" && x.__elu !== undefined) {
         return elC.units[x.__elu];
+      }
+      if (x !== null && typeof x === "object" && x.__elp !== undefined) {
+        return elC.players[x.__elp];
+      }
+      if (x !== null && typeof x === "object" && x.__elstation !== undefined) {
+        return elC.mg.__railStationFor(elC.units[x.__elstation]);
+      }
+      if (x !== null && typeof x === "object" && x.__elrail === true) {
+        return elC.mg.railNetwork();
       }
       return x;
     }),
@@ -27517,6 +27664,22 @@ function elDef(name, classId, cls, args, spec, ops) {
     }
     elT = [];
     if (kind === 5) {
+      // G5i `TrainExecution.loadCargo()`.
+      if (classId === 40) {
+        let payload;
+        try {
+          inst.loadCargo();
+          payload = [0, ...encVal(undefined)];
+        } catch (e) {
+          payload = [1, ...encS(String(e.message))];
+        }
+        played.push({
+          kind: 5,
+          args: rest.map(uenc),
+          res: [elT.length, ...elT, ...payload].map(uenc),
+        });
+        continue;
+      }
       // G5e `TribeSpawner.spawnTribes(numTribes, purchasedNames)`. The recorded
       // args are flat numbers `[numTribes, nameCount, (len, c0, c1, …)*nameCount]`
       // (the vectors serializer only accepts numeric args); the payload encodes
@@ -30181,6 +30344,400 @@ elDef(
     ],
   },
   [[0], [1, 10], [2, 10], [2, 20], [3], [4]],
+);
+
+// -- 39 TrainStationExecution (G5i) ------------------------------------------
+// `unit` = the station's unit; the station facade is built lazily on the first
+// tick (`916 connectStation` + `280 isActive`). Spawn scenarios script
+// `mg.ticks()` (212) as the `PseudoRandom` seed, `trainSpawnRate` (918) = 1 so
+// `chance` is deterministically true.
+
+// Lazy station build, no `spawnTrains`: tick traces 916 + 280 only.
+elDef(
+  "el_tss_basic",
+  39,
+  elTrainStationC,
+  [elUnitRef(0)],
+  { a: [0], units: [{ 0: [true] }] },
+  [[0], [1, 0], [2, 5], [3], [4]],
+);
+
+// The station unit is inactive → `active = false`, early return.
+elDef(
+  "el_tss_inactive",
+  39,
+  elTrainStationC,
+  [elUnitRef(0)],
+  { a: [0], units: [{ 0: [false] }] },
+  [[0], [1, 0], [2, 5], [3]],
+);
+
+// Full spawn path: tick 3 hits the cooldown (`3 < 0 + 10`), tick 12 walks
+// owner → 920 → 923 → shouldSpawnTrain (823/506/918/540 + chance) → 924 →
+// the tag-17 construction record → `lastSpawnTick = 12`.
+elDef(
+  "el_tss_spawn_full",
+  39,
+  elTrainStationC,
+  [elUnitRef(0), true],
+  {
+    a: [0, true],
+    mg: { 2: [5], 40: [0], 101: [1] },
+    players: [{ 59: [2] }, { 46: [true, true] }],
+    units: [{ 0: [true, true], 6: [0], 20: [1] }, { 6: [1, 1] }],
+    stations: [{ 0: [0] }, {}],
+    clusters: [{ trade: [1] }],
+  },
+  [[0], [1, 0], [2, 3], [2, 12], [3], [4]],
+);
+
+// `chance(1e9)` is false → `shouldSpawnTrain` stops the spawn before 924.
+elDef(
+  "el_tss_spawn_chance_false",
+  39,
+  elTrainStationC,
+  [elUnitRef(0), true],
+  {
+    a: [0, true],
+    mg: { 2: [5], 40: [0], 101: [1000000000] },
+    players: [{ 59: [2] }, { 46: [true] }],
+    units: [{ 0: [true], 6: [0], 20: [1] }, { 6: [1] }],
+    stations: [{ 0: [0] }, {}],
+    clusters: [{ trade: [1] }],
+  },
+  [[0], [1, 0], [2, 12], [3]],
+);
+
+// `getCluster()` returns null → `spawnTrain` returns before the owner read.
+elDef(
+  "el_tss_cluster_null",
+  39,
+  elTrainStationC,
+  [elUnitRef(0), true],
+  {
+    a: [0, true],
+    mg: { 2: [5] },
+    units: [{ 0: [true] }],
+    stations: [{ 0: [null] }],
+  },
+  [[0], [1, 0], [2, 12], [3]],
+);
+
+// The cluster has no station the owner can trade with → 923 false.
+elDef(
+  "el_tss_no_trade_dest",
+  39,
+  elTrainStationC,
+  [elUnitRef(0), true],
+  {
+    a: [0, true],
+    mg: { 2: [5] },
+    players: [{}, { 46: [false] }],
+    units: [{ 0: [true], 6: [0] }, { 6: [1] }],
+    stations: [{ 0: [0] }, {}],
+    clusters: [{ trade: [1] }],
+  },
+  [[0], [1, 0], [2, 12], [3]],
+);
+
+// The only trade destination is the station itself (`otherPlayer === player`
+// short-circuits `canTrade` in both 923 and 924) → `destination === station`
+// self-return, no tag-17 record.
+elDef(
+  "el_tss_dest_self",
+  39,
+  elTrainStationC,
+  [elUnitRef(0), true],
+  {
+    a: [0, true],
+    mg: { 2: [5], 40: [0], 101: [1] },
+    players: [{ 59: [2] }],
+    units: [{ 0: [true], 6: [0, 0, 0], 20: [1] }],
+    stations: [{ 0: [0] }],
+    clusters: [{ trade: [0] }],
+  },
+  [[0], [1, 0], [2, 12], [3]],
+);
+
+// 923 passes (533 → true) but the 924 re-check fails (533 → false via FIFO) →
+// `randomTradeDestination` returns null → return before the record.
+elDef(
+  "el_tss_dest_null",
+  39,
+  elTrainStationC,
+  [elUnitRef(0), true],
+  {
+    a: [0, true],
+    mg: { 2: [5], 40: [0], 101: [1] },
+    players: [{ 59: [2] }, { 46: [true, false] }],
+    units: [{ 0: [true], 6: [0], 20: [1] }, { 6: [1, 1] }],
+    stations: [{ 0: [0] }, {}],
+    clusters: [{ trade: [1] }],
+  },
+  [[0], [1, 0], [2, 12], [3]],
+);
+
+// tick before init → `mg === undefined` throws "Not initialized".
+elDef(
+  "el_tss_tick_before_init",
+  39,
+  elTrainStationC,
+  [elUnitRef(0)],
+  { a: [0], units: [{}] },
+  [[0], [2, 5]],
+);
+
+// -- 40 TrainExecution (G5i) --------------------------------------------------
+// ctor args: (railNetwork, player, source station, destination station,
+// numCars). Stations are identified by their unit token.
+
+// End-to-end: 3 stations / 2 rail segments (6 + 4 tiles), engine + tail + 1
+// carriage. Covers saveTraversedTiles (incl. the `usedTiles` shift), the
+// reverse-order car catch-up moves (`(i+1)*spacing+2`), stationReached
+// (922 + 283 City → stops++), nextStation, targetReached (544×3) and
+// deleteTrain (280/285).
+elDef(
+  "el_train_end_to_end",
+  40,
+  elTrainExecC,
+  [elRailRef, elPlayerRef(0), elStationRef(1), elStationRef(3), 1],
+  {
+    a: [0, 1, 3, 1],
+    mg: { 97: [[1, 2, 3]] },
+    players: [
+      { 47: [100], 48: [4, 5, 6] },
+      { 46: [true, true, true, true, true] },
+    ],
+    units: [
+      undefined,
+      { 0: [true, true, true], 11: [100] },
+      { 0: [true, true, true, true, true], 3: ["City"], 6: [1, 1, 1] },
+      { 0: [true, true], 3: ["City"], 6: [1, 1] },
+      { 0: [true, true, true, true, true, true], 7: [40], 11: [100] },
+      { 0: [true], 7: [50] },
+      { 0: [true], 7: [60] },
+    ],
+    stations: [undefined, { 1: [0, 0] }, { 1: [1, 1] }, {}],
+    railroads: [
+      { from: 1, to: 2, tiles: [100, 101, 102, 103, 104, 105] },
+      { from: 2, to: 3, tiles: [200, 201, 202, 203] },
+    ],
+  },
+  [[0], [1, 0], [2, 1], [2, 2], [2, 3], [2, 4], [2, 5], [3], [4]],
+);
+
+// `findStationsPath` returns null → init deactivates; tick then throws
+// "Not initialized" (`train === null`).
+elDef(
+  "el_train_no_path",
+  40,
+  elTrainExecC,
+  [elRailRef, elPlayerRef(0), elStationRef(1), elStationRef(3), 1],
+  {
+    a: [0, 1, 3, 1],
+    mg: { 97: [null] },
+    players: [{}],
+    units: [undefined, {}, undefined, {}],
+  },
+  [[0], [1, 0], [2, 1], [3]],
+);
+
+// A single-station path (`length <= 1`) → init deactivates.
+elDef(
+  "el_train_path_single",
+  40,
+  elTrainExecC,
+  [elRailRef, elPlayerRef(0), elStationRef(1), elStationRef(3), 1],
+  {
+    a: [0, 1, 3, 1],
+    mg: { 97: [[1]] },
+    players: [{}],
+    units: [undefined, {}, undefined, {}],
+  },
+  [[0], [1, 0], [3]],
+);
+
+// `getRailroadTo` returns null for the first segment → init deactivates.
+elDef(
+  "el_train_no_railroad",
+  40,
+  elTrainExecC,
+  [elRailRef, elPlayerRef(0), elStationRef(1), elStationRef(3), 1],
+  {
+    a: [0, 1, 3, 1],
+    mg: { 97: [[1, 3]] },
+    players: [{}],
+    units: [undefined, {}, undefined, {}],
+    stations: [undefined, { 1: [null] }, undefined, {}],
+  },
+  [[0], [1, 0], [3]],
+);
+
+// `canBuild` returns false → init deactivates after the (untraced) warn.
+elDef(
+  "el_train_cannot_build",
+  40,
+  elTrainExecC,
+  [elRailRef, elPlayerRef(0), elStationRef(1), elStationRef(3), 1],
+  {
+    a: [0, 1, 3, 1],
+    mg: { 97: [[1, 3]] },
+    players: [{ 47: [false] }],
+    units: [undefined, { 11: [100] }, undefined, {}],
+    stations: [undefined, { 1: [0] }, undefined, {}],
+    railroads: [{ from: 1, to: 3, tiles: [100] }],
+  },
+  [[0], [1, 0], [3]],
+);
+
+// The engine unit is already inactive on the first tick → deleteTrain (the
+// tail is still active and gets deleted).
+elDef(
+  "el_train_train_inactive",
+  40,
+  elTrainExecC,
+  [elRailRef, elPlayerRef(0), elStationRef(1), elStationRef(3), 0],
+  {
+    a: [0, 1, 3, 0],
+    mg: { 97: [[1, 3]] },
+    players: [{ 47: [100], 48: [4, 5] }],
+    units: [
+      undefined,
+      { 11: [100] },
+      undefined,
+      {},
+      { 0: [false, false], 7: [40], 11: [100] },
+      { 0: [true], 7: [50] },
+    ],
+    stations: [undefined, { 1: [0, 0] }, undefined, {}],
+    railroads: [{ from: 1, to: 3, tiles: [100] }],
+  },
+  [[0], [1, 0], [2, 1], [3]],
+);
+
+// The destination station is inactive → `activeSourceOrDestination` false →
+// deleteTrain.
+elDef(
+  "el_train_dest_inactive",
+  40,
+  elTrainExecC,
+  [elRailRef, elPlayerRef(0), elStationRef(1), elStationRef(3), 0],
+  {
+    a: [0, 1, 3, 0],
+    mg: { 97: [[1, 3]] },
+    players: [{ 47: [100], 48: [4, 5] }],
+    units: [
+      undefined,
+      { 11: [100] },
+      undefined,
+      { 0: [false] },
+      { 0: [true, true], 7: [40], 11: [100] },
+      { 0: [true], 7: [50] },
+    ],
+    stations: [undefined, { 1: [0, 0] }, undefined, {}],
+    railroads: [{ from: 1, to: 3, tiles: [100] }],
+  },
+  [[0], [1, 0], [2, 1], [3]],
+);
+
+// The owner cannot trade with the destination → `getNextTile` null →
+// targetReached + deleteTrain.
+elDef(
+  "el_train_cannot_trade",
+  40,
+  elTrainExecC,
+  [elRailRef, elPlayerRef(0), elStationRef(1), elStationRef(3), 0],
+  {
+    a: [0, 1, 3, 0],
+    mg: { 97: [[1, 3]] },
+    players: [{ 47: [100], 48: [4, 5] }, { 46: [false] }],
+    units: [
+      undefined,
+      { 0: [true], 11: [100] },
+      undefined,
+      { 0: [true], 6: [1] },
+      { 0: [true, true], 7: [40], 11: [100] },
+      { 0: [true], 7: [50] },
+    ],
+    stations: [undefined, { 1: [0, 0] }, undefined, {}],
+    railroads: [{ from: 1, to: 3, tiles: [100] }],
+  },
+  [[0], [1, 0], [2, 1], [3]],
+);
+
+// `loadCargo` (kind 5): sets `hasCargo` and loads cars[1..] (the tail engine
+// is skipped); the second call is a no-op.
+elDef(
+  "el_train_load_cargo",
+  40,
+  elTrainExecC,
+  [elRailRef, elPlayerRef(0), elStationRef(1), elStationRef(3), 2],
+  {
+    a: [0, 1, 3, 2],
+    mg: { 97: [[1, 3]] },
+    players: [{ 47: [100], 48: [4, 5, 6, 7] }],
+    units: [
+      undefined,
+      { 11: [100] },
+      undefined,
+      {},
+      { 7: [40], 11: [100] },
+      { 7: [50] },
+      { 7: [60] },
+      { 7: [70] },
+    ],
+    stations: [undefined, { 1: [0, 0] }, undefined, {}],
+    railroads: [{ from: 1, to: 3, tiles: [100] }],
+  },
+  [[0], [1, 0], [5], [5], [3]],
+);
+
+// Split railroad: the (2→3) direct rail vanishes at `nextStation` (921 FIFO →
+// null), so `resolveSplitRailroad` re-routes via station 9 — 917 → [2,9,3],
+// then (2→9) / (9→3) tiles verified against `pathTiles` (cursor walk) and
+// `splice(0, 2, ...path)`. Also covers the Factory / Port type branches of
+// `stationReached` (no stops++ / stops++).
+elDef(
+  "el_train_split_railroad",
+  40,
+  elTrainExecC,
+  [elRailRef, elPlayerRef(0), elStationRef(1), elStationRef(3), 0],
+  {
+    a: [0, 1, 3, 0],
+    mg: { 97: [[1, 2, 3], [2, 9, 3]] },
+    players: [{ 47: [100], 48: [4, 5] }, { 46: [true, true, true] }],
+    units: [
+      undefined,
+      { 0: [true], 11: [100] },
+      { 0: [true, true], 3: ["Factory"], 6: [1] },
+      { 0: [true], 3: ["Port"], 6: [1] },
+      { 0: [true, true, true, true], 7: [40], 11: [100] },
+      { 0: [true], 7: [50] },
+      undefined,
+      undefined,
+      undefined,
+      { 0: [true, true], 3: ["City"], 6: [1] },
+    ],
+    stations: [
+      undefined,
+      { 1: [0, 0] },
+      { 1: [1, null, 2, 2] },
+      {},
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      { 1: [3, 3] },
+    ],
+    railroads: [
+      { from: 1, to: 2, tiles: [100, 101] },
+      { from: 2, to: 3, tiles: [200, 201, 202, 203] },
+      { from: 2, to: 9, tiles: [200, 201] },
+      { from: 9, to: 3, tiles: [202, 203] },
+    ],
+  },
+  [[0], [1, 0], [2, 1], [2, 2], [2, 3], [3]],
 );
 
 const structures = {

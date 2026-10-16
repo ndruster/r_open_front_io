@@ -2824,6 +2824,29 @@ WebSockets — stays excluded, mirroring the `src/core` exclusions).
     pin *which* owner is paid in each `complete()` branch. 13 new scenarios
     (`el_trade_ship_*`, 66 ops), 226 scenarios / 957 ops and 1,268,647 wasm
     comparisons in total.
+90. **`execution/` layer, part 9** (`execution`, G5i) — `TrainStationExecution`
+    (class 39) and `TrainExecution` (class 40). The station identity is the
+    unit token (the capture's `mg.__railStationFor(unit)` stub canonicalizes a
+    per-unit station facade, so `destination === station` compares unit tokens).
+    A new `stations` mock category scripts `getCluster` (920) and `getRailroadTo`
+    (921, FIFO so `resolveSplitRailroad` can flip a pair to null mid-scenario);
+    static `clusters` / `railroads` tables drive the real `tradeAvailable`
+    (`286` + short-circuited `533`) and reservoir-sampling logic on both sides.
+    Facade codes pick up where G5h stopped at 915: mg `916`
+    `railNetwork().connectStation`, `917` `findStationsPath`, `918`
+    `config().trainSpawnRate`; cluster `923` `hasAnyTradeDestination` / `924`
+    `randomTradeDestination`; unit `927` `setLoaded`. Construction tag `17`:
+    `mg.addExecution(new TrainExecution(player, source, dest, numCars))`.
+    Class 39 covers the lazy station build, inactive-unit deactivation,
+    cooldown gate, cluster-null / no-trade-dest / self-dest / dest-null /
+    chance-false short-circuits, and tick-before-init error. Class 40 covers
+    end-to-end motion (engine + tail + carriages, `usedTiles` shift, reverse
+    car catch-up moves), `stationReached` (922 + 283 type gate), `nextStation`
+    with `resolveSplitRailroad` (917 cursor walk + `splice` + re-orient), the
+    `canBuild` false warn, train-inactive / dest-inactive / cannot-trade delete
+    paths, `loadCargo` (kind 5, tail skipped), and the Factory / Port / City
+    `tradeStopsVisited` branches. 19 new scenarios (`el_tss_*` × 9 + `el_train_*`
+    × 10, 82 ops), 245 scenarios / 1,039 ops and 1,271,533 wasm comparisons.
 
 Regenerate whenever a ported source changes:
 

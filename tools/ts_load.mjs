@@ -192,6 +192,44 @@ export function getSpawnTiles(gm, tile, requireAllValid) {
   return game.__targetTransportTile(attacker, ref);
 }
 `,
+  // G5i: station identity IS the unit token. The stub ctor delegates to the
+  // harness's canonicalizing cache so `destination === station` compares unit
+  // tokens (a ctor returning an object overrides `this`). The real
+  // TrainStation ctor's `createTrainStopHandlers(new PseudoRandom(mg.ticks()))`
+  // side effect is intentionally NOT reproduced (same exclusion as
+  // train_station.rs; the stop-handler surface stays un-ported).
+  "__stub/TrainStation.ts": `export class TrainStation {
+  constructor(mg, unit) {
+    return mg.__railStationFor(unit);
+  }
+}
+
+export class Cluster {}
+`,
+  // G5i: `getOrientedRailroad` against the scripted station mock.
+  // `getRailroadTo` returns the railroad descriptor `{railTok, fromTok, toTok,
+  // tiles}` (from the scenario's static \`railroads\` table); \`forward\` is
+  // \`railroad.to === to\` (station identity == unit token).
+  "__stub/Railroad.ts": `export class Railroad {}
+
+export class OrientedRailroad {
+  constructor(railroad, forward) {
+    this.railroad = railroad;
+    this.forward = forward;
+    this.tiles = forward ? railroad.tiles : [...railroad.tiles].reverse();
+  }
+  getTiles() {
+    return this.tiles;
+  }
+}
+
+export function getOrientedRailroad(from, to) {
+  const railroad = from.getRailroadTo(to);
+  if (!railroad) return null;
+  const forward = railroad.toTok === to.unit._tok;
+  return new OrientedRailroad(railroad, forward);
+}
+`,
 };
 
 /** Rewrites one file and returns the path of the loadable .ts copy. */
@@ -1272,47 +1310,6 @@ function prepare(rel) {
       "DefensePost ctor",
     );
   }
-  if (rel.endsWith("execution/TrainStationExecution.ts")) {
-    // Loaded only so CityExecution / FactoryExecution can construct it (the
-    // ctor's `this.unit.setTrainStation(true)` side effect is what the capture
-    // records). Every other import feeds a method the parity capture never
-    // calls, so they are dropped; only the ctor's parameter properties are
-    // expanded.
-    out = must(
-      out,
-      'import { Execution, Game, Unit, UnitType } from "../game/Game";\n' +
-        'import { TrainStation } from "../game/TrainStation";\n' +
-        'import { PseudoRandom } from "../PseudoRandom";\n' +
-        'import { TrainExecution } from "./TrainExecution";\n',
-      "",
-      "TrainStationExecution imports",
-    );
-    out = must(
-      out,
-      "  constructor(\n" +
-        "    private unit: Unit,\n" +
-        "    private spawnTrains?: boolean, // If set, the station will spawn trains\n" +
-        "  ) {\n" +
-        "    this.unit.setTrainStation(true);\n" +
-        "  }",
-      "  constructor(\n" +
-        "    unit: Unit,\n" +
-        "    spawnTrains?: boolean, // If set, the station will spawn trains\n" +
-        "  ) {\n" +
-        "    this.unit = unit;\n" +
-        "    this.spawnTrains = spawnTrains;\n" +
-        "    this.unit.setTrainStation(true);\n" +
-        "  }",
-      "TrainStationExecution ctor",
-    );
-    out = must(
-      out,
-      "export class TrainStationExecution implements Execution {",
-      "export class TrainStationExecution {",
-      "TrainStationExecution implements",
-    );
-  }
-
   // ------------------------------------------------------------------ G5d
   const elPfRel = "__stub/pathfinding.ts";
   const elDownRel = "__stub/downstream.ts";
@@ -2140,6 +2137,114 @@ function prepare(rel) {
         "    this._dstPort = _dstPort;\n" +
         "  }",
       "TradeShip ctor",
+    );
+  }
+
+  // G5i: TrainStationExecution runs the real class against scripted facade
+  // mocks. `TrainStation` is the canonicalizing stub (ctor returns the
+  // harness's per-unit cached station facade), `TrainExecution` its prepared
+  // copy below, `PseudoRandom` the prepared real copy.
+  if (rel.endsWith("execution/TrainStationExecution.ts")) {
+    if (!prepared.has(elGameRel)) prepare(elGameRel);
+    if (!prepared.has(elPsrRel)) prepare(elPsrRel);
+    const elTrainStubRel = "__stub/TrainStation.ts";
+    if (!prepared.has(elTrainStubRel)) prepare(elTrainStubRel);
+    const elTeRel = "src/core/execution/TrainExecution.ts";
+    if (!prepared.has(elTeRel)) prepare(elTeRel);
+    out = must(
+      out,
+      'import { Execution, Game, Unit, UnitType } from "../game/Game";\n' +
+        'import { TrainStation } from "../game/TrainStation";\n' +
+        'import { PseudoRandom } from "../PseudoRandom";\n' +
+        'import { TrainExecution } from "./TrainExecution";\n',
+      `import { UnitType } from "./${prepared.get(elGameRel)}";\n` +
+        `import { TrainStation } from "./${prepared.get(elTrainStubRel)}";\n` +
+        `import { PseudoRandom } from "./${prepared.get(elPsrRel)}";\n` +
+        `import { TrainExecution } from "./${prepared.get(elTeRel)}";\n`,
+      "TrainStationExecution imports",
+    );
+    out = must(
+      out,
+      "  constructor(\n" +
+        "    private unit: Unit,\n" +
+        "    private spawnTrains?: boolean, // If set, the station will spawn trains\n" +
+        "  ) {\n" +
+        "    this.unit.setTrainStation(true);\n" +
+        "  }",
+      "  constructor(\n" +
+        "    unit: Unit,\n" +
+        "    spawnTrains?: boolean, // If set, the station will spawn trains\n" +
+        "  ) {\n" +
+        "    this.unit = unit;\n" +
+        "    this.spawnTrains = spawnTrains;\n" +
+        "    this.unit.setTrainStation(true);\n" +
+        "  }",
+      "TrainStationExecution ctor",
+    );
+    out = must(
+      out,
+      "export class TrainStationExecution implements Execution {",
+      "export class TrainStationExecution {",
+      "TrainStationExecution implements",
+    );
+  }
+
+  // G5i: TrainExecution. TileRef / MotionPlanRecord / RailNetwork / TrainStation
+  // are type-only (dropped); the Game values actually read (TrainType,
+  // UnitType) come from the prepared Game.ts copy; `getOrientedRailroad` comes
+  // from the railroad stub.
+  if (rel.endsWith("execution/TrainExecution.ts")) {
+    if (!prepared.has(elGameRel)) prepare(elGameRel);
+    const elRailStubRel = "__stub/Railroad.ts";
+    if (!prepared.has(elRailStubRel)) prepare(elRailStubRel);
+    out = must(
+      out,
+      "import {\n" +
+        "  Execution,\n" +
+        "  Game,\n" +
+        "  Player,\n" +
+        "  TrainType,\n" +
+        "  Unit,\n" +
+        "  UnitType,\n" +
+        '} from "../game/Game";\n' +
+        'import { TileRef } from "../game/GameMap";\n' +
+        'import { MotionPlanRecord } from "../game/MotionPlans";\n' +
+        'import { RailNetwork } from "../game/RailNetwork";\n' +
+        'import { getOrientedRailroad, OrientedRailroad } from "../game/Railroad";\n' +
+        'import { TrainStation } from "../game/TrainStation";\n',
+      `import { TrainType, UnitType } from "./${prepared.get(elGameRel)}";\n` +
+        `import { getOrientedRailroad } from "./${prepared.get(elRailStubRel)}";\n`,
+      "TrainExecution imports",
+    );
+    out = must(
+      out,
+      "export class TrainExecution implements Execution {",
+      "export class TrainExecution {",
+      "TrainExecution implements",
+    );
+    out = must(
+      out,
+      "  constructor(\n" +
+        "    private railNetwork: RailNetwork,\n" +
+        "    private player: Player,\n" +
+        "    private source: TrainStation,\n" +
+        "    private destination: TrainStation,\n" +
+        "    private numCars: number,\n" +
+        "  ) {}",
+      "  constructor(\n" +
+        "    railNetwork,\n" +
+        "    player,\n" +
+        "    source,\n" +
+        "    destination,\n" +
+        "    numCars,\n" +
+        "  ) {\n" +
+        "    this.railNetwork = railNetwork;\n" +
+        "    this.player = player;\n" +
+        "    this.source = source;\n" +
+        "    this.destination = destination;\n" +
+        "    this.numCars = numCars;\n" +
+        "  }",
+      "TrainExecution ctor",
     );
   }
 

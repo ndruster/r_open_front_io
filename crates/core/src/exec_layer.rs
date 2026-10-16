@@ -87,6 +87,15 @@
 //! captured-payout message; no new construction tag (it builds a *unit* via
 //! `buildUnit`, and its own `addExecution` record tag `12` already existed).
 //!
+//! G5i appends `39` TrainStationExecution, `40` TrainExecution
+//! (`TrainStationExecution.ts` / `TrainExecution.ts`). Stations are identified
+//! by their unit token (the capture's `mg.__railStationFor(unit)` stub
+//! canonicalizes the facade per unit, so `destination === station` compares
+//! unit tokens). A new `stations` mock category (indexed by unit token) scripts
+//! `getCluster` (920) / `getRailroadTo` (921) FIFO; the static `clusters` /
+//! `railroads` tables drive the real `tradeAvailable` / reservoir-sampling
+//! logic on both sides. `TrainExecution.loadCargo` is op kind `5`.
+//!
 //! # G5b facade additions (codes ≥ 300)
 //!
 //! `mg`: `300` isValidRef, `301` getWaterComponent, `302` hasWaterComponent,
@@ -152,19 +161,20 @@
 //!
 //! # Constructing un-ported downstream executions
 //!
-//! `TrainStationExecution` (and `ShellExecution`) are intentionally NOT ported.
-//! `mg.addExecution(new TrainStationExecution(unit, spawnTrains?))` is modelled
-//! as an `addExecution` facade event (code 307) whose prefix is the construct
-//! tag plus the encoded ctor args — exactly how `execution_manager.rs` records
-//! `new XxxExecution(...)`. On the capture side we import the REAL
-//! `TrainStationExecution` class (option (a)): its ctor runs against the
-//! scripted unit mock and therefore emits `unit.setTrainStation(true)` FIRST
-//! (code 351), then the `addExecution` record — this keeps the trace faithful
-//! to the actual TS runtime and is mirrored verbatim on the Rust side
-//! (`mg_add_train_station` calls `un_set_train_station` then pushes the
-//! record). `ShellExecution` is likewise un-ported; its only construction site
-//! is the unreachable `DefensePost.shoot`, so it is modelled by
+//! `ShellExecution` is intentionally NOT ported; its only construction site is
+//! the unreachable `DefensePost.shoot`, so it is modelled by
 //! `mg_add_execution_shell` (tag 1) but is never exercised by any scenario.
+//! `mg.addExecution(new TrainStationExecution(unit, spawnTrains?))` (issued by
+//! the ported `City` / `Factory` executions) is modelled as an `addExecution`
+//! facade event (code 307, tag 0) — exactly how `execution_manager.rs` records
+//! `new XxxExecution(...)`. On the capture side we import the REAL
+//! `TrainStationExecution` class: its ctor runs against the scripted unit mock
+//! and therefore emits `unit.setTrainStation(true)` FIRST (code 351), then the
+//! `addExecution` record — mirrored verbatim on the Rust side
+//! (`mg_add_train_station` calls `un_set_train_station` then pushes the
+//! record). Since G5i ports `TrainStationExecution` itself (class 39), the
+//! class-39 construct op (kind 0) drops that ctor trace like every other class
+//! (res `[0, 0]`).
 //!
 //! G5d extends the construction-record tag space (allocated from `3` upward):
 //! `3` Nuke `(nukeType, player, dst, src, speed, waitTicks, rocketDirectionUp)`,
@@ -369,6 +379,24 @@
 //! tag: `TradeShipExecution` spawns a *unit* via the `buildUnit` facade (`535`),
 //! and its own downstream record tag `12` already existed.
 //!
+//! ## G5i facade additions (codes ≥ 916)
+//!
+//! `mg`: void `916` `railNetwork().connectStation(station)` (prefix `[3, utok]`);
+//! `917` `railNetwork().findStationsPath(from, to)` (mg slot 97, `TileRef[]` of
+//! station unit tokens or null); `918` `config().trainSpawnRate(factories,
+//! trains)` (mg slot 101). `station` (the new `stations` mock category, indexed
+//! by unit token; the raw unit token is the event prefix like the `unit`
+//! facade): slot 0 `920` `getCluster()` (a `clusters` table index or null),
+//! slot 1 `921` `getRailroadTo(neighbor)` (a `railroads` table index or null —
+//! FIFO scripted so `resolveSplitRailroad` can flip a pair to null), void `922`
+//! `onTrainStop()`. `923` / `924` are the cluster wrappers
+//! `hasAnyTradeDestination(owner)` / `randomTradeDestination(owner, random)`:
+//! they push `[923|924, ctok, ...evtok(owner)]` BEFORE the embedded
+//! `tradeAvailable` events (`286` + short-circuited `533`), then the encoded
+//! result (bool / station unit token or null). `unit`: void `927`
+//! `setLoaded(flag)`. The downstream `mg.addExecution(new TrainExecution(...))`
+//! record is tag `17` `(player, sourceUtok, destUtok, numCars)`.
+//!
 //! ## `neighbor` facade — slots 0..2
 //!
 //! `0` 257 `isPlayer()`, `1` 258 `isOnSameTeam(other)`,
@@ -425,6 +453,7 @@ const UNIT_WARSHIP: &str = "Warship";
 const UNIT_CITY: &str = "City";
 const UNIT_PORT: &str = "Port";
 const UNIT_FACTORY: &str = "Factory";
+const UNIT_TRAIN: &str = "Train";
 /// `MessageType.UNIT_DESTROYED` (numeric enum member 12).
 const MSG_UNIT_DESTROYED: f64 = 12.0;
 /// `RetreatExecution.cancelDelay`.
@@ -451,6 +480,8 @@ const TAG_TRIBE_EXEC: f64 = 14.0;
 const TAG_SAM_MISSILE: f64 = 15.0;
 // G5g downstream-execution tag (`mg.addExecution(new AttackExecution(...))`).
 const TAG_ATTACK_EXEC: f64 = 16.0;
+// G5i downstream-execution tag (`mg.addExecution(new TrainExecution(...))`).
+const TAG_TRAIN_EXEC: f64 = 17.0;
 
 /// G5d `UnitType` string members (`Game.ts`).
 const UNIT_SHELL: &str = "Shell";
@@ -1141,6 +1172,33 @@ pub struct ExecHarness {
     tds_motion_plan_id: f64,
     tds_motion_plan_dst: Option<f64>,
 
+    // G5i state (class 39 `TrainStationExecution`).
+    tss_active: bool,
+    tss_station: Option<usize>,
+    tss_num_cars: f64,
+    tss_last_spawn_tick: f64,
+    tss_ticks_cooldown: f64,
+    tss_spawn_trains: Option<bool>,
+    tss_random: Option<PseudoRandom>,
+
+    // G5i state (class 40 `TrainExecution`).
+    tex_active: bool,
+    tex_train: Option<usize>,
+    tex_cars: Vec<usize>,
+    tex_has_cargo: bool,
+    tex_current_tile: f64,
+    tex_used_tiles: Vec<f64>,
+    tex_stations: Vec<usize>,
+    tex_current_railroad: Option<(usize, Vec<f64>)>,
+    tex_speed: f64,
+    tex_spacing: f64,
+    tex_trade_stops: f64,
+    tex_path_tiles: Vec<f64>,
+    tex_path_index: f64,
+    tex_source: usize,
+    tex_destination: usize,
+    tex_num_cars: f64,
+
     mg: Mock,
     players: Vec<Mock>,
     alliances: Vec<Mock>,
@@ -1148,6 +1206,18 @@ pub struct ExecHarness {
     units: Vec<Mock>,
     neighbors: Vec<Mock>,
     attacks: Vec<Mock>,
+    stations: Vec<Mock>,
+    el_clusters: Vec<Vec<usize>>,
+    el_railroads: Vec<ElRailroad>,
+}
+
+/// G5i railroad table entry (`tools/gen_vectors.mjs` `railroads` table).
+#[derive(Clone, Debug, Default)]
+struct ElRailroad {
+    #[allow(dead_code)]
+    from_utok: usize,
+    to_utok: usize,
+    tiles: Vec<f64>,
 }
 
 /// `TransportShipExecution.retreatDst: TileRef | false | null`.
@@ -1272,6 +1342,11 @@ const MG_TARGET_TRANSPORT_TILE: usize = 880;
 const MG_TRADE_SHIP_GOLD: usize = 92;
 const MG_IS_SHORELINE: usize = 93;
 const MG_WATER_PATH_FOR_TRAVERSAL: usize = 96;
+// G5i mg slots (`TrainStationExecution` / `TrainExecution`). `findStationsPath`
+// reaches the scripted `RailNetwork` facade object; `trainSpawnRate` is
+// `mg.config().trainSpawnRate(factoryCount, trainCount)`.
+const MG_FIND_STATIONS_PATH: usize = 97;
+const MG_TRAIN_SPAWN_RATE: usize = 101;
 
 // player slot indices.
 const PL_SMALL_ID: usize = 0;
@@ -2562,6 +2637,115 @@ impl ExecHarness {
     fn mg_record_motion_plan(&mut self, tr: &mut Vec<f64>, plan: &JsVal) {
         mk_void(tr, 711.0, &ev_enc(plan));
     }
+
+    // ---- G5i facade helpers (`TrainStationExecution` / `TrainExecution`) ----
+
+    fn st(&mut self, utok: usize, slot: usize, tr: &mut Vec<f64>, code: f64, extra: &[f64]) -> JsVal {
+        let mut prefix = vec![utok as f64];
+        prefix.extend_from_slice(extra);
+        mk_take(&mut self.stations[utok], slot, tr, code, &prefix)
+    }
+    fn st_void(&mut self, utok: usize, tr: &mut Vec<f64>, code: f64, extra: &[f64]) {
+        let mut prefix = vec![utok as f64];
+        prefix.extend_from_slice(extra);
+        mk_void(tr, code, &prefix);
+    }
+    fn st_get_cluster(&mut self, tr: &mut Vec<f64>, utok: usize) -> Option<usize> {
+        let v = self.st(utok, 0, tr, 920.0, &[]);
+        as_opt_tok(&v)
+    }
+    fn st_get_railroad_to(&mut self, tr: &mut Vec<f64>, utok: usize, nb_utok: usize) -> Option<usize> {
+        let v = self.st(utok, 1, tr, 921.0, &ev1(nb_utok as f64));
+        as_opt_tok(&v)
+    }
+    fn st_on_train_stop(&mut self, tr: &mut Vec<f64>, utok: usize) {
+        self.st_void(utok, tr, 922.0, &[]);
+    }
+    fn mg_connect_station(&mut self, tr: &mut Vec<f64>, utok: usize) {
+        mk_void(tr, 916.0, &ev1(utok as f64));
+    }
+    fn mg_find_stations_path(&mut self, tr: &mut Vec<f64>, from: usize, to: usize) -> Option<Vec<usize>> {
+        let mut prefix = ev1(from as f64);
+        prefix.extend_from_slice(&ev1(to as f64));
+        let v = mk_take(&mut self.mg, MG_FIND_STATIONS_PATH, tr, 917.0, &prefix);
+        match v {
+            JsVal::Null | JsVal::Undef => None,
+            JsVal::Arr(items) => Some(items.iter().map(|x| as_num(x) as usize).collect()),
+            _ => None,
+        }
+    }
+    fn mg_train_spawn_rate(&mut self, tr: &mut Vec<f64>, factory_count: f64, train_count: f64) -> f64 {
+        let mut prefix = ev1(factory_count);
+        prefix.extend_from_slice(&ev1(train_count));
+        let v = mk_take(&mut self.mg, MG_TRAIN_SPAWN_RATE, tr, 918.0, &prefix);
+        as_num(&v)
+    }
+    fn un_set_loaded(&mut self, tr: &mut Vec<f64>, utok: usize, flag: bool) {
+        let mut prefix = vec![utok as f64];
+        prefix.extend_from_slice(&evb(flag));
+        mk_void(tr, 927.0, &prefix);
+    }
+    fn station_trade_available(&mut self, tr: &mut Vec<f64>, station_utok: usize, other: usize) -> bool {
+        let owner = self.un_owner(tr, station_utok).unwrap();
+        if other == owner {
+            true
+        } else {
+            self.pl_can_trade(tr, owner, Some(other))
+        }
+    }
+    fn cluster_has_any_trade_dest(&mut self, tr: &mut Vec<f64>, ctok: usize, owner: usize) -> bool {
+        tr.push(923.0);
+        tr.push(ctok as f64);
+        tr.extend_from_slice(&evtok(Some(owner)));
+        let trade = self.el_clusters[ctok].clone();
+        let mut result = false;
+        for utok in trade {
+            if self.station_trade_available(tr, utok, owner) {
+                result = true;
+                break;
+            }
+        }
+        push_val(tr, &JsVal::Bool(result));
+        result
+    }
+    fn cluster_random_trade_dest(&mut self, tr: &mut Vec<f64>, ctok: usize, owner: usize, random: &mut PseudoRandom) -> Option<usize> {
+        tr.push(924.0);
+        tr.push(ctok as f64);
+        tr.extend_from_slice(&evtok(Some(owner)));
+        let trade = self.el_clusters[ctok].clone();
+        let mut selected: Option<usize> = None;
+        let mut eligible_seen: i64 = 0;
+        for utok in trade {
+            if !self.station_trade_available(tr, utok, owner) {
+                continue;
+            }
+            eligible_seen += 1;
+            if random.next_int(0.0, eligible_seen as f64) == 0 {
+                selected = Some(utok);
+            }
+        }
+        push_val(tr, &match selected {
+            Some(u) => JsVal::Num(u as f64),
+            None => JsVal::Null,
+        });
+        selected
+    }
+    fn mg_add_train_execution(
+        &mut self,
+        tr: &mut Vec<f64>,
+        player: usize,
+        source_utok: usize,
+        dest_utok: usize,
+        num_cars: f64,
+    ) {
+        tr.push(307.0);
+        tr.push(TAG_TRAIN_EXEC);
+        tr.extend_from_slice(&evtok(Some(player)));
+        tr.extend_from_slice(&ev1(source_utok as f64));
+        tr.extend_from_slice(&ev1(dest_utok as f64));
+        tr.extend_from_slice(&ev1(num_cars));
+        push_val(tr, &JsVal::Undef);
+    }
     fn mg_queue_nuke_impact(&mut self, tr: &mut Vec<f64>, tile: f64) {
         mk_void(tr, 712.0, &ev1(tile));
     }
@@ -3362,6 +3546,37 @@ impl ExecHarness {
             .iter()
             .map(build_mock)
             .collect();
+        // G5i: station mocks (indexed by unit token) and the static rail data
+        // tables are appended only when the scenario scripts them.
+        self.stations = val_field(&v, "stations")
+            .map(as_arr)
+            .unwrap_or_default()
+            .iter()
+            .map(build_mock)
+            .collect();
+        self.el_clusters = val_field(&v, "clusters")
+            .map(as_arr)
+            .unwrap_or_default()
+            .iter()
+            .map(|c| {
+                val_field(c, "trade")
+                    .map(as_arr)
+                    .unwrap_or_default()
+                    .iter()
+                    .map(|x| as_num(x) as usize)
+                    .collect()
+            })
+            .collect();
+        self.el_railroads = val_field(&v, "railroads")
+            .map(as_arr)
+            .unwrap_or_default()
+            .iter()
+            .map(|r| ElRailroad {
+                from_utok: val_field(r, "from").map(as_num).unwrap_or(0.0) as usize,
+                to_utok: val_field(r, "to").map(as_num).unwrap_or(0.0) as usize,
+                tiles: val_field(r, "tiles").map(as_arr_nums).unwrap_or_default(),
+            })
+            .collect();
 
         let n = |k: usize| -> f64 { ctor.get(k).map(as_num).unwrap_or(f64::NAN) };
         match self.class_id {
@@ -3639,6 +3854,44 @@ impl ExecHarness {
                 self.tds_motion_plan_id = 1.0;
                 self.tds_motion_plan_dst = None;
             }
+            39 => {
+                // TrainStationExecution(unit, spawnTrains?). `active = true`.
+                self.a_tok = n(0) as usize;
+                self.tss_spawn_trains = ctor.get(1).and_then(|v| match v {
+                    JsVal::Bool(b) => Some(*b),
+                    _ => None,
+                });
+                self.tss_active = true;
+                self.tss_station = None;
+                self.tss_num_cars = 5.0;
+                self.tss_last_spawn_tick = 0.0;
+                self.tss_ticks_cooldown = 10.0;
+                self.tss_random = None;
+                self.mg_ready = false;
+            }
+            40 => {
+                // TrainExecution(railNetwork, player, source, destination, numCars).
+                // The railNetwork facade arg is not stored (the scripted mg slot
+                // 97 is reached directly); `active = true`.
+                self.a_tok = n(0) as usize;
+                self.tex_source = n(1) as usize;
+                self.tex_destination = n(2) as usize;
+                self.tex_num_cars = n(3);
+                self.tex_active = true;
+                self.tex_train = None;
+                self.tex_cars = Vec::new();
+                self.tex_has_cargo = false;
+                self.tex_current_tile = 0.0;
+                self.tex_used_tiles = Vec::new();
+                self.tex_stations = Vec::new();
+                self.tex_current_railroad = None;
+                self.tex_speed = 2.0;
+                self.tex_spacing = 2.0;
+                self.tex_trade_stops = 0.0;
+                self.tex_path_tiles = Vec::new();
+                self.tex_path_index = 0.0;
+                self.mg_ready = false;
+            }
             _ => {}
         }
     }
@@ -3746,6 +3999,8 @@ impl ExecHarness {
             36 => self.attack_execution(kind, ticks, tr),
             37 => self.transport_ship_execution(kind, ticks, tr),
             38 => self.trade_ship_execution(kind, ticks, tr),
+            39 => self.train_station_execution(kind, ticks, tr),
+            40 => self.train_execution(kind, ticks, tr),
             k => unreachable!("exec harness: unknown class id {k}"),
         }
     }
@@ -9053,6 +9308,444 @@ impl ExecHarness {
             self.mg_stats_boat_arrive_trade(tr, s_owner, d_owner, gold); // 904
         }
         Ok(())
+    }
+
+    // ---- G5i: `TrainStationExecution` (class 39) ----------------------------
+
+    fn train_station_execution(
+        &mut self,
+        kind: u8,
+        ticks: f64,
+        tr: &mut Vec<f64>,
+    ) -> Result<JsVal, String> {
+        match kind {
+            3 => return Ok(JsVal::Bool(self.tss_active)),
+            // `activeDuringSpawnPhase()` -> false.
+            4 => return Ok(JsVal::Bool(false)),
+            1 => {
+                // `init`: stores `mg`; seeds the spawn random when the station
+                // spawns trains (`new PseudoRandom(mg.ticks())`).
+                self.mg_ready = true;
+                if self.tss_spawn_trains == Some(true) {
+                    let seed = self.mg_ticks(tr); // 212
+                    self.tss_random = Some(PseudoRandom::new(seed));
+                }
+                return Ok(JsVal::Undef);
+            }
+            2 => {}
+            _ => return Ok(JsVal::Undef),
+        }
+        self.train_station_tick(ticks, tr)?;
+        Ok(JsVal::Undef)
+    }
+
+    fn train_station_tick(&mut self, ticks: f64, tr: &mut Vec<f64>) -> Result<(), String> {
+        if !self.mg_ready {
+            return Err("Not initialized".to_string());
+        }
+        if !self.tss_active {
+            return Ok(());
+        }
+        if self.tss_station.is_none() {
+            // Can't create new executions on init, so it has to be done in the tick.
+            let utok = self.a_tok;
+            self.mg_connect_station(tr, utok); // 916
+            self.tss_station = Some(utok);
+        }
+        let station = self.tss_station.unwrap();
+        if !self.un_is_active(tr, station) {
+            // 280 — `station.isActive()` delegates to `unit.isActive()`.
+            self.tss_active = false;
+            return Ok(());
+        }
+        if self.tss_spawn_trains == Some(true) {
+            self.tss_spawn_train(tr, station, ticks)?;
+        }
+        Ok(())
+    }
+
+    fn tss_spawn_train(
+        &mut self,
+        tr: &mut Vec<f64>,
+        station: usize,
+        current_tick: f64,
+    ) -> Result<(), String> {
+        if !self.mg_ready || self.tss_random.is_none() {
+            return Err("Not initialized".to_string());
+        }
+        if current_tick < self.tss_last_spawn_tick + self.tss_ticks_cooldown {
+            return Ok(());
+        }
+        let cluster = self.st_get_cluster(tr, station); // 920
+        let Some(ctok) = cluster else { return Ok(()) };
+        let owner = self.un_owner(tr, self.a_tok).unwrap(); // 286
+        if !self.cluster_has_any_trade_dest(tr, ctok, owner) {
+            // 923
+            return Ok(());
+        }
+        if !self.tss_should_spawn_train(tr) {
+            return Ok(());
+        }
+        let mut random = self.tss_random.take().unwrap();
+        let destination = self.cluster_random_trade_dest(tr, ctok, owner, &mut random); // 924
+        self.tss_random = Some(random);
+        let Some(dest) = destination else { return Ok(()) };
+        if dest == station {
+            return Ok(());
+        }
+        self.mg_add_train_execution(tr, owner, station, dest, self.tss_num_cars); // 307 tag 17
+        self.tss_last_spawn_tick = current_tick;
+        Ok(())
+    }
+
+    fn tss_should_spawn_train(&mut self, tr: &mut Vec<f64>) -> bool {
+        let owner = self.un_owner(tr, self.a_tok).unwrap(); // 286
+        let factory_count = self.pl_unit_count(tr, owner, UNIT_FACTORY); // 823
+        let train_count = self.mg_unit_count(tr, UNIT_TRAIN); // 506
+        let spawn_rate = self.mg_train_spawn_rate(tr, factory_count, train_count); // 918
+        // `for (let i = 0; i < this.unit!.level(); i++)` re-reads `level()` (540)
+        // on EVERY condition check, including the final failing one.
+        let mut random = self.tss_random.take().unwrap();
+        let mut i = 0.0;
+        let result = loop {
+            let level = self.un_level(tr, self.a_tok); // 540
+            // JS `i < level()` is false for NaN, so the negation must stay a
+            // bool negation (not `>=`).
+            let below = i < level;
+            if !below {
+                break false;
+            }
+            if random.chance(spawn_rate) {
+                break true;
+            }
+            i += 1.0;
+        };
+        self.tss_random = Some(random);
+        result
+    }
+
+    // ---- G5i: `TrainExecution` (class 40) -----------------------------------
+
+    fn train_execution(
+        &mut self,
+        kind: u8,
+        ticks: f64,
+        tr: &mut Vec<f64>,
+    ) -> Result<JsVal, String> {
+        match kind {
+            3 => return Ok(JsVal::Bool(self.tex_active)),
+            // `activeDuringSpawnPhase()` -> false.
+            4 => return Ok(JsVal::Bool(false)),
+            1 => {
+                self.train_exec_init(ticks, tr)?;
+                return Ok(JsVal::Undef);
+            }
+            5 => {
+                self.train_load_cargo(tr);
+                return Ok(JsVal::Undef);
+            }
+            2 => {}
+            _ => return Ok(JsVal::Undef),
+        }
+        self.train_tick(tr)?;
+        Ok(JsVal::Undef)
+    }
+
+    /// `getOrientedRailroad(from, to)`: station `from`'s scripted
+    /// `getRailroadTo(to)` (921) resolved against the railroads table; the
+    /// `forward` flag flips the stored tile list when the train runs the
+    /// segment against its stored direction.
+    fn get_oriented_railroad(
+        &mut self,
+        tr: &mut Vec<f64>,
+        from_utok: usize,
+        to_utok: usize,
+    ) -> Option<(usize, Vec<f64>)> {
+        let rail_tok = self.st_get_railroad_to(tr, from_utok, to_utok)?; // 921
+        let r = &self.el_railroads[rail_tok];
+        let forward = r.to_utok == to_utok;
+        let tiles = if forward {
+            r.tiles.clone()
+        } else {
+            r.tiles.iter().rev().cloned().collect()
+        };
+        Some((rail_tok, tiles))
+    }
+
+    fn train_exec_init(&mut self, ticks: f64, tr: &mut Vec<f64>) -> Result<(), String> {
+        self.mg_ready = true;
+        let stations = self.mg_find_stations_path(tr, self.tex_source, self.tex_destination); // 917
+        let Some(stations) = stations.filter(|s| s.len() > 1) else {
+            self.tex_active = false;
+            return Ok(());
+        };
+        self.tex_stations = stations;
+        let railroad = self.get_oriented_railroad(tr, self.tex_stations[0], self.tex_stations[1]);
+        match railroad {
+            Some(r) => self.tex_current_railroad = Some(r),
+            None => {
+                self.tex_active = false;
+                return Ok(());
+            }
+        }
+        let station_tile = self.un_tile(tr, self.tex_stations[0]); // 344
+        let spawn = self.pl_can_build(tr, self.a_tok, UNIT_TRAIN, station_tile); // 534
+        if matches!(spawn, JsVal::Bool(false)) {
+            // `console.warn("cannot build train")` is untraced.
+            self.tex_active = false;
+            return Ok(());
+        }
+        let spawn_tile = as_num(&spawn);
+        self.train_create_units(tr, spawn_tile);
+        let car_unit_ids: Vec<JsVal> = self
+            .tex_cars
+            .clone()
+            .iter()
+            .map(|&c| JsVal::Num(self.un_id(tr, c))) // 340
+            .collect();
+        let mut path_tiles: Vec<f64> = Vec::new();
+        for i in 0..self.tex_stations.len().saturating_sub(1) {
+            let from = self.tex_stations[i];
+            let to = self.tex_stations[i + 1];
+            let segment = self.get_oriented_railroad(tr, from, to);
+            match segment {
+                Some((_, tiles)) => path_tiles.extend_from_slice(&tiles),
+                None => {
+                    self.tex_active = false;
+                    return Ok(());
+                }
+            }
+        }
+        let start_tile = self.un_tile(tr, self.tex_train.unwrap()); // 344
+        if path_tiles.is_empty() || path_tiles[0] != start_tile {
+            path_tiles.insert(0, start_tile);
+            self.tex_path_index = 1.0;
+        }
+        self.tex_path_tiles = path_tiles.clone();
+        let plan = JsVal::Obj(vec![
+            ("kind".to_string(), JsVal::Str("train".to_string())),
+            ("engineUnitId".to_string(), JsVal::Num(self.un_id(tr, self.tex_train.unwrap()))), // 340
+            ("carUnitIds".to_string(), JsVal::Arr(car_unit_ids)),
+            ("planId".to_string(), JsVal::Num(1.0)),
+            ("startTick".to_string(), JsVal::Num(ticks + 1.0)),
+            ("speed".to_string(), JsVal::Num(self.tex_speed)),
+            ("spacing".to_string(), JsVal::Num(self.tex_spacing)),
+            ("path".to_string(), JsVal::Arr(path_tiles.iter().map(|t| JsVal::Num(*t)).collect())),
+        ]);
+        self.mg_record_motion_plan(tr, &plan); // 711
+        Ok(())
+    }
+
+    /// `createTrainUnits(tile)`: engine, tail engine, then `numCars` carriages.
+    fn train_create_units(&mut self, tr: &mut Vec<f64>, tile: f64) {
+        let engine_params = JsVal::Obj(vec![
+            ("targetUnit".to_string(), JsVal::Num(self.tex_destination as f64)),
+            ("trainType".to_string(), JsVal::Str("Engine".to_string())),
+        ]);
+        self.tex_train = self.pl_build_unit(tr, self.a_tok, UNIT_TRAIN, tile, &engine_params); // 535
+        let tail_params = JsVal::Obj(vec![
+            ("targetUnit".to_string(), JsVal::Num(self.tex_destination as f64)),
+            ("trainType".to_string(), JsVal::Str("TailEngine".to_string())),
+        ]);
+        if let Some(t) = self.pl_build_unit(tr, self.a_tok, UNIT_TRAIN, tile, &tail_params) {
+            // 535
+            self.tex_cars.push(t);
+        }
+        let mut i = 0.0;
+        while i < self.tex_num_cars {
+            let car_params = JsVal::Obj(vec![
+                ("trainType".to_string(), JsVal::Str("Carriage".to_string())),
+                ("loaded".to_string(), JsVal::Bool(self.tex_has_cargo)),
+            ]);
+            if let Some(c) = self.pl_build_unit(tr, self.a_tok, UNIT_TRAIN, tile, &car_params) {
+                // 535
+                self.tex_cars.push(c);
+            }
+            i += 1.0;
+        }
+    }
+
+    fn train_tick(&mut self, tr: &mut Vec<f64>) -> Result<(), String> {
+        if self.tex_train.is_none() {
+            return Err("Not initialized".to_string());
+        }
+        let train = self.tex_train.unwrap();
+        if !self.un_is_active(tr, train) || !self.train_active_source_or_destination(tr) {
+            // 280 (+ station 280s)
+            self.train_delete_train(tr);
+            return Ok(());
+        }
+        match self.train_get_next_tile(tr) {
+            Some(tile) => self.train_update_cars_positions(tr, tile),
+            None => {
+                self.train_target_reached(tr);
+                self.train_delete_train(tr);
+            }
+        }
+        Ok(())
+    }
+
+    fn train_load_cargo(&mut self, tr: &mut Vec<f64>) {
+        if self.tex_has_cargo || self.tex_train.is_none() {
+            return;
+        }
+        self.tex_has_cargo = true;
+        // Starts at 1: don't load the tail engine.
+        let cars = self.tex_cars.clone();
+        for &car in cars.iter().skip(1) {
+            self.un_set_loaded(tr, car, true); // 927
+        }
+    }
+
+    fn train_target_reached(&mut self, tr: &mut Vec<f64>) {
+        let Some(train) = self.tex_train else { return };
+        self.un_set_reached_target(tr, train); // 544
+        let cars = self.tex_cars.clone();
+        for car in cars {
+            self.un_set_reached_target(tr, car); // 544
+        }
+    }
+
+    fn train_delete_train(&mut self, tr: &mut Vec<f64>) {
+        self.tex_active = false;
+        if let Some(train) = self.tex_train {
+            if self.un_is_active(tr, train) {
+                // 280
+                self.un_delete(tr, train, false); // 285
+            }
+        }
+        let cars = self.tex_cars.clone();
+        for car in cars {
+            if self.un_is_active(tr, car) {
+                // 280
+                self.un_delete(tr, car, false); // 285
+            }
+        }
+    }
+
+    fn train_active_source_or_destination(&mut self, tr: &mut Vec<f64>) -> bool {
+        self.tex_stations.len() > 1
+            && self.un_is_active(tr, self.tex_stations[1]) // 280
+            && self.un_is_active(tr, self.tex_stations[0]) // 280
+    }
+
+    fn train_save_traversed_tiles(&mut self, tr: &mut Vec<f64>, from: f64, speed: f64) {
+        let Some((_, tiles)) = &self.tex_current_railroad else {
+            return;
+        };
+        let tiles = tiles.clone();
+        let mut tile_to_save = from;
+        let mut i = 0.0;
+        while i < speed && tile_to_save < tiles.len() as f64 {
+            self.train_save_tile(tiles[tile_to_save as usize]);
+            tile_to_save += 1.0;
+            i += 1.0;
+        }
+        let _ = tr;
+    }
+
+    fn train_save_tile(&mut self, tile: f64) {
+        self.tex_used_tiles.push(tile);
+        if self.tex_used_tiles.len() as f64 > self.tex_cars.len() as f64 * self.tex_spacing + 3.0 {
+            self.tex_used_tiles.remove(0);
+        }
+    }
+
+    fn train_update_cars_positions(&mut self, tr: &mut Vec<f64>, new_tile: f64) {
+        if !self.tex_cars.is_empty() {
+            for i in (0..self.tex_cars.len()).rev() {
+                let car_tile_index = (i + 1) as f64 * self.tex_spacing + 2.0;
+                if self.tex_used_tiles.len() as f64 > car_tile_index {
+                    let t = self.tex_used_tiles[car_tile_index as usize];
+                    self.un_move(tr, self.tex_cars[i], &JsVal::Num(t)); // 545
+                }
+            }
+        }
+        if let Some(train) = self.tex_train {
+            self.un_move(tr, train, &JsVal::Num(new_tile)); // 545
+        }
+    }
+
+    fn train_next_station(&mut self, tr: &mut Vec<f64>) -> bool {
+        if self.tex_stations.len() > 2 {
+            let cur_len = self
+                .tex_current_railroad
+                .as_ref()
+                .map(|(_, t)| t.len() as f64)
+                .unwrap_or(0.0);
+            self.tex_path_index += cur_len;
+            self.tex_stations.remove(0);
+            let railroad = self
+                .get_oriented_railroad(tr, self.tex_stations[0], self.tex_stations[1])
+                .or_else(|| self.train_resolve_split_railroad(tr));
+            if let Some(r) = railroad {
+                self.tex_current_railroad = Some(r);
+                return true;
+            }
+        }
+        false
+    }
+
+    fn train_resolve_split_railroad(&mut self, tr: &mut Vec<f64>) -> Option<(usize, Vec<f64>)> {
+        let station0 = self.tex_stations[0];
+        let station1 = self.tex_stations[1];
+        let path = self.mg_find_stations_path(tr, station0, station1)?; // 917
+        if path.len() <= 2 {
+            return None;
+        }
+        let mut cursor = self.tex_path_index as usize;
+        for i in 0..path.len() - 1 {
+            let segment = self.get_oriented_railroad(tr, path[i], path[i + 1])?;
+            for tile in &segment.1 {
+                if self.tex_path_tiles.get(cursor).copied() != Some(*tile) {
+                    return None;
+                }
+                cursor += 1;
+            }
+        }
+        // `this.stations.splice(0, 2, ...path)`.
+        self.tex_stations.splice(0..2, path.iter().copied());
+        self.get_oriented_railroad(tr, self.tex_stations[0], self.tex_stations[1])
+    }
+
+    fn train_can_trade_with_destination(&mut self, tr: &mut Vec<f64>) -> bool {
+        self.tex_stations.len() > 1
+            && self.station_trade_available(tr, self.tex_stations[1], self.a_tok) // 286 (+ 533)
+    }
+
+    fn train_get_next_tile(&mut self, tr: &mut Vec<f64>) -> Option<f64> {
+        if self.tex_current_railroad.is_none() || !self.train_can_trade_with_destination(tr) {
+            return None;
+        }
+        self.train_save_traversed_tiles(tr, self.tex_current_tile, self.tex_speed);
+        self.tex_current_tile += self.tex_speed;
+        let tiles_len = self.tex_current_railroad.as_ref().unwrap().1.len() as f64;
+        let left_over = self.tex_current_tile - tiles_len;
+        if left_over >= 0.0 {
+            // Station reached, pick the next station.
+            self.train_station_reached(tr);
+            if !self.train_next_station(tr) {
+                return None; // Destination reached (or no valid connection).
+            }
+            self.tex_current_tile = left_over;
+            self.train_save_traversed_tiles(tr, 0.0, left_over);
+        }
+        let cur = self.tex_current_tile as usize;
+        self.tex_current_railroad
+            .as_ref()
+            .map(|(_, tiles)| tiles[cur])
+    }
+
+    fn train_station_reached(&mut self, tr: &mut Vec<f64>) {
+        if !self.mg_ready {
+            return;
+        }
+        let station = self.tex_stations[1];
+        self.st_on_train_stop(tr, station); // 922
+        let station_type = self.un_type(tr, station); // 283
+        if station_type == UNIT_CITY || station_type == UNIT_PORT {
+            self.tex_trade_stops += 1.0;
+        }
     }
 }
 

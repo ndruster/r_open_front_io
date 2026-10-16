@@ -2800,6 +2800,30 @@ WebSockets — stays excluded, mirroring the `src/core` exclusions).
     `setTroops` (codes 830/831) instead of unit codes — both matching the TS. 15
     new scenarios (`el_attack_*` / `el_transport_ship_*`, 66 ops), 213 scenarios /
     891 ops and 1,265,614 wasm comparisons in total.
+89. **`execution/` layer, part 8** (`execution`, G5h) — the trade-ship execution
+    added to the same `exec_layer.rs` harness (class id 38): `TradeShipExecution`.
+    It reuses the scripted `WaterPathFinder` stub (extended with
+    `pathForTraversal`) and the ported `findClosestBy` (`Util.findMinimumBy`,
+    candidate-first predicate then distance score). Facade trace codes pick up
+    where G5g stopped at 900: mg `config().tradeShipGold` (900) / `isShoreline`
+    (901) and the water pathfinder `pathForTraversal` (905); stats
+    `boatSendTrade` (902) / `boatCapturedTrade` (903) / `boatArriveTrade` (904);
+    player `addGold` (910) / `addPiracyGold` (911) / `addTradeGold` (912); unit
+    `isMarkedForDeletion` (913) / `setTargetUnit` (914) / `setSafeFromPirates`
+    (915). No new construction tag: `TradeShipExecution` spawns a *unit* through
+    the existing `buildUnit` facade (535). `TradeShipExecution` covers the
+    `canBuild` warn, the spawn + `boatSendTrade`, the inactive-after-spawn gate,
+    the destination-port-captured delete, the `!wasCaptured` inactive /
+    cannot-trade delete, the captured message + re-target search
+    (`getWaterComponent` + `findClosestBy` over the owner's ports, found and
+    not-found), the `next(...)` COMPLETE / NEXT / NOT_FOUND switch (motion-plan
+    record with and without a shoreline safe-tile refresh) and the three
+    `complete()` payout branches (plain delivery, pirated, retaken by the
+    original owner). The `addGold` / `addPiracyGold` / `addTradeGold` voids
+    encode their receiver token (precedent: `addTroops` at 824), so the vectors
+    pin *which* owner is paid in each `complete()` branch. 13 new scenarios
+    (`el_trade_ship_*`, 66 ops), 226 scenarios / 957 ops and 1,268,647 wasm
+    comparisons in total.
 
 Regenerate whenever a ported source changes:
 

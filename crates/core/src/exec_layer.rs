@@ -81,6 +81,12 @@
 //! scripted facade mock (new `attacks` mock category), the water pathfinder a
 //! scripted stub object.
 //!
+//! G5h appends `38` TradeShip (`TradeShipExecution`). It reuses the stub
+//! `WaterPathFinder` (now with `pathForTraversal`), the real `findClosestBy`
+//! (`src/core/Util.ts`), and `renderNumber` (`src/client/Utils.ts`) for its
+//! captured-payout message; no new construction tag (it builds a *unit* via
+//! `buildUnit`, and its own `addExecution` record tag `12` already existed).
+//!
 //! # G5b facade additions (codes ≥ 300)
 //!
 //! `mg`: `300` isValidRef, `301` getWaterComponent, `302` hasWaterComponent,
@@ -349,6 +355,20 @@
 //! (`SAMMissileExecution`: `spawn`, `_owner`, `ownerUnit`, `target`,
 //! `targetTile`).
 //!
+//! ## G5h facade additions (codes ≥ 900)
+//!
+//! `mg`: `900` config().tradeShipGold(tilesTraveled, owner), `901` isShoreline(tile)
+//! (BOOL), `905` `WaterPathFinder.pathForTraversal(from, to)` (`TileRef[]`, through
+//! the stub's `__waterPathFinder`). Void (`mg.stats()`): `902` boatSendTrade(player,
+//! target), `903` boatCapturedTrade(player, originalOwner, gold), `904`
+//! boatArriveTrade(src, dst, gold). Void (`player`): `910` addGold(gold, tile),
+//! `911` addPiracyGold(gold), `912` addTradeGold(gold) — each prefixed by the
+//! receiver token like every player facade event. `unit`: `913`
+//! isMarkedForDeletion() (BOOL, slot 49); void `914` setTargetUnit(unit), `915`
+//! setSafeFromPirates(). `gold` is a plain number in the mocks. No new construction
+//! tag: `TradeShipExecution` spawns a *unit* via the `buildUnit` facade (`535`),
+//! and its own downstream record tag `12` already existed.
+//!
 //! ## `neighbor` facade — slots 0..2
 //!
 //! `0` 257 `isPlayer()`, `1` 258 `isOnSameTeam(other)`,
@@ -511,6 +531,9 @@ const TN_TOK: usize = 1_000_000;
 /// `TransportShipExecution.ticksPerMove` / `TransportShipExecution` motion-plan
 /// `startTick` uses `ticks + ticksPerMove`.
 const TS_TICKS_PER_MOVE: f64 = 1.0;
+/// `MessageType.CAPTURED_ENEMY_UNIT` (numeric enum member 11) — G5h
+/// (`TradeShipExecution.complete`).
+const MSG_CAPTURED_ENEMY_UNIT: f64 = 11.0;
 
 /// The first argument of `Game.setWinner` / `WinCheckExecution`'s winner.
 #[derive(Clone, Debug)]
@@ -1107,6 +1130,17 @@ pub struct ExecHarness {
     ts_original_owner: usize,
     ts_active: bool,
 
+    // G5h state (`TradeShipExecution`, class 38).
+    tds_orig_owner: usize,
+    tds_src_port: Option<usize>,
+    tds_dst_port: Option<usize>,
+    tds_trade_ship: Option<usize>,
+    tds_was_captured: bool,
+    tds_active: bool,
+    tds_tiles_traveled: f64,
+    tds_motion_plan_id: f64,
+    tds_motion_plan_dst: Option<f64>,
+
     mg: Mock,
     players: Vec<Mock>,
     alliances: Vec<Mock>,
@@ -1232,6 +1266,12 @@ const MG_WATER_REBUILT: usize = 860;
 const MG_WATER_FIND_PATH: usize = 861;
 const MG_WATER_NEXT: usize = 862;
 const MG_TARGET_TRANSPORT_TILE: usize = 880;
+// G5h mg slots (`TradeShipExecution`). `config().tradeShipGold` shares the mg
+// mock's slot table (as with `attackLogic`); `isShoreline` is `mg.isShoreline`
+// and `pathForTraversal` reaches the stub `WaterPathFinder`.
+const MG_TRADE_SHIP_GOLD: usize = 92;
+const MG_IS_SHORELINE: usize = 93;
+const MG_WATER_PATH_FOR_TRAVERSAL: usize = 96;
 
 // player slot indices.
 const PL_SMALL_ID: usize = 0;
@@ -1333,6 +1373,9 @@ const UN_IS_IN_COOLDOWN: usize = 41;
 const UN_TARGETED_BY_SAM: usize = 43;
 // G5g unit slot (`TransportShipExecution.tick`).
 const UN_TRANSPORT_SHIP_STATE: usize = 48;
+// G5h unit slot (`TradeShipExecution.tick` — `isMarkedForDeletion`; the other
+// two unit facades are void and consume no slot).
+const UN_IS_MARKED_FOR_DELETION: usize = 49;
 
 // attack slot indices (`AttackExecution` facade).
 const AT_TROOPS: usize = 0;
@@ -2846,6 +2889,84 @@ impl ExecHarness {
         e.extend_from_slice(&ev1(troops));
         mk_void(tr, 874.0, &e);
     }
+
+    // G5h trade-ship facade (`TradeShipExecution`).
+    /// `mg.config().tradeShipGold(tilesTraveled, owner)`.
+    fn mg_config_trade_ship_gold(&mut self, tr: &mut Vec<f64>, tiles: f64, owner: usize) -> f64 {
+        let mut p = ev1(tiles);
+        p.extend_from_slice(&evtok(Some(owner)));
+        as_num(&mk_take(&mut self.mg, MG_TRADE_SHIP_GOLD, tr, 900.0, &p))
+    }
+    /// `mg.isShoreline(tile)`.
+    fn mg_is_shoreline(&mut self, tr: &mut Vec<f64>, tile: f64) -> bool {
+        as_bool(&mk_take(
+            &mut self.mg,
+            MG_IS_SHORELINE,
+            tr,
+            901.0,
+            &ev1(tile),
+        ))
+    }
+    /// `WaterPathFinder.pathForTraversal(from, to)` — `TileRef[]`.
+    fn mg_water_path_for_traversal(
+        &mut self,
+        tr: &mut Vec<f64>,
+        from: f64,
+        to: f64,
+    ) -> Option<Vec<f64>> {
+        let mut p = ev1(from);
+        p.extend_from_slice(&ev1(to));
+        let v = mk_take(&mut self.mg, MG_WATER_PATH_FOR_TRAVERSAL, tr, 905.0, &p);
+        match v {
+            JsVal::Null | JsVal::Undef => None,
+            other => Some(as_num_list(&other)),
+        }
+    }
+    /// `stats().boatSendTrade(player, target)`.
+    fn mg_stats_boat_send_trade(&mut self, tr: &mut Vec<f64>, p: usize, t: usize) {
+        let mut e = evtok(Some(p));
+        e.extend_from_slice(&evtok(Some(t)));
+        mk_void(tr, 902.0, &e);
+    }
+    /// `stats().boatCapturedTrade(player, originalOwner, gold)`.
+    fn mg_stats_boat_captured_trade(&mut self, tr: &mut Vec<f64>, p: usize, o: usize, gold: f64) {
+        let mut e = evtok(Some(p));
+        e.extend_from_slice(&evtok(Some(o)));
+        e.extend_from_slice(&ev1(gold));
+        mk_void(tr, 903.0, &e);
+    }
+    /// `stats().boatArriveTrade(src, dst, gold)`.
+    fn mg_stats_boat_arrive_trade(&mut self, tr: &mut Vec<f64>, p: usize, t: usize, gold: f64) {
+        let mut e = evtok(Some(p));
+        e.extend_from_slice(&evtok(Some(t)));
+        e.extend_from_slice(&ev1(gold));
+        mk_void(tr, 904.0, &e);
+    }
+    fn un_is_marked_for_deletion(&mut self, tr: &mut Vec<f64>, uid: usize) -> bool {
+        let v = self.un(uid, UN_IS_MARKED_FOR_DELETION, tr, 913.0, &[]);
+        as_bool(&v)
+    }
+    fn un_set_target_unit(&mut self, tr: &mut Vec<f64>, uid: usize, target: Option<usize>) {
+        let mut p = vec![uid as f64];
+        p.extend_from_slice(&evtok(target));
+        mk_void(tr, 914.0, &p);
+    }
+    fn un_set_safe_from_pirates(&mut self, tr: &mut Vec<f64>, uid: usize) {
+        mk_void(tr, 915.0, &[uid as f64]);
+    }
+    // The `addGold` / `addPiracyGold` / `addTradeGold` voids encode the receiver
+    // token like every other player facade method (precedent: `pl_add_troops`).
+    fn pl_add_gold(&mut self, tr: &mut Vec<f64>, tok: usize, gold: f64, tile: f64) {
+        let mut e = ev1(gold);
+        e.extend_from_slice(&ev1(tile));
+        self.pl_void(tok, tr, 910.0, &e);
+    }
+    fn pl_add_piracy_gold(&mut self, tr: &mut Vec<f64>, tok: usize, gold: f64) {
+        self.pl_void(tok, tr, 911.0, &ev1(gold));
+    }
+    fn pl_add_trade_gold(&mut self, tr: &mut Vec<f64>, tok: usize, gold: f64) {
+        self.pl_void(tok, tr, 912.0, &ev1(gold));
+    }
     /// `mg.addExecution(new AttackExecution(...))` (tag 16).
     #[allow(clippy::too_many_arguments)]
     fn mg_add_attack_exec(
@@ -3506,6 +3627,18 @@ impl ExecHarness {
                 self.ts_motion_plan_dst = None;
                 self.ts_target = None;
             }
+            38 => {
+                // TradeShipExecution(origOwner, srcPort, _dstPort).
+                self.tds_orig_owner = n(0) as usize;
+                self.tds_src_port = as_opt_num(ctor.get(1)).map(|x| x as usize);
+                self.tds_dst_port = as_opt_num(ctor.get(2)).map(|x| x as usize);
+                self.tds_trade_ship = None;
+                self.tds_was_captured = false;
+                self.tds_active = true;
+                self.tds_tiles_traveled = 0.0;
+                self.tds_motion_plan_id = 1.0;
+                self.tds_motion_plan_dst = None;
+            }
             _ => {}
         }
     }
@@ -3612,6 +3745,7 @@ impl ExecHarness {
             35 => self.sam_launcher_execution(kind, ticks, tr),
             36 => self.attack_execution(kind, ticks, tr),
             37 => self.transport_ship_execution(kind, ticks, tr),
+            38 => self.trade_ship_execution(kind, ticks, tr),
             k => unreachable!("exec harness: unknown class id {k}"),
         }
     }
@@ -8631,6 +8765,292 @@ impl ExecHarness {
             ]);
             self.mg_record_motion_plan(tr, &plan); // 711
             self.ts_motion_plan_dst = self.ts_dst;
+        }
+        Ok(())
+    }
+
+    // G5h — `TradeShipExecution` (class 38).
+    fn trade_ship_execution(
+        &mut self,
+        kind: u8,
+        ticks: f64,
+        tr: &mut Vec<f64>,
+    ) -> Result<JsVal, String> {
+        match kind {
+            3 => return Ok(JsVal::Bool(self.tds_active)),
+            // `activeDuringSpawnPhase()` -> false.
+            4 => return Ok(JsVal::Bool(false)),
+            1 => {
+                // `init`: stores `mg`, advances the (unobservable) stagger counter
+                // and builds the stub `WaterPathFinder`. No facade reads.
+                return Ok(JsVal::Undef);
+            }
+            2 => {}
+            _ => return Ok(JsVal::Undef),
+        }
+        self.trade_ship_tick(ticks, tr)?;
+        Ok(JsVal::Undef)
+    }
+
+    fn trade_ship_tick(&mut self, ticks: f64, tr: &mut Vec<f64>) -> Result<(), String> {
+        if self.mg_water_rebuilt(tr) {
+            // 860 — "Force motion plan re-recording".
+            self.tds_motion_plan_dst = None;
+        }
+
+        if self.tds_trade_ship.is_none() {
+            let src_port = self.tds_src_port.unwrap();
+            let src_tile = self.un_tile(tr, src_port); // 344
+            let spawn = self.pl_can_build(tr, self.tds_orig_owner, UNIT_TRADE_SHIP, src_tile); // 534
+            if matches!(spawn, JsVal::Bool(false)) {
+                // `console.warn("cannot build trade ship")` is untraced.
+                self.tds_active = false;
+                return Ok(());
+            }
+            let spawn_tile = as_num(&spawn);
+            let dst_port = self.tds_dst_port.unwrap();
+            let params = JsVal::Obj(vec![
+                ("targetUnit".to_string(), JsVal::Num(dst_port as f64)),
+                ("lastSetSafeFromPirates".to_string(), JsVal::Num(ticks)),
+            ]);
+            self.tds_trade_ship = self.pl_build_unit(
+                tr,
+                self.tds_orig_owner,
+                UNIT_TRADE_SHIP,
+                spawn_tile,
+                &params,
+            ); // 535
+            let dst_owner = self.un_owner(tr, dst_port).unwrap(); // 286
+            self.mg_stats_boat_send_trade(tr, self.tds_orig_owner, dst_owner); // 902
+        }
+
+        let ship = self.tds_trade_ship.unwrap();
+        if !self.un_is_active(tr, ship) {
+            // 280
+            self.tds_active = false;
+            return Ok(());
+        }
+
+        let ship_owner = self.un_owner(tr, ship).unwrap(); // 286
+        let dst_port = self.tds_dst_port.unwrap();
+        let dst_owner = self.un_owner(tr, dst_port).unwrap(); // 286
+        if !self.tds_was_captured && self.tds_orig_owner != ship_owner {
+            // Store as variable in case ship is recaptured by previous owner.
+            self.tds_was_captured = true;
+            let orig_id = self.pl_id(tr, self.tds_orig_owner); // 231
+            let name = self.pl_display_name(tr, ship_owner); // 232
+            let ship_id = self.un_id(tr, ship); // 340
+            let ship_owner_id = self.pl_id(tr, ship_owner); // 231
+            self.mg_display_message(
+                tr,
+                &[
+                    JsVal::Str("events_display.trade_ship_captured".to_string()),
+                    JsVal::Num(MSG_UNIT_DESTROYED),
+                    JsVal::Str(orig_id),
+                    JsVal::Undef,
+                    JsVal::Obj(vec![("name".to_string(), JsVal::Str(name))]),
+                    JsVal::Num(ship_id),
+                    JsVal::Str(ship_owner_id),
+                ],
+            ); // 226
+        }
+
+        // If a player captures another player's port while trading we should
+        // delete the ship.
+        let dst_owner_id = self.pl_id(tr, dst_owner); // 231
+        let src_owner = self.un_owner(tr, self.tds_src_port.unwrap()).unwrap(); // 286
+        let src_owner_id = self.pl_id(tr, src_owner); // 231
+        if dst_owner_id == src_owner_id {
+            self.un_delete(tr, ship, false); // 285
+            self.tds_active = false;
+            return Ok(());
+        }
+
+        if !self.tds_was_captured {
+            let dst_active = self.un_is_active(tr, dst_port); // 280
+            if !dst_active || !self.pl_can_trade(tr, ship_owner, Some(dst_owner)) {
+                // 533
+                self.un_delete(tr, ship, false); // 285
+                self.tds_active = false;
+                return Ok(());
+            }
+        }
+
+        let cur_tile = self.un_tile(tr, ship); // 344
+
+        if self.tds_was_captured && (ship_owner != dst_owner || !self.un_is_active(tr, dst_port)) {
+            // 280
+            let my_component = self.mg_get_water_component(tr, cur_tile); // 301
+            let ports = self.pl_units(tr, ship_owner, &[UNIT_PORT.to_string()]); // 241
+            match self.trade_ship_nearest_port(tr, &ports, cur_tile, &my_component) {
+                None => {
+                    self.un_delete(tr, ship, false); // 285
+                    self.tds_active = false;
+                    return Ok(());
+                }
+                Some(port) => {
+                    self.tds_dst_port = Some(port);
+                    self.un_set_target_unit(tr, ship, Some(port)); // 914
+                    // Plan-driven units don't emit per-tick updates, force a sync.
+                    self.un_touch(tr, ship); // 736
+                }
+            }
+        }
+
+        if cur_tile == self.un_tile(tr, self.tds_dst_port.unwrap()) {
+            // 344 — `this.dstPort()`
+            self.trade_ship_complete(tr)?;
+            return Ok(());
+        }
+
+        let dst = self.un_tile(tr, self.tds_dst_port.unwrap()); // 344
+        let result = self.mg_water_next(tr, cur_tile, dst); // 862
+        let status = val_field(&result, "status").map(as_num).unwrap_or(f64::NAN);
+        let node = val_field(&result, "node").map(as_num).unwrap_or(f64::NAN);
+        match status as i32 {
+            0 => {
+                // PathStatus.NEXT
+                if self.tds_motion_plan_dst != Some(dst) {
+                    self.tds_motion_plan_id += 1.0;
+                    let from = node;
+                    let path = self.mg_water_path_for_traversal(tr, from, dst); // 905
+                    let uid = self.un_id(tr, ship); // 340
+                    let path_vals: Vec<JsVal> = path
+                        .unwrap_or_default()
+                        .iter()
+                        .map(|x| JsVal::Num(*x))
+                        .collect();
+                    let plan = JsVal::Obj(vec![
+                        ("kind".to_string(), JsVal::Str("grid".to_string())),
+                        ("unitId".to_string(), JsVal::Num(uid)),
+                        ("planId".to_string(), JsVal::Num(self.tds_motion_plan_id)),
+                        ("startTick".to_string(), JsVal::Num(ticks + TS_TICKS_PER_MOVE)),
+                        ("ticksPerStep".to_string(), JsVal::Num(TS_TICKS_PER_MOVE)),
+                        ("path".to_string(), JsVal::Arr(path_vals)),
+                    ]);
+                    self.mg_record_motion_plan(tr, &plan); // 711
+                    self.tds_motion_plan_dst = Some(dst);
+                }
+                // Update safeFromPirates status.
+                if self.mg_is_water(tr, node) && self.mg_is_shoreline(tr, node) {
+                    // 508, 901
+                    self.un_set_safe_from_pirates(tr, ship); // 915
+                }
+                self.un_move(tr, ship, &JsVal::Num(node)); // 545
+                self.tds_tiles_traveled += 1.0;
+            }
+            2 => {
+                // PathStatus.COMPLETE
+                self.trade_ship_complete(tr)?;
+                return Ok(());
+            }
+            3 => {
+                // PathStatus.NOT_FOUND — `console.warn` is untraced.
+                if self.un_is_active(tr, ship) {
+                    // 280
+                    self.un_delete(tr, ship, false); // 285
+                }
+                self.tds_active = false;
+                return Ok(());
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+
+    /// `findClosestBy(ports, score, isCandidate)` — the candidate predicate runs
+    /// first (matching `findMinimumBy`), then the distance score.
+    fn trade_ship_nearest_port(
+        &mut self,
+        tr: &mut Vec<f64>,
+        ports: &[usize],
+        cur_tile: f64,
+        my_component: &JsVal,
+    ) -> Option<usize> {
+        let mut best: Option<usize> = None;
+        let mut best_score = f64::INFINITY;
+        // `findMinimumBy` snapshots `values.length` once; iterating the slice
+        // is equivalent.
+        for &port in ports {
+            let mut cand = self.un_is_active(tr, port); // 280
+            if cand {
+                cand = !self.un_is_marked_for_deletion(tr, port); // 913
+            }
+            if cand {
+                cand = !self.un_is_under_construction(tr, port); // 345
+            }
+            if cand {
+                cand = !matches!(my_component, JsVal::Null);
+            }
+            if cand {
+                let pt = self.un_tile(tr, port); // 344
+                cand = self.mg_has_water_component(tr, pt, my_component); // 302
+            }
+            if cand {
+                let pt = self.un_tile(tr, port); // 344
+                let score = self.mg_manhattan_dist(tr, pt, cur_tile); // 509
+                if score < best_score {
+                    best_score = score;
+                    best = Some(port);
+                }
+            }
+        }
+        best
+    }
+
+    fn trade_ship_complete(&mut self, tr: &mut Vec<f64>) -> Result<(), String> {
+        self.tds_active = false;
+        let ship = self.tds_trade_ship.unwrap();
+        self.un_delete(tr, ship, false); // 285
+        let owner = self.un_owner(tr, ship).unwrap(); // 286
+        let gold = self.mg_config_trade_ship_gold(tr, self.tds_tiles_traveled, owner); // 900
+
+        if self.tds_was_captured && self.un_owner(tr, ship) == Some(self.tds_orig_owner) {
+            // 286 — retaken by its original owner: the payout stands, nobody pirated.
+            let dst_tile = self.un_tile(tr, self.tds_dst_port.unwrap()); // 344
+            self.pl_add_gold(tr, self.tds_orig_owner, gold, dst_tile); // 910
+        } else if self.tds_was_captured {
+            let cap_owner = self.un_owner(tr, ship).unwrap(); // 286
+            let dst_tile = self.un_tile(tr, self.tds_dst_port.unwrap()); // 344
+            self.pl_add_gold(tr, cap_owner, gold, dst_tile); // 910
+            let piracy_owner = self.un_owner(tr, ship).unwrap(); // 286
+            self.pl_add_piracy_gold(tr, piracy_owner, gold); // 911
+            let disp_owner = self.un_owner(tr, ship).unwrap(); // 286
+            let id = self.pl_id(tr, disp_owner); // 231
+            let name = self.pl_display_name(tr, self.tds_orig_owner); // 232
+            let rendered = crate::utils_format::render_number(gold, 0.0, 0.0);
+            let orig_id = self.pl_id(tr, self.tds_orig_owner); // 231
+            self.mg_display_message(
+                tr,
+                &[
+                    JsVal::Str("events_display.received_gold_from_captured_ship".to_string()),
+                    JsVal::Num(MSG_CAPTURED_ENEMY_UNIT),
+                    JsVal::Str(id),
+                    JsVal::Num(gold),
+                    JsVal::Obj(vec![
+                        ("gold".to_string(), JsVal::Str(rendered)),
+                        ("name".to_string(), JsVal::Str(name)),
+                    ]),
+                    JsVal::Undef,
+                    JsVal::Str(orig_id),
+                ],
+            ); // 226
+            let stats_owner = self.un_owner(tr, ship).unwrap(); // 286
+            self.mg_stats_boat_captured_trade(tr, stats_owner, self.tds_orig_owner, gold); // 903
+        } else {
+            let src_owner = self.un_owner(tr, self.tds_src_port.unwrap()).unwrap(); // 286
+            let src_tile = self.un_tile(tr, self.tds_src_port.unwrap()); // 344
+            self.pl_add_gold(tr, src_owner, gold, src_tile); // 910
+            let dst_owner = self.un_owner(tr, self.tds_dst_port.unwrap()).unwrap(); // 286
+            let dst_tile = self.un_tile(tr, self.tds_dst_port.unwrap()); // 344
+            self.pl_add_gold(tr, dst_owner, gold, dst_tile); // 910
+            let src_owner2 = self.un_owner(tr, self.tds_src_port.unwrap()).unwrap(); // 286
+            self.pl_add_trade_gold(tr, src_owner2, gold); // 912
+            let dst_owner2 = self.un_owner(tr, self.tds_dst_port.unwrap()).unwrap(); // 286
+            self.pl_add_trade_gold(tr, dst_owner2, gold); // 912
+            let s_owner = self.un_owner(tr, self.tds_src_port.unwrap()).unwrap(); // 286
+            let d_owner = self.un_owner(tr, self.tds_dst_port.unwrap()).unwrap(); // 286
+            self.mg_stats_boat_arrive_trade(tr, s_owner, d_owner, gold); // 904
         }
         Ok(())
     }

@@ -80,6 +80,9 @@ export class WaterPathFinder {
   next(from, to) {
     return this.game.__waterPathFinder.next(from, to);
   }
+  pathForTraversal(from, to) {
+    return this.game.__waterPathFinder.pathForTraversal(from, to);
+  }
 }
 `,
   "__stub/downstream.ts": `export class NukeExecution {
@@ -2080,6 +2083,63 @@ function prepare(rel) {
         "    this.originalOwner = this.attacker;\n" +
         "  }",
       "TransportShip ctor",
+    );
+  }
+
+  // G5h: TradeShipExecution runs the real class against scripted facade mocks.
+  // It builds a stub `WaterPathFinder` (the same `__stub/pathfinding.ts`) and
+  // resolves its nearest port through the real `findClosestBy` (prepared
+  // `src/core/Util.ts` copy). `renderNumber` comes from the prepared
+  // `src/client/Utils.ts` copy.
+  if (rel.endsWith("execution/TradeShipExecution.ts")) {
+    if (!prepared.has(elGameRel)) prepare(elGameRel);
+    if (!prepared.has(elUtilsRel)) prepare(elUtilsRel);
+    if (!prepared.has(elPfRel)) prepare(elPfRel);
+    if (!prepared.has(elCoreUtilRel)) prepare(elCoreUtilRel);
+    out = must(
+      out,
+      'import { renderNumber } from "../../client/Utils";\n' +
+        "import {\n" +
+        "  Execution,\n" +
+        "  Game,\n" +
+        "  MessageType,\n" +
+        "  Player,\n" +
+        "  Unit,\n" +
+        "  UnitType,\n" +
+        '} from "../game/Game";\n' +
+        'import { TileRef } from "../game/GameMap";\n' +
+        'import { WaterPathFinder } from "../pathfinding/PathFinder";\n' +
+        'import { PathStatus } from "../pathfinding/types";\n' +
+        'import { findClosestBy } from "../Util";\n',
+      `import { renderNumber } from "./${prepared.get(elUtilsRel)}";\n` +
+        `import { MessageType, UnitType } from "./${prepared.get(elGameRel)}";\n` +
+        `import { PathStatus, WaterPathFinder } from "./${prepared.get(elPfRel)}";\n` +
+        `import { findClosestBy } from "./${prepared.get(elCoreUtilRel)}";\n`,
+      "TradeShip imports",
+    );
+    out = must(
+      out,
+      "export class TradeShipExecution implements Execution {\n",
+      "export class TradeShipExecution {\n",
+      "TradeShip implements",
+    );
+    out = must(
+      out,
+      "  constructor(\n" +
+        "    private origOwner: Player,\n" +
+        "    private srcPort: Unit,\n" +
+        "    private _dstPort: Unit,\n" +
+        "  ) {}",
+      "  constructor(\n" +
+        "    origOwner,\n" +
+        "    srcPort,\n" +
+        "    _dstPort,\n" +
+        "  ) {\n" +
+        "    this.origOwner = origOwner;\n" +
+        "    this.srcPort = srcPort;\n" +
+        "    this._dstPort = _dstPort;\n" +
+        "  }",
+      "TradeShip ctor",
     );
   }
 

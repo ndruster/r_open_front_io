@@ -26575,6 +26575,11 @@ const elAttackExecC = (
 const elTransportC = (
   await loadTs("src/core/execution/TransportShipExecution.ts")
 ).TransportShipExecution;
+// G5h: `TradeShipExecution` is the REAL source; it too builds a stub
+// `WaterPathFinder` (`__stub/pathfinding.ts`, extended with `pathForTraversal`).
+const elTradeShipC = (
+  await loadTs("src/core/execution/TradeShipExecution.ts")
+).TradeShipExecution;
 // A `Game` (mg) ctor argument for `TribeSpawner.gs`; resolved by the `elDef`
 // args map to `elC.mg` (the Rust ctor table sees the facade group token).
 const elMgRef = { __elmg: true };
@@ -26819,6 +26824,11 @@ function elPlayerObj(tok, slots) {
     addTroops: (n) => elVoid(824, [tok, ...elEv1(n)]),
     bestTransportShipSpawn: (tile) => elRet(m, 61, 825, [tok, ...elEv1(tile)]),
     isTraitor: () => elRet(m, 62, 826, [tok]),
+    // G5h (`TradeShipExecution.complete`). All three are void and encode the
+    // receiver token (like `addTroops` at 824), pinning which player is paid.
+    addGold: (g, t) => elVoid(910, [tok, ...elEv1(Number(g)), ...elEv1(t)]),
+    addPiracyGold: (g) => elVoid(911, [tok, ...elEv1(Number(g))]),
+    addTradeGold: (g) => elVoid(912, [tok, ...elEv1(Number(g))]),
   };
 }
 function elAllianceObj(tok, slots) {
@@ -26915,6 +26925,10 @@ function elUnitObj(tok, slots) {
     targetedBySAM: () => elRet(m, 43, 743, [tok]),
     // G5g (`TransportShipExecution.tick`).
     transportShipState: () => elRet(m, 48, 850, [tok]),
+    // G5h (`TradeShipExecution.tick`).
+    isMarkedForDeletion: () => elRet(m, 49, 913, [tok]),
+    setTargetUnit: (u) => elVoid(914, [tok, ...elEvTok(u)]),
+    setSafeFromPirates: () => elVoid(915, [tok]),
   };
 }
 // G5g: the `Attack` object returned by `Player.createAttack` and read through
@@ -27037,6 +27051,8 @@ function elMgObj(slots) {
     boatAttackAmount: (a, t) => elRet(m, 91, 802, [...elEvTok(a), ...elEvTok(t)]),
     defensePostRange: () => elRet(m, 58, 803, []),
     attackLogic: (input) => elRet(m, 27, 809, [...encVal(input)]),
+    // G5h (`TradeShipExecution.complete`).
+    tradeShipGold: (r, p) => elRet(m, 92, 900, [...elEv1(r), ...elEvTok(p)]),
   };
   return {
     config: () => cfg,
@@ -27311,11 +27327,19 @@ function elMgObj(slots) {
         elVoid(873, [...elEvTok(p), ...elEvTok(t), ...elEv1(n)]),
       boatArriveTroops: (p, t, n) =>
         elVoid(874, [...elEvTok(p), ...elEvTok(t), ...elEv1(n)]),
+      // G5h.
+      boatSendTrade: (p, t) => elVoid(902, [...elEvTok(p), ...elEvTok(t)]),
+      boatCapturedTrade: (p, o, g) =>
+        elVoid(903, [...elEvTok(p), ...elEvTok(o), ...elEv1(Number(g))]),
+      boatArriveTrade: (p, t, g) =>
+        elVoid(904, [...elEvTok(p), ...elEvTok(t), ...elEv1(Number(g))]),
     }),
     setWinner: (w, s) => elVoid(505, [...elWinArg(w), ...encVal(s)]),
     unitCount: (ty) => elRet(m, 40, 506, elEvs(ty)),
     neighbors: (tile) => elRet(m, 41, 507, elEv1(tile)),
     isWater: (tile) => elRet(m, 42, 508, elEv1(tile)),
+    // G5h (`TradeShipExecution.tick`).
+    isShoreline: (tile) => elRet(m, 93, 901, elEv1(tile)),
     manhattanDist: (a, b) => elRet(m, 43, 509, [...elEv1(a), ...elEv1(b)]),
     unitInfo: (ty) => elRet(m, 46, 512, elEvs(ty)),
     // G5e.
@@ -27430,6 +27454,11 @@ function elMgObj(slots) {
         return ts == null ? null : ts || [];
       },
       next: (from, to) => elRet(m, 862, 862, [...elEv1(from), ...elEv1(to)]),
+      // G5h: `TradeShipExecution`'s motion-plan path (`TileRef[]`).
+      pathForTraversal: (from, to) => {
+        const ts = elRet(m, 96, 905, [...elEv1(from), ...elEv1(to)]);
+        return ts == null ? null : ts || [];
+      },
     },
   };
 }
@@ -29829,6 +29858,329 @@ elDef(
     ],
   },
   [[0], [1, 0], [2, 1], [3]],
+);
+
+// -- 38 TradeShipExecution (G5h) --------------------------------------------
+// `origOwner` = player 0, `srcPort` = unit 1 (owner 0), `_dstPort` = unit 2,
+// the spawned `tradeShip` = unit 3. Spawn prefix (860/344/534/535/286/902)
+// appears in every tick scenario because `tradeShip` starts undefined.
+
+// Successful spawn then a same-tile arrival: `curTile === dstPort()` → complete.
+elDef(
+  "el_trade_ship_spawn_complete",
+  38,
+  elTradeShipC,
+  [null, elUnitRef(1), elUnitRef(2)],
+  {
+    a: [0, 1, 2],
+    mg: { 860: [false], 92: [30] },
+    players: [
+      { 1: ["a"], 2: ["Alpha"], 46: [true], 47: [100], 48: [3] },
+      { 1: ["b"], 2: ["Beta"] },
+    ],
+    units: [
+      undefined,
+      { 6: [0], 11: [10] },
+      { 0: [true], 6: [1], 11: [10] },
+      { 0: [true], 6: [0], 7: [9], 11: [10] },
+    ],
+  },
+  [[0], [1, 10], [2, 10], [3], [4]],
+);
+
+// `pathFinder.next` returns COMPLETE → the `complete()` payout path.
+elDef(
+  "el_trade_ship_tick_path_complete",
+  38,
+  elTradeShipC,
+  [null, elUnitRef(1), elUnitRef(2)],
+  {
+    a: [0, 1, 2],
+    mg: { 860: [false], 92: [30], 862: [{ status: 2, node: null }] },
+    players: [
+      { 1: ["a"], 2: ["Alpha"], 46: [true], 47: [100], 48: [3] },
+      { 1: ["b"], 2: ["Beta"] },
+    ],
+    units: [
+      undefined,
+      { 6: [0], 11: [10] },
+      { 0: [true], 6: [1], 11: [500] },
+      { 0: [true], 6: [0], 7: [9], 11: [600] },
+    ],
+  },
+  [[0], [1, 10], [2, 10], [3], [4]],
+);
+
+// NEXT with a motion-plan record and a shoreline safe-tile refresh.
+elDef(
+  "el_trade_ship_next_shoreline",
+  38,
+  elTradeShipC,
+  [null, elUnitRef(1), elUnitRef(2)],
+  {
+    a: [0, 1, 2],
+    mg: {
+      860: [false],
+      862: [{ status: 0, node: 600 }],
+      96: [[600, 500]],
+      42: [true],
+      93: [true],
+    },
+    players: [
+      { 1: ["a"], 2: ["Alpha"], 46: [true], 47: [100], 48: [3] },
+      { 1: ["b"] },
+    ],
+    units: [
+      undefined,
+      { 6: [0], 11: [10] },
+      { 0: [true], 6: [1], 11: [500] },
+      { 0: [true], 6: [0], 7: [9], 11: [600] },
+    ],
+  },
+  [[0], [1, 10], [2, 10], [3], [4]],
+);
+
+// NEXT where `isWater` is true but `isShoreline` false → no `setSafeFromPirates`.
+elDef(
+  "el_trade_ship_next_no_shoreline",
+  38,
+  elTradeShipC,
+  [null, elUnitRef(1), elUnitRef(2)],
+  {
+    a: [0, 1, 2],
+    mg: {
+      860: [false],
+      862: [{ status: 0, node: 600 }],
+      96: [[600, 500]],
+      42: [true],
+      93: [false],
+    },
+    players: [
+      { 1: ["a"], 2: ["Alpha"], 46: [true], 47: [100], 48: [3] },
+      { 1: ["b"] },
+    ],
+    units: [
+      undefined,
+      { 6: [0], 11: [10] },
+      { 0: [true], 6: [1], 11: [500] },
+      { 0: [true], 6: [0], 7: [9], 11: [600] },
+    ],
+  },
+  [[0], [1, 10], [2, 10], [3], [4]],
+);
+
+// NOT_FOUND: warn (untraced), delete while still active, then stopped.
+elDef(
+  "el_trade_ship_tick_not_found",
+  38,
+  elTradeShipC,
+  [null, elUnitRef(1), elUnitRef(2)],
+  {
+    a: [0, 1, 2],
+    mg: { 860: [false], 862: [{ status: 3, node: null }] },
+    players: [
+      { 1: ["a"], 2: ["Alpha"], 46: [true], 47: [100], 48: [3] },
+      { 1: ["b"] },
+    ],
+    units: [
+      undefined,
+      { 6: [0], 11: [10] },
+      { 0: [true], 6: [1], 11: [500] },
+      { 0: [true], 6: [0], 7: [9], 11: [600] },
+    ],
+  },
+  [[0], [1, 10], [2, 10], [3], [4]],
+);
+
+// `canBuild` returns false: warn (untraced) and stop before spawning.
+elDef(
+  "el_trade_ship_cannot_build",
+  38,
+  elTradeShipC,
+  [null, elUnitRef(1), elUnitRef(2)],
+  {
+    a: [0, 1, 2],
+    mg: { 860: [false] },
+    players: [{ 1: ["a"], 2: ["Alpha"], 47: [false] }],
+    units: [undefined, { 6: [0], 11: [10] }, {}],
+  },
+  [[0], [1, 10], [2, 10], [3], [4]],
+);
+
+// The freshly built ship is already inactive → stop after the spawn report.
+elDef(
+  "el_trade_ship_inactive_after_spawn",
+  38,
+  elTradeShipC,
+  [null, elUnitRef(1), elUnitRef(2)],
+  {
+    a: [0, 1, 2],
+    mg: { 860: [false] },
+    players: [
+      { 1: ["a"], 2: ["Alpha"], 47: [100], 48: [3] },
+      { 1: ["b"], 2: ["Beta"] },
+    ],
+    units: [
+      undefined,
+      { 6: [0], 11: [10] },
+      { 6: [1], 11: [500] },
+      { 0: [false], 6: [0], 7: [9], 11: [600] },
+    ],
+  },
+  [[0], [1, 10], [2, 10], [3], [4]],
+);
+
+// The destination port is owned by the source owner → delete the ship.
+elDef(
+  "el_trade_ship_dst_captured",
+  38,
+  elTradeShipC,
+  [null, elUnitRef(1), elUnitRef(2)],
+  {
+    a: [0, 1, 2],
+    mg: { 860: [false] },
+    players: [{ 1: ["a"], 2: ["Alpha"], 47: [100], 48: [3] }],
+    units: [
+      undefined,
+      { 6: [0], 11: [10] },
+      { 6: [0], 11: [500] },
+      { 0: [true], 6: [0], 7: [9], 11: [600] },
+    ],
+  },
+  [[0], [1, 10], [2, 10], [3], [4]],
+);
+
+// The destination port went inactive → delete the ship.
+elDef(
+  "el_trade_ship_dst_inactive",
+  38,
+  elTradeShipC,
+  [null, elUnitRef(1), elUnitRef(2)],
+  {
+    a: [0, 1, 2],
+    mg: { 860: [false] },
+    players: [
+      { 1: ["a"], 2: ["Alpha"], 47: [100], 48: [3] },
+      { 1: ["b"] },
+    ],
+    units: [
+      undefined,
+      { 6: [0], 11: [10] },
+      { 0: [false], 6: [1], 11: [500] },
+      { 0: [true], 6: [0], 7: [9], 11: [600] },
+    ],
+  },
+  [[0], [1, 10], [2, 10], [3], [4]],
+);
+
+// The ship owner can no longer trade with the destination owner → delete.
+elDef(
+  "el_trade_ship_cannot_trade",
+  38,
+  elTradeShipC,
+  [null, elUnitRef(1), elUnitRef(2)],
+  {
+    a: [0, 1, 2],
+    mg: { 860: [false] },
+    players: [
+      { 1: ["a"], 2: ["Alpha"], 46: [false], 47: [100], 48: [3] },
+      { 1: ["b"] },
+    ],
+    units: [
+      undefined,
+      { 6: [0], 11: [10] },
+      { 0: [true], 6: [1], 11: [500] },
+      { 0: [true], 6: [0], 7: [9], 11: [600] },
+    ],
+  },
+  [[0], [1, 10], [2, 10], [3], [4]],
+);
+
+// Captured ship: the re-target search finds the port it is already on, then
+// arrives → `complete()` pays the pirate (not the original owner).
+elDef(
+  "el_trade_ship_captured_complete",
+  38,
+  elTradeShipC,
+  [null, elUnitRef(1), elUnitRef(2)],
+  {
+    a: [0, 1, 2],
+    mg: { 860: [false], 92: [30], 20: [7], 21: [true], 43: [0] },
+    players: [
+      { 1: ["a"], 2: ["Alpha"], 47: [100], 48: [3] },
+      { 1: ["b"], 2: ["Beta"] },
+      { 1: ["c"], 2: ["Gamma"], 11: [[4]] },
+    ],
+    units: [
+      undefined,
+      { 6: [0], 11: [10] },
+      { 6: [1], 11: [500] },
+      { 0: [true], 6: [2], 7: [9], 11: [600] },
+      { 0: [true], 11: [600], 12: [false], 49: [false] },
+    ],
+  },
+  [[0], [1, 10], [2, 10], [3], [4]],
+);
+
+// Captured ship: every nearby port fails the candidate predicate → delete.
+elDef(
+  "el_trade_ship_recapture_not_found",
+  38,
+  elTradeShipC,
+  [null, elUnitRef(1), elUnitRef(2)],
+  {
+    a: [0, 1, 2],
+    mg: { 860: [false], 20: [7] },
+    players: [
+      { 1: ["a"], 2: ["Alpha"], 47: [100], 48: [3] },
+      { 1: ["b"], 2: ["Beta"] },
+      { 1: ["c"], 2: ["Gamma"], 11: [[4]] },
+    ],
+    units: [
+      undefined,
+      { 6: [0], 11: [10] },
+      { 6: [1], 11: [500] },
+      { 0: [true], 6: [2], 7: [9], 11: [600] },
+      { 0: [false], 11: [600] },
+    ],
+  },
+  [[0], [1, 10], [2, 10], [3], [4]],
+);
+
+// Two ticks: tick 10 captures the ship (owner 2), tick 20 it is back in the
+// original owner's hands and reaches a port → the "retaken" payout branch.
+elDef(
+  "el_trade_ship_recapture_retaken",
+  38,
+  elTradeShipC,
+  [null, elUnitRef(1), elUnitRef(2)],
+  {
+    a: [0, 1, 2],
+    mg: {
+      860: [false],
+      92: [30],
+      862: [{ status: 0, node: 600 }],
+      96: [[600, 500]],
+      42: [true],
+      93: [false],
+      20: [7],
+      21: [true],
+      43: [0],
+    },
+    players: [
+      { 1: ["a"], 2: ["Alpha"], 47: [100], 48: [3], 11: [[4]] },
+      { 1: ["b"], 2: ["Beta"] },
+      { 1: ["c"], 2: ["Gamma"], 11: [[4]] },
+    ],
+    units: [
+      undefined,
+      { 6: [0], 11: [10] },
+      { 0: [true], 6: [2], 11: [500] },
+      { 0: [true], 6: [2, 0], 7: [9], 11: [600] },
+      { 0: [true], 11: [600], 12: [false], 49: [false] },
+    ],
+  },
+  [[0], [1, 10], [2, 10], [2, 20], [3], [4]],
 );
 
 const structures = {

@@ -2847,6 +2847,18 @@ WebSockets — stays excluded, mirroring the `src/core` exclusions).
     paths, `loadCargo` (kind 5, tail skipped), and the Factory / Port / City
     `tradeStopsVisited` branches. 19 new scenarios (`el_tss_*` × 9 + `el_train_*`
     × 10, 82 ops), 245 scenarios / 1,039 ops and 1,271,533 wasm comparisons.
+91. **`execution/` layer, part 10** (`execution`, G5j) — `WarshipExecution`
+    (class 41) and `PlayerExecution` (class 42). Warships patrol, hunt trade
+    ships, and retreat to ports for repairs; `PlayerExecution` handles structure
+    capture, death bookkeeping, troop/gold income, alliance/embargo expiry, and
+    periodic cluster removal (`removeClusters` / `calculateClusters` /
+    `checkAndAssignTerritory`). Facade codes pick up where G5i stopped at 927:
+    unit `928` `warshipState`, void `929`–`939` warship setters; player `940`
+    `inDoomsdayClock`, void `941`–`951` unit/capture/record/gold/embargo
+    helpers; `952` `lastTileChange`, `953` `largestClusterBoundingBox`, `954`
+    `alliances`, `955` `getEmbargoes`, `956` `allianceExpiresAt`, `957`
+    `allianceExpire`. 8 new scenarios (`el_warship_*` × 4 + `el_player_*` × 4,
+    40 ops), 253 scenarios / 1,079 ops and 1,274,671 wasm comparisons.
 
 Regenerate whenever a ported source changes:
 

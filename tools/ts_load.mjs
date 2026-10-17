@@ -2248,6 +2248,116 @@ function prepare(rel) {
     );
   }
 
+  // G5j: WarshipExecution runs the real class against scripted facade mocks.
+  // The Game values actually used (`isUnit`, `UnitType`) come from the prepared
+  // Game.ts copy; `TileRef` is type-only (dropped); the pathfinding imports
+  // resolve to the `__stub/pathfinding.ts` stub; `PseudoRandom` is the prepared
+  // real copy; `findMinimumBy` the prepared Util; `ShellExecution` the prepared
+  // ShellExecution copy.
+  if (rel.endsWith("execution/WarshipExecution.ts")) {
+    if (!prepared.has(elGameRel)) prepare(elGameRel);
+    if (!prepared.has(elPfRel)) prepare(elPfRel);
+    if (!prepared.has(elPsrRel)) prepare(elPsrRel);
+    if (!prepared.has(elCoreUtilRel)) prepare(elCoreUtilRel);
+    const elShellRel = "src/core/execution/ShellExecution.ts";
+    if (!prepared.has(elShellRel)) prepare(elShellRel);
+    out = must(
+      out,
+      "import {\n" +
+        "  Execution,\n" +
+        "  Game,\n" +
+        "  isUnit,\n" +
+        "  OwnerComp,\n" +
+        "  Unit,\n" +
+        "  UnitParams,\n" +
+        "  UnitType,\n" +
+        '} from "../game/Game";\n' +
+        'import { TileRef } from "../game/GameMap";\n' +
+        'import { WaterPathFinder } from "../pathfinding/PathFinder";\n' +
+        'import { PathStatus } from "../pathfinding/types";\n' +
+        'import { PseudoRandom } from "../PseudoRandom";\n' +
+        'import { findMinimumBy } from "../Util";\n' +
+        'import { ShellExecution } from "./ShellExecution";\n',
+      `import { isUnit, UnitType } from "./${prepared.get(elGameRel)}";\n` +
+        `import { PathStatus, WaterPathFinder } from "./${prepared.get(elPfRel)}";\n` +
+        `import { PseudoRandom } from "./${prepared.get(elPsrRel)}";\n` +
+        `import { findMinimumBy } from "./${prepared.get(elCoreUtilRel)}";\n` +
+        `import { ShellExecution } from "./${prepared.get(elShellRel)}";\n`,
+      "Warship imports",
+    );
+    out = must(
+      out,
+      "export class WarshipExecution implements Execution {\n",
+      "export class WarshipExecution {\n",
+      "Warship implements",
+    );
+    out = must(
+      out,
+      "  constructor(\n" +
+        "    private input: (UnitParams<UnitType.Warship> & OwnerComp) | Unit,\n" +
+        "  ) {}",
+      "  constructor(\n" +
+        "    input,\n" +
+        "  ) {\n" +
+        "    this.input = input;\n" +
+        "  }",
+      "Warship ctor",
+    );
+  }
+
+  // G5j: PlayerExecution runs the real class against scripted facade mocks.
+  // `Config` and `GameMap` are type-only (dropped); the Game values actually
+  // used (`Cell`, `PlayerType`, `Structures`, `UnitType`) come from the
+  // prepared Game.ts copy; `TileTraversalScratch` the prepared real copy;
+  // `getMode`/`simpleHash` the prepared Util.
+  if (rel.endsWith("execution/PlayerExecution.ts")) {
+    if (!prepared.has(elGameRel)) prepare(elGameRel);
+    if (!prepared.has(elCoreUtilRel)) prepare(elCoreUtilRel);
+    const elTtsRel = "src/core/game/TileTraversalScratch.ts";
+    if (!prepared.has(elTtsRel)) prepare(elTtsRel);
+    out = must(
+      out,
+      'import { Config } from "../configuration/Config";\n' +
+        "import {\n" +
+        "  Cell,\n" +
+        "  Execution,\n" +
+        "  Game,\n" +
+        "  Player,\n" +
+        "  PlayerType,\n" +
+        "  Structures,\n" +
+        "  UnitType,\n" +
+        '} from "../game/Game";\n' +
+        'import { GameMap, TileRef } from "../game/GameMap";\n' +
+        "import {\n" +
+        "  bumpTraversalGeneration,\n" +
+        "  tileTraversalScratch,\n" +
+        "  TileTraversalScratch,\n" +
+        '} from "../game/TileTraversalScratch";\n' +
+        'import { getMode, simpleHash } from "../Util";\n',
+      `import { Cell, PlayerType, Structures, UnitType } from "./${prepared.get(elGameRel)}";\n` +
+        `import {\n` +
+        `  bumpTraversalGeneration,\n` +
+        `  tileTraversalScratch,\n` +
+        `} from "./${prepared.get(elTtsRel)}";\n` +
+        `import { getMode, simpleHash } from "./${prepared.get(elCoreUtilRel)}";\n`,
+      "PlayerExecution imports",
+    );
+    out = must(
+      out,
+      "export class PlayerExecution implements Execution {\n",
+      "export class PlayerExecution {\n",
+      "PlayerExecution implements",
+    );
+    out = must(
+      out,
+      "  constructor(private player: Player) {}",
+      "  constructor(player) {\n" +
+        "    this.player = player;\n" +
+        "  }",
+      "PlayerExecution ctor",
+    );
+  }
+
   if (rel.endsWith("algorithms/ConnectedComponents.ts")) {
     // GameMap/TileRef are type-only (interface + branded type) -> dropped; the
     // DebugSpan value import is redirected to its prepared copy. The ctor's two

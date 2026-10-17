@@ -96,6 +96,13 @@
 //! `railroads` tables drive the real `tradeAvailable` / reservoir-sampling
 //! logic on both sides. `TrainExecution.loadCargo` is op kind `5`.
 //!
+//! G5j appends `41` WarshipExecution, `42` PlayerExecution
+//! (`WarshipExecution.ts` / `PlayerExecution.ts`). Warships patrol, hunt trade
+//! ships, and retreat to ports for repairs. `PlayerExecution` handles structure
+//! capture, death bookkeeping, troop/gold income, alliance expiry, embargo
+//! expiry, and periodic cluster removal (`removeClusters` / `calculateClusters`
+//! / `checkAndAssignTerritory`).
+//!
 //! # G5b facade additions (codes ≥ 300)
 //!
 //! `mg`: `300` isValidRef, `301` getWaterComponent, `302` hasWaterComponent,
@@ -161,9 +168,10 @@
 //!
 //! # Constructing un-ported downstream executions
 //!
-//! `ShellExecution` is intentionally NOT ported; its only construction site is
-//! the unreachable `DefensePost.shoot`, so it is modelled by
-//! `mg_add_execution_shell` (tag 1) but is never exercised by any scenario.
+//! `ShellExecution` is intentionally NOT ported; its construction sites are
+//! the unreachable `DefensePost.shoot` and `WarshipExecution.shootTarget` (G5j),
+//! so it is modelled by `mg_add_execution_shell` (tag 1) — exercised by the
+//! G5j warship scenarios.
 //! `mg.addExecution(new TrainStationExecution(unit, spawnTrains?))` (issued by
 //! the ported `City` / `Factory` executions) is modelled as an `addExecution`
 //! facade event (code 307, tag 0) — exactly how `execution_manager.rs` records
@@ -396,6 +404,22 @@
 //! result (bool / station unit token or null). `unit`: void `927`
 //! `setLoaded(flag)`. The downstream `mg.addExecution(new TrainExecution(...))`
 //! record is tag `17` `(player, sourceUtok, destUtok, numCars)`.
+//!
+//! ## G5j facade additions (codes ≥ 928)
+//!
+//! `unit`: `928` warshipState() (returns `{state, patrolTile, retreatPort?}`);
+//! void `929` setPatrolTile(tile), `930` setWarshipState(state), `931`
+//! setRetreatPort(tile), `932` setAlreadySentShell(target), `933`
+//! setAlreadySentShellClear(), `935` setDocked(flag), `936` setHealth(health),
+//! `937` setPatrolling(), `938` setLastShellAttack(tick), `939`
+//! setAlreadySentShellAdd(target). `940` `owner().inDoomsdayClock()` (player
+//! facade, slot 63). `player`: void `941` captureUnit(unit), `942`
+//! removeTroops(n), `943` recordDeathPosition(place), `944` recordKill(),
+//! `945` recordDeath(), `946` addTroops(n), `947` addGold(gold), `948`
+//! stopEmbargo(target), `949` decayRelations(), `950` removeGold(gold), `951`
+//! removeAllAlliances(). `952` lastTileChange(), `953` largestClusterBoundingBox
+//! (setter, `null` or `{min, max}`), `954` alliances(), `955` getEmbargoes(),
+//! `956` allianceExpiresAt(alliance), `957` allianceExpire(alliance).
 //!
 //! ## `neighbor` facade — slots 0..2
 //!
@@ -1030,6 +1054,126 @@ struct SamTargeting {
     missile_speed: f64,
 }
 
+/// G5j: grid-backed `GameMap` mock (the `elMapGrid` TS equivalent). Built from
+/// `spec.map = {w, h, terrain[], owner[]}` where `terrain[i]` is the GameMapImpl
+/// terrain byte (bit 7 = land, bit 6 = shoreline, bit 5 = ocean, bits 0-4 =
+/// magnitude) and `owner[i]` is the owner smallID (0 = unowned).
+#[derive(Clone, Debug, Default)]
+struct ElMap {
+    w: f64,
+    h: f64,
+    terrain: Vec<f64>,
+    owners: Vec<f64>,
+}
+
+const EL_MAP_IS_LAND: u8 = 1 << 7;
+const EL_MAP_SHORELINE: u8 = 1 << 6;
+const EL_MAP_OCEAN: u8 = 1 << 5;
+const EL_MAP_MAG_MASK: u8 = 0x1f;
+const EL_MAP_IMPASSABLE_MAG: u8 = 31;
+
+impl ElMap {
+    fn from_val(v: &JsVal) -> Self {
+        let w = val_field(v, "w").map(as_num).unwrap_or(0.0);
+        let h = val_field(v, "h").map(as_num).unwrap_or(0.0);
+        let terrain = val_field(v, "terrain").map(as_arr_nums).unwrap_or_default();
+        let owners = val_field(v, "owner").map(as_arr_nums).unwrap_or_default();
+        Self { w, h, terrain, owners }
+    }
+    fn x(&self, r: f64) -> f64 { r % self.w }
+    fn y(&self, r: f64) -> f64 { (r / self.w).floor() }
+    fn is_land(&self, r: f64) -> bool { self.terrain[r as usize] as u8 & EL_MAP_IS_LAND != 0 }
+    fn is_ocean(&self, r: f64) -> bool { self.terrain[r as usize] as u8 & EL_MAP_OCEAN != 0 }
+    fn is_shoreline(&self, r: f64) -> bool { self.terrain[r as usize] as u8 & EL_MAP_SHORELINE != 0 }
+    fn is_shore(&self, r: f64) -> bool { self.is_land(r) && self.is_shoreline(r) }
+    fn is_ocean_shore(&self, r: f64) -> bool {
+        if !self.is_land(r) { return false; }
+        let x = self.x(r);
+        let w = self.w;
+        let h = self.h;
+        if x != 0.0 && self.is_ocean(r - 1.0) { return true; }
+        if x != w - 1.0 && self.is_ocean(r + 1.0) { return true; }
+        if r >= w && self.is_ocean(r - w) { return true; }
+        if r < (h - 1.0) * w && self.is_ocean(r + w) { return true; }
+        false
+    }
+    fn is_on_edge_of_map(&self, r: f64) -> bool {
+        let x = self.x(r);
+        let w = self.w;
+        let h = self.h;
+        if x == 0.0 || x == w - 1.0 || r < w || r >= (h - 1.0) * w { return true; }
+        self.is_impassable(r - 1.0) || self.is_impassable(r + 1.0)
+            || self.is_impassable(r - w) || self.is_impassable(r + w)
+    }
+    fn is_impassable(&self, r: f64) -> bool {
+        self.is_land(r) && (self.terrain[r as usize] as u8 & EL_MAP_MAG_MASK) == EL_MAP_IMPASSABLE_MAG
+    }
+    fn owner_id(&self, r: f64) -> f64 { self.owners[r as usize] }
+    fn set_owner_id(&mut self, r: f64, pid: f64) { self.owners[r as usize] = pid; }
+    fn neighbors4(&self, r: f64, buf: &mut [f64; 4]) -> usize {
+        let x = self.x(r);
+        let w = self.w;
+        let h = self.h;
+        let mut n = 0;
+        if r >= w { buf[n] = r - w; n += 1; }
+        if r < (h - 1.0) * w { buf[n] = r + w; n += 1; }
+        if x != 0.0 { buf[n] = r - 1.0; n += 1; }
+        if x != w - 1.0 { buf[n] = r + 1.0; n += 1; }
+        n
+    }
+    fn neighbors8(&self, r: f64, buf: &mut [f64; 8]) -> usize {
+        let x = self.x(r);
+        let w = self.w;
+        let h = self.h;
+        let has_n = r >= w;
+        let has_s = r < (h - 1.0) * w;
+        let mut n = 0;
+        if x != 0.0 {
+            if has_n { buf[n] = r - 1.0 - w; n += 1; }
+            buf[n] = r - 1.0; n += 1;
+            if has_s { buf[n] = r - 1.0 + w; n += 1; }
+        }
+        if has_n { buf[n] = r - w; n += 1; }
+        if has_s { buf[n] = r + w; n += 1; }
+        if x != w - 1.0 {
+            if has_n { buf[n] = r + 1.0 - w; n += 1; }
+            buf[n] = r + 1.0; n += 1;
+            if has_s { buf[n] = r + 1.0 + w; n += 1; }
+        }
+        n
+    }
+}
+
+/// G5j: `TileTraversalScratch` equivalent — generation-stamped visited array
+/// plus a reusable stack, so BFS/DFS passes over the map allocate nothing per
+/// query.
+#[derive(Clone, Debug, Default)]
+struct ElScratch {
+    visited: Vec<u32>,
+    stack: Vec<f64>,
+    cluster_index_map: Vec<i32>,
+    gen: u32,
+}
+
+impl ElScratch {
+    fn ensure_capacity(&mut self, total_tiles: usize) {
+        if self.visited.len() < total_tiles {
+            self.visited = vec![0u32; total_tiles];
+            self.stack = Vec::new();
+            self.cluster_index_map = vec![0i32; total_tiles];
+            self.gen = 0;
+        }
+    }
+    fn bump_generation(&mut self) -> u32 {
+        self.gen = self.gen.wrapping_add(1);
+        if self.gen == u32::MAX {
+            self.visited.fill(0);
+            self.gen = 1;
+        }
+        self.gen
+    }
+}
+
 /// The mutable class state shared by the 12 executions. The names are the
 /// reused slots: `a_tok` is requestor / player / from / launcher, `b_tok` the
 /// AllianceReject recipient, `id_a` the ctor's string id (recipientID /
@@ -1060,10 +1204,6 @@ pub struct ExecHarness {
     unit: Option<usize>,
     recipient: Option<usize>,
     structure: Option<usize>,
-    #[allow(dead_code)]
-    last_shell_attack: f64,
-    #[allow(dead_code)]
-    already_sent_shell: Vec<usize>,
 
     // G5c state.
     emoji: f64,
@@ -1198,6 +1338,25 @@ pub struct ExecHarness {
     tex_source: usize,
     tex_destination: usize,
     tex_num_cars: f64,
+
+    // G5j state (class 41 `WarshipExecution`).
+    ws_warship: Option<usize>,
+    last_manual_move_tick_retreat_disabled: f64,
+    last_observed_patrol_tile: Option<f64>,
+    active_healing_remainder: f64,
+    last_emitted_combat: bool,
+    ws_random: Option<PseudoRandom>,
+    last_shell_attack: f64,
+    already_sent_shell: Vec<usize>,
+
+    // G5j state (class 42 `PlayerExecution`).
+    pe_player: usize,
+    last_calc: f64,
+    pe_active: bool,
+    nbuf: [f64; 4],
+    nbuf8: [f64; 8],
+    el_map: Option<ElMap>,
+    el_scratch: ElScratch,
 
     mg: Mock,
     players: Vec<Mock>,
@@ -1347,6 +1506,20 @@ const MG_WATER_PATH_FOR_TRAVERSAL: usize = 96;
 // `mg.config().trainSpawnRate(factoryCount, trainCount)`.
 const MG_FIND_STATIONS_PATH: usize = 97;
 const MG_TRAIN_SPAWN_RATE: usize = 101;
+// G5j mg slots (`WarshipExecution` / `PlayerExecution`).
+const MG_WARSHIP_PASSIVE_HEALING: usize = 102;
+const MG_WARSHIP_PASSIVE_HEALING_RANGE: usize = 103;
+const MG_WARSHIP_RETREAT_HEALTH_PERCENT: usize = 104;
+const MG_WARSHIP_TARGETTING_RANGE: usize = 105;
+const MG_WARSHIP_PATROL_RANGE: usize = 106;
+const MG_WARSHIP_DOCKING_RANGE: usize = 107;
+const MG_WARSHIP_PORT_HEALING_BONUS: usize = 108;
+const MG_WARSHIP_PORT_SWITCH_THRESHOLD: usize = 109;
+const MG_WARSHIP_SHELL_ATTACK_RATE: usize = 110;
+const MG_PERF_NOW: usize = 111;
+const MG_TROOP_INCREASE_RATE: usize = 112;
+const MG_GOLD_ADDITION_RATE: usize = 113;
+const MG_TEMPORARY_EMBARGO_DURATION: usize = 114;
 
 // player slot indices.
 const PL_SMALL_ID: usize = 0;
@@ -1404,10 +1577,17 @@ const PL_INCOMING_ATTACKS: usize = 58;
 const PL_UNIT_COUNT: usize = 59;
 const PL_BEST_TRANSPORT_SHIP_SPAWN: usize = 61;
 const PL_IS_TRAITOR: usize = 62;
+// G5j player slots (`WarshipExecution` / `PlayerExecution`).
+const PL_IN_DOOMSDAY_CLOCK: usize = 63;
+const PL_LAST_TILE_CHANGE: usize = 64;
+const PL_ALLIANCES: usize = 65;
+const PL_GET_EMBARGOES: usize = 66;
 
 // alliance slot indices.
 const AL_ONLY_ONE_AGREED: usize = 0;
 const AL_BOTH_AGREED: usize = 2;
+// G5j alliance slot (`PlayerExecution.tick` alliance expiry).
+const AL_EXPIRES_AT: usize = 4;
 
 // alliance-request slot indices.
 const RQ_RECIPIENT: usize = 0;
@@ -1451,6 +1631,9 @@ const UN_TRANSPORT_SHIP_STATE: usize = 48;
 // G5h unit slot (`TradeShipExecution.tick` — `isMarkedForDeletion`; the other
 // two unit facades are void and consume no slot).
 const UN_IS_MARKED_FOR_DELETION: usize = 49;
+// G5j unit slots (`WarshipExecution`).
+const UN_WARSHIP_STATE: usize = 50;
+const UN_IS_SAFE_FROM_PIRATES: usize = 51;
 
 // attack slot indices (`AttackExecution` facade).
 const AT_TROOPS: usize = 0;
@@ -1527,7 +1710,17 @@ impl ExecHarness {
         let v = mk_take(&mut self.mg, MG_OWNER, tr, 222.0, &ev1(tile));
         as_opt_tok(&v)
     }
+    /// `mg.ownerID(tile)` — G5j: grid-delegated when a `spec.map` grid exists
+    /// (the trace records the computed value instead of a script value, so both
+    /// sides stay in sync through `conquer` / `conquerPlayer` mutations).
     fn mg_owner_id(&mut self, tr: &mut Vec<f64>, tile: f64) -> f64 {
+        if let Some(ref map) = self.el_map {
+            let v = map.owner_id(tile);
+            tr.push(223.0);
+            tr.extend_from_slice(&ev1(tile));
+            tr.extend_from_slice(&ev1(v));
+            return v;
+        }
         let v = mk_take(&mut self.mg, MG_OWNER_ID, tr, 223.0, &ev1(tile));
         as_num(&v)
     }
@@ -1612,9 +1805,7 @@ impl ExecHarness {
         );
         push_val(tr, &JsVal::Undef);
     }
-    /// `mg.addExecution(new ShellExecution(...))` — only reachable from the
-    /// unreachable `DefensePost.shoot`.
-    #[allow(dead_code)]
+    /// `mg.addExecution(new ShellExecution(...))`.
     fn mg_add_execution_shell(
         &mut self,
         tr: &mut Vec<f64>,
@@ -2359,6 +2550,13 @@ impl ExecHarness {
     }
     fn pl_conquer(&mut self, tr: &mut Vec<f64>, tok: usize, tile: f64) {
         self.pl_void(tok, tr, 637.0, &ev1(tile));
+        // G5j: mutate the grid when a map is present.
+        if self.el_map.is_some() {
+            let sid = self.pl_peek_small_id(tok);
+            if let (Some(map), Some(sid)) = (self.el_map.as_mut(), sid) {
+                map.set_owner_id(tile, sid);
+            }
+        }
     }
     fn pl_set_spawn_tile(&mut self, tr: &mut Vec<f64>, tok: usize, tile: f64) {
         self.pl_void(tok, tr, 638.0, &ev1(tile));
@@ -2513,7 +2711,6 @@ impl ExecHarness {
         prefix.extend_from_slice(&evb(flag));
         mk_void(tr, 351.0, &prefix);
     }
-    #[allow(dead_code)]
     fn un_has_health(&mut self, tr: &mut Vec<f64>, uid: usize) -> bool {
         let v = self.un(uid, UN_HAS_HEALTH, tr, 352.0, &[]);
         as_bool(&v)
@@ -2997,6 +3194,18 @@ impl ExecHarness {
         let mut p = evtok(Some(owner));
         p.extend_from_slice(&evtok(Some(target)));
         mk_void(tr, 808.0, &p);
+        // G5j: mutate the grid — reassign every tile owned by the target player.
+        if self.el_map.is_some() {
+            let o_sid = self.pl_peek_small_id(owner).unwrap_or(f64::NAN);
+            let t_sid = self.pl_peek_small_id(target).unwrap_or(f64::NAN);
+            if let Some(map) = self.el_map.as_mut() {
+                for v in map.owners.iter_mut() {
+                    if *v == t_sid {
+                        *v = o_sid;
+                    }
+                }
+            }
+        }
     }
     /// `mg.forEachNeighbor(tile, cb)` — callback form, no return value.
     fn mg_for_each_neighbor(
@@ -3150,6 +3359,213 @@ impl ExecHarness {
     }
     fn pl_add_trade_gold(&mut self, tr: &mut Vec<f64>, tok: usize, gold: f64) {
         self.pl_void(tok, tr, 912.0, &ev1(gold));
+    }
+
+    // ---- G5j facade helpers (`WarshipExecution` / `PlayerExecution`) ----
+
+    // `mg.config().warship*()` — plain numeric getters, no argument prefix.
+    fn mg_warship_passive_healing(&mut self, tr: &mut Vec<f64>) -> f64 {
+        as_num(&mk_take(&mut self.mg, MG_WARSHIP_PASSIVE_HEALING, tr, 930.0, &[]))
+    }
+    fn mg_warship_passive_healing_range(&mut self, tr: &mut Vec<f64>) -> f64 {
+        as_num(&mk_take(&mut self.mg, MG_WARSHIP_PASSIVE_HEALING_RANGE, tr, 931.0, &[]))
+    }
+    fn mg_warship_retreat_health_percent(&mut self, tr: &mut Vec<f64>) -> f64 {
+        as_num(&mk_take(&mut self.mg, MG_WARSHIP_RETREAT_HEALTH_PERCENT, tr, 932.0, &[]))
+    }
+    fn mg_warship_targetting_range(&mut self, tr: &mut Vec<f64>) -> f64 {
+        as_num(&mk_take(&mut self.mg, MG_WARSHIP_TARGETTING_RANGE, tr, 933.0, &[]))
+    }
+    fn mg_warship_patrol_range(&mut self, tr: &mut Vec<f64>) -> f64 {
+        as_num(&mk_take(&mut self.mg, MG_WARSHIP_PATROL_RANGE, tr, 934.0, &[]))
+    }
+    fn mg_warship_docking_range(&mut self, tr: &mut Vec<f64>) -> f64 {
+        as_num(&mk_take(&mut self.mg, MG_WARSHIP_DOCKING_RANGE, tr, 935.0, &[]))
+    }
+    fn mg_warship_port_healing_bonus(&mut self, tr: &mut Vec<f64>) -> f64 {
+        as_num(&mk_take(&mut self.mg, MG_WARSHIP_PORT_HEALING_BONUS, tr, 936.0, &[]))
+    }
+    fn mg_warship_port_switch_threshold(&mut self, tr: &mut Vec<f64>) -> f64 {
+        as_num(&mk_take(&mut self.mg, MG_WARSHIP_PORT_SWITCH_THRESHOLD, tr, 937.0, &[]))
+    }
+    fn mg_warship_shell_attack_rate(&mut self, tr: &mut Vec<f64>) -> f64 {
+        as_num(&mk_take(&mut self.mg, MG_WARSHIP_SHELL_ATTACK_RATE, tr, 938.0, &[]))
+    }
+    /// `performance.now()` — patched to the scripted mg slot 111 for class 42.
+    fn mg_perf_now(&mut self, tr: &mut Vec<f64>) -> f64 {
+        as_num(&mk_take(&mut self.mg, MG_PERF_NOW, tr, 942.0, &[]))
+    }
+    /// `mg.config().troopIncreaseRate(player)`.
+    fn mg_troop_increase_rate(&mut self, tr: &mut Vec<f64>, p: usize) -> f64 {
+        as_num(&mk_take(&mut self.mg, MG_TROOP_INCREASE_RATE, tr, 946.0, &evtok(Some(p))))
+    }
+    /// `mg.config().goldAdditionRate(player)`.
+    fn mg_gold_addition_rate(&mut self, tr: &mut Vec<f64>, p: usize) -> f64 {
+        as_num(&mk_take(&mut self.mg, MG_GOLD_ADDITION_RATE, tr, 947.0, &evtok(Some(p))))
+    }
+    /// `mg.config().temporaryEmbargoDuration()`.
+    fn mg_temporary_embargo_duration(&mut self, tr: &mut Vec<f64>) -> f64 {
+        as_num(&mk_take(&mut self.mg, MG_TEMPORARY_EMBARGO_DURATION, tr, 948.0, &[]))
+    }
+    /// `mg.stats().recordDeathPosition(player, pos)`.
+    fn mg_stats_record_death_position(&mut self, tr: &mut Vec<f64>, p: usize, pos: f64) {
+        let mut e = evtok(Some(p));
+        e.extend_from_slice(&ev1(pos));
+        mk_void(tr, 943.0, &e);
+    }
+    /// `mg.stats().playerKilled(player, ticks)`.
+    fn mg_stats_player_killed(&mut self, tr: &mut Vec<f64>, p: usize, ticks: f64) {
+        let mut e = evtok(Some(p));
+        e.extend_from_slice(&ev1(ticks));
+        mk_void(tr, 944.0, &e);
+    }
+    /// `mg.stats().goldWork(player, gold)`.
+    fn mg_stats_gold_work(&mut self, tr: &mut Vec<f64>, p: usize, gold: f64) {
+        let mut e = evtok(Some(p));
+        e.extend_from_slice(&ev1(gold));
+        mk_void(tr, 945.0, &e);
+    }
+    /// The scripted `smallID` (player slot 0, first value) WITHOUT consuming it —
+    /// the G5j grid mutation (`conquer` / `conquerPlayer`) needs the raw smallID.
+    fn pl_peek_small_id(&self, tok: usize) -> Option<f64> {
+        self.players
+            .get(tok)
+            .and_then(|m| m.slots.get(PL_SMALL_ID))
+            .and_then(|s| s.vals.first())
+            .map(as_num)
+    }
+    /// `player.inDoomsdayClock()`.
+    fn pl_in_doomsday_clock(&mut self, tr: &mut Vec<f64>, tok: usize) -> bool {
+        as_bool(&self.pl(tok, PL_IN_DOOMSDAY_CLOCK, tr, 940.0, &[]))
+    }
+    /// `player.captureUnit(unit)` (void).
+    fn pl_capture_unit(&mut self, tr: &mut Vec<f64>, tok: usize, u: usize) {
+        self.pl_void(tok, tr, 941.0, &evtok(Some(u)));
+    }
+    /// `player.decayRelations()` (void).
+    fn pl_decay_relations(&mut self, tr: &mut Vec<f64>, tok: usize) {
+        self.pl_void(tok, tr, 949.0, &[]);
+    }
+    /// `player.removeGold(gold)` (void).
+    fn pl_remove_gold(&mut self, tr: &mut Vec<f64>, tok: usize, gold: f64) {
+        self.pl_void(tok, tr, 950.0, &ev1(gold));
+    }
+    /// `player.removeAllAlliances()` (void).
+    fn pl_remove_all_alliances(&mut self, tr: &mut Vec<f64>, tok: usize) {
+        self.pl_void(tok, tr, 951.0, &[]);
+    }
+    /// `player.lastTileChange()`.
+    fn pl_last_tile_change(&mut self, tr: &mut Vec<f64>, tok: usize) -> f64 {
+        as_num(&self.pl(tok, PL_LAST_TILE_CHANGE, tr, 952.0, &[]))
+    }
+    /// `player.largestClusterBoundingBox = v` — traced as a void with the value
+    /// (`null` clears, otherwise four numbers minx/miny/maxx/maxy).
+    fn pl_set_largest_cluster_bbox(
+        &mut self,
+        tr: &mut Vec<f64>,
+        tok: usize,
+        v: Option<(f64, f64, f64, f64)>,
+    ) {
+        let mut prefix = vec![tok as f64];
+        match v {
+            None => prefix.push(2.0), // null
+            Some((minx, miny, maxx, maxy)) => {
+                prefix.extend_from_slice(&ev1(minx));
+                prefix.extend_from_slice(&ev1(miny));
+                prefix.extend_from_slice(&ev1(maxx));
+                prefix.extend_from_slice(&ev1(maxy));
+            }
+        }
+        mk_void(tr, 953.0, &prefix);
+    }
+    /// `player.alliances()` → alliance token list.
+    fn pl_alliances(&mut self, tr: &mut Vec<f64>, tok: usize) -> Vec<usize> {
+        let v = self.pl(tok, PL_ALLIANCES, tr, 954.0, &[]);
+        as_tok_list(&v)
+    }
+    /// `player.getEmbargoes()` → `[{isTemporary, createdAt, target}]` (target is
+    /// a player token).
+    fn pl_get_embargoes(&mut self, tr: &mut Vec<f64>, tok: usize) -> Vec<(bool, f64, usize)> {
+        let v = self.pl(tok, PL_GET_EMBARGOES, tr, 955.0, &[]);
+        match v {
+            JsVal::Arr(items) => items
+                .iter()
+                .map(|it| {
+                    (
+                        val_field(it, "isTemporary").map(as_bool).unwrap_or(false),
+                        val_field(it, "createdAt").map(as_num).unwrap_or(f64::NAN),
+                        val_field(it, "target").map(as_num).unwrap_or(f64::NAN) as usize,
+                    )
+                })
+                .collect(),
+            _ => Vec::new(),
+        }
+    }
+    /// `alliance.expiresAt()`.
+    fn al_expires_at(&mut self, tr: &mut Vec<f64>, aid: usize) -> f64 {
+        as_num(&self.al(aid, AL_EXPIRES_AT, tr, 956.0, &[]))
+    }
+    /// `alliance.expire()` (void).
+    fn al_expire(&mut self, tr: &mut Vec<f64>, aid: usize) {
+        self.al_void(aid, tr, 957.0, &[]);
+    }
+    /// `unit.warshipState()` — the scripted `{state, patrolTile?, retreatPort?, isInCombat?}`.
+    fn un_warship_state(&mut self, tr: &mut Vec<f64>, uid: usize) -> JsVal {
+        self.un(uid, UN_WARSHIP_STATE, tr, 928.0, &[])
+    }
+    /// `unit.recordTradeCapture()` (void).
+    fn un_record_trade_capture(&mut self, tr: &mut Vec<f64>, uid: usize) {
+        mk_void(tr, 929.0, &[uid as f64]);
+    }
+    /// `unit.isSafeFromPirates()`.
+    fn un_is_safe_from_pirates(&mut self, tr: &mut Vec<f64>, uid: usize) -> bool {
+        as_bool(&self.un(uid, UN_IS_SAFE_FROM_PIRATES, tr, 939.0, &[]))
+    }
+    /// `unit.updateWarshipState(state)` with a generic state object.
+    fn un_update_warship_state_obj(&mut self, tr: &mut Vec<f64>, uid: usize, state: &JsVal) {
+        let mut prefix = vec![uid as f64];
+        prefix.extend_from_slice(&ev_enc(state));
+        mk_void(tr, 342.0, &prefix);
+    }
+    /// `unit.delete(flag, captor)` with the optional captor player token.
+    fn un_delete_captor(&mut self, tr: &mut Vec<f64>, uid: usize, flag: bool, captor: Option<usize>) {
+        let mut prefix = vec![uid as f64];
+        prefix.extend_from_slice(&evb(flag));
+        if let Some(c) = captor {
+            prefix.extend_from_slice(&evtok(Some(c)));
+        }
+        mk_void(tr, 285.0, &prefix);
+    }
+    /// `mg.nearbyUnits(tile, outer, types)` — non-callback form whose script
+    /// entries may be plain tokens (legacy) or `{u, d2}` objects
+    /// (`{unit, distSquared}` — `WarshipExecution.findBestTarget` reads both).
+    fn mg_nearby_units_d2(
+        &mut self,
+        tr: &mut Vec<f64>,
+        tile: f64,
+        outer: f64,
+        types: &[String],
+    ) -> Vec<(usize, f64)> {
+        let mut prefix = ev1(tile);
+        prefix.extend_from_slice(&ev1(outer));
+        prefix.extend_from_slice(&ev_strs(types));
+        let v = mk_take(&mut self.mg, MG_NEARBY_UNITS, tr, 306.0, &prefix);
+        match v {
+            JsVal::Arr(items) => items
+                .iter()
+                .filter_map(|it| {
+                    if let JsVal::Obj(_) = it {
+                        let u = val_field(it, "u").map(as_num).unwrap_or(f64::NAN);
+                        let d2 = val_field(it, "d2").map(as_num).unwrap_or(f64::NAN);
+                        if u.is_nan() { None } else { Some((u as usize, d2)) }
+                    } else {
+                        let t = as_opt_tok(it)?;
+                        Some((t, f64::NAN))
+                    }
+                })
+                .collect(),
+            _ => Vec::new(),
+        }
     }
     /// `mg.addExecution(new AttackExecution(...))` (tag 16).
     #[allow(clippy::too_many_arguments)]
@@ -3577,6 +3993,11 @@ impl ExecHarness {
                 tiles: val_field(r, "tiles").map(as_arr_nums).unwrap_or_default(),
             })
             .collect();
+        // G5j: the map grid data is passed through verbatim.
+        self.el_map = val_field(&v, "map").map(ElMap::from_val);
+        if let Some(ref map) = self.el_map {
+            self.el_scratch.ensure_capacity((map.w * map.h) as usize);
+        }
 
         let n = |k: usize| -> f64 { ctor.get(k).map(as_num).unwrap_or(f64::NAN) };
         match self.class_id {
@@ -3892,6 +4313,31 @@ impl ExecHarness {
                 self.tex_path_index = 0.0;
                 self.mg_ready = false;
             }
+            41 => {
+                // WarshipExecution(input: (UnitParams & OwnerComp) | Unit).
+                // Scenarios pass `elUnitRef(0)` → the warship unit token.
+                self.a_tok = n(0) as usize;
+                self.ws_warship = None;
+                self.last_manual_move_tick_retreat_disabled = 0.0;
+                self.last_observed_patrol_tile = None;
+                self.active_healing_remainder = 0.0;
+                self.last_emitted_combat = false;
+                self.ws_random = None;
+                self.last_shell_attack = 0.0;
+                self.already_sent_shell = Vec::new();
+                self.flag = true;
+                self.mg_ready = false;
+            }
+            42 => {
+                // PlayerExecution(player). NOTE: the optional `spec.map` grid was
+                // parsed during harness setup (before `construct`), so the arm
+                // must NOT reset `el_map` / `el_scratch` here.
+                self.pe_player = n(0) as usize;
+                self.pe_active = true;
+                self.last_calc = 0.0;
+                self.nbuf = [0.0; 4];
+                self.nbuf8 = [0.0; 8];
+            }
             _ => {}
         }
     }
@@ -4001,6 +4447,8 @@ impl ExecHarness {
             38 => self.trade_ship_execution(kind, ticks, tr),
             39 => self.train_station_execution(kind, ticks, tr),
             40 => self.train_execution(kind, ticks, tr),
+            41 => self.warship_execution(kind, ticks, tr),
+            42 => self.player_execution(kind, ticks, tr),
             k => unreachable!("exec harness: unknown class id {k}"),
         }
     }
@@ -5621,7 +6069,8 @@ impl ExecHarness {
                     ],
                 );
                 self.flag = false;
-                self.un_delete(tr, target, true);
+                // `target.delete(true, this._owner)` — captor = the SAM owner.
+                self.un_delete_captor(tr, target, true, Some(self.a_tok));
                 self.un_delete(tr, sm, false);
                 // `this.mg.stats().bombIntercept(...)` — `stats()` itself is not
                 // traced; only the `bombIntercept` call (code 524) is.
@@ -9746,6 +10195,1859 @@ impl ExecHarness {
         if station_type == UNIT_CITY || station_type == UNIT_PORT {
             self.tex_trade_stops += 1.0;
         }
+    }
+
+    // ---- G5j: `WarshipExecution` (class 41) ---------------------------------
+
+    fn warship_execution(
+        &mut self,
+        kind: u8,
+        _ticks: f64,
+        tr: &mut Vec<f64>,
+    ) -> Result<JsVal, String> {
+        match kind {
+            // `isActive()` — `this.warship?.isActive()` (undefined before init).
+            3 => {
+                return Ok(match self.ws_warship {
+                    Some(w) => JsVal::Bool(self.un_is_active(tr, w)), // 280
+                    None => JsVal::Undef,
+                });
+            }
+            // `activeDuringSpawnPhase()` -> false.
+            4 => return Ok(JsVal::Bool(false)),
+            1 => {
+                self.ws_init(tr);
+                return Ok(JsVal::Undef);
+            }
+            2 => {}
+            _ => return Ok(JsVal::Undef),
+        }
+        self.ws_tick(tr);
+        Ok(JsVal::Undef)
+    }
+
+    /// `init(mg, ticks)`: seed the PRNG from `mg.ticks()` (212), then the
+    /// `isUnit(input)` branch (737). The params-ctor path is dead in the
+    /// capture (every scenario passes `elUnitRef(0)`), so a non-unit input
+    /// leaves `ws_warship` unset and every later op is a no-op.
+    fn ws_init(&mut self, tr: &mut Vec<f64>) {
+        let seed = self.mg_ticks(tr); // 212
+        self.ws_random = Some(PseudoRandom::new(seed));
+        if self.un_is_unit(tr, self.a_tok) {
+            // 737
+            self.ws_warship = Some(self.a_tok);
+        }
+        if let Some(w) = self.ws_warship {
+            let state = self.un_warship_state(tr, w); // 928
+            self.last_observed_patrol_tile = as_opt_num(val_field(&state, "patrolTile"));
+        }
+    }
+
+    /// `tick(ticks)`.
+    fn ws_tick(&mut self, tr: &mut Vec<f64>) {
+        let w = match self.ws_warship {
+            Some(w) => w,
+            None => return, // dead params-ctor path
+        };
+        if self.un_health(tr, w) <= 0.0 {
+            // 621
+            self.un_delete(tr, w, false); // 285 — `warship.delete()`
+            return;
+        }
+        let state = self.un_warship_state(tr, w); // 928
+        let is_in_combat = val_field(&state, "isInCombat").map(as_bool).unwrap_or(false);
+        if self.last_emitted_combat && !is_in_combat {
+            self.un_touch(tr, w); // 736
+        }
+        self.last_emitted_combat = is_in_combat;
+        let health_before_healing = self.un_health(tr, w); // 621
+
+        self.ws_heal_warship(tr);
+        self.ws_handle_manual_patrol_override(tr);
+
+        // A doomed side cannot repair its navy: undock / abort any retreat.
+        let owner = self.un_owner(tr, w); // 286
+        let doomed = match owner {
+            Some(o) => self.pl_in_doomsday_clock(tr, o), // 940
+            None => false,
+        };
+        if doomed {
+            let state = self.un_warship_state(tr, w); // 928
+            if g5j_ws_state(&state) != "patrolling" {
+                self.ws_cancel_repair_retreat(tr, true);
+            }
+        }
+
+        let state = self.un_warship_state(tr, w); // 928
+        if g5j_ws_state(&state) == "docked" {
+            if self.ws_current_retreat_port(tr).is_none() {
+                self.ws_cancel_repair_retreat(tr, true);
+            }
+            if self.ws_is_fully_healed(tr) {
+                self.ws_cancel_repair_retreat(tr, true);
+            }
+            let state = self.un_warship_state(tr, w); // 928
+            if g5j_ws_state(&state) == "docked" {
+                return;
+            }
+        }
+
+        if self.ws_handle_repair_retreat(tr) {
+            return;
+        }
+
+        // Priority 1: heal before doing anything else.
+        if self.ws_should_start_repair_retreat(tr, health_before_healing) {
+            self.ws_start_repair_retreat(tr);
+            if self.ws_handle_repair_retreat(tr) {
+                return;
+            }
+        }
+
+        let target = self.ws_find_best_target(
+            tr,
+            &[UNIT_TRANSPORT_SHIP, UNIT_WARSHIP, UNIT_TRADE_SHIP],
+            true,
+        );
+        self.un_set_target_unit(tr, w, target); // 914
+
+        // Priorities 1/2/3 — each guard re-reads `targetUnit()?.type()`.
+        let ty = match self.un_target_unit(tr, w) {
+            // 735
+            Some(t) => self.un_type(tr, t), // 283
+            None => String::new(),
+        };
+        if ty == UNIT_TRANSPORT_SHIP {
+            self.ws_shoot_target(tr);
+            self.ws_patrol(tr);
+            return;
+        }
+        let ty = match self.un_target_unit(tr, w) {
+            Some(t) => self.un_type(tr, t),
+            None => String::new(),
+        };
+        if ty == UNIT_WARSHIP {
+            self.ws_shoot_target(tr);
+            self.ws_patrol(tr);
+            return;
+        }
+        let ty = match self.un_target_unit(tr, w) {
+            Some(t) => self.un_type(tr, t),
+            None => String::new(),
+        };
+        if ty == UNIT_TRADE_SHIP {
+            self.ws_hunt_down_trade_ship(tr);
+            return;
+        }
+        self.ws_patrol(tr);
+    }
+
+    /// `healWarship()`.
+    fn ws_heal_warship(&mut self, tr: &mut Vec<f64>) {
+        let w = self.ws_warship.unwrap();
+        let owner = match self.un_owner(tr, w) {
+            // 286
+            Some(o) => o,
+            None => return,
+        };
+        if self.pl_in_doomsday_clock(tr, owner) {
+            // 940
+            return;
+        }
+        let passive_healing = self.mg_warship_passive_healing(tr); // 930
+        let range = self.mg_warship_passive_healing_range(tr); // 931
+        let range_sq = range * range;
+        let warship_tile = self.un_tile(tr, w); // 344
+        let ports = self.pl_units(tr, owner, &[UNIT_PORT.to_string()]); // 241
+        let mut is_near_port = false;
+        for port in ports {
+            let port_tile = self.un_tile(tr, port); // 344
+            let d2 = self.mg_euclidean_dist_squared(tr, warship_tile, port_tile); // 710
+            if d2 <= range_sq {
+                is_near_port = true;
+                break;
+            }
+        }
+        if is_near_port {
+            self.un_modify_health(tr, w, passive_healing, None); // 543
+        }
+        let state = self.un_warship_state(tr, w); // 928
+        if g5j_ws_state(&state) == "docked" {
+            self.ws_apply_active_docked_healing(tr);
+        }
+    }
+
+    /// `isFullyHealed()`.
+    fn ws_is_fully_healed(&mut self, tr: &mut Vec<f64>) -> bool {
+        let w = self.ws_warship.unwrap();
+        if !self.un_has_health(tr, w) {
+            // 352
+            return true;
+        }
+        self.un_health(tr, w) >= self.un_max_health(tr, w) // 621, 620
+    }
+
+    /// `handleManualPatrolOverride()`.
+    fn ws_handle_manual_patrol_override(&mut self, tr: &mut Vec<f64>) {
+        let w = self.ws_warship.unwrap();
+        let state = self.un_warship_state(tr, w); // 928
+        let patrol_tile = as_opt_num(val_field(&state, "patrolTile"));
+        let changed = match self.last_observed_patrol_tile {
+            Some(last) => patrol_tile != Some(last), // JS `!==` (undefined ≠ number)
+            None => false,
+        };
+        if changed {
+            self.last_manual_move_tick_retreat_disabled = self.mg_ticks(tr); // 212
+            let state = self.un_warship_state(tr, w); // 928
+            if g5j_ws_state(&state) != "patrolling" {
+                self.ws_cancel_repair_retreat(tr, false);
+            }
+        }
+        self.last_observed_patrol_tile = patrol_tile;
+    }
+
+    /// `cancelRepairRetreat(clearTargetTile)` — the 342 object keeps the TS key
+    /// order `state` then `retreatPort`.
+    fn ws_cancel_repair_retreat(&mut self, tr: &mut Vec<f64>, clear_target_tile: bool) {
+        let w = self.ws_warship.unwrap();
+        self.active_healing_remainder = 0.0;
+        self.un_update_warship_state_obj(
+            tr,
+            w,
+            &JsVal::Obj(vec![
+                ("state".to_string(), JsVal::Str("patrolling".to_string())),
+                ("retreatPort".to_string(), JsVal::Undef),
+            ]),
+        ); // 342
+        if clear_target_tile {
+            self.un_set_target_tile(tr, w); // 343 — undefined
+        }
+    }
+
+    /// `shouldStartRepairRetreat(healthBeforeHealing)`.
+    fn ws_should_start_repair_retreat(&mut self, tr: &mut Vec<f64>, health_before: f64) -> bool {
+        let w = self.ws_warship.unwrap();
+        let state = self.un_warship_state(tr, w); // 928
+        if g5j_ws_state(&state) != "patrolling" {
+            return false;
+        }
+        let owner = match self.un_owner(tr, w) {
+            // 286
+            Some(o) => o,
+            None => return false,
+        };
+        if self.pl_in_doomsday_clock(tr, owner) {
+            // 940
+            return false;
+        }
+        let ticks = self.mg_ticks(tr); // 212
+        if ticks - self.last_manual_move_tick_retreat_disabled < 50.0 {
+            return false;
+        }
+        let max_health = self.un_max_health(tr, w); // 620
+        let pct = self.mg_warship_retreat_health_percent(tr); // 932
+        let retreat_threshold = (max_health * pct / 100.0).floor();
+        if health_before >= retreat_threshold {
+            return false;
+        }
+        let owner = match self.un_owner(tr, w) {
+            // 286 — `this.warship.owner()` is read again for `units`.
+            Some(o) => o,
+            None => return false,
+        };
+        !self.pl_units(tr, owner, &[UNIT_PORT.to_string()]).is_empty() // 241
+    }
+
+    /// `findNearestPort()` — `findMinimumBy` checks the candidate predicate
+    /// first, then the score, keeping the strict-`<` first-minimum.
+    fn ws_find_nearest_port(&mut self, tr: &mut Vec<f64>) -> Option<f64> {
+        let w = self.ws_warship.unwrap();
+        let owner = self.un_owner(tr, w)?; // 286
+        let ports = self.pl_units(tr, owner, &[UNIT_PORT.to_string()]); // 241
+        if ports.is_empty() {
+            return None;
+        }
+        let warship_tile = self.un_tile(tr, w); // 344
+        let warship_comp = self.mg_get_water_component(tr, warship_tile); // 301
+        // TS throws when the warship has no water component; unreached here.
+        let mut best: Option<(usize, f64)> = None;
+        for port in ports {
+            let port_tile = self.un_tile(tr, port); // 344 (candidate closure)
+            let port_comp = self.mg_get_water_component(tr, port_tile); // 301
+            if !g5j_js_eq(&port_comp, &warship_comp) {
+                continue;
+            }
+            let port_tile = self.un_tile(tr, port); // 344 (score closure)
+            let score = self.mg_euclidean_dist_squared(tr, warship_tile, port_tile); // 710
+            if best.is_none_or(|(_, bs)| score < bs) {
+                best = Some((port, score));
+            }
+        }
+        best.map(|(p, _)| self.un_tile(tr, p)) // 344 — `nearest?.tile()`
+    }
+
+    /// `startRepairRetreat()` — the 342 object keeps the TS key order
+    /// `retreatPort` then `state`.
+    fn ws_start_repair_retreat(&mut self, tr: &mut Vec<f64>) {
+        let w = self.ws_warship.unwrap();
+        let port_tile = match self.ws_find_nearest_port(tr) {
+            Some(t) => t,
+            None => return,
+        };
+        self.un_update_warship_state_obj(
+            tr,
+            w,
+            &JsVal::Obj(vec![
+                ("retreatPort".to_string(), JsVal::Num(port_tile)),
+                ("state".to_string(), JsVal::Str("retreating".to_string())),
+            ]),
+        ); // 342
+        self.active_healing_remainder = 0.0;
+        self.un_set_target_unit(tr, w, None); // 914
+    }
+
+    /// `handleRepairRetreat()`.
+    fn ws_handle_repair_retreat(&mut self, tr: &mut Vec<f64>) -> bool {
+        let w = self.ws_warship.unwrap();
+        let state = self.un_warship_state(tr, w); // 928
+        if g5j_ws_state(&state) == "patrolling" {
+            return false;
+        }
+
+        // Fire back at a transport / warship while retreating.
+        let aggro = self.ws_find_best_target(tr, &[UNIT_TRANSPORT_SHIP, UNIT_WARSHIP], false);
+        if aggro.is_some() {
+            self.un_set_target_unit(tr, w, aggro); // 914
+            self.ws_shoot_target(tr);
+        }
+
+        if !self.ws_refresh_retreat_port_tile(tr) {
+            self.ws_cancel_repair_retreat(tr, true);
+            return false;
+        }
+
+        // Only clear the target when there's no active aggro target this tick.
+        if aggro.is_none() {
+            self.un_set_target_unit(tr, w, None); // 914
+        }
+
+        let state = self.un_warship_state(tr, w); // 928
+        let retreat_port = match as_opt_num(val_field(&state, "retreatPort")) {
+            Some(t) => t,
+            None => return false,
+        };
+
+        let docking_radius = self.mg_warship_docking_range(tr); // 935
+        let docking_radius_sq = docking_radius * docking_radius;
+        let warship_tile = self.un_tile(tr, w); // 344
+        let dist_to_port = self.mg_euclidean_dist_squared(tr, warship_tile, retreat_port); // 710
+
+        if dist_to_port <= docking_radius_sq {
+            // In range — dock if the port still has healing capacity.
+            let owner = self.un_owner(tr, w); // 286
+            let ports = match owner {
+                Some(o) => self.pl_units(tr, o, &[UNIT_PORT.to_string()]), // 241
+                None => Vec::new(),
+            };
+            let mut port_at: Option<usize> = None;
+            for p in ports {
+                let pt = self.un_tile(tr, p); // 344 — `ports.find(...)`
+                if pt == retreat_port {
+                    port_at = Some(p);
+                    break;
+                }
+            }
+            let mut docked = false;
+            if let Some(port) = port_at {
+                if !self.ws_is_port_full_of_healing(tr, port, Some(w)) {
+                    self.un_set_target_tile(tr, w); // 343 — undefined
+                    self.un_update_warship_state_obj(
+                        tr,
+                        w,
+                        &JsVal::Obj(vec![(
+                            "state".to_string(),
+                            JsVal::Str("docked".to_string()),
+                        )]),
+                    ); // 342
+                    docked = true;
+                }
+            }
+            if docked {
+                return true;
+            }
+            // Port full — wait near the port, but leave once fully healed.
+            if self.ws_is_fully_healed(tr) {
+                self.ws_cancel_repair_retreat(tr, true);
+                return false;
+            }
+            return true;
+        }
+
+        self.un_set_target_tile_num(tr, w, retreat_port); // 343 — number
+        let warship_tile = self.un_tile(tr, w); // 344
+        let result = self.mg_water_next(tr, warship_tile, retreat_port); // 862
+        let status = val_field(&result, "status").map(as_num).unwrap_or(f64::NAN);
+        let node = val_field(&result, "node").cloned().unwrap_or(JsVal::Null);
+        match status as i32 {
+            2 => {
+                // PathStatus.COMPLETE
+                self.un_move(tr, w, &node); // 545
+                if let JsVal::Num(n) = node {
+                    if n == retreat_port {
+                        self.un_set_target_tile(tr, w); // 343 — undefined
+                    }
+                }
+            }
+            0 => {
+                // PathStatus.NEXT
+                self.un_move(tr, w, &node); // 545
+            }
+            3 => {
+                // PathStatus.NOT_FOUND
+                let new_port = self.ws_find_nearest_available_port_tile(tr);
+                self.un_update_warship_state_obj(
+                    tr,
+                    w,
+                    &JsVal::Obj(vec![match new_port {
+                        Some(t) => ("retreatPort".to_string(), JsVal::Num(t)),
+                        None => ("retreatPort".to_string(), JsVal::Undef),
+                    }]),
+                ); // 342
+                if new_port.is_none() {
+                    self.ws_cancel_repair_retreat(tr, true);
+                }
+            }
+            _ => {}
+        }
+        true
+    }
+
+    /// `refreshRetreatPortTile()`.
+    fn ws_refresh_retreat_port_tile(&mut self, tr: &mut Vec<f64>) -> bool {
+        let w = self.ws_warship.unwrap();
+        let owner = match self.un_owner(tr, w) {
+            // 286
+            Some(o) => o,
+            None => return false,
+        };
+        let ports = self.pl_units(tr, owner, &[UNIT_PORT.to_string()]); // 241
+        if ports.is_empty() {
+            return false;
+        }
+        let state = self.un_warship_state(tr, w); // 928
+        let current = as_opt_num(val_field(&state, "retreatPort"));
+        let mut current_exists = false;
+        if let Some(cur) = current {
+            for &p in &ports {
+                let pt = self.un_tile(tr, p); // 344 — `ports.some(...)`
+                if pt == cur {
+                    current_exists = true;
+                    break;
+                }
+            }
+        }
+        if !current_exists {
+            let new_port = self.ws_find_nearest_available_port_tile(tr);
+            self.un_update_warship_state_obj(
+                tr,
+                w,
+                &JsVal::Obj(vec![match new_port {
+                    Some(t) => ("retreatPort".to_string(), JsVal::Num(t)),
+                    None => ("retreatPort".to_string(), JsVal::Undef),
+                }]),
+            ); // 342
+            return new_port.is_some();
+        }
+        let cur = current.unwrap();
+        let mut current_port: Option<usize> = None;
+        for &p in &ports {
+            let pt = self.un_tile(tr, p); // 344 — `ports.find(...)`
+            if pt == cur {
+                current_port = Some(p);
+                break;
+            }
+        }
+        if let Some(port) = current_port {
+            if self.ws_is_port_full_of_healing(tr, port, None) {
+                // At healing capacity — look for an alternative.
+                if let Some(alt) = self.ws_find_nearest_available_port(tr) {
+                    self.un_update_warship_state_obj(
+                        tr,
+                        w,
+                        &JsVal::Obj(vec![("retreatPort".to_string(), JsVal::Num(alt))]),
+                    ); // 342
+                }
+                let state = self.un_warship_state(tr, w); // 928
+                return as_opt_num(val_field(&state, "retreatPort")).is_some();
+            }
+        }
+        if let Some(closer) = self.ws_find_better_port_tile(tr) {
+            if closer != cur {
+                self.un_update_warship_state_obj(
+                    tr,
+                    w,
+                    &JsVal::Obj(vec![("retreatPort".to_string(), JsVal::Num(closer))]),
+                ); // 342
+                return true;
+            }
+        }
+        true
+    }
+
+    /// `isPortFullOfHealing(port, excludeShip?)` — `level()` (540) is read
+    /// BEFORE `dockedShipsAtPort`.
+    fn ws_is_port_full_of_healing(
+        &mut self,
+        tr: &mut Vec<f64>,
+        port: usize,
+        exclude: Option<usize>,
+    ) -> bool {
+        let max_ships = self.un_level(tr, port); // 540
+        let docked = self.ws_docked_ships_at_port(tr, port, exclude);
+        docked.len() as f64 >= max_ships
+    }
+
+    /// `dockedShipsAtPort(port, excludeShip?)`.
+    fn ws_docked_ships_at_port(
+        &mut self,
+        tr: &mut Vec<f64>,
+        port: usize,
+        exclude: Option<usize>,
+    ) -> Vec<usize> {
+        let w = self.ws_warship.unwrap();
+        let docking_radius = self.mg_warship_docking_range(tr); // 935
+        let owner = self.un_owner(tr, w); // 286
+        let port_tile = self.un_tile(tr, port); // 344
+        let ships =
+            self.mg_nearby_units_d2(tr, port_tile, docking_radius, &[UNIT_WARSHIP.to_string()]); // 306
+        let mut out = Vec::new();
+        for (ship, _d2) in ships {
+            if exclude == Some(ship) {
+                continue;
+            }
+            if self.un_owner(tr, ship) != owner {
+                // 286
+                continue;
+            }
+            let state = self.un_warship_state(tr, ship); // 928
+            if g5j_ws_state(&state) == "patrolling" {
+                continue;
+            }
+            if self.un_target_tile(tr, ship).is_some() {
+                // 282
+                continue;
+            }
+            out.push(ship);
+        }
+        out
+    }
+
+    /// `applyActiveDockedHealing()` (only reachable while docked).
+    fn ws_apply_active_docked_healing(&mut self, tr: &mut Vec<f64>) {
+        let w = self.ws_warship.unwrap();
+        let docked_port = match self.ws_current_retreat_port(tr) {
+            Some(p) => p,
+            None => return,
+        };
+        let docked_ships = self.ws_docked_ships_at_port(tr, docked_port, None);
+        if !docked_ships.contains(&w) {
+            return;
+        }
+        let level = self.un_level(tr, docked_port); // 540
+        let bonus = self.mg_warship_port_healing_bonus(tr); // 936
+        let healing_pool = level * bonus;
+        if healing_pool <= 0.0 || docked_ships.is_empty() {
+            return;
+        }
+        // Preserve the fractional split healing with a per-ship remainder.
+        let active_healing = healing_pool / docked_ships.len() as f64;
+        self.active_healing_remainder += active_healing;
+        let integer_healing = self.active_healing_remainder.floor();
+        if integer_healing <= 0.0 {
+            return;
+        }
+        self.active_healing_remainder -= integer_healing;
+        self.un_modify_health(tr, w, integer_healing, None); // 543
+    }
+
+    /// `currentRetreatPort()`.
+    fn ws_current_retreat_port(&mut self, tr: &mut Vec<f64>) -> Option<usize> {
+        let w = self.ws_warship.unwrap();
+        let state = self.un_warship_state(tr, w); // 928
+        let retreat_port = as_opt_num(val_field(&state, "retreatPort"))?;
+        let owner = self.un_owner(tr, w)?; // 286
+        let ports = self.pl_units(tr, owner, &[UNIT_PORT.to_string()]); // 241
+        for p in ports {
+            let pt = self.un_tile(tr, p); // 344
+            if pt == retreat_port {
+                return Some(p);
+            }
+        }
+        None
+    }
+
+    /// `nearestAvailablePortTile(excludeShip?)` → `{tile, distSquared}`.
+    fn ws_nearest_available_port_tile(
+        &mut self,
+        tr: &mut Vec<f64>,
+        exclude: Option<usize>,
+    ) -> Option<(f64, f64)> {
+        let w = self.ws_warship.unwrap();
+        let owner = self.un_owner(tr, w)?; // 286
+        let ports = self.pl_units(tr, owner, &[UNIT_PORT.to_string()]); // 241
+        let warship_tile = self.un_tile(tr, w); // 344
+        let warship_comp = self.mg_get_water_component(tr, warship_tile); // 301
+        let mut best_tile: Option<f64> = None;
+        let mut best_dist = f64::INFINITY;
+        for port in ports {
+            if self.ws_is_port_full_of_healing(tr, port, exclude) {
+                continue;
+            }
+            let port_tile = self.un_tile(tr, port); // 344
+            if !self.mg_has_water_component(tr, port_tile, &warship_comp) {
+                // 302
+                continue;
+            }
+            let dist = self.mg_euclidean_dist_squared(tr, warship_tile, port_tile); // 710
+            if dist < best_dist {
+                best_dist = dist;
+                best_tile = Some(port_tile);
+            }
+        }
+        best_tile.map(|t| (t, best_dist))
+    }
+
+    /// `findNearestAvailablePort()`.
+    fn ws_find_nearest_available_port(&mut self, tr: &mut Vec<f64>) -> Option<f64> {
+        self.ws_nearest_available_port_tile(tr, None).map(|(t, _)| t)
+    }
+
+    /// `findNearestAvailablePortTile()` (excludes this warship from the
+    /// port-capacity check).
+    fn ws_find_nearest_available_port_tile(&mut self, tr: &mut Vec<f64>) -> Option<f64> {
+        let w = self.ws_warship.unwrap();
+        self.ws_nearest_available_port_tile(tr, Some(w)).map(|(t, _)| t)
+    }
+
+    /// `findBetterPortTile()`.
+    fn ws_find_better_port_tile(&mut self, tr: &mut Vec<f64>) -> Option<f64> {
+        let w = self.ws_warship.unwrap();
+        let (tile, dist_sq) = self.ws_nearest_available_port_tile(tr, None)?;
+        let mut current_distance = f64::INFINITY;
+        let state = self.un_warship_state(tr, w); // 928
+        if let Some(cur) = as_opt_num(val_field(&state, "retreatPort")) {
+            let warship_tile = self.un_tile(tr, w); // 344
+            current_distance = self.mg_euclidean_dist_squared(tr, warship_tile, cur); // 710
+        }
+        let threshold = self.mg_warship_port_switch_threshold(tr); // 937
+        if dist_sq < current_distance * threshold {
+            return Some(tile);
+        }
+        None
+    }
+
+    /// `findBestTarget(types, includeTradeShips)`.
+    fn ws_find_best_target(
+        &mut self,
+        tr: &mut Vec<f64>,
+        types: &[&str],
+        include_trade_ships: bool,
+    ) -> Option<usize> {
+        let w = self.ws_warship.unwrap();
+        let owner = self.un_owner(tr, w); // 286
+        let warship_tile = self.un_tile(tr, w); // 344
+        let range = self.mg_warship_targetting_range(tr); // 933
+        let type_strings: Vec<String> = types.iter().map(|s| s.to_string()).collect();
+        let ships = self.mg_nearby_units_d2(tr, warship_tile, range, &type_strings); // 306
+
+        // Trade-ship-specific state, lazily computed.
+        let mut lazy: Option<(bool, Option<f64>, f64)> = None; // (hasReachablePort, patrolTile, patrolRangeSquared)
+
+        let mut best_unit: Option<usize> = None;
+        let mut best_priority = 0.0;
+        let mut best_dist_sq = 0.0;
+
+        for (unit, d2) in ships {
+            if unit == w {
+                continue;
+            }
+            if self.un_owner(tr, unit) == owner {
+                // 286 — `unit.owner() === owner`
+                continue;
+            }
+            let u_owner = self.un_owner(tr, unit); // 286 — `unit.owner()` again
+            let can_attack = match (owner, u_owner) {
+                (Some(o), Some(uo)) => self.pl_can_attack_player(tr, o, uo), // 820
+                _ => false,
+            };
+            if !can_attack {
+                continue;
+            }
+            if self.already_sent_shell.contains(&unit) {
+                continue;
+            }
+            let ty0 = self.un_type(tr, unit); // 283 — the docked-warship guard
+            if ty0 == UNIT_WARSHIP {
+                let st = self.un_warship_state(tr, unit); // 928
+                if g5j_ws_state(&st) == "docked" {
+                    continue;
+                }
+            }
+
+            let ty = self.un_type(tr, unit); // 283 — `const type = unit.type()`
+
+            if include_trade_ships && ty == UNIT_TRADE_SHIP {
+                if lazy.is_none() {
+                    let wt = self.un_tile(tr, w); // 344
+                    let comp = self.mg_get_water_component(tr, wt); // 301
+                    let reachable = !matches!(comp, JsVal::Null) && {
+                        let ports = match owner {
+                            Some(o) => self.pl_units(tr, o, &[UNIT_PORT.to_string()]), // 241
+                            None => Vec::new(),
+                        };
+                        let mut found = false;
+                        for p in ports {
+                            if !self.un_is_active(tr, p) {
+                                // 280
+                                continue;
+                            }
+                            if self.un_is_marked_for_deletion(tr, p) {
+                                // 913
+                                continue;
+                            }
+                            if self.un_is_under_construction(tr, p) {
+                                // 345
+                                continue;
+                            }
+                            let pt = self.un_tile(tr, p); // 344
+                            if self.mg_has_water_component(tr, pt, &comp) {
+                                // 302
+                                found = true;
+                                break;
+                            }
+                        }
+                        found
+                    };
+                    let state = self.un_warship_state(tr, w); // 928
+                    let patrol_tile = as_opt_num(val_field(&state, "patrolTile"));
+                    let pr = self.mg_warship_patrol_range(tr); // 934
+                    lazy = Some((reachable, patrol_tile, pr * pr));
+                }
+                let (reachable, patrol_tile, patrol_range_sq) = lazy.unwrap();
+                let skip = if !reachable || patrol_tile.is_none() {
+                    true
+                } else if self.un_is_safe_from_pirates(tr, unit) {
+                    // 939
+                    true
+                } else {
+                    // `unit.targetUnit()?.owner() === owner` (None === None too).
+                    let lhs = match self.un_target_unit(tr, unit) {
+                        // 735
+                        Some(t) => self.un_owner(tr, t), // 286
+                        None => None,
+                    };
+                    if lhs == owner {
+                        true
+                    } else {
+                        let rhs = match self.un_target_unit(tr, unit) {
+                            // 735
+                            Some(t) => self.un_owner(tr, t), // 286
+                            None => None,
+                        };
+                        match (rhs, owner) {
+                            (Some(ro), Some(o)) => self.pl_is_friendly(tr, ro, Some(o)), // 242
+                            _ => false,
+                        }
+                    }
+                };
+                if skip {
+                    continue;
+                }
+                let ut = self.un_tile(tr, unit); // 344
+                let d = self.mg_euclidean_dist_squared(tr, patrol_tile.unwrap(), ut); // 710
+                if d > patrol_range_sq {
+                    continue;
+                }
+            }
+
+            let priority = if ty == UNIT_TRANSPORT_SHIP {
+                0.0
+            } else if ty == UNIT_WARSHIP {
+                1.0
+            } else {
+                2.0
+            };
+            let better = match best_unit {
+                None => true,
+                Some(_) => {
+                    priority < best_priority || (priority == best_priority && d2 < best_dist_sq)
+                }
+            };
+            if better {
+                best_unit = Some(unit);
+                best_priority = priority;
+                best_dist_sq = d2;
+            }
+        }
+        best_unit
+    }
+
+    /// `shootTarget()`.
+    fn ws_shoot_target(&mut self, tr: &mut Vec<f64>) {
+        let w = self.ws_warship.unwrap();
+        self.un_update_warship_state_obj(
+            tr,
+            w,
+            &JsVal::Obj(vec![("isInCombat".to_string(), JsVal::Bool(true))]),
+        ); // 342
+        let rate = self.mg_warship_shell_attack_rate(tr); // 938
+        let ticks = self.mg_ticks(tr); // 212
+        if ticks - self.last_shell_attack > rate {
+            let ty = match self.un_target_unit(tr, w) {
+                // 735 — `targetUnit()?.type()`
+                Some(t) => self.un_type(tr, t), // 283
+                None => String::new(),
+            };
+            if ty != UNIT_TRANSPORT_SHIP {
+                // Warships don't need to reload when attacking transport ships.
+                self.last_shell_attack = self.mg_ticks(tr); // 212
+            }
+            let spawn = self.un_tile(tr, w); // 344
+            let owner = self.un_owner(tr, w); // 286
+            let target = self.un_target_unit(tr, w); // 735 — `targetUnit()!`
+            match target {
+                Some(t) => self.mg_add_execution_shell(tr, spawn, owner, w, t), // 307
+                None => {
+                    // `targetUnit()!` resolved to undefined (unreached in the
+                    // capture) — encode the shell record with a Undef target.
+                    tr.push(307.0);
+                    tr.push(TAG_SHELL);
+                    push_val(tr, &JsVal::Num(spawn));
+                    push_val(
+                        tr,
+                        &match owner {
+                            Some(o) => JsVal::Num(o as f64),
+                            None => JsVal::Undef,
+                        },
+                    );
+                    push_val(tr, &JsVal::Num(w as f64));
+                    push_val(tr, &JsVal::Undef);
+                    push_val(tr, &JsVal::Undef);
+                }
+            }
+            let target = self.un_target_unit(tr, w); // 735 — hasHealth check
+            let has_health = match target {
+                Some(t) => self.un_has_health(tr, t), // 352
+                None => false,
+            };
+            if !has_health {
+                // Don't send multiple shells to a target that can be oneshotted.
+                if let Some(t) = self.un_target_unit(tr, w) {
+                    // 735
+                    if !self.already_sent_shell.contains(&t) {
+                        self.already_sent_shell.push(t);
+                    }
+                }
+                self.un_set_target_unit(tr, w, None); // 914
+            }
+        }
+    }
+
+    /// `huntDownTradeShip()`.
+    fn ws_hunt_down_trade_ship(&mut self, tr: &mut Vec<f64>) {
+        let w = self.ws_warship.unwrap();
+        self.un_update_warship_state_obj(
+            tr,
+            w,
+            &JsVal::Obj(vec![("isInCombat".to_string(), JsVal::Bool(true))]),
+        ); // 342
+        for _ in 0..2 {
+            let target = match self.un_target_unit(tr, w) {
+                // 735 — `targetUnit()!`
+                Some(t) => t,
+                None => return, // would throw in JS; unreached in the capture
+            };
+            let target_tile = self.un_tile(tr, target); // 344
+            let warship_tile = self.un_tile(tr, w); // 344
+            let dist = self.mg_manhattan_dist(tr, warship_tile, target_tile); // 509
+            if dist <= 5.0 {
+                let owner = self.un_owner(tr, w); // 286
+                if let Some(o) = owner {
+                    self.pl_capture_unit(tr, o, target); // 941
+                }
+                self.un_record_trade_capture(tr, w); // 929
+                self.un_set_target_unit(tr, w, None); // 914
+                self.un_touch(tr, w); // 736
+                return;
+            }
+            // Close in with direct greedy movement when nearly there.
+            if dist <= 20.0 {
+                if let Some(next_tile) = self.ws_best_neighbor_toward(tr, target_tile) {
+                    self.un_move(tr, w, &JsVal::Num(next_tile)); // 545
+                    continue;
+                }
+            }
+            let warship_tile = self.un_tile(tr, w); // 344
+            // The capture's pathfinder mock drops the third arg, so the 2-arg
+            // facade helper reproduces the recorded trace exactly.
+            let result = self.mg_water_next(tr, warship_tile, target_tile); // 862
+            let status = val_field(&result, "status").map(as_num).unwrap_or(f64::NAN);
+            let node = val_field(&result, "node").cloned().unwrap_or(JsVal::Null);
+            match status as i32 {
+                2 => {
+                    // PathStatus.COMPLETE — capture on arrival.
+                    let owner = self.un_owner(tr, w); // 286
+                    if let Some(o) = owner {
+                        self.pl_capture_unit(tr, o, target); // 941
+                    }
+                    self.un_record_trade_capture(tr, w); // 929
+                    self.un_set_target_unit(tr, w, None); // 914
+                    self.un_touch(tr, w); // 736
+                    return;
+                }
+                0 => {
+                    // PathStatus.NEXT
+                    self.un_move(tr, w, &node); // 545
+                }
+                _ => {} // NOT_FOUND — console.log only.
+            }
+        }
+    }
+
+    /// `bestNeighborToward(targetTile)`.
+    fn ws_best_neighbor_toward(&mut self, tr: &mut Vec<f64>, target_tile: f64) -> Option<f64> {
+        let w = self.ws_warship.unwrap();
+        let warship_tile = self.un_tile(tr, w); // 344
+        let mut best: Option<f64> = None;
+        let mut best_dist = self.mg_manhattan_dist(tr, warship_tile, target_tile); // 509
+        self.mg_for_each_neighbor(tr, warship_tile, |s, tr, n| {
+            // 807
+            if !s.mg_is_water(tr, n) {
+                // 508
+                return;
+            }
+            let d = s.mg_manhattan_dist(tr, n, target_tile); // 509
+            if d < best_dist {
+                best_dist = d;
+                best = Some(n);
+            }
+        });
+        best
+    }
+
+    /// `patrol()`.
+    fn ws_patrol(&mut self, tr: &mut Vec<f64>) {
+        let w = self.ws_warship.unwrap();
+        if self.un_target_tile(tr, w).is_none() {
+            // 282
+            match self.ws_random_tile(tr, false) {
+                Some(t) => self.un_set_target_tile_num(tr, w, t), // 343 — number
+                None => self.un_set_target_tile(tr, w),           // 343 — undefined
+            }
+            if self.un_target_tile(tr, w).is_none() {
+                // 282
+                return;
+            }
+        }
+        let warship_tile = self.un_tile(tr, w); // 344
+        let target = self.un_target_tile(tr, w).unwrap_or(f64::NAN); // 282
+        let result = self.mg_water_next(tr, warship_tile, target); // 862
+        let status = val_field(&result, "status").map(as_num).unwrap_or(f64::NAN);
+        let node = val_field(&result, "node").cloned().unwrap_or(JsVal::Null);
+        match status as i32 {
+            2 => {
+                // PathStatus.COMPLETE — clear the target BEFORE moving.
+                self.un_set_target_tile(tr, w); // 343 — undefined
+                self.un_move(tr, w, &node); // 545
+            }
+            0 => {
+                // PathStatus.NEXT
+                self.un_move(tr, w, &node); // 545
+            }
+            3 => {
+                // PathStatus.NOT_FOUND — console.log only.
+                self.un_set_target_tile(tr, w); // 343 — undefined
+            }
+            _ => {}
+        }
+    }
+
+    /// `randomTile(allowShoreline)`.
+    fn ws_random_tile(&mut self, tr: &mut Vec<f64>, allow_shoreline: bool) -> Option<f64> {
+        let w = self.ws_warship.unwrap();
+        let mut patrol_range = self.mg_warship_patrol_range(tr); // 934
+        let max_attempts = 500;
+        let mut attempts = 0;
+        let mut expand_count = 0;
+        let warship_tile = self.un_tile(tr, w); // 344
+        let warship_comp = self.mg_get_water_component(tr, warship_tile); // 301
+        let state = self.un_warship_state(tr, w); // 928
+        // A missing / invalid patrolTile would spin the TS loop forever; bail.
+        let patrol_tile = as_opt_num(val_field(&state, "patrolTile"))?;
+        if !self.mg_is_valid_ref(tr, patrol_tile) {
+            // 300
+            return None;
+        }
+        while expand_count < 3 {
+            // `mg.x(patrolTile) + nextInt(...)` — x() is evaluated first.
+            let px = self.mg_x(tr, patrol_tile); // 603
+            let dx = self
+                .ws_random
+                .as_mut()
+                .unwrap()
+                .next_int(-patrol_range / 2.0, patrol_range / 2.0);
+            let x = px + dx as f64;
+            let py = self.mg_y(tr, patrol_tile); // 604
+            let dy = self
+                .ws_random
+                .as_mut()
+                .unwrap()
+                .next_int(-patrol_range / 2.0, patrol_range / 2.0);
+            let y = py + dy as f64;
+            if !self.mg_is_valid_coord(tr, x, y) {
+                // 616
+                continue;
+            }
+            let tile = self.mg_ref(tr, x, y); // 609
+            let bad = !self.mg_is_water(tr, tile) // 508
+                || (!allow_shoreline && self.mg_is_shoreline(tr, tile)); // 901
+            if bad {
+                attempts += 1;
+                if attempts == max_attempts {
+                    expand_count += 1;
+                    attempts = 0;
+                    patrol_range += (patrol_range / 2.0).floor();
+                }
+                continue;
+            }
+            if !matches!(warship_comp, JsVal::Null)
+                && !self.mg_has_water_component(tr, tile, &warship_comp)
+            {
+                // 302
+                attempts += 1;
+                if attempts == max_attempts {
+                    expand_count += 1;
+                    attempts = 0;
+                    patrol_range += (patrol_range / 2.0).floor();
+                }
+                continue;
+            }
+            return Some(tile);
+        }
+        if !allow_shoreline {
+            // Failed on the open ocean — retry allowing the shoreline.
+            return self.ws_random_tile(tr, true);
+        }
+        None
+    }
+
+    // ---- G5j: `PlayerExecution` (class 42) ----------------------------------
+
+    fn player_execution(
+        &mut self,
+        kind: u8,
+        ticks: f64,
+        tr: &mut Vec<f64>,
+    ) -> Result<JsVal, String> {
+        match kind {
+            3 => return Ok(JsVal::Bool(self.pe_active)),
+            // `activeDuringSpawnPhase()` -> false.
+            4 => return Ok(JsVal::Bool(false)),
+            1 => {
+                // `lastCalc = ticks + (simpleHash(player.id()) % 20)`.
+                let id = self.pl_id(tr, self.pe_player); // 231
+                self.last_calc = ticks + (crate::util::simple_hash(&id) % 20.0);
+                return Ok(JsVal::Undef);
+            }
+            2 => {}
+            _ => return Ok(JsVal::Undef),
+        }
+        self.pe_tick(ticks, tr);
+        Ok(JsVal::Undef)
+    }
+
+    /// `tick(ticks)`.
+    fn pe_tick(&mut self, ticks: f64, tr: &mut Vec<f64>) {
+        let p = self.pe_player;
+        self.pl_decay_relations(tr, p); // 949
+        for u in self.pl_units(tr, p, &[]) {
+            // 241
+            let ty = self.un_type(tr, u); // 283
+            if !STRUCTURES_TYPES.contains(&ty.as_str()) {
+                continue;
+            }
+            let tile = self.un_tile(tr, u); // 344
+            let owner = self.mg_owner(tr, tile); // 222
+            let not_player = match owner {
+                Some(o) => !self.pl_is_player(tr, o), // 259
+                None => true, // `!owner?.isPlayer()`
+            };
+            if not_player {
+                self.un_delete(tr, u, false); // 285 — `u.delete()`
+                continue;
+            }
+            if owner == Some(p) {
+                continue;
+            }
+            let owner_id = self.pl_id(tr, owner.unwrap()); // 231
+            let captor = self.mg_player(tr, &owner_id); // 211
+            let ty = self.un_type(tr, u); // 283 — `u.type()` re-read
+            if ty == UNIT_DEFENSE_POST {
+                self.un_delete_captor(tr, u, true, captor); // 285 — delete(true, captor)
+            } else if let Some(c) = captor {
+                self.pl_capture_unit(tr, c, u); // 941
+            }
+        }
+
+        if !self.pl_is_alive(tr, p) {
+            // 233
+            self.pe_remove_on_death(tr);
+            self.pe_active = false;
+            // Finishing place = non-bot players still standing, + 1.
+            let mut still_standing = 0.0;
+            for pl in self.mg_players(tr) {
+                // 221
+                if self.pl_type(tr, pl) != PLAYER_TYPE_BOT {
+                    // 251
+                    still_standing += 1.0;
+                }
+            }
+            self.mg_stats_record_death_position(tr, p, still_standing + 1.0); // 943
+            self.mg_stats_player_killed(tr, p, ticks); // 944
+            return;
+        }
+
+        let troop_inc = self.mg_troop_increase_rate(tr, p); // 946
+        self.pl_add_troops(tr, p, troop_inc); // 824
+        let gold = self.mg_gold_addition_rate(tr, p); // 947
+        self.pl_add_gold(tr, p, gold, f64::NAN); // 910 — the 1-arg call (tile NaN)
+        self.mg_stats_gold_work(tr, p, gold); // 945
+
+        for aid in self.pl_alliances(tr, p) {
+            // 954
+            let expires = self.al_expires_at(tr, aid); // 956
+            if expires <= self.mg_ticks(tr) {
+                // 212
+                self.al_expire(tr, aid); // 957
+            }
+        }
+
+        for (is_temporary, created_at, target) in self.pl_get_embargoes(tr, p) {
+            // 955
+            if is_temporary {
+                let now = self.mg_ticks(tr); // 212
+                let dur = self.mg_temporary_embargo_duration(tr); // 948
+                if now - created_at > dur {
+                    self.pl_stop_embargo(tr, p, Some(target)); // 254
+                }
+            }
+        }
+
+        if ticks - self.last_calc > 20.0 || self.pl_num_tiles_owned(tr, p) < 100.0 {
+            // 532
+            if self.pl_last_tile_change(tr, p) >= self.last_calc {
+                // 952
+                self.last_calc = ticks;
+                let start = self.mg_perf_now(tr); // 942
+                self.pe_remove_clusters(tr);
+                let end = self.mg_perf_now(tr); // 942
+                let _ = end - start; // `> 1000` only logs in TS.
+            }
+        }
+    }
+
+    /// `removeOnDeath()`.
+    fn pe_remove_on_death(&mut self, tr: &mut Vec<f64>) {
+        let p = self.pe_player;
+        let gold = self.pl_gold(tr, p); // 417
+        self.pl_remove_gold(tr, p, gold as f64); // 950
+        for u in self.pl_units(tr, p, &[]) {
+            // 241 — four separate `u.type()` reads, short-circuited by `!==`.
+            if self.un_type(tr, u) != UNIT_ATOM_BOMB // 283
+                && self.un_type(tr, u) != UNIT_HYDROGEN_BOMB
+                && self.un_type(tr, u) != UNIT_MIRV_WARHEAD
+                && self.un_type(tr, u) != UNIT_MIRV
+            {
+                self.un_delete(tr, u, false); // 285 — `u.delete()`
+            }
+        }
+        self.pl_remove_all_alliances(tr, p); // 951
+    }
+
+    /// `removeClusters()`.
+    fn pe_remove_clusters(&mut self, tr: &mut Vec<f64>) {
+        let p = self.pe_player;
+        let (clusters, boxes) = self.pe_calculate_clusters(tr);
+        if clusters.is_empty() {
+            self.pl_set_largest_cluster_bbox(tr, p, None); // 953 — null
+            return;
+        }
+        if clusters.len() == 1 {
+            self.pl_set_largest_cluster_bbox(
+                tr,
+                p,
+                Some((
+                    boxes[0] as f64,
+                    boxes[1] as f64,
+                    boxes[2] as f64,
+                    boxes[3] as f64,
+                )),
+            ); // 953
+            let surrounded = self.pe_surrounded_by_same_player(
+                tr,
+                &clusters[0],
+                boxes[0],
+                boxes[1],
+                boxes[2],
+                boxes[3],
+            );
+            if let Some(enemy) = surrounded {
+                if !self.pl_is_friendly(tr, enemy, Some(p)) {
+                    // 242
+                    self.pe_remove_cluster(tr, &clusters[0]);
+                }
+            }
+            return;
+        }
+
+        let mut largest = 0usize;
+        for i in 1..clusters.len() {
+            if clusters[i].len() > clusters[largest].len() {
+                largest = i;
+            }
+        }
+        let t_min_x = boxes[largest * 4];
+        let t_min_y = boxes[largest * 4 + 1];
+        let t_max_x = boxes[largest * 4 + 2];
+        let t_max_y = boxes[largest * 4 + 3];
+
+        // Doughnut-border fix: a cluster fully enclosed by another cluster of
+        // the same contiguous territory is a hole, not the primary cluster.
+        let mut territory_ids: Option<Vec<i32>> = None;
+        let mut next_territory_id: i32 = 1;
+        let mut is_largest_hole = false;
+        for j in 0..clusters.len() {
+            if j != largest {
+                let jj = j * 4;
+                if boxes[jj] <= t_min_x
+                    && boxes[jj + 1] <= t_min_y
+                    && boxes[jj + 2] >= t_max_x
+                    && boxes[jj + 3] >= t_max_y
+                {
+                    if territory_ids.is_none() {
+                        let ids = vec![0i32; clusters.len()];
+                        self.pe_traversal_state(tr); // 610 / 611
+                        for (c, cl) in clusters.iter().enumerate() {
+                            for &t in cl {
+                                self.el_scratch.cluster_index_map[t as usize] = c as i32 + 1;
+                            }
+                        }
+                        territory_ids = Some(ids);
+                    }
+                    next_territory_id = self.pe_check_and_assign_territory(
+                        tr,
+                        &clusters,
+                        largest,
+                        j,
+                        territory_ids.as_mut().unwrap(),
+                        next_territory_id,
+                    );
+                    let ids = territory_ids.as_ref().unwrap();
+                    if ids[largest] == ids[j] {
+                        is_largest_hole = true;
+                        break;
+                    }
+                }
+            }
+        }
+
+        if is_largest_hole {
+            let mut best_index: i64 = -1;
+            let mut best_length: i64 = -1;
+            for i in 0..clusters.len() {
+                if i == largest || clusters[i].len() as i64 <= best_length {
+                    continue;
+                }
+                let mut is_hole = false;
+                let ii = i * 4;
+                for j in 0..clusters.len() {
+                    if j != i {
+                        let jj = j * 4;
+                        if boxes[jj] <= boxes[ii]
+                            && boxes[jj + 1] <= boxes[ii + 1]
+                            && boxes[jj + 2] >= boxes[ii + 2]
+                            && boxes[jj + 3] >= boxes[ii + 3]
+                        {
+                            next_territory_id = self.pe_check_and_assign_territory(
+                                tr,
+                                &clusters,
+                                i,
+                                j,
+                                territory_ids.as_mut().unwrap(),
+                                next_territory_id,
+                            );
+                            let ids = territory_ids.as_ref().unwrap();
+                            if ids[i] == ids[j] {
+                                is_hole = true;
+                                break;
+                            }
+                        }
+                    }
+                }
+                if !is_hole {
+                    best_length = clusters[i].len() as i64;
+                    best_index = i as i64;
+                }
+            }
+            if best_index != -1 {
+                largest = best_index as usize;
+            }
+        }
+
+        if territory_ids.is_some() {
+            self.pe_traversal_state(tr); // 610 / 611
+            for cl in &clusters {
+                for &t in cl {
+                    self.el_scratch.cluster_index_map[t as usize] = 0;
+                }
+            }
+        }
+
+        let l = largest * 4;
+        self.pl_set_largest_cluster_bbox(
+            tr,
+            p,
+            Some((
+                boxes[l] as f64,
+                boxes[l + 1] as f64,
+                boxes[l + 2] as f64,
+                boxes[l + 3] as f64,
+            )),
+        ); // 953
+        let surrounded = self.pe_surrounded_by_same_player(
+            tr,
+            &clusters[largest],
+            boxes[l],
+            boxes[l + 1],
+            boxes[l + 2],
+            boxes[l + 3],
+        );
+        if let Some(enemy) = surrounded {
+            if !self.pl_is_friendly(tr, enemy, Some(p)) {
+                // 242
+                let cluster = clusters[largest].clone();
+                self.pe_remove_cluster(tr, &cluster);
+            }
+        }
+
+        // Process the remaining clusters.
+        for (i, cluster_i) in clusters.iter().enumerate() {
+            if i == largest {
+                continue;
+            }
+            let ii = i * 4;
+            if self.pe_is_surrounded(
+                tr,
+                cluster_i,
+                boxes[ii],
+                boxes[ii + 1],
+                boxes[ii + 2],
+                boxes[ii + 3],
+            ) {
+                let cluster = cluster_i.clone();
+                self.pe_remove_cluster(tr, &cluster);
+            }
+        }
+    }
+
+    /// `checkAndAssignTerritory(...)` — two `traversalState()` reads (the
+    /// explicit one plus the one inside `this.bumpGeneration()`).
+    fn pe_check_and_assign_territory(
+        &mut self,
+        tr: &mut Vec<f64>,
+        clusters: &[Vec<f64>],
+        a: usize,
+        b: usize,
+        territory_ids: &mut [i32],
+        next_id: i32,
+    ) -> i32 {
+        if territory_ids[a] != 0 && territory_ids[a] == territory_ids[b] {
+            return next_id;
+        }
+        if territory_ids[a] != 0 && territory_ids[b] != 0 {
+            return next_id;
+        }
+        let start_idx = if territory_ids[b] == 0 { b } else { a };
+        let territory_id = next_id;
+
+        self.pe_traversal_state(tr); // 610 / 611 — `const state = ...`
+        let gen = self.pe_bump_generation(tr); // 610 / 611 + bump
+        let mut stack: Vec<f64> = Vec::new();
+        let start = clusters[start_idx][0];
+        self.el_scratch.visited[start as usize] = gen;
+        stack.push(start);
+        let map = self.el_map.clone().unwrap_or_default();
+        let my_sid = self.pl_small_id(tr, self.pe_player); // 230
+        territory_ids[start_idx] = territory_id;
+        while let Some(tile) = stack.pop() {
+            let n = map.neighbors8(tile, &mut self.nbuf8);
+            let buf = self.nbuf8;
+            for &nb in buf.iter().take(n) {
+                if self.el_scratch.visited[nb as usize] == gen {
+                    continue;
+                }
+                if map.owner_id(nb) == my_sid {
+                    self.el_scratch.visited[nb as usize] = gen;
+                    stack.push(nb);
+                    let c_idx_plus_one = self.el_scratch.cluster_index_map[nb as usize];
+                    if c_idx_plus_one > 0 {
+                        territory_ids[(c_idx_plus_one - 1) as usize] = territory_id;
+                    }
+                }
+            }
+        }
+        next_id + 1
+    }
+
+    /// `surroundedBySamePlayer(...)` — the surrounding enemy player token, or
+    /// None (`false` in TS).
+    fn pe_surrounded_by_same_player(
+        &mut self,
+        tr: &mut Vec<f64>,
+        cluster: &[f64],
+        box_min_x: i32,
+        box_min_y: i32,
+        box_max_x: i32,
+        box_max_y: i32,
+    ) -> Option<usize> {
+        let map = self.el_map.clone().unwrap_or_default();
+        let my_sid = self.pl_small_id(tr, self.pe_player); // 230
+        let mut enemies: Vec<f64> = Vec::new(); // insertion-ordered set
+        let mut min_x = 1e9_f64;
+        let mut min_y = 1e9_f64;
+        let mut max_x = -1e9_f64;
+        let mut max_y = -1e9_f64;
+        for &tile in cluster {
+            if map.is_ocean_shore(tile) || map.is_on_edge_of_map(tile) {
+                return None;
+            }
+            let n = map.neighbors4(tile, &mut self.nbuf);
+            let buf = self.nbuf;
+            for &nb in buf.iter().take(n) {
+                let owner_id = map.owner_id(nb);
+                if owner_id == 0.0 {
+                    // Unowned neighbor: the cluster is not fully surrounded.
+                    return None;
+                }
+                if owner_id != my_sid {
+                    if !enemies.contains(&owner_id) {
+                        enemies.push(owner_id);
+                    }
+                    let px = map.x(nb);
+                    let py = map.y(nb);
+                    if px < min_x {
+                        min_x = px;
+                    }
+                    if py < min_y {
+                        min_y = py;
+                    }
+                    if px > max_x {
+                        max_x = px;
+                    }
+                    if py > max_y {
+                        max_y = py;
+                    }
+                }
+            }
+            if enemies.len() != 1 {
+                return None;
+            }
+        }
+        if enemies.len() != 1 {
+            return None;
+        }
+        let enemy = as_opt_tok(&self.mg_player_by_small_id(tr, enemies[0])); // 703
+        if min_x <= box_min_x as f64
+            && min_y <= box_min_y as f64
+            && max_x >= box_max_x as f64
+            && max_y >= box_max_y as f64
+        {
+            return enemy;
+        }
+        None
+    }
+
+    /// `isSurrounded(...)`.
+    fn pe_is_surrounded(
+        &mut self,
+        tr: &mut Vec<f64>,
+        cluster: &[f64],
+        box_min_x: i32,
+        box_min_y: i32,
+        box_max_x: i32,
+        box_max_y: i32,
+    ) -> bool {
+        let map = self.el_map.clone().unwrap_or_default();
+        let my_sid = self.pl_small_id(tr, self.pe_player); // 230
+        let mut has_enemy = false;
+        let mut min_x = 1e9_f64;
+        let mut min_y = 1e9_f64;
+        let mut max_x = -1e9_f64;
+        let mut max_y = -1e9_f64;
+        for &tile in cluster {
+            if map.is_shore(tile) || map.is_on_edge_of_map(tile) {
+                return false;
+            }
+            let n = map.neighbors4(tile, &mut self.nbuf);
+            let buf = self.nbuf;
+            for &nb in buf.iter().take(n) {
+                let owner_id = map.owner_id(nb);
+                if owner_id != 0.0 && owner_id != my_sid {
+                    has_enemy = true;
+                    let x = map.x(nb);
+                    let y = map.y(nb);
+                    if x < min_x {
+                        min_x = x;
+                    }
+                    if y < min_y {
+                        min_y = y;
+                    }
+                    if x > max_x {
+                        max_x = x;
+                    }
+                    if y > max_y {
+                        max_y = y;
+                    }
+                }
+            }
+        }
+        if !has_enemy {
+            return false;
+        }
+        min_x <= box_min_x as f64
+            && min_y <= box_min_y as f64
+            && max_x >= box_max_x as f64
+            && max_y >= box_max_y as f64
+    }
+
+    /// `removeCluster(cluster)`.
+    fn pe_remove_cluster(&mut self, tr: &mut Vec<f64>, cluster: &[f64]) {
+        let p = self.pe_player;
+        for &t in cluster {
+            // Other removeCluster operations could change tile owners — the
+            // double check reads both facades per tile.
+            let owner = self.mg_owner_id(tr, t); // 223
+            let sid = self.pl_small_id(tr, p); // 230
+            if owner != sid {
+                return;
+            }
+        }
+        let capturing = match self.pe_get_capturing_player(tr, cluster) {
+            Some(c) => c,
+            None => return,
+        };
+        let first_tile = match cluster.first() {
+            Some(&t) => t,
+            None => return,
+        };
+        if !self.pe_is_enclosed(tr, first_tile) {
+            return;
+        }
+        let gen = self.pe_bump_generation(tr); // 610 / 611 + bump
+        let tiles = self.pe_flood_fill(tr, gen, &[first_tile], false, FloodInclude::OwnedBy, None);
+        if self.pl_num_tiles_owned(tr, p) == tiles.len() as f64 {
+            // 532
+            self.mg_conquer_player(tr, capturing, p); // 808
+        }
+        for tile in tiles {
+            self.pl_conquer(tr, capturing, tile); // 637
+        }
+    }
+
+    /// `isEnclosed(start)` — ONE `traversalState()` pair plus a direct
+    /// `bumpTraversalGeneration` (NOT `this.bumpGeneration()`).
+    fn pe_is_enclosed(&mut self, tr: &mut Vec<f64>, start: f64) -> bool {
+        let map = self.el_map.clone().unwrap_or_default();
+        let my_sid = self.pl_small_id(tr, self.pe_player); // 230
+        self.pe_traversal_state(tr); // 610 / 611
+        let gen = self.el_scratch.bump_generation();
+        self.el_scratch.visited[start as usize] = gen;
+        let mut stack: Vec<f64> = vec![start];
+        while let Some(tile) = stack.pop() {
+            if map.is_on_edge_of_map(tile) {
+                return false;
+            }
+            let n = map.neighbors4(tile, &mut self.nbuf);
+            let buf = self.nbuf;
+            for &nb in buf.iter().take(n) {
+                if self.el_scratch.visited[nb as usize] == gen {
+                    continue;
+                }
+                let owner_id = map.owner_id(nb);
+                if owner_id != 0.0 && owner_id != my_sid {
+                    // Someone else's tile — part of the wall.
+                    continue;
+                }
+                if owner_id == 0.0 && !map.is_land(nb) {
+                    // Open water is a way out.
+                    return false;
+                }
+                self.el_scratch.visited[nb as usize] = gen;
+                stack.push(nb);
+            }
+        }
+        true
+    }
+
+    /// `getCapturingPlayer(cluster)`.
+    fn pe_get_capturing_player(&mut self, tr: &mut Vec<f64>, cluster: &[f64]) -> Option<usize> {
+        let map = self.el_map.clone().unwrap_or_default();
+        let p = self.pe_player;
+        let my_sid = self.pl_small_id(tr, p); // 230
+        let mut neighbors: Vec<(usize, f64)> = Vec::new(); // insertion-ordered Map
+        for &t in cluster {
+            let n = map.neighbors4(t, &mut self.nbuf);
+            let buf = self.nbuf;
+            for &nb in buf.iter().take(n) {
+                let owner_id = map.owner_id(nb);
+                if owner_id == 0.0 || owner_id == my_sid {
+                    continue;
+                }
+                let owner = as_opt_tok(&self.mg_player_by_small_id(tr, owner_id)); // 703
+                if let Some(o) = owner {
+                    if !self.pl_is_friendly(tr, o, Some(p)) {
+                        // 242
+                        match neighbors.iter_mut().find(|(tok, _)| *tok == o) {
+                            Some(e) => e.1 += 1.0,
+                            None => neighbors.push((o, 1.0)),
+                        }
+                    }
+                }
+            }
+        }
+        if neighbors.is_empty() {
+            return None;
+        }
+
+        // The largest attack on us from any neighbor wins.
+        let mut largest_attack: Option<usize> = None;
+        let mut largest_troops = 0.0;
+        for (tok, _) in &neighbors {
+            for a in self.pl_outgoing_attacks(tr, *tok) {
+                // 721
+                if self.at_target(tr, a) == Some(p) {
+                    // 840
+                    let troops = self.at_troops(tr, a); // 830
+                    if troops > largest_troops {
+                        largest_troops = troops;
+                        largest_attack = Some(*tok);
+                    }
+                }
+            }
+        }
+        if largest_attack.is_some() {
+            return largest_attack;
+        }
+
+        // No ongoing attacks — the enemy with the largest border (getMode).
+        let pairs: Vec<(f64, f64)> = neighbors.iter().map(|(t, c)| (*t as f64, *c)).collect();
+        crate::util::get_mode(&pairs).map(|m| m as usize)
+    }
+
+    /// `calculateClusters()` — border-gen stamp, then one DFS flood per
+    /// unvisited border tile (8-neighbor), packing each cluster's bbox into
+    /// the doubling `boxes` array.
+    fn pe_calculate_clusters(&mut self, tr: &mut Vec<f64>) -> (Vec<Vec<f64>>, Vec<i32>) {
+        let p = self.pe_player;
+        let border_tiles = self.pl_border_tiles(tr, p); // 635
+        if border_tiles.is_empty() {
+            return (Vec::new(), Vec::new());
+        }
+        if self.el_map.is_none() {
+            // The grid-less scenarios never reach here (empty border tiles);
+            // without a map the TS tile accessors are unavailable.
+            return (Vec::new(), Vec::new());
+        }
+        self.pe_traversal_state(tr); // 610 / 611 — `const state = ...`
+        let border_gen = self.pe_bump_generation(tr); // 610 / 611 + bump
+        for &t in &border_tiles {
+            self.el_scratch.visited[t as usize] = border_gen;
+        }
+        let current_gen = self.pe_bump_generation(tr); // 610 / 611 + bump
+
+        let mut clusters: Vec<Vec<f64>> = Vec::new();
+        let mut boxes: Vec<i32> = vec![0; 64];
+        for start in border_tiles {
+            if self.el_scratch.visited[start as usize] == current_gen {
+                continue;
+            }
+            if clusters.len() * 4 >= boxes.len() {
+                let mut nb = vec![0i32; boxes.len() * 2];
+                nb[..boxes.len()].copy_from_slice(&boxes);
+                boxes = nb;
+            }
+            let offset = clusters.len() * 4;
+            let cluster = self.pe_flood_fill(
+                tr,
+                current_gen,
+                &[start],
+                true,
+                FloodInclude::BorderGen(border_gen),
+                Some((&mut boxes, offset)),
+            );
+            clusters.push(cluster);
+        }
+        (clusters, boxes)
+    }
+
+    /// `tileTraversalScratch(mg)` — the mock's `width() * height()` is traced
+    /// (610 / 611) on every call.
+    fn pe_traversal_state(&mut self, tr: &mut Vec<f64>) {
+        let w = self.mg_width(tr); // 610
+        let h = self.mg_height(tr); // 611
+        self.el_scratch.ensure_capacity((w * h) as usize);
+    }
+
+    /// `bumpGeneration()` — `bumpTraversalGeneration(this.traversalState())`.
+    fn pe_bump_generation(&mut self, tr: &mut Vec<f64>) -> u32 {
+        self.pe_traversal_state(tr);
+        self.el_scratch.bump_generation()
+    }
+
+    /// `floodFillWithGen(...)` — one `traversalState()` read for the reusable
+    /// stack, then a plain DFS. `out_box` receives `[minX, minY, maxX, maxY]`.
+    fn pe_flood_fill(
+        &mut self,
+        tr: &mut Vec<f64>,
+        current_gen: u32,
+        start_tiles: &[f64],
+        diag: bool,
+        include: FloodInclude,
+        out_box: Option<(&mut Vec<i32>, usize)>,
+    ) -> Vec<f64> {
+        self.pe_traversal_state(tr); // 610 / 611 — `this.traversalState().stack`
+        let map = self.el_map.clone().unwrap_or_default();
+        let mut result: Vec<f64> = Vec::new();
+        let mut stack: Vec<f64> = Vec::new();
+        let mut min_x = 1e9_f64;
+        let mut min_y = 1e9_f64;
+        let mut max_x = -1e9_f64;
+        let mut max_y = -1e9_f64;
+        let track_box = out_box.is_some();
+
+        for &start in start_tiles {
+            if self.el_scratch.visited[start as usize] == current_gen {
+                continue;
+            }
+            if !self.pe_include(tr, &include, start) {
+                continue;
+            }
+            self.el_scratch.visited[start as usize] = current_gen;
+            result.push(start);
+            stack.push(start);
+            if track_box {
+                let x = map.x(start);
+                let y = map.y(start);
+                if x < min_x {
+                    min_x = x;
+                }
+                if y < min_y {
+                    min_y = y;
+                }
+                if x > max_x {
+                    max_x = x;
+                }
+                if y > max_y {
+                    max_y = y;
+                }
+            }
+        }
+
+        while let Some(tile) = stack.pop() {
+            let n = if diag {
+                map.neighbors8(tile, &mut self.nbuf8)
+            } else {
+                map.neighbors4(tile, &mut self.nbuf)
+            };
+            let buf = if diag { self.nbuf8 } else {
+                let b = self.nbuf;
+                let mut e = [0.0; 8];
+                e[..4].copy_from_slice(&b);
+                e
+            };
+            for &neighbor in buf.iter().take(n) {
+                if self.el_scratch.visited[neighbor as usize] == current_gen {
+                    continue;
+                }
+                if !self.pe_include(tr, &include, neighbor) {
+                    continue;
+                }
+                self.el_scratch.visited[neighbor as usize] = current_gen;
+                result.push(neighbor);
+                stack.push(neighbor);
+                if track_box {
+                    let x = map.x(neighbor);
+                    let y = map.y(neighbor);
+                    if x < min_x {
+                        min_x = x;
+                    }
+                    if y < min_y {
+                        min_y = y;
+                    }
+                    if x > max_x {
+                        max_x = x;
+                    }
+                    if y > max_y {
+                        max_y = y;
+                    }
+                }
+            }
+        }
+
+        if let Some((boxes, offset)) = out_box {
+            boxes[offset] = min_x as i32;
+            boxes[offset + 1] = min_y as i32;
+            boxes[offset + 2] = max_x as i32;
+            boxes[offset + 3] = max_y as i32;
+        }
+        result
+    }
+
+    /// The flood-include predicate (`visited[t] === borderGen` for the cluster
+    /// fill, `mg.ownerID(t) === player.smallID()` for the removal fill).
+    fn pe_include(&mut self, tr: &mut Vec<f64>, include: &FloodInclude, tile: f64) -> bool {
+        match include {
+            FloodInclude::BorderGen(g) => self.el_scratch.visited[tile as usize] == *g,
+            FloodInclude::OwnedBy => {
+                let owner = self.mg_owner_id(tr, tile); // 223
+                let sid = self.pl_small_id(tr, self.pe_player); // 230
+                owner == sid
+            }
+        }
+    }
+}
+
+/// G5j: the `floodFillWithGen` include predicate kind.
+enum FloodInclude {
+    /// `visited[t] === borderGen` (the `calculateClusters` fill).
+    BorderGen(u32),
+    /// `mg.ownerID(t) === player.smallID()` (the `removeCluster` fill).
+    OwnedBy,
+}
+
+/// `warshipState().state` as an owned string (absent → "").
+fn g5j_ws_state(v: &JsVal) -> String {
+    val_field(v, "state").map(as_str).unwrap_or_default()
+}
+
+/// JS `===` on two scripted values (numbers by value; `null === null`).
+fn g5j_js_eq(a: &JsVal, b: &JsVal) -> bool {
+    match (a, b) {
+        (JsVal::Num(x), JsVal::Num(y)) => x == y,
+        (JsVal::Null, JsVal::Null) | (JsVal::Undef, JsVal::Undef) => true,
+        (JsVal::Bool(x), JsVal::Bool(y)) => x == y,
+        (JsVal::Str(x), JsVal::Str(y)) => x == y,
+        _ => false,
     }
 }
 

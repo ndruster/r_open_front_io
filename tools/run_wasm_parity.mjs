@@ -569,7 +569,7 @@ for (const s of S.waterbounded) {
 }
 
 // --- GameMap --- (op-stream replay; scalar-only boundary, arrays via out buf)
-const numTok = (v) => (v === "n" ? NaN : v === "-0" ? -0 : v === "i" ? Infinity : v === "-i" ? -Infinity : v);
+const numTok = (v) => (v === "n" ? NaN : v === "u" ? NaN : v === "-0" ? -0 : v === "i" ? Infinity : v === "-i" ? -Infinity : v);
 for (const s of S.gamemap) {
   for (const b of s.terrain) ex.probe_gm_terrain_byte(b);
   ex.probe_gm_new(s.w, s.h, s.numLand);

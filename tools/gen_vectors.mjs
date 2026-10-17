@@ -26590,6 +26590,14 @@ const elTrainStationC = (
 const elTrainExecC = (
   await loadTs("src/core/execution/TrainExecution.ts")
 ).TrainExecution;
+// G5j classes: `WarshipExecution` / `PlayerExecution` are the REAL
+// (prepared-copy) sources.
+const elWarshipC = (
+  await loadTs("src/core/execution/WarshipExecution.ts")
+).WarshipExecution;
+const elPlayerExecC = (
+  await loadTs("src/core/execution/PlayerExecution.ts")
+).PlayerExecution;
 // A `Game` (mg) ctor argument for `TribeSpawner.gs`; resolved by the `elDef`
 // args map to `elC.mg` (the Rust ctor table sees the facade group token).
 const elMgRef = { __elmg: true };
@@ -26616,6 +26624,10 @@ const elRailRef = { __elrail: true };
 // goldNum). Plain `null` is reserved for the player-token reference, so this
 // sentinel encodes as `[2]` (null) via the `encVal` case below.
 const elNull = { __elnull: true };
+// G5j: a `WarshipExecution` ctor argument carrying the params object
+// `{owner: Player, patrolTile: TileRef}`; resolved by `elDef` to
+// `{owner: elC.players[t], patrolTile}`.
+const elWarshipParams = (t, patrolTile) => ({ __elwparams: true, owner: t, patrolTile });
 
 const elScenarios = [];
 let elT = [];
@@ -26713,6 +26725,8 @@ function elPlayerObj(tok, slots) {
   const m = { slots, i: new Array(slots.length).fill(0) };
   return {
     _tok: tok,
+    // G5j: the scripted smallID (slot 0, first value) cached for grid mutation.
+    _smallID: slots[0]?.[0],
     smallID: () => elRet(m, 0, 230, [tok]),
     id: () => elRet(m, 1, 231, [tok]),
     displayName: () => elRet(m, 2, 232, [tok]),
@@ -26803,7 +26817,10 @@ function elPlayerObj(tok, slots) {
     },
     // G5e.
     tiles: () => elRet(m, 49, 634, [tok]),
-    borderTiles: () => elRet(m, 50, 635, [tok]),
+    // G5j: `PlayerExecution.calculateClusters` reads `.size` and iterates via
+    // `.forEach`; wrap the scripted array in a `Set` (the trace records the raw
+    // array unchanged).
+    borderTiles: () => new Set(elRet(m, 50, 635, [tok]) || []),
     doomsdayClockTicks: () => elRet(m, 51, 632, [tok]),
     spawnTile: () => elRet(m, 52, 639, [tok]),
     clearDoomsdayClock: () => elVoid(630, [tok]),
@@ -26811,7 +26828,11 @@ function elPlayerObj(tok, slots) {
     // G5g: `removeTroops` now RETURNS a number (the amount actually deducted).
     removeTroops: (n) => elRet(m, 55, 633, [tok, ...elEv1(n)]),
     relinquish: (t) => elVoid(636, [tok, ...elEv1(t)]),
-    conquer: (t) => elVoid(637, [tok, ...elEv1(t)]),
+    conquer: (t) => {
+      elVoid(637, [tok, ...elEv1(t)]);
+      // G5j: mutate the grid when a map is present.
+      if (elC.mapGrid) elC.mapGrid.setOwnerID(t, elC.players[tok]._smallID);
+    },
     setSpawnTile: (t) => elVoid(638, [tok, ...elEv1(t)]),
     markRotted: () => elVoid(640, [tok]),
     // G5f (`NukeExecution.maybeBreakAlliances`, `detonate`).
@@ -26848,6 +26869,36 @@ function elPlayerObj(tok, slots) {
     addGold: (g, t) => elVoid(910, [tok, ...elEv1(Number(g)), ...elEv1(t)]),
     addPiracyGold: (g) => elVoid(911, [tok, ...elEv1(Number(g))]),
     addTradeGold: (g) => elVoid(912, [tok, ...elEv1(Number(g))]),
+    // G5j (`WarshipExecution` / `PlayerExecution`).
+    inDoomsdayClock: () => elRet(m, 63, 940, [tok]),
+    captureUnit: (u) => elVoid(941, [tok, ...elEvTok(u)]),
+    decayRelations: () => elVoid(949, [tok]),
+    removeGold: (g) => elVoid(950, [tok, ...elEv1(Number(g))]),
+    removeAllAlliances: () => elVoid(951, [tok]),
+    lastTileChange: () => elRet(m, 64, 952, [tok]),
+    // `largestClusterBoundingBox` is a setter in the TS source (a plain field
+    // assignment); traced as a void with the value or null.
+    set largestClusterBoundingBox(v) {
+      if (v === null) {
+        elT.push(953, tok, 2, ...encVal(undefined));
+      } else {
+        elT.push(953, tok, 3, uenc(v.min.x), 3, uenc(v.min.y), 3, uenc(v.max.x), 3, uenc(v.max.y), ...encVal(undefined));
+      }
+    },
+    alliances: () => {
+      const ts = elRet(m, 65, 954, [tok]);
+      return (ts || []).map((t) => elC.alliances[t]);
+    },
+    // `getEmbargoes()` returns plain `{isTemporary, createdAt, target}` objects;
+    // `target` is resolved to the player facade post-trace.
+    getEmbargoes: () => {
+      const list = elRet(m, 66, 955, [tok]);
+      return (list || []).map((e) => ({
+        isTemporary: e.isTemporary,
+        createdAt: e.createdAt,
+        target: elC.players[e.target],
+      }));
+    },
   };
 }
 function elAllianceObj(tok, slots) {
@@ -26858,6 +26909,9 @@ function elAllianceObj(tok, slots) {
     bothAgreedToExtend: () => elRet(m, 2, 262, [tok]),
     addExtensionRequest: (p) => elVoid(261, [tok, ...elEv1(p._tok)]),
     extend: () => elVoid(263, [tok]),
+    // G5j (`PlayerExecution.tick` alliance expiry).
+    expiresAt: () => elRet(m, 4, 956, [tok]),
+    expire: () => elVoid(957, [tok]),
   };
 }
 function elRequestObj(tok, slots) {
@@ -26895,7 +26949,10 @@ function elUnitObj(tok, slots) {
       const t = elRet(m, 6, 286, [tok]);
       return t == null ? null : elC.players[t];
     },
-    delete: (flag) => elVoid(285, [tok, ...elEvb(flag)]),
+    // G5j: the optional `captor` argument (DefensePost capture) appends a
+    // player token; existing scenarios pass only `flag` and stay identical.
+    delete: (flag, captor) =>
+      elVoid(285, [tok, ...elEvb(flag), ...(captor !== undefined ? elEvTok(captor) : [])]),
     id: () => elRet(m, 7, 340, [tok]),
     tile: () => elRet(m, 11, 344, [tok]),
     isUnderConstruction: () => elRet(m, 12, 345, [tok]),
@@ -26950,6 +27007,10 @@ function elUnitObj(tok, slots) {
     setSafeFromPirates: () => elVoid(915, [tok]),
     // G5i (`TrainExecution.loadCargo`).
     setLoaded: (flag) => elVoid(927, [tok, ...elEvb(flag)]),
+    // G5j (`WarshipExecution`).
+    warshipState: () => elRet(m, 50, 928, [tok]),
+    recordTradeCapture: () => elVoid(929, [tok]),
+    isSafeFromPirates: () => elRet(m, 51, 939, [tok]),
   };
 }
 // G5g: the `Attack` object returned by `Player.createAttack` and read through
@@ -27076,6 +27137,19 @@ function elMgObj(slots) {
     tradeShipGold: (r, p) => elRet(m, 92, 900, [...elEv1(r), ...elEvTok(p)]),
     // G5i (`TrainStationExecution.shouldSpawnTrain`).
     trainSpawnRate: (f, t) => elRet(m, 101, 918, [...elEv1(f), ...elEv1(t)]),
+    // G5j (`WarshipExecution` / `PlayerExecution`).
+    warshipPassiveHealing: () => elRet(m, 102, 930, []),
+    warshipPassiveHealingRange: () => elRet(m, 103, 931, []),
+    warshipRetreatHealthPercent: () => elRet(m, 104, 932, []),
+    warshipTargettingRange: () => elRet(m, 105, 933, []),
+    warshipPatrolRange: () => elRet(m, 106, 934, []),
+    warshipDockingRange: () => elRet(m, 107, 935, []),
+    warshipPortHealingBonusPerLevel: () => elRet(m, 108, 936, []),
+    warshipPortSwitchThreshold: () => elRet(m, 109, 937, []),
+    warshipShellAttackRate: () => elRet(m, 110, 938, []),
+    troopIncreaseRate: (p) => elRet(m, 112, 946, [...elEvTok(p)]),
+    goldAdditionRate: (p) => elRet(m, 113, 947, [...elEvTok(p)]),
+    temporaryEmbargoDuration: () => elRet(m, 114, 948, []),
   };
   return {
     config: () => cfg,
@@ -27099,7 +27173,16 @@ function elMgObj(slots) {
       const t = elRet(m, 12, 222, elEv1(tile));
       return t == null ? null : elC.players[t];
     },
-    ownerID: (tile) => elRet(m, 13, 223, elEv1(tile)),
+    // G5j: grid-delegated when `elC.mapGrid` exists (the trace records the
+    // computed value instead of a script value, so both sides stay in sync).
+    ownerID: (tile) => {
+      if (elC.mapGrid) {
+        const v = elC.mapGrid.ownerID(tile);
+        elT.push(223, ...elEv1(tile), ...elEv1(v));
+        return v;
+      }
+      return elRet(m, 13, 223, elEv1(tile));
+    },
     displayMessage: (...args) => {
       elT.push(226);
       for (const a of args) elT.push(...encVal(a));
@@ -27148,7 +27231,15 @@ function elMgObj(slots) {
           ...elEv1(outer),
           ...elEvStrs(arr),
         ]);
-        return (ts || []).map((t) => ({ unit: elC.units[t] }));
+        // G5j: the script may carry plain tokens (legacy, `{unit}` only) or
+        // `{u, d2}` objects (`{unit, distSquared}` — WarshipExecution's
+        // findBestTarget destructures both).
+        return (ts || []).map((t) => {
+          if (t !== null && typeof t === "object" && t.u !== undefined) {
+            return { unit: elC.units[t.u], distSquared: t.d2 };
+          }
+          return { unit: elC.units[t] };
+        });
       }
       // G5f: the callback form. The scripted list is replayed through `cb`
       // (which drives every `unit.*` read) and only the passing units are
@@ -27315,6 +27406,19 @@ function elMgObj(slots) {
         );
         return;
       }
+      // G5j: `WarshipExecution.shootTarget` spawns a `ShellExecution` (tag 1).
+      if (cn === "ShellExecution") {
+        elT.push(
+          307,
+          1,
+          ...encVal(exec.spawn),
+          ...elEvTok(exec._owner),
+          ...elEvTok(exec.ownerUnit),
+          ...elEvTok(exec.target),
+          ...encVal(undefined),
+        );
+        return;
+      }
       const tag = elExecTags[cn];
       if (tag === undefined) {
         throw new Error(`el: unknown execution ${cn}`);
@@ -27370,6 +27474,13 @@ function elMgObj(slots) {
         elVoid(903, [...elEvTok(p), ...elEvTok(o), ...elEv1(Number(g))]),
       boatArriveTrade: (p, t, g) =>
         elVoid(904, [...elEvTok(p), ...elEvTok(t), ...elEv1(Number(g))]),
+      // G5j (`PlayerExecution.tick`).
+      recordDeathPosition: (p, pos) =>
+        elVoid(943, [...elEvTok(p), ...elEv1(pos)]),
+      playerKilled: (p, ticks) =>
+        elVoid(944, [...elEvTok(p), ...elEv1(ticks)]),
+      goldWork: (p, g) =>
+        elVoid(945, [...elEvTok(p), ...elEv1(Number(g))]),
     }),
     setWinner: (w, s) => elVoid(505, [...elWinArg(w), ...encVal(s)]),
     unitCount: (ty) => elRet(m, 40, 506, elEvs(ty)),
@@ -27458,7 +27569,9 @@ function elMgObj(slots) {
     // mock itself (so `this.map.ownerID/isLand/isWater/neighbors4/terrainType/
     // x/y` reuse the mg codes), `terraNullius()` the TN singleton (whose `id()`
     // is the only traced accessor, code 811).
-    map: () => elC.mg,
+    // G5j: when a `spec.map` grid exists, `mg.map()` returns it (the real
+    // `GameMap` mock) instead of the mg facade itself.
+    map: () => elC.mapGrid || elC.mg,
     terraNullius: () => elTNObj,
     // `neighbors4(tile, buf)` writes the neighbor tiles into `buf` and returns
     // the count; the trace carries the neighbour LIST so the Rust side can
@@ -27477,7 +27590,17 @@ function elMgObj(slots) {
       for (const t of list) cb(t);
       elT.push(...encVal(undefined));
     },
-    conquerPlayer: (o, t) => elVoid(808, [...elEvTok(o), ...elEvTok(t)]),
+    conquerPlayer: (o, t) => {
+      elVoid(808, [...elEvTok(o), ...elEvTok(t)]);
+      // G5j: mutate the grid — reassign every tile owned by the target player.
+      if (elC.mapGrid) {
+        const oSid = o._smallID;
+        const tSid = t._smallID;
+        for (let i = 0; i < elC.mapGrid.owners.length; i++) {
+          if (elC.mapGrid.owners[i] === tSid) elC.mapGrid.owners[i] = oSid;
+        }
+      }
+    },
     // `targetTransportTile(mg, attacker, ref)` (the `__stub/transport_ship_utils`
     // stub reads `game.__targetTransportTile`).
     __targetTransportTile: (attacker, ref) =>
@@ -27497,6 +27620,10 @@ function elMgObj(slots) {
         return ts == null ? null : ts || [];
       },
     },
+    // G5j: `performance.now()` is only read by `PlayerExecution`; scripted as
+    // an mg slot FIFO (code 942). The `elDef` op loop patches
+    // `globalThis.performance` around class-42 ops.
+    __perfNow: () => elRet(m, 111, 942, []),
     // G5i (`TrainStationExecution` / `TrainExecution`). The station identity is
     // the unit token: `__railStationFor(unit)` canonicalizes station facades
     // per unit (the `__stub/TrainStation.ts` ctor returns the cached object, so
@@ -27582,9 +27709,120 @@ function elMgObj(slots) {
   };
 }
 
+// G5j: a full GameMap mock (`elC.mapGrid`) implementing the real GameMap
+// semantics UNTRACED. Built from `spec.map = {w, h, terrain[], owner[]}` where
+// `terrain[i]` is the GameMapImpl terrain byte (bit 7 = land, bit 6 =
+// shoreline, bit 5 = ocean, bits 0-4 = magnitude) and `owner[i]` is the owner
+// smallID (0 = unowned). All methods are pure reads/writes on the grid data;
+// nothing is traced.
+function elMapGrid(spec) {
+  const w = spec.w;
+  const h = spec.h;
+  const terrain = spec.terrain.slice();
+  const owners = spec.owner.slice();
+  const IS_LAND = 1 << 7;
+  const SHORELINE = 1 << 6;
+  const OCEAN = 1 << 5;
+  const MAG_MASK = 0x1f;
+  const IMPASSABLE_MAG = 31;
+  const g = {
+    w,
+    h,
+    terrain,
+    owners,
+    ref: (x, y) => {
+      if (!g.isValidCoord(x, y)) throw new Error(`Invalid coordinates: ${x},${y}`);
+      return y * w + x;
+    },
+    isValidRef: (r) => Number.isInteger(r) && r >= 0 && r < w * h,
+    x: (r) => r % w,
+    y: (r) => (r / w) | 0,
+    width: () => w,
+    height: () => h,
+    isValidCoord: (x, y) =>
+      Number.isInteger(x) && Number.isInteger(y) && x >= 0 && x < w && y >= 0 && y < h,
+    isLand: (r) => !!(terrain[r] & IS_LAND),
+    isImpassable: (r) => !!(terrain[r] & IS_LAND) && (terrain[r] & MAG_MASK) === IMPASSABLE_MAG,
+    isOcean: (r) => !!(terrain[r] & OCEAN),
+    isShoreline: (r) => !!(terrain[r] & SHORELINE),
+    isWater: (r) => !(terrain[r] & IS_LAND),
+    isShore: (r) => !!(terrain[r] & IS_LAND) && !!(terrain[r] & SHORELINE),
+    isOceanShore: (r) => {
+      if (!(terrain[r] & IS_LAND)) return false;
+      const x = r % w;
+      if (x !== 0 && terrain[r - 1] & OCEAN) return true;
+      if (x !== w - 1 && terrain[r + 1] & OCEAN) return true;
+      if (r >= w && terrain[r - w] & OCEAN) return true;
+      if (r < (h - 1) * w && terrain[r + w] & OCEAN) return true;
+      return false;
+    },
+    isOnEdgeOfMap: (r) => {
+      const x = r % w;
+      if (x === 0 || x === w - 1 || r < w || r >= (h - 1) * w) return true;
+      return (
+        g.isImpassable(r - 1) || g.isImpassable(r + 1) ||
+        g.isImpassable(r - w) || g.isImpassable(r + w)
+      );
+    },
+    ownerID: (r) => owners[r] || 0,
+    hasOwner: (r) => (owners[r] || 0) !== 0,
+    setOwnerID: (r, pid) => { owners[r] = pid; },
+    manhattanDist: (a, b) =>
+      Math.abs(g.x(a) - g.x(b)) + Math.abs(g.y(a) - g.y(b)),
+    euclideanDistSquared: (a, b) => {
+      const dx = g.x(a) - g.x(b);
+      const dy = g.y(a) - g.y(b);
+      return dx * dx + dy * dy;
+    },
+    neighbors4: (r, buf) => {
+      const x = r % w;
+      let n = 0;
+      if (r >= w) buf[n++] = r - w;
+      if (r < (h - 1) * w) buf[n++] = r + w;
+      if (x !== 0) buf[n++] = r - 1;
+      if (x !== w - 1) buf[n++] = r + 1;
+      return n;
+    },
+    neighbors8: (r, buf) => {
+      const x = r % w;
+      const hasN = r >= w;
+      const hasS = r < (h - 1) * w;
+      let n = 0;
+      if (x !== 0) {
+        if (hasN) buf[n++] = r - 1 - w;
+        buf[n++] = r - 1;
+        if (hasS) buf[n++] = r - 1 + w;
+      }
+      if (hasN) buf[n++] = r - w;
+      if (hasS) buf[n++] = r + w;
+      if (x !== w - 1) {
+        if (hasN) buf[n++] = r + 1 - w;
+        buf[n++] = r + 1;
+        if (hasS) buf[n++] = r + 1 + w;
+      }
+      return n;
+    },
+    neighbors: (r) => {
+      const buf = [0, 0, 0, 0];
+      const cnt = g.neighbors4(r, buf);
+      return buf.slice(0, cnt);
+    },
+    forEachNeighbor: (r, cb) => {
+      const buf = [0, 0, 0, 0];
+      const n = g.neighbors4(r, buf);
+      for (let i = 0; i < n; i++) cb(buf[i]);
+    },
+    magnitude: (r) => terrain[r] & MAG_MASK,
+  };
+  return g;
+}
+
 function elDef(name, classId, cls, args, spec, ops) {
   elT = [];
   elC = {};
+  // G5j: the optional grid map; must be created BEFORE the facade objects so
+  // `conquer` / `conquerPlayer` / `ownerID` can reference it.
+  if (spec.map) elC.mapGrid = elMapGrid(spec.map);
   elC.players = (spec.players || []).map((mm, i) => elPlayerObj(i, elSlots(63, mm)));
   elC.alliances = (spec.alliances || []).map((mm, i) => elAllianceObj(i, elSlots(4, mm)));
   elC.requests = (spec.requests || []).map((mm, i) => elRequestObj(i, elSlots(6, mm)));
@@ -27620,6 +27858,8 @@ function elDef(name, classId, cls, args, spec, ops) {
       : {}),
     ...(spec.clusters ? { clusters: spec.clusters } : {}),
     ...(spec.railroads ? { railroads: spec.railroads } : {}),
+    // G5j: the map grid data is passed through verbatim.
+    ...(spec.map ? { map: spec.map } : {}),
   };
 
   // Constructor args: a `null` entry is the `spec.a` player-token reference at
@@ -27650,6 +27890,10 @@ function elDef(name, classId, cls, args, spec, ops) {
       }
       if (x !== null && typeof x === "object" && x.__elrail === true) {
         return elC.mg.railNetwork();
+      }
+      // G5j: `{owner: Player, patrolTile: TileRef}` params object.
+      if (x !== null && typeof x === "object" && x.__elwparams === true) {
+        return { owner: elC.players[x.owner], patrolTile: x.patrolTile };
       }
       return x;
     }),
@@ -27711,6 +27955,12 @@ function elDef(name, classId, cls, args, spec, ops) {
       continue;
     }
     let payload;
+    // G5j: patch `performance.now` for `PlayerExecution` (the only execution
+    // class that reads it) so it returns the scripted mg-slot-111 values.
+    const origPerfNow = classId === 42 ? globalThis.performance?.now : undefined;
+    if (classId === 42 && globalThis.performance) {
+      globalThis.performance.now = () => elC.mg.__perfNow();
+    }
     try {
       let ret;
       if (kind === 1) ret = inst.init(elC.mg, rest[0]);
@@ -27720,6 +27970,10 @@ function elDef(name, classId, cls, args, spec, ops) {
       payload = [0, ...encVal(ret)];
     } catch (e) {
       payload = [1, ...encS(String(e.message))];
+    } finally {
+      if (origPerfNow !== undefined && globalThis.performance) {
+        globalThis.performance.now = origPerfNow;
+      }
     }
     played.push({ kind, args: rest.map(uenc), res: [elT.length, ...elT, ...payload].map(uenc) });
   }
@@ -30740,6 +30994,382 @@ elDef(
   [[0], [1, 0], [2, 1], [2, 2], [2, 3], [3]],
 );
 
+// -- 41 WarshipExecution -----------------------------------------------------
+
+// Basic patrol: full health, no enemies nearby, already has a target tile.
+elDef(
+  "el_warship_patrol",
+  41,
+  elWarshipC,
+  [elUnitRef(0)],
+  {
+    a: [0],
+    mg: {
+      2: [0],
+      25: [[]],
+      102: [5],
+      103: [10],
+      105: [30],
+      106: [20],
+      107: [5],
+      108: [3],
+      109: [0.5],
+      110: [3],
+      862: [{ status: 0, node: 11 }],
+    },
+    players: [{ 0: [1], 63: [false], 11: [[]] }],
+    units: [
+      {
+        0: [true],
+        3: ["Warship"],
+        6: [0],
+        11: [10],
+        29: [100, 100],
+        50: [{ state: "patrolling", patrolTile: 10 }],
+        2: [50],
+        35: [undefined],
+        37: [true],
+      },
+    ],
+  },
+  [[0], [1, 0], [2, 0], [3], [4]],
+);
+
+// Shoot transport: finds a transport in range, fires a shell, then patrols.
+elDef(
+  "el_warship_shoot_transport",
+  41,
+  elWarshipC,
+  [elUnitRef(0)],
+  {
+    a: [0],
+    mg: {
+      2: [0, 100],
+      25: [[{ u: 1, d2: 25 }]],
+      102: [5],
+      103: [10],
+      104: [30],
+      105: [30],
+      106: [20],
+      107: [5],
+      108: [3],
+      109: [0.5],
+      110: [3],
+      862: [{ status: 0, node: 11 }],
+    },
+    players: [
+      { 0: [1], 63: [false], 11: [[]], 56: [true] },
+      { 0: [2], 63: [false] },
+    ],
+    units: [
+      {
+        0: [true],
+        3: ["Warship"],
+        6: [0],
+        11: [10],
+        28: [100],
+        29: [100, 100],
+        50: [{ state: "patrolling", patrolTile: 10 }],
+        2: [50],
+        35: [1],
+        37: [true],
+        19: [true],
+      },
+      {
+        0: [true],
+        3: ["Transport"],
+        6: [1],
+        11: [15],
+        19: [false],
+        35: [undefined],
+      },
+    ],
+  },
+  [[0], [1, 0], [2, 100], [3], [4]],
+);
+
+// Retreat to port: health below threshold, starts retreat.
+elDef(
+  "el_warship_retreat",
+  41,
+  elWarshipC,
+  [elUnitRef(0)],
+  {
+    a: [0],
+    mg: {
+      2: [100],
+      25: [[]],
+      102: [5],
+      103: [10],
+      104: [30],
+      105: [30],
+      106: [20],
+      107: [5],
+      108: [3],
+      109: [0.5],
+      110: [3],
+      20: [5],
+      21: [true],
+      89: [100],
+      862: [{ status: 0, node: 11 }],
+    },
+    players: [{ 0: [1], 63: [false], 11: [[1]] }],
+    units: [
+      {
+        0: [true],
+        3: ["Warship"],
+        6: [0],
+        11: [10],
+        28: [100],
+        29: [20, 20],
+        // warshipState() FIFO across init+tick: 7 patrolling reads (init
+        // patrolTile, isInCombat, healWarship docked, manualPatrolOverride,
+        // docked early-return, handleRepairRetreat#1, shouldStartRepairRetreat),
+        // then retreating reads (handleRepairRetreat#2, refreshRetreatPortTile,
+        // findBetterPortTile, retreatPortTile; the 11th call repeats the last).
+        50: [
+          { state: "patrolling", patrolTile: 10 },
+          { state: "patrolling", patrolTile: 10 },
+          { state: "patrolling", patrolTile: 10 },
+          { state: "patrolling", patrolTile: 10 },
+          { state: "patrolling", patrolTile: 10 },
+          { state: "patrolling", patrolTile: 10 },
+          { state: "patrolling", patrolTile: 10 },
+          { state: "retreating", patrolTile: 10, retreatPort: 20 },
+          { state: "retreating", patrolTile: 10, retreatPort: 20 },
+          { state: "retreating", patrolTile: 10, retreatPort: 20 },
+        ],
+        2: [50],
+        35: [undefined],
+        37: [true],
+        19: [true],
+      },
+      {
+        0: [true],
+        3: ["Port"],
+        6: [0],
+        11: [20],
+        19: [true],
+        20: [1],
+      },
+    ],
+  },
+  [[0], [1, 100], [2, 100], [3], [4]],
+);
+
+// Doomsday: in doomsday clock, cancels retreat.
+elDef(
+  "el_warship_doomsday",
+  41,
+  elWarshipC,
+  [elUnitRef(0)],
+  {
+    a: [0],
+    mg: {
+      2: [100],
+      25: [[]],
+      102: [5],
+      103: [10],
+      104: [30],
+      105: [30],
+      106: [20],
+      107: [5],
+      108: [3],
+      109: [0.5],
+      110: [3],
+      862: [{ status: 0, node: 11 }],
+    },
+    players: [{ 0: [1], 63: [true], 11: [[]] }],
+    units: [
+      {
+        0: [true],
+        3: ["Warship"],
+        6: [0],
+        11: [10],
+        28: [100],
+        29: [100, 100],
+        50: [{ state: "retreating", patrolTile: 10, retreatPort: 20 }],
+        2: [50],
+        35: [undefined],
+        37: [true],
+        19: [true],
+      },
+    ],
+  },
+  [[0], [1, 100], [2, 100], [3], [4]],
+);
+
+// -- 42 PlayerExecution ------------------------------------------------------
+
+// Basic tick: alive player, economy + alliance expiry, no cluster removal
+// (numTilesOwned < 100 skips the gate).
+elDef(
+  "el_player_basic",
+  42,
+  elPlayerExecC,
+  [elPlayerRef(0)],
+  {
+    a: [0],
+    mg: {
+      2: [100],
+      111: [0],
+      112: [50],
+      113: [10],
+      114: [100],
+    },
+    players: [
+      {
+        0: [1],
+        1: ["p1"],
+        3: [true],
+        11: [[]],
+        40: [1000],
+        45: [50],
+        50: [[]],
+        64: [0],
+        65: [[]],
+        66: [[]],
+      },
+    ],
+    units: [],
+    alliances: [],
+  },
+  [[0], [1, 0], [2, 100], [3], [4]],
+);
+
+// Death: player not alive, teardown + standings.
+elDef(
+  "el_player_death",
+  42,
+  elPlayerExecC,
+  [elPlayerRef(0)],
+  {
+    a: [0],
+    mg: {
+      2: [100],
+      11: [[1]],
+      12: [0],
+      111: [0],
+    },
+    players: [
+      {
+        0: [1],
+        1: ["p1"],
+        3: [false],
+        11: [[0, 1]],
+        26: [true],
+        40: [500],
+        45: [0],
+        50: [[]],
+        65: [[]],
+        66: [[]],
+      },
+      { 0: [2], 21: ["HUMAN"] },
+    ],
+    units: [
+      { 0: [true], 3: ["City"], 6: [0], 11: [10] },
+      { 0: [true], 3: ["Atom Bomb"], 6: [0], 11: [20] },
+    ],
+  },
+  [[0], [1, 0], [2, 100], [3], [4]],
+);
+
+// Structure capture: a DefensePost on enemy tile is deleted, a City is captured.
+elDef(
+  "el_player_structure_capture",
+  42,
+  elPlayerExecC,
+  [elPlayerRef(0)],
+  {
+    a: [0],
+    mg: {
+      2: [100],
+      111: [0],
+      112: [50],
+      113: [10],
+      114: [100],
+      12: [1, 1],
+      1: [1, 1],
+    },
+    players: [
+      {
+        0: [1],
+        1: ["p1"],
+        3: [true],
+        11: [[0, 1]],
+        40: [1000],
+        45: [50],
+        50: [[]],
+        64: [0],
+        65: [[]],
+        66: [[]],
+      },
+      { 0: [2], 1: ["p2"], 21: ["HUMAN"], 26: [true, true] },
+    ],
+    units: [
+      { 0: [true], 3: ["Defense Post"], 6: [0], 11: [10] },
+      { 0: [true], 3: ["City"], 6: [0], 11: [20] },
+    ],
+  },
+  [[0], [1, 0], [2, 100], [3], [4]],
+);
+
+// Single cluster surrounded removal: player 0's cluster is fully surrounded
+// by player 1 and gets conquered.
+elDef(
+  "el_player_cluster_removal",
+  42,
+  elPlayerExecC,
+  [elPlayerRef(0)],
+  {
+    a: [0],
+    mg: {
+      2: [100],
+      111: [0],
+      112: [50],
+      113: [10],
+      114: [100],
+      70: [6],
+      71: [6],
+    },
+    players: [
+      {
+        0: [1],
+        1: ["p1"],
+        3: [true],
+        11: [[]],
+        40: [1000],
+        45: [100],
+        50: [[12, 13, 22, 23]],
+        64: [100],
+        65: [[]],
+        66: [[]],
+      },
+      { 0: [2], 1: ["p2"], 21: ["HUMAN"], 12: [false], 54: [[]] },
+    ],
+    units: [],
+    map: {
+      w: 6,
+      h: 6,
+      terrain: (() => {
+        const t = new Array(36).fill(128);
+        return t;
+      })(),
+      owner: (() => {
+        const o = new Array(36).fill(0);
+        o[12] = 1; o[13] = 1; o[22] = 1; o[23] = 1;
+        o[6] = 2; o[7] = 2; o[8] = 2;
+        o[11] = 2; o[14] = 2;
+        o[16] = 2; o[17] = 2;
+        o[18] = 2; o[19] = 2; o[20] = 2;
+        o[24] = 2; o[25] = 2; o[26] = 2;
+        return o;
+      })(),
+    },
+  },
+  [[0], [1, 0], [2, 100], [3], [4]],
+);
+
 const structures = {
   votetally: vtScenarios,
   rankedcheckin: rgScenarios,
@@ -31616,6 +32246,9 @@ L.push("}");
 L.push("");
 const utilResLit = (r) => {
   if (r === "n") return "f64::NAN";
+  // "u" (undefined in a number slot, e.g. elEv1(undefined)) flattens to NaN;
+  // the harness compares with Object.is semantics (NaN equals NaN).
+  if (r === "u") return "f64::NAN";
   if (r === "-0") return "-0.0f64";
   if (r === "i") return "f64::INFINITY";
   if (r === "-i") return "f64::NEG_INFINITY";

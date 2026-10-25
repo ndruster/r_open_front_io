@@ -154,7 +154,12 @@ pub fn nearest_tile_dist_capped(
 /// `closestTwoTiles` — the closest `(x, y)` pair across two lists, by the
 /// inlined-coordinate Manhattan metric. `None` when either list is empty.
 pub fn closest_two_tiles(gm: &GameMap, x: &[f64], y: &[f64]) -> Option<(f64, f64)> {
-    let w = gm.width();
+    closest_two_tiles_w(gm.width(), x, y)
+}
+
+/// `closestTwoTiles` with an explicit width — the `Game`-facade callers trace
+/// `width()` themselves before delegating here.
+pub fn closest_two_tiles_w(w: f64, x: &[f64], y: &[f64]) -> Option<(f64, f64)> {
     let mut x_sorted = x.to_vec();
     let mut y_sorted = y.to_vec();
     // `sort((a, b) => (a % w) - (b % w))` — stable; a NaN comparator result is

@@ -192,6 +192,32 @@ export function getSpawnTiles(gm, tile, requireAllValid) {
   return game.__targetTransportTile(attacker, ref);
 }
 `,
+  // G5k: `AiAttackBehavior` calls `canBuildTransportShip` from
+  // `game/TransportShipUtils.ts`, which builds a real SpatialQuery over the
+  // GameMap. The harness has no real map, so the module is redirected to this
+  // stub, which reproduces the Rust `ai_can_build_transport_ship` facade
+  // sequence exactly: unitCount(823) -> boatMaxNumber(801) ->
+  // __targetTransportTile(880) -> owner(222) -> [isPlayer(259) &&
+  // canAttackPlayer(820)] -> __closestShoreByWater(961).
+  "__stub/g5k.ts": `export function canBuildTransportShip(game, player, tile) {
+  if (player.unitCount("Transport") >= game.config().boatMaxNumber()) {
+    return false;
+  }
+  const dst = game.__targetTransportTile(player, tile);
+  if (dst === null) {
+    return false;
+  }
+  const other = game.owner(tile);
+  if (other === player) {
+    return false;
+  }
+  if (other !== null && other.isPlayer() && !player.canAttackPlayer(other)) {
+    return false;
+  }
+  const shore = game.__closestShoreByWater(player, dst);
+  return shore ?? false;
+}
+`,
   // G5i: station identity IS the unit token. The stub ctor delegates to the
   // harness's canonicalizing cache so `destination === station` compares unit
   // tokens (a ctor returning an object overrides `this`). The real
@@ -2355,6 +2381,711 @@ function prepare(rel) {
         "    this.player = player;\n" +
         "  }",
       "PlayerExecution ctor",
+    );
+  }
+
+  // G5k: TribeExecution runs the real class against scripted facade mocks.
+  // `Execution` / `Game` / `Player` are type-only (dropped); `Structures` is a
+  // *value* use (`Structures.has`) and rides on the prepared Game.ts copy;
+  // `PseudoRandom` / `simpleHash` the prepared real copies. The three
+  // collaborator modules (AllianceExtension / DeleteUnit / AiAttackBehavior)
+  // ride on their own prepared branches. NOTE: `SpawnExecution` (G5e) still
+  // imports `TribeExecution` from `__stub/g5e.ts`, so the stub and the real
+  // class coexist; the addExecution recorder tag 14 reads `exec.player` on the
+  // stub and `exec.tribe` on the real class.
+  if (rel.endsWith("execution/TribeExecution.ts")) {
+    if (!prepared.has(elGameRel)) prepare(elGameRel);
+    if (!prepared.has(elPsrRel)) prepare(elPsrRel);
+    if (!prepared.has(elCoreUtilRel)) prepare(elCoreUtilRel);
+    const elAeeRel = "src/core/execution/alliance/AllianceExtensionExecution.ts";
+    if (!prepared.has(elAeeRel)) prepare(elAeeRel);
+    const elDueRel = "src/core/execution/DeleteUnitExecution.ts";
+    if (!prepared.has(elDueRel)) prepare(elDueRel);
+    const elAabRel = "src/core/execution/utils/AiAttackBehavior.ts";
+    if (!prepared.has(elAabRel)) prepare(elAabRel);
+    out = must(
+      out,
+      'import { Execution, Game, Player, Structures } from "../game/Game";\n' +
+        'import { PseudoRandom } from "../PseudoRandom";\n' +
+        'import { simpleHash } from "../Util";\n' +
+        'import { AllianceExtensionExecution } from "./alliance/AllianceExtensionExecution";\n' +
+        'import { DeleteUnitExecution } from "./DeleteUnitExecution";\n' +
+        'import { AiAttackBehavior } from "./utils/AiAttackBehavior";\n',
+      `import { Structures } from "./${prepared.get(elGameRel)}";\n` +
+        `import { PseudoRandom } from "./${prepared.get(elPsrRel)}";\n` +
+        `import { simpleHash } from "./${prepared.get(elCoreUtilRel)}";\n` +
+        `import { AllianceExtensionExecution } from "./${prepared.get(elAeeRel)}";\n` +
+        `import { DeleteUnitExecution } from "./${prepared.get(elDueRel)}";\n` +
+        `import { AiAttackBehavior } from "./${prepared.get(elAabRel)}";\n`,
+      "TribeExecution imports",
+    );
+    out = must(
+      out,
+      "export class TribeExecution implements Execution {\n",
+      "export class TribeExecution {\n",
+      "TribeExecution implements",
+    );
+    out = must(
+      out,
+      "  constructor(private tribe: Player) {",
+      "  constructor(tribe) {\n" +
+        "    this.tribe = tribe;",
+      "TribeExecution ctor",
+    );
+  }
+
+  // G5k: AiAttackBehavior runs the real class against scripted facade mocks.
+  // The Game.ts value uses (`Difficulty` / `GameMode` / `GameType` /
+  // `HumansVsNations` / `PlayerType` / `Relation` / `Structures` / `UnitType`)
+  // ride on the prepared Game.ts copy; `canBuildTransportShip` is redirected to
+  // the `__stub/g5k.ts` facade stub; `assertNever` / `boundingBoxCenter` /
+  // `calculateBoundingBoxCenter` to the prepared core Util; `closestTwoTiles`
+  // to the prepared execution Util; the collaborator executions / nation
+  // behaviour modules to their own prepared branches. `NationAllianceBehavior`
+  // appears only in type positions (parameter property + `undefined` checks),
+  // so its import is dropped. The ctor's eight parameter properties are
+  // expanded (strip mode rejects them).
+  if (rel.endsWith("execution/utils/AiAttackBehavior.ts")) {
+    if (!prepared.has(elGameRel)) prepare(elGameRel);
+    if (!prepared.has(elPsrRel)) prepare(elPsrRel);
+    if (!prepared.has(elCoreUtilRel)) prepare(elCoreUtilRel);
+    if (!prepared.has(elAttackRel)) prepare(elAttackRel);
+    if (!prepared.has(elUtilRel)) prepare(elUtilRel);
+    const elG5kRel = "__stub/g5k.ts";
+    if (!prepared.has(elG5kRel)) prepare(elG5kRel);
+    const elDteRel = "src/core/execution/DonateTroopExecution.ts";
+    if (!prepared.has(elDteRel)) prepare(elDteRel);
+    const elNebRel = "src/core/execution/nation/NationEmojiBehavior.ts";
+    if (!prepared.has(elNebRel)) prepare(elNebRel);
+    const elNuRel = "src/core/execution/nation/NationUtils.ts";
+    if (!prepared.has(elNuRel)) prepare(elNuRel);
+    const elTseRel = "src/core/execution/TransportShipExecution.ts";
+    if (!prepared.has(elTseRel)) prepare(elTseRel);
+    out = must(
+      out,
+      'import {\n' +
+        "  Difficulty,\n" +
+        "  Game,\n" +
+        "  GameMode,\n" +
+        "  GameType,\n" +
+        "  HumansVsNations,\n" +
+        "  Player,\n" +
+        "  PlayerID,\n" +
+        "  PlayerType,\n" +
+        "  Relation,\n" +
+        "  Structures,\n" +
+        "  TerraNullius,\n" +
+        "  UnitType,\n" +
+        '} from "../../game/Game";\n' +
+        'import { TileRef } from "../../game/GameMap";\n' +
+        'import { canBuildTransportShip } from "../../game/TransportShipUtils";\n' +
+        'import { PseudoRandom } from "../../PseudoRandom";\n' +
+        "import {\n" +
+        "  assertNever,\n" +
+        "  boundingBoxCenter,\n" +
+        "  calculateBoundingBoxCenter,\n" +
+        '} from "../../Util";\n' +
+        'import { AttackExecution } from "../AttackExecution";\n' +
+        'import { DonateTroopsExecution } from "../DonateTroopExecution";\n' +
+        'import { NationAllianceBehavior } from "../nation/NationAllianceBehavior";\n' +
+        "import {\n" +
+        "  EMOJI_ASSIST_ACCEPT,\n" +
+        "  EMOJI_ASSIST_RELATION_TOO_LOW,\n" +
+        "  EMOJI_ASSIST_TARGET_ALLY,\n" +
+        "  EMOJI_ASSIST_TARGET_ME,\n" +
+        "  NationEmojiBehavior,\n" +
+        '} from "../nation/NationEmojiBehavior";\n' +
+        'import { findJuiciestTarget } from "../nation/NationUtils";\n' +
+        'import { TransportShipExecution } from "../TransportShipExecution";\n' +
+        'import { closestTwoTiles } from "../Util";\n',
+      `import {\n` +
+        `  Difficulty,\n` +
+        `  GameMode,\n` +
+        `  GameType,\n` +
+        `  HumansVsNations,\n` +
+        `  PlayerType,\n` +
+        `  Relation,\n` +
+        `  Structures,\n` +
+        `  UnitType,\n` +
+        `} from "./${prepared.get(elGameRel)}";\n` +
+        `import { canBuildTransportShip } from "./${prepared.get(elG5kRel)}";\n` +
+        `import { PseudoRandom } from "./${prepared.get(elPsrRel)}";\n` +
+        `import {\n` +
+        `  assertNever,\n` +
+        `  boundingBoxCenter,\n` +
+        `  calculateBoundingBoxCenter,\n` +
+        `} from "./${prepared.get(elCoreUtilRel)}";\n` +
+        `import { AttackExecution } from "./${prepared.get(elAttackRel)}";\n` +
+        `import { DonateTroopsExecution } from "./${prepared.get(elDteRel)}";\n` +
+        `import {\n` +
+        `  EMOJI_ASSIST_ACCEPT,\n` +
+        `  EMOJI_ASSIST_RELATION_TOO_LOW,\n` +
+        `  EMOJI_ASSIST_TARGET_ALLY,\n` +
+        `  EMOJI_ASSIST_TARGET_ME,\n` +
+        `  NationEmojiBehavior,\n` +
+        `} from "./${prepared.get(elNebRel)}";\n` +
+        `import { findJuiciestTarget } from "./${prepared.get(elNuRel)}";\n` +
+        `import { TransportShipExecution } from "./${prepared.get(elTseRel)}";\n` +
+        `import { closestTwoTiles } from "./${prepared.get(elUtilRel)}";\n`,
+      "AiAttackBehavior imports",
+    );
+    out = must(
+      out,
+      "  constructor(\n" +
+        "    private random: PseudoRandom,\n" +
+        "    private game: Game,\n" +
+        "    private player: Player,\n" +
+        "    private triggerRatio: number,\n" +
+        "    private reserveRatio: number,\n" +
+        "    private expandRatio: number,\n" +
+        "    private allianceBehavior?: NationAllianceBehavior,\n" +
+        "    private emojiBehavior?: NationEmojiBehavior,\n" +
+        "  ) {}",
+      "  constructor(\n" +
+        "    random,\n" +
+        "    game,\n" +
+        "    player,\n" +
+        "    triggerRatio,\n" +
+        "    reserveRatio,\n" +
+        "    expandRatio,\n" +
+        "    allianceBehavior,\n" +
+        "    emojiBehavior,\n" +
+        "  ) {\n" +
+        "    this.random = random;\n" +
+        "    this.game = game;\n" +
+        "    this.player = player;\n" +
+        "    this.triggerRatio = triggerRatio;\n" +
+        "    this.reserveRatio = reserveRatio;\n" +
+        "    this.expandRatio = expandRatio;\n" +
+        "    this.allianceBehavior = allianceBehavior;\n" +
+        "    this.emojiBehavior = emojiBehavior;\n" +
+        "  }",
+      "AiAttackBehavior ctor",
+    );
+  }
+
+  // G5k Step 2: NationExecution (class 44) runs the real class against the
+  // scripted facade mocks. The Game.ts value uses (`Difficulty` / `GameMode` /
+  // `PlayerType` / `Relation` / `TerrainType` / `UnitType`) ride on the
+  // prepared Game.ts copy (enums inlined as plain objects); `Execution` /
+  // `Game` / `Nation` / `Player` / `PlayerID` / `TileRef` / `GameID` feed type
+  // positions only. The seven collaborator modules ride on their own prepared
+  // branches. `implements Execution` is dropped and the ctor's two parameter
+  // properties are expanded (strip mode rejects them).
+  if (rel.endsWith("execution/NationExecution.ts")) {
+    if (!prepared.has(elGameRel)) prepare(elGameRel);
+    if (!prepared.has(elPsrRel)) prepare(elPsrRel);
+    if (!prepared.has(elCoreUtilRel)) prepare(elCoreUtilRel);
+    if (!prepared.has(elSpawnRel)) prepare(elSpawnRel);
+    const elAabRel2 = "src/core/execution/utils/AiAttackBehavior.ts";
+    if (!prepared.has(elAabRel2)) prepare(elAabRel2);
+    const elNabRel = "src/core/execution/nation/NationAllianceBehavior.ts";
+    if (!prepared.has(elNabRel)) prepare(elNabRel);
+    const elNebRel2 = "src/core/execution/nation/NationEmojiBehavior.ts";
+    if (!prepared.has(elNebRel2)) prepare(elNebRel2);
+    const elNmbRel = "src/core/execution/nation/NationMIRVBehavior.ts";
+    if (!prepared.has(elNmbRel)) prepare(elNmbRel);
+    const elNnbRel = "src/core/execution/nation/NationNukeBehavior.ts";
+    if (!prepared.has(elNnbRel)) prepare(elNnbRel);
+    const elNsbRel = "src/core/execution/nation/NationStructureBehavior.ts";
+    if (!prepared.has(elNsbRel)) prepare(elNsbRel);
+    const elNwbRel = "src/core/execution/nation/NationWarshipBehavior.ts";
+    if (!prepared.has(elNwbRel)) prepare(elNwbRel);
+    out = must(
+      out,
+      'import {\n' +
+        "  Difficulty,\n" +
+        "  Execution,\n" +
+        "  Game,\n" +
+        "  GameMode,\n" +
+        "  Nation,\n" +
+        "  Player,\n" +
+        "  PlayerID,\n" +
+        "  PlayerType,\n" +
+        "  Relation,\n" +
+        "  TerrainType,\n" +
+        "  UnitType,\n" +
+        '} from "../game/Game";\n' +
+        'import { TileRef } from "../game/GameMap";\n' +
+        'import { PseudoRandom } from "../PseudoRandom";\n' +
+        'import { GameID } from "../Schemas";\n' +
+        'import { assertNever, simpleHash } from "../Util";\n' +
+        'import { NationAllianceBehavior } from "./nation/NationAllianceBehavior";\n' +
+        'import { NationEmojiBehavior } from "./nation/NationEmojiBehavior";\n' +
+        'import { NationMIRVBehavior } from "./nation/NationMIRVBehavior";\n' +
+        'import { NationNukeBehavior } from "./nation/NationNukeBehavior";\n' +
+        'import { NationStructureBehavior } from "./nation/NationStructureBehavior";\n' +
+        'import { NationWarshipBehavior } from "./nation/NationWarshipBehavior";\n' +
+        'import { SpawnExecution } from "./SpawnExecution";\n' +
+        'import { AiAttackBehavior } from "./utils/AiAttackBehavior";\n',
+      `import {\n` +
+        `  Difficulty,\n` +
+        `  GameMode,\n` +
+        `  PlayerType,\n` +
+        `  Relation,\n` +
+        `  TerrainType,\n` +
+        `  UnitType,\n` +
+        `} from "./${prepared.get(elGameRel)}";\n` +
+        `import { PseudoRandom } from "./${prepared.get(elPsrRel)}";\n` +
+        `import { assertNever, simpleHash } from "./${prepared.get(elCoreUtilRel)}";\n` +
+        `import { NationAllianceBehavior } from "./${prepared.get(elNabRel)}";\n` +
+        `import { NationEmojiBehavior } from "./${prepared.get(elNebRel2)}";\n` +
+        `import { NationMIRVBehavior } from "./${prepared.get(elNmbRel)}";\n` +
+        `import { NationNukeBehavior } from "./${prepared.get(elNnbRel)}";\n` +
+        `import { NationStructureBehavior } from "./${prepared.get(elNsbRel)}";\n` +
+        `import { NationWarshipBehavior } from "./${prepared.get(elNwbRel)}";\n` +
+        `import { SpawnExecution } from "./${prepared.get(elSpawnRel)}";\n` +
+        `import { AiAttackBehavior } from "./${prepared.get(elAabRel2)}";\n`,
+      "NationExecution imports",
+    );
+    out = must(
+      out,
+      "export class NationExecution implements Execution {\n",
+      "export class NationExecution {\n",
+      "NationExecution implements",
+    );
+    out = must(
+      out,
+      "  constructor(\n" +
+        "    private gameID: GameID,\n" +
+        "    private nation: Nation, // Nation contains PlayerInfo with PlayerType.Nation\n" +
+        "  ) {",
+      "  constructor(\n" +
+        "    gameID,\n" +
+        "    nation, // Nation contains PlayerInfo with PlayerType.Nation\n" +
+        "  ) {\n" +
+        "    this.gameID = gameID;\n" +
+        "    this.nation = nation;",
+      "NationExecution ctor",
+    );
+  }
+
+  // G5k Step 2: NationAllianceBehavior. `Difficulty` / `GameMode` /
+  // `PlayerType` / `Relation` ride on the prepared Game.ts copy; `assertNever`
+  // on the prepared core Util; the two alliance executions, the emoji consts /
+  // class and `findJuiciestTarget` on their own prepared branches. The ctor's
+  // four parameter properties are expanded.
+  if (rel.endsWith("execution/nation/NationAllianceBehavior.ts")) {
+    if (!prepared.has(elGameRel)) prepare(elGameRel);
+    if (!prepared.has(elPsrRel)) prepare(elPsrRel);
+    if (!prepared.has(elCoreUtilRel)) prepare(elCoreUtilRel);
+    const elAeeRel2 = "src/core/execution/alliance/AllianceExtensionExecution.ts";
+    if (!prepared.has(elAeeRel2)) prepare(elAeeRel2);
+    const elAarRel = "src/core/execution/alliance/AllianceRequestExecution.ts";
+    if (!prepared.has(elAarRel)) prepare(elAarRel);
+    const elNebRel3 = "src/core/execution/nation/NationEmojiBehavior.ts";
+    if (!prepared.has(elNebRel3)) prepare(elNebRel3);
+    const elNuRel2 = "src/core/execution/nation/NationUtils.ts";
+    if (!prepared.has(elNuRel2)) prepare(elNuRel2);
+    out = must(
+      out,
+      'import {\n' +
+        "  Difficulty,\n" +
+        "  Game,\n" +
+        "  GameMode,\n" +
+        "  Player,\n" +
+        "  PlayerType,\n" +
+        "  Relation,\n" +
+        '} from "../../game/Game";\n' +
+        'import { PseudoRandom } from "../../PseudoRandom";\n' +
+        'import { assertNever } from "../../Util";\n' +
+        'import { AllianceExtensionExecution } from "../alliance/AllianceExtensionExecution";\n' +
+        'import { AllianceRequestExecution } from "../alliance/AllianceRequestExecution";\n' +
+        "import {\n" +
+        "  EMOJI_CONFUSED,\n" +
+        "  EMOJI_HANDSHAKE,\n" +
+        "  EMOJI_LOVE,\n" +
+        "  EMOJI_SCARED_OF_THREAT,\n" +
+        "  NationEmojiBehavior,\n" +
+        '} from "./NationEmojiBehavior";\n' +
+        'import { findJuiciestTarget } from "./NationUtils";\n',
+      `import {\n` +
+        `  Difficulty,\n` +
+        `  GameMode,\n` +
+        `  PlayerType,\n` +
+        `  Relation,\n` +
+        `} from "./${prepared.get(elGameRel)}";\n` +
+        `import { PseudoRandom } from "./${prepared.get(elPsrRel)}";\n` +
+        `import { assertNever } from "./${prepared.get(elCoreUtilRel)}";\n` +
+        `import { AllianceExtensionExecution } from "./${prepared.get(elAeeRel2)}";\n` +
+        `import { AllianceRequestExecution } from "./${prepared.get(elAarRel)}";\n` +
+        `import {\n` +
+        `  EMOJI_CONFUSED,\n` +
+        `  EMOJI_HANDSHAKE,\n` +
+        `  EMOJI_LOVE,\n` +
+        `  EMOJI_SCARED_OF_THREAT,\n` +
+        `  NationEmojiBehavior,\n` +
+        `} from "./${prepared.get(elNebRel3)}";\n` +
+        `import { findJuiciestTarget } from "./${prepared.get(elNuRel2)}";\n`,
+      "NationAlliance imports",
+    );
+    out = must(
+      out,
+      "  constructor(\n" +
+        "    private random: PseudoRandom,\n" +
+        "    private game: Game,\n" +
+        "    private player: Player,\n" +
+        "    private emojiBehavior: NationEmojiBehavior,\n" +
+        "  ) {}",
+      "  constructor(\n" +
+        "    random,\n" +
+        "    game,\n" +
+        "    player,\n" +
+        "    emojiBehavior,\n" +
+        "  ) {\n" +
+        "    this.random = random;\n" +
+        "    this.game = game;\n" +
+        "    this.player = player;\n" +
+        "    this.emojiBehavior = emojiBehavior;\n" +
+        "  }",
+      "NationAlliance ctor",
+    );
+  }
+
+  // G5k Step 2: NationWarshipBehavior. `AllPlayers` / `Difficulty` /
+  // `PlayerType` / `UnitType` ride on the prepared Game.ts copy; the
+  // `TileRef` import is type-only and dropped; `ConstructionExecution` and the
+  // retaliation emoji / behavior imports ride on their prepared branches. The
+  // ctor's four parameter properties are expanded.
+  if (rel.endsWith("execution/nation/NationWarshipBehavior.ts")) {
+    if (!prepared.has(elGameRel)) prepare(elGameRel);
+    if (!prepared.has(elPsrRel)) prepare(elPsrRel);
+    const elConsRel = "src/core/execution/ConstructionExecution.ts";
+    if (!prepared.has(elConsRel)) prepare(elConsRel);
+    const elNebRel4 = "src/core/execution/nation/NationEmojiBehavior.ts";
+    if (!prepared.has(elNebRel4)) prepare(elNebRel4);
+    out = must(
+      out,
+      'import {\n' +
+        "  AllPlayers,\n" +
+        "  Difficulty,\n" +
+        "  Game,\n" +
+        "  Gold,\n" +
+        "  Player,\n" +
+        "  PlayerType,\n" +
+        "  Unit,\n" +
+        "  UnitType,\n" +
+        '} from "../../game/Game";\n' +
+        'import { TileRef } from "../../game/GameMap";\n' +
+        'import { PseudoRandom } from "../../PseudoRandom";\n' +
+        'import { ConstructionExecution } from "../ConstructionExecution";\n' +
+        "import {\n" +
+        "  EMOJI_WARSHIP_RETALIATION,\n" +
+        "  NationEmojiBehavior,\n" +
+        '} from "./NationEmojiBehavior";\n',
+      `import {\n` +
+        `  AllPlayers,\n` +
+        `  Difficulty,\n` +
+        `  PlayerType,\n` +
+        `  UnitType,\n` +
+        `} from "./${prepared.get(elGameRel)}";\n` +
+        `import { PseudoRandom } from "./${prepared.get(elPsrRel)}";\n` +
+        `import { ConstructionExecution } from "./${prepared.get(elConsRel)}";\n` +
+        `import {\n` +
+        `  EMOJI_WARSHIP_RETALIATION,\n` +
+        `  NationEmojiBehavior,\n` +
+        `} from "./${prepared.get(elNebRel4)}";\n`,
+      "NationWarship imports",
+    );
+    out = must(
+      out,
+      "  constructor(\n" +
+        "    private random: PseudoRandom,\n" +
+        "    private game: Game,\n" +
+        "    private player: Player,\n" +
+        "    private emojiBehavior: NationEmojiBehavior,\n" +
+        "  ) {}",
+      "  constructor(\n" +
+        "    random,\n" +
+        "    game,\n" +
+        "    player,\n" +
+        "    emojiBehavior,\n" +
+        "  ) {\n" +
+        "    this.random = random;\n" +
+        "    this.game = game;\n" +
+        "    this.player = player;\n" +
+        "    this.emojiBehavior = emojiBehavior;\n" +
+        "  }",
+      "NationWarship ctor",
+    );
+  }
+
+  // G5k Step 2: NationMIRVBehavior. `AllPlayers` / `Difficulty` /
+  // `PlayerType` / `UnitType` ride on the prepared Game.ts copy; the
+  // `TileRef` import is type-only and dropped; `assertNever` on the prepared
+  // core Util; `MirvExecution` redirects to the downstream stub (its
+  // `{player, tile}` fields are what the addExecution recorder tag 4 reads);
+  // `calculateTerritoryCenter` on the prepared execution Util; the emoji
+  // consts / class / `respondToMIRV` on the prepared NationEmojiBehavior copy.
+  // The ctor's four parameter properties are expanded.
+  if (rel.endsWith("execution/nation/NationMIRVBehavior.ts")) {
+    if (!prepared.has(elGameRel)) prepare(elGameRel);
+    if (!prepared.has(elPsrRel)) prepare(elPsrRel);
+    if (!prepared.has(elCoreUtilRel)) prepare(elCoreUtilRel);
+    if (!prepared.has(elDownRel)) prepare(elDownRel);
+    if (!prepared.has(elUtilRel)) prepare(elUtilRel);
+    const elNebRel5 = "src/core/execution/nation/NationEmojiBehavior.ts";
+    if (!prepared.has(elNebRel5)) prepare(elNebRel5);
+    out = must(
+      out,
+      'import {\n' +
+        "  AllPlayers,\n" +
+        "  Difficulty,\n" +
+        "  Game,\n" +
+        "  Gold,\n" +
+        "  Player,\n" +
+        "  PlayerID,\n" +
+        "  PlayerType,\n" +
+        "  Tick,\n" +
+        "  UnitType,\n" +
+        '} from "../../game/Game";\n' +
+        'import { TileRef } from "../../game/GameMap";\n' +
+        'import { PseudoRandom } from "../../PseudoRandom";\n' +
+        'import { assertNever } from "../../Util";\n' +
+        'import { MirvExecution } from "../MIRVExecution";\n' +
+        'import { calculateTerritoryCenter } from "../Util";\n' +
+        "import {\n" +
+        "  EMOJI_NUKE,\n" +
+        "  NationEmojiBehavior,\n" +
+        "  respondToMIRV,\n" +
+        '} from "./NationEmojiBehavior";\n',
+      `import {\n` +
+        `  AllPlayers,\n` +
+        `  Difficulty,\n` +
+        `  PlayerType,\n` +
+        `  UnitType,\n` +
+        `} from "./${prepared.get(elGameRel)}";\n` +
+        `import { PseudoRandom } from "./${prepared.get(elPsrRel)}";\n` +
+        `import { assertNever } from "./${prepared.get(elCoreUtilRel)}";\n` +
+        `import { MirvExecution } from "./${prepared.get(elDownRel)}";\n` +
+        `import { calculateTerritoryCenter } from "./${prepared.get(elUtilRel)}";\n` +
+        `import {\n` +
+        `  EMOJI_NUKE,\n` +
+        `  NationEmojiBehavior,\n` +
+        `  respondToMIRV,\n` +
+        `} from "./${prepared.get(elNebRel5)}";\n`,
+      "NationMIRV imports",
+    );
+    out = must(
+      out,
+      "  constructor(\n" +
+        "    private random: PseudoRandom,\n" +
+        "    private game: Game,\n" +
+        "    private player: Player,\n" +
+        "    private emojiBehavior: NationEmojiBehavior,\n" +
+        "  ) {}",
+      "  constructor(\n" +
+        "    random,\n" +
+        "    game,\n" +
+        "    player,\n" +
+        "    emojiBehavior,\n" +
+        "  ) {\n" +
+        "    this.random = random;\n" +
+        "    this.game = game;\n" +
+        "    this.player = player;\n" +
+        "    this.emojiBehavior = emojiBehavior;\n" +
+        "  }",
+      "NationMIRV ctor",
+    );
+  }
+
+  // G5k Step 2: NationStructureBehavior. `Difficulty` / `GameMode` /
+  // `PlayerType` / `Structures` / `UnitType` ride on the prepared Game.ts
+  // copy; the `TileRef` / `Cluster` imports are type-only and dropped;
+  // `assertNever` on the prepared core Util; the two construction executions,
+  // the nearest-tile helpers and `randTerritoryTileArray` on their prepared
+  // branches. The ctor's three parameter properties are expanded.
+  if (rel.endsWith("execution/nation/NationStructureBehavior.ts")) {
+    if (!prepared.has(elGameRel)) prepare(elGameRel);
+    if (!prepared.has(elPsrRel)) prepare(elPsrRel);
+    if (!prepared.has(elCoreUtilRel)) prepare(elCoreUtilRel);
+    const elConsRel2 = "src/core/execution/ConstructionExecution.ts";
+    if (!prepared.has(elConsRel2)) prepare(elConsRel2);
+    const elUsRel = "src/core/execution/UpgradeStructureExecution.ts";
+    if (!prepared.has(elUsRel)) prepare(elUsRel);
+    if (!prepared.has(elUtilRel)) prepare(elUtilRel);
+    const elNuRel3 = "src/core/execution/nation/NationUtils.ts";
+    if (!prepared.has(elNuRel3)) prepare(elNuRel3);
+    out = must(
+      out,
+      'import {\n' +
+        "  Attack,\n" +
+        "  Difficulty,\n" +
+        "  Game,\n" +
+        "  GameMode,\n" +
+        "  Gold,\n" +
+        "  Player,\n" +
+        "  PlayerType,\n" +
+        "  Structures,\n" +
+        "  Unit,\n" +
+        "  UnitType,\n" +
+        '} from "../../game/Game";\n' +
+        'import { TileRef } from "../../game/GameMap";\n' +
+        'import { Cluster } from "../../game/TrainStation";\n' +
+        'import { PseudoRandom } from "../../PseudoRandom";\n' +
+        'import { assertNever } from "../../Util";\n' +
+        'import { ConstructionExecution } from "../ConstructionExecution";\n' +
+        'import { UpgradeStructureExecution } from "../UpgradeStructureExecution";\n' +
+        'import { nearestTileDist, nearestTileDistCapped } from "../Util";\n' +
+        'import { randTerritoryTileArray } from "./NationUtils";\n',
+      `import {\n` +
+        `  Difficulty,\n` +
+        `  GameMode,\n` +
+        `  PlayerType,\n` +
+        `  Structures,\n` +
+        `  UnitType,\n` +
+        `} from "./${prepared.get(elGameRel)}";\n` +
+        `import { PseudoRandom } from "./${prepared.get(elPsrRel)}";\n` +
+        `import { assertNever } from "./${prepared.get(elCoreUtilRel)}";\n` +
+        `import { ConstructionExecution } from "./${prepared.get(elConsRel2)}";\n` +
+        `import { UpgradeStructureExecution } from "./${prepared.get(elUsRel)}";\n` +
+        `import { nearestTileDist, nearestTileDistCapped } from "./${prepared.get(elUtilRel)}";\n` +
+        `import { randTerritoryTileArray } from "./${prepared.get(elNuRel3)}";\n`,
+      "NationStructure imports",
+    );
+    out = must(
+      out,
+      "  constructor(\n" +
+        "    private random: PseudoRandom,\n" +
+        "    private game: Game,\n" +
+        "    private player: Player,\n" +
+        "  ) {}",
+      "  constructor(\n" +
+        "    random,\n" +
+        "    game,\n" +
+        "    player,\n" +
+        "  ) {\n" +
+        "    this.random = random;\n" +
+        "    this.game = game;\n" +
+        "    this.player = player;\n" +
+        "  }",
+      "NationStructure ctor",
+    );
+  }
+
+  // G5k Step 2: NationNukeBehavior. `Difficulty` / `GameMode` / `PlayerType` /
+  // `Relation` / `Structures` / `UnitType` ride on the prepared Game.ts copy;
+  // `euclDistFN` on the prepared GameMap copy (the `TileRef` half is
+  // type-only); `UniversalPathFinding` on the pathfinding stub (the harness
+  // scripts `mg.__parabola`); `assertNever` / `boundingBoxTiles` on the
+  // prepared core Util; `NukeExecution` on the downstream stub (its
+  // `{nukeType, player, dst, src, speed, waitTicks, rocketDirectionUp}` fields
+  // are what the addExecution recorder tag 3 reads); `UpgradeStructureExecution`
+  // / `closestTwoTiles` / `AiAttackBehavior` / the emoji consts /
+  // `randTerritoryTileArray` on their prepared branches. The ctor's five
+  // parameter properties are expanded AND the three traced field initializers
+  // (`atomBombPerceivedCost` / `hydrogenBombPerceivedCost` / `isHydroNation`)
+  // are moved into the ctor body after the parameter assignments: the compiled
+  // JS the capture recorded assigns parameter properties first, then the field
+  // initializers, so the 969 cost traces and the chance(3) draw must happen in
+  // that order (strip-mode class fields would otherwise run before the ctor
+  // body with `this.game` / `this.player` still undefined).
+  if (rel.endsWith("execution/nation/NationNukeBehavior.ts")) {
+    if (!prepared.has(elGameRel)) prepare(elGameRel);
+    if (!prepared.has(elPsrRel)) prepare(elPsrRel);
+    if (!prepared.has(elCoreUtilRel)) prepare(elCoreUtilRel);
+    if (!prepared.has(elPfRel)) prepare(elPfRel);
+    if (!prepared.has(elDownRel)) prepare(elDownRel);
+    const elUsRel2 = "src/core/execution/UpgradeStructureExecution.ts";
+    if (!prepared.has(elUsRel2)) prepare(elUsRel2);
+    if (!prepared.has(elUtilRel)) prepare(elUtilRel);
+    const elAabRel3 = "src/core/execution/utils/AiAttackBehavior.ts";
+    if (!prepared.has(elAabRel3)) prepare(elAabRel3);
+    const elNebRel6 = "src/core/execution/nation/NationEmojiBehavior.ts";
+    if (!prepared.has(elNebRel6)) prepare(elNebRel6);
+    const elNuRel4 = "src/core/execution/nation/NationUtils.ts";
+    if (!prepared.has(elNuRel4)) prepare(elNuRel4);
+    const elGmRel = "src/core/game/GameMap.ts";
+    if (!prepared.has(elGmRel)) prepare(elGmRel);
+    out = must(
+      out,
+      'import {\n' +
+        "  Difficulty,\n" +
+        "  Game,\n" +
+        "  GameMode,\n" +
+        "  Gold,\n" +
+        "  Player,\n" +
+        "  PlayerType,\n" +
+        "  Relation,\n" +
+        "  Structures,\n" +
+        "  Tick,\n" +
+        "  Unit,\n" +
+        "  UnitType,\n" +
+        '} from "../../game/Game";\n' +
+        'import { TileRef, euclDistFN } from "../../game/GameMap";\n' +
+        'import { UniversalPathFinding } from "../../pathfinding/PathFinder";\n' +
+        'import { PseudoRandom } from "../../PseudoRandom";\n' +
+        'import { assertNever, boundingBoxTiles } from "../../Util";\n' +
+        'import { NukeExecution } from "../NukeExecution";\n' +
+        'import { UpgradeStructureExecution } from "../UpgradeStructureExecution";\n' +
+        'import { closestTwoTiles } from "../Util";\n' +
+        'import { AiAttackBehavior } from "../utils/AiAttackBehavior";\n' +
+        'import { EMOJI_NUKE, NationEmojiBehavior } from "./NationEmojiBehavior";\n' +
+        'import { randTerritoryTileArray } from "./NationUtils";\n',
+      `import {\n` +
+        `  Difficulty,\n` +
+        `  GameMode,\n` +
+        `  PlayerType,\n` +
+        `  Relation,\n` +
+        `  Structures,\n` +
+        `  UnitType,\n` +
+        `} from "./${prepared.get(elGameRel)}";\n` +
+        `import { euclDistFN } from "./${prepared.get(elGmRel)}";\n` +
+        `import { UniversalPathFinding } from "./${prepared.get(elPfRel)}";\n` +
+        `import { PseudoRandom } from "./${prepared.get(elPsrRel)}";\n` +
+        `import { assertNever, boundingBoxTiles } from "./${prepared.get(elCoreUtilRel)}";\n` +
+        `import { NukeExecution } from "./${prepared.get(elDownRel)}";\n` +
+        `import { UpgradeStructureExecution } from "./${prepared.get(elUsRel2)}";\n` +
+        `import { closestTwoTiles } from "./${prepared.get(elUtilRel)}";\n` +
+        `import { AiAttackBehavior } from "./${prepared.get(elAabRel3)}";\n` +
+        `import { EMOJI_NUKE, NationEmojiBehavior } from "./${prepared.get(elNebRel6)}";\n` +
+        `import { randTerritoryTileArray } from "./${prepared.get(elNuRel4)}";\n`,
+      "NationNuke imports",
+    );
+    out = must(
+      out,
+      "  private atomBombsLaunched = 0;\n" +
+        "  private atomBombPerceivedCost = this.cost(UnitType.AtomBomb);\n" +
+        "  private hydrogenBombsLaunched = 0;\n" +
+        "  private hydrogenBombPerceivedCost = this.cost(UnitType.HydrogenBomb);\n" +
+        "  // Make 1/3 of nations \"hydro-nations\" that only throw hydrogen bombs (to reduce atom bomb spam)\n" +
+        "  private readonly isHydroNation: boolean = this.random.chance(3);\n",
+      "  private atomBombsLaunched: number;\n" +
+        "  private atomBombPerceivedCost: any;\n" +
+        "  private hydrogenBombsLaunched: number;\n" +
+        "  private hydrogenBombPerceivedCost: any;\n" +
+        "  // Make 1/3 of nations \"hydro-nations\" that only throw hydrogen bombs (to reduce atom bomb spam)\n" +
+        "  private readonly isHydroNation: boolean;\n",
+      "NationNuke fields",
+    );
+    out = must(
+      out,
+      "  constructor(\n" +
+        "    private random: PseudoRandom,\n" +
+        "    private game: Game,\n" +
+        "    private player: Player,\n" +
+        "    private attackBehavior: AiAttackBehavior,\n" +
+        "    private emojiBehavior: NationEmojiBehavior,\n" +
+        "  ) {}",
+      "  constructor(\n" +
+        "    random,\n" +
+        "    game,\n" +
+        "    player,\n" +
+        "    attackBehavior,\n" +
+        "    emojiBehavior,\n" +
+        "  ) {\n" +
+        "    this.random = random;\n" +
+        "    this.game = game;\n" +
+        "    this.player = player;\n" +
+        "    this.attackBehavior = attackBehavior;\n" +
+        "    this.emojiBehavior = emojiBehavior;\n" +
+        "    this.atomBombsLaunched = 0;\n" +
+        "    this.atomBombPerceivedCost = this.cost(UnitType.AtomBomb);\n" +
+        "    this.hydrogenBombsLaunched = 0;\n" +
+        "    this.hydrogenBombPerceivedCost = this.cost(UnitType.HydrogenBomb);\n" +
+        "    this.isHydroNation = this.random.chance(3);\n" +
+        "  }",
+      "NationNuke ctor",
     );
   }
 
@@ -5002,7 +5733,9 @@ function prepare(rel) {
         '  Impossible: "Impossible",\n' +
         '};\n' +
         'const PlayerType: any = { Bot: "BOT", Human: "HUMAN", Nation: "NATION" };\n' +
-        'const Relation: any = { Hostile: 0, Distrustful: 1, Neutral: 2, Friendly: 3 };\n',
+        'const Relation: any = { Hostile: 0, Distrustful: 1, Neutral: 2, Friendly: 3 };\n' +
+        // G5k Step 2 runs `congratulateWinner`, which reads `GameMode.Team`.
+        'const GameMode: any = { FFA: "Free For All", Team: "Team" };\n',
       "NationEmoji Game import",
     );
     out = must(

@@ -103,6 +103,37 @@
 //! expiry, and periodic cluster removal (`removeClusters` / `calculateClusters`
 //! / `checkAndAssignTerritory`).
 //!
+//! G5k appends `43` TribeExecution (`TribeExecution.ts` + its inlined
+//! `AiAttackBehavior` collaborator, `execution/utils/AiAttackBehavior.ts`). The
+//! tribe is a `PlayerType.Bot` (TribeSpawner), so the `shouldAttack` /
+//! `troopSendCap` / `isAttackTooWeak` guards short-circuit on the tribe's own
+//! `type()`. Targets reach `sendAttack` through three mock classes and the
+//! `isPlayer()` trace follows the concrete object: `Player` (259), `Neighbor`
+//! (257) or the untraced `TerraNullius` singleton (`TargetVia::Pl/Nb/Tn`).
+//!
+//! G5k Step 2 appends `44` NationExecution (`NationExecution.ts`) with its
+//! behavior families ported inline as the `ne_*` functions: the tick ladder
+//! (`initializeBehaviors` — only the `NationNukeBehavior` field initializers
+//! trace, `cost(Atom/HydrogenBomb)` 512→969 plus `chance(3)`; `getAttackRate`,
+//! `randomSpawnLand`, `updateRelationsFromEmbargos`,
+//! `handleEmbargoesToHostileNations`), the social emoji behaviors, the
+//! alliance request / decision / betray ladder, the MIRV ladder
+//! (`considerMirv`, counter-MIRV / victory-denial / steamroll target
+//! selection) and the warship behavior (spawn, transport / trade-ship
+//! tracking + retaliation, infestation counter, team / FFA targeting,
+//! `buildCounterWarship`). `NationStructureBehavior.handleStructures()` and
+//! `NationNukeBehavior.maybeSendNuke()` are no-ops — their facade surface
+//! stays excluded. The nation player reuses the tribe token (`te_tribe`);
+//! the eleven Step-2 scenarios (`el_nation_init_new_player` /
+//! `_init_existing_player` / `_spawn_no_cell` / `_spawn_team_outside` /
+//! `_spawn_random_land` / `_spawn_fail` / `_death` / `_gate_skip_easy` /
+//! `_ship_transport_retaliate` / `_ship_trade_retaliate` /
+//! `_ship_incoming_retaliate`) pin the init difficulty branches, the
+//! `randomSpawnLand` paths, the death gate, the attack-rate gate and the
+//! three warship tracking / retaliation chains. The alliance / betray / MIRV
+//! / emoji ladders stay unvectorized for now — a full attack-tick scenario
+//! needs the excluded structure / nuke behaviors.
+//!
 //! # G5b facade additions (codes ≥ 300)
 //!
 //! `mg`: `300` isValidRef, `301` getWaterComponent, `302` hasWaterComponent,
@@ -421,6 +452,55 @@
 //! (setter, `null` or `{min, max}`), `954` alliances(), `955` getEmbargoes(),
 //! `956` allianceExpiresAt(alliance), `957` allianceExpire(alliance).
 //!
+//! ## G5k facade additions (codes ≥ 958)
+//!
+//! `mg`: `958` config().disableAlliances() (BOOL, slot 115), `959`
+//! config().donateTroops() (BOOL, slot 116), `960`
+//! config().gameConfig().playerTeams (slot 117), `967` isShore(tile) (BOOL,
+//! slot 118), `961` `__closestShoreByWater(player, tile)` (slot 119, the
+//! `__stub/g5k.ts` canBuildTransportShip stub; returns a shore tile or null).
+//! `player`: `962`
+//! sharesBorderWith(other) (BOOL, slot 67), `963` targets() (slot 68, player
+//! tokens), `964` allies() (slot 69, player tokens), `965`
+//! allRelationsSorted() (slot 70, `{relation, player}` entries). `alliance`:
+//! slot 5 `966` other(player) — the other member's player token (the event
+//! prefix is `[al_tok, ...evtok(player)]` like every facade). `neighbor`: the
+//! harness delegates the player accessors (`type` / `troops` / `isTraitor` /
+//! `id` / `units` / `numTilesOwned`) to the underlying player mock, so those
+//! traces land on the `player` codes (neighbor tokens ARE player tokens).
+//! New construction-record tags (code 307): `18` `TransportShipExecution`
+//! `(attacker, ref, troops)`, `19` `DonateTroopsExecution` `(sender,
+//! recipientID, troops)`, `20` `AllianceExtensionExecution` `(from, toID)`,
+//! `21` `DeleteUnitExecution` `(player, unitId)`. The `TerraNullius` singleton
+//! only traces `id()` (`811`, always null); its `isPlayer()` / `smallID()` are
+//! untraced constants (the Rust side branches on the TN token).
+//!
+//! ## G5k Step 2 facade additions (codes ≥ 968, class 44 `NationExecution`)
+//!
+//! `mg`: `968` `units(...types)` the typed form (slot 120, unit tokens), `969`
+//! `unitInfo(ty).cost(game, player)` (slot 121, `[evs(ty), evtok(player)]`),
+//! `970` `config().startingGold(info)` (slot 122, `[encVal(info)]`), `971`
+//! `nations()` (slot 123, player tokens), `972` `isOnMap({x, y})` (slot 124,
+//! `[encVal(cell)]`), `973` `config().trainStationMinRange()` (slot 125), `974`
+//! `config().samRange(level)` (slot 126, `[ev1(level)]`), `975`
+//! `config().defaultSamRange()` (slot 127), `976` `config().trainGold(kind,
+//! troops, player)` (slot 128, `[evs(kind), ev1(troops), evtok(player)]`), `977`
+//! `sharedWaterComponents(player)` (slot 129, a component-id list or null),
+//! `978` `getWaterComponentSize(tile)` (slot 130), `979`
+//! `railNetwork().stationManager().getAll()` (slot 131, unit tokens — station
+//! identity is the unit token). Grid-delegated when `spec.map` exists (the
+//! trace records the computed value): `980` `magnitude(tile)`, `981`
+//! `isOcean(tile)`. `player`: `982` `unitsConstructed(ty)` (BOOL, slot 71),
+//! `983` `unitsOwned(ty)` (slot 72), `984` `info()` (slot 73, a plain
+//! PlayerInfo object). `unit`: `985` `wasDestroyedByEnemy()` (BOOL, slot 52),
+//! `986` `destroyer()` (slot 53, a unit token or null). New construction-record
+//! tags (code 307): `22` `SpawnExecution` `(gameID, playerInfo, tile?)`, `23`
+//! `AllianceRequestExecution` `(requestor, recipientID)`, `24`
+//! `ConstructionExecution` `(player, constructionType, tile,
+//! rocketDirectionUp?, amount?)`, `25` `UpgradeStructureExecution` `(player,
+//! unitId)`. `hasUnitNearby`'s optional 5th argument
+//! (`includeUnderConstruction`) is NOT traced (the mock ignores it).
+//!
 //! ## `neighbor` facade — slots 0..2
 //!
 //! `0` 257 `isPlayer()`, `1` 258 `isOnSameTeam(other)`,
@@ -506,6 +586,17 @@ const TAG_SAM_MISSILE: f64 = 15.0;
 const TAG_ATTACK_EXEC: f64 = 16.0;
 // G5i downstream-execution tag (`mg.addExecution(new TrainExecution(...))`).
 const TAG_TRAIN_EXEC: f64 = 17.0;
+// G5k downstream-execution tags (`mg.addExecution(new XxxExecution(...))`).
+const TAG_TRANSPORT_SHIP_EXEC: f64 = 18.0;
+const TAG_DONATE_TROOPS_EXEC: f64 = 19.0;
+const TAG_ALLIANCE_EXTENSION_EXEC: f64 = 20.0;
+const TAG_DELETE_UNIT_EXEC: f64 = 21.0;
+// G5k Step 2 downstream-execution tags (`NationExecution` / nation behaviors).
+const TAG_SPAWN_EXEC: f64 = 22.0;
+const TAG_ALLIANCE_REQUEST_EXEC: f64 = 23.0;
+const TAG_CONSTRUCTION_EXEC: f64 = 24.0;
+#[allow(dead_code)]
+const TAG_UPGRADE_STRUCTURE_EXEC: f64 = 25.0;
 
 /// G5d `UnitType` string members (`Game.ts`).
 const UNIT_SHELL: &str = "Shell";
@@ -539,6 +630,18 @@ const MIRV_MINIMUM_SPREAD: f64 = 55.0;
 const MIRV_WARHEAD_COUNT: f64 = 350.0;
 /// `GameMode.FFA`.
 const GAME_MODE_FFA: &str = "Free For All";
+/// `GameMode.Team`.
+const GAME_MODE_TEAM: &str = "Team";
+/// `GameType.Public`.
+const GAME_TYPE_PUBLIC: &str = "Public";
+/// `HumansVsNations` sentinel (`Game.ts`).
+const HUMANS_VS_NATIONS: &str = "Humans Vs Nations";
+/// `Relation` numeric enum members (`Game.ts`).
+const RELATION_HOSTILE: f64 = 0.0;
+#[allow(dead_code)]
+const RELATION_DISTRUSTFUL: f64 = 1.0;
+const RELATION_NEUTRAL: f64 = 2.0;
+const RELATION_FRIENDLY: f64 = 3.0;
 /// `GameMapSize.Compact`.
 const GAME_MAP_SIZE_COMPACT: &str = "Compact";
 /// `RankedType` members.
@@ -573,6 +676,8 @@ const DIFFICULTY_EASY: &str = "Easy";
 const DIFFICULTY_MEDIUM: &str = "Medium";
 const DIFFICULTY_HARD: &str = "Hard";
 const DIFFICULTY_IMPOSSIBLE: &str = "Impossible";
+/// `NationMIRVBehavior.MIRV_COOLDOWN_TICKS` (30 seconds at 10 ticks/second).
+const MIRV_COOLDOWN_TICKS: f64 = 300.0;
 /// `AttackExecution.malusForRetreat` / `TransportShipExecution.malusForRetreat`.
 const ATTACK_RETREAT_MALUS: f64 = 25.0;
 /// `AttackExecution.handleDeadDefender` MAX_PASSES / tile threshold.
@@ -816,6 +921,20 @@ fn as_num_list(v: &JsVal) -> Vec<f64> {
 /// JS `SameValueZero` (the key relation used by `Set` / `Map`).
 fn svz(a: f64, b: f64) -> bool {
     a == b || (a.is_nan() && b.is_nan())
+}
+
+/// JS strict equality (`===`) for the scalar [`JsVal`] shapes the mock facades
+/// produce (team ids are strings or `null`; numbers compare like JS, so
+/// `NaN === NaN` is false).
+fn js_val_eq(a: &JsVal, b: &JsVal) -> bool {
+    match (a, b) {
+        (JsVal::Str(x), JsVal::Str(y)) => x == y,
+        (JsVal::Num(x), JsVal::Num(y)) => x == y,
+        (JsVal::Bool(x), JsVal::Bool(y)) => x == y,
+        (JsVal::Null, JsVal::Null) => true,
+        (JsVal::Undef, JsVal::Undef) => true,
+        _ => false,
+    }
 }
 
 /// JS `String.prototype.split(".")` for the `QuickChatExecution` chat key.
@@ -1109,6 +1228,10 @@ impl ElMap {
         self.is_land(r) && (self.terrain[r as usize] as u8 & EL_MAP_MAG_MASK) == EL_MAP_IMPASSABLE_MAG
     }
     fn owner_id(&self, r: f64) -> f64 { self.owners[r as usize] }
+    #[allow(dead_code)]
+    fn magnitude(&self, r: f64) -> f64 {
+        (self.terrain[r as usize] as u8 & EL_MAP_MAG_MASK) as f64
+    }
     fn set_owner_id(&mut self, r: f64, pid: f64) { self.owners[r as usize] = pid; }
     fn neighbors4(&self, r: f64, buf: &mut [f64; 4]) -> usize {
         let x = self.x(r);
@@ -1358,6 +1481,73 @@ pub struct ExecHarness {
     el_map: Option<ElMap>,
     el_scratch: ElScratch,
 
+    // G5k state (class 43 `TribeExecution` + `AiAttackBehavior`).
+    te_tribe: usize,
+    te_attack_rate: f64,
+    te_attack_tick: f64,
+    te_trigger_ratio: f64,
+    te_reserve_ratio: f64,
+    te_expand_ratio: f64,
+    te_neighbors_tn: bool,
+    te_attack_behavior: bool,
+    te_bot_attack_troops_sent: f64,
+    te_nbuf: [f64; 4],
+    /// True when the `te_tribe` token is a `NationExecution` player: the
+    /// `ai_*` (AiAttackBehavior) family routes the optional `allianceBehavior`
+    /// / `emojiBehavior` hooks to the `ne_*` nation methods instead of throwing
+    /// (the TS fields are `undefined` for tribes).
+    te_is_nation: bool,
+
+    // G5k Step 2 state (class 44 `NationExecution` + the seven nation
+    // behaviors). `te_tribe` doubles as the nation player token so the whole
+    // `ai_*` (AiAttackBehavior) family runs unchanged; `te_trigger_ratio` /
+    // `te_reserve_ratio` / `te_expand_ratio` carry the ctor draws.
+    ne_player: Option<usize>,
+    ne_initialized: bool,
+    ne_behaviors_initialized: bool,
+    ne_spawn_exec_added: bool,
+    ne_attack_rate: f64,
+    ne_attack_tick: f64,
+    ne_nation_id: String,
+    ne_nation_name: String,
+    ne_player_info: JsVal,
+    ne_spawn_cell: Option<(f64, f64)>,
+    ne_embargo_malus_applied: Vec<String>,
+    // `NationEmojiBehavior` state.
+    ne_last_emoji_sent: Vec<(usize, f64)>,
+    ne_game_over: bool,
+    // `NationWarshipBehavior` tracked unit sets (insertion order, tokens).
+    ne_tracked_transport: Vec<usize>,
+    ne_tracked_trade: Vec<usize>,
+    ne_tracked_incoming: Vec<usize>,
+    ne_dealt_with: Vec<usize>,
+    // `NationMIRVBehavior` state (the static `recentMirvTargets` map keyed by
+    // player id; one instance per scenario so a field is equivalent).
+    ne_recent_mirv: Vec<(String, f64)>,
+    // `NationNukeBehavior` state.
+    #[allow(dead_code)]
+    ne_recently_sent_nukes: Vec<(f64, f64, String)>,
+    #[allow(dead_code)]
+    ne_atom_bombs_launched: f64,
+    ne_atom_perceived_cost: i64,
+    #[allow(dead_code)]
+    ne_hydro_bombs_launched: f64,
+    ne_hydro_perceived_cost: i64,
+    ne_is_hydro_nation: bool,
+    // `NationStructureBehavior` state.
+    #[allow(dead_code)]
+    ne_placements_count: f64,
+    #[allow(dead_code)]
+    ne_built_crowded: bool,
+    #[allow(dead_code)]
+    ne_last_structure_tick: Option<f64>,
+    #[allow(dead_code)]
+    ne_has_high_starting_gold: Option<bool>,
+    #[allow(dead_code)]
+    ne_post_save_up_start_tick: Option<f64>,
+    #[allow(dead_code)]
+    ne_shared_water_components: Option<Vec<f64>>,
+
     mg: Mock,
     players: Vec<Mock>,
     alliances: Vec<Mock>,
@@ -1520,6 +1710,39 @@ const MG_PERF_NOW: usize = 111;
 const MG_TROOP_INCREASE_RATE: usize = 112;
 const MG_GOLD_ADDITION_RATE: usize = 113;
 const MG_TEMPORARY_EMBARGO_DURATION: usize = 114;
+// G5k mg slots (`TribeExecution` / `AiAttackBehavior`).
+const MG_DISABLE_ALLIANCES: usize = 115;
+const MG_DONATE_TROOPS_CFG: usize = 116;
+const MG_PLAYER_TEAMS: usize = 117;
+const MG_IS_SHORE: usize = 118;
+const MG_CLOSEST_SHORE_BY_WATER: usize = 119;
+// G5k Step 2 mg slots (class 44 `NationExecution` + nation behaviors).
+const MG_UNITS_TYPED: usize = 120;
+const MG_UNIT_INFO_COST: usize = 121;
+#[allow(dead_code)]
+const MG_STARTING_GOLD: usize = 122;
+#[allow(dead_code)]
+const MG_NATIONS: usize = 123;
+#[allow(dead_code)]
+const MG_IS_ON_MAP: usize = 124;
+#[allow(dead_code)]
+const MG_TRAIN_STATION_MIN_RANGE: usize = 125;
+#[allow(dead_code)]
+const MG_SAM_RANGE: usize = 126;
+#[allow(dead_code)]
+const MG_DEFAULT_SAM_RANGE: usize = 127;
+#[allow(dead_code)]
+const MG_TRAIN_GOLD: usize = 128;
+#[allow(dead_code)]
+const MG_SHARED_WATER_COMPONENTS: usize = 129;
+#[allow(dead_code)]
+const MG_GET_WATER_COMPONENT_SIZE: usize = 130;
+#[allow(dead_code)]
+const MG_STATION_MANAGER_GET_ALL: usize = 131;
+#[allow(dead_code)]
+const MG_MAGNITUDE: usize = 132;
+#[allow(dead_code)]
+const MG_IS_OCEAN: usize = 133;
 
 // player slot indices.
 const PL_SMALL_ID: usize = 0;
@@ -1582,12 +1805,26 @@ const PL_IN_DOOMSDAY_CLOCK: usize = 63;
 const PL_LAST_TILE_CHANGE: usize = 64;
 const PL_ALLIANCES: usize = 65;
 const PL_GET_EMBARGOES: usize = 66;
+// G5k player slots (`AiAttackBehavior`).
+const PL_SHARES_BORDER_WITH: usize = 67;
+const PL_TARGETS: usize = 68;
+const PL_ALLIES: usize = 69;
+const PL_ALL_RELATIONS_SORTED: usize = 70;
+// G5k Step 2 player slots (`NationExecution` / `NationStructureBehavior`).
+const PL_UNITS_CONSTRUCTED: usize = 71;
+#[allow(dead_code)]
+const PL_UNITS_OWNED: usize = 72;
+#[allow(dead_code)]
+const PL_INFO: usize = 73;
+const PL_IS_ALLIED_WITH: usize = 74;
 
 // alliance slot indices.
 const AL_ONLY_ONE_AGREED: usize = 0;
 const AL_BOTH_AGREED: usize = 2;
 // G5j alliance slot (`PlayerExecution.tick` alliance expiry).
 const AL_EXPIRES_AT: usize = 4;
+// G5k alliance slot (`TribeExecution.acceptAllAllianceRequests`).
+const AL_OTHER: usize = 5;
 
 // alliance-request slot indices.
 const RQ_RECIPIENT: usize = 0;
@@ -1634,6 +1871,9 @@ const UN_IS_MARKED_FOR_DELETION: usize = 49;
 // G5j unit slots (`WarshipExecution`).
 const UN_WARSHIP_STATE: usize = 50;
 const UN_IS_SAFE_FROM_PIRATES: usize = 51;
+// G5k Step 2 unit slots (`NationWarshipBehavior.trackTransport`).
+const UN_WAS_DESTROYED_BY_ENEMY: usize = 52;
+const UN_DESTROYER: usize = 53;
 
 // attack slot indices (`AttackExecution` facade).
 const AT_TROOPS: usize = 0;
@@ -2367,6 +2607,10 @@ impl ExecHarness {
         as_bool(&v)
     }
     fn pl_is_player(&mut self, tr: &mut Vec<f64>, tok: usize) -> bool {
+        if tok == TN_TOK {
+            // `TerraNullius.isPlayer()` is an untraced constant `false`.
+            return false;
+        }
         let v = self.pl(tok, PL_IS_PLAYER, tr, 259.0, &[]);
         as_bool(&v)
     }
@@ -3701,6 +3945,10 @@ impl ExecHarness {
         mk_take(&mut self.neighbors[nid], slot, tr, code, &prefix)
     }
     fn nb_is_player(&mut self, tr: &mut Vec<f64>, nid: usize) -> bool {
+        if nid == TN_TOK {
+            // `TerraNullius.isPlayer()` is an untraced constant `false`.
+            return false;
+        }
         let v = self.nb(nid, NB_IS_PLAYER, tr, 257.0, &[]);
         as_bool(&v)
     }
@@ -4338,6 +4586,58 @@ impl ExecHarness {
                 self.nbuf = [0.0; 4];
                 self.nbuf8 = [0.0; 8];
             }
+            43 => {
+                // TribeExecution(tribe). The ctor reads `tribe.id()` (231) into a
+                // scratch buffer (the trace is discarded for kind 0), then draws
+                // 5 values from PseudoRandom(simpleHash(id)).
+                self.te_tribe = n(0) as usize;
+                self.flag = true; // `private active = true`.
+                self.te_neighbors_tn = true;
+                self.te_attack_behavior = false;
+                self.te_bot_attack_troops_sent = 0.0;
+                self.te_nbuf = [0.0; 4];
+                let mut scratch = Vec::new();
+                let id = self.pl_id(&mut scratch, self.te_tribe);
+                let mut rng = PseudoRandom::new(crate::util::simple_hash(&id));
+                self.te_attack_rate = rng.next_int(40.0, 80.0) as f64;
+                self.te_attack_tick = rng.next_int(0.0, self.te_attack_rate) as f64;
+                self.te_trigger_ratio = rng.next_int(50.0, 60.0) as f64 / 100.0;
+                self.te_reserve_ratio = rng.next_int(30.0, 40.0) as f64 / 100.0;
+                self.te_expand_ratio = rng.next_int(10.0, 20.0) as f64 / 100.0;
+                self.random = Some(rng);
+            }
+            44 => {
+                // NationExecution(gameID, nation). The ctor traces nothing: it
+                // only reads `nation.playerInfo.id` (plain data) and seeds the
+                // PRNG with `simpleHash(id) + simpleHash(gameID)`, then draws
+                // the three ratios (NO attackRate draw — that happens in init).
+                self.el_game_id = ctor.first().map(as_str).unwrap_or_default();
+                let nation = ctor.get(1).cloned().unwrap_or(JsVal::Absent);
+                self.ne_player_info = val_field(&nation, "playerInfo")
+                    .cloned()
+                    .unwrap_or(JsVal::Absent);
+                self.ne_nation_id = val_field(&self.ne_player_info, "id")
+                    .map(as_str)
+                    .unwrap_or_default();
+                self.ne_nation_name = val_field(&self.ne_player_info, "name")
+                    .map(as_str)
+                    .unwrap_or_default();
+                self.ne_spawn_cell = val_field(&nation, "spawnCell").and_then(|c| {
+                    let x = val_field(c, "x").map(as_num)?;
+                    let y = val_field(c, "y").map(as_num)?;
+                    Some((x, y))
+                });
+                self.flag = true; // `private active = true`.
+                let mut rng = PseudoRandom::new(
+                    crate::util::simple_hash(&self.ne_nation_id)
+                        + crate::util::simple_hash(&self.el_game_id),
+                );
+                self.te_trigger_ratio = rng.next_int(50.0, 60.0) as f64 / 100.0;
+                self.te_reserve_ratio = rng.next_int(30.0, 40.0) as f64 / 100.0;
+                self.te_expand_ratio = rng.next_int(10.0, 20.0) as f64 / 100.0;
+                self.random = Some(rng);
+                self.te_is_nation = true;
+            }
             _ => {}
         }
     }
@@ -4449,6 +4749,8 @@ impl ExecHarness {
             40 => self.train_execution(kind, ticks, tr),
             41 => self.warship_execution(kind, ticks, tr),
             42 => self.player_execution(kind, ticks, tr),
+            43 => self.tribe_execution(kind, ticks, tr),
+            44 => self.nation_execution(kind, ticks, tr),
             k => unreachable!("exec harness: unknown class id {k}"),
         }
     }
@@ -10197,6 +10499,372 @@ impl ExecHarness {
         }
     }
 
+    // ---- G5k facade accessors (codes ≥ 958) --------------------------------
+
+    /// `mg.config().disableAlliances()` (958).
+    fn mg_disable_alliances(&mut self, tr: &mut Vec<f64>) -> bool {
+        let v = mk_take(&mut self.mg, MG_DISABLE_ALLIANCES, tr, 958.0, &[]);
+        as_bool(&v)
+    }
+    /// `mg.config().donateTroops()` (959).
+    fn mg_donate_troops_cfg(&mut self, tr: &mut Vec<f64>) -> bool {
+        let v = mk_take(&mut self.mg, MG_DONATE_TROOPS_CFG, tr, 959.0, &[]);
+        as_bool(&v)
+    }
+    /// `mg.config().gameConfig().playerTeams` (960).
+    fn mg_player_teams(&mut self, tr: &mut Vec<f64>) -> JsVal {
+        mk_take(&mut self.mg, MG_PLAYER_TEAMS, tr, 960.0, &[])
+    }
+    /// `mg.isShore(tile)` (967) — the `Game`-facade shore test used by
+    /// `AiAttackBehavior.shoreTiles`.
+    fn mg_is_shore(&mut self, tr: &mut Vec<f64>, tile: f64) -> bool {
+        let v = mk_take(&mut self.mg, MG_IS_SHORE, tr, 967.0, &ev1(tile));
+        as_bool(&v)
+    }
+    /// `mg.__closestShoreByWater(player, tile)` (961) — the scripted
+    /// `SpatialQuery.closestShoreByWater` facade.
+    fn mg_closest_shore_by_water(
+        &mut self,
+        tr: &mut Vec<f64>,
+        player: usize,
+        tile: f64,
+    ) -> Option<f64> {
+        let mut p = evtok(Some(player));
+        p.extend_from_slice(&ev1(tile));
+        let v = mk_take(&mut self.mg, MG_CLOSEST_SHORE_BY_WATER, tr, 961.0, &p);
+        as_opt_num(Some(&v))
+    }
+    /// `player.sharesBorderWith(other)` (962).
+    fn pl_shares_border_with(
+        &mut self,
+        tr: &mut Vec<f64>,
+        tok: usize,
+        other: usize,
+    ) -> bool {
+        let v = self.pl(tok, PL_SHARES_BORDER_WITH, tr, 962.0, &evtok(Some(other)));
+        as_bool(&v)
+    }
+    /// `player.targets()` (963) — a player-token list. Used only by the
+    /// `assistAllies` strategy arm, which is unreachable for TribeExecution.
+    #[allow(dead_code)]
+    fn pl_targets(&mut self, tr: &mut Vec<f64>, tok: usize) -> Vec<usize> {
+        let v = self.pl(tok, PL_TARGETS, tr, 963.0, &[]);
+        as_tok_list(&v)
+    }
+    /// `player.allies()` (964) — a player-token list. Used only by the
+    /// unreachable `assistAllies` arm.
+    #[allow(dead_code)]
+    fn pl_allies(&mut self, tr: &mut Vec<f64>, tok: usize) -> Vec<usize> {
+        let v = self.pl(tok, PL_ALLIES, tr, 964.0, &[]);
+        as_tok_list(&v)
+    }
+    /// `player.allRelationsSorted()` (965) — `[{relation, player}, ...]`.
+    fn pl_all_relations_sorted(
+        &mut self,
+        tr: &mut Vec<f64>,
+        tok: usize,
+    ) -> Vec<(f64, usize)> {
+        let v = self.pl(tok, PL_ALL_RELATIONS_SORTED, tr, 965.0, &[]);
+        match &v {
+            JsVal::Arr(items) => items
+                .iter()
+                .filter_map(|it| {
+                    let rel = val_field(it, "relation").map(as_num)?;
+                    let p = val_field(it, "player").and_then(as_opt_tok)?;
+                    Some((rel, p))
+                })
+                .collect(),
+            _ => Vec::new(),
+        }
+    }
+    /// `alliance.other(player)` (966) — the other alliance member's player token.
+    fn al_other(&mut self, tr: &mut Vec<f64>, al_tok: usize, player: usize) -> usize {
+        let mut prefix = vec![al_tok as f64];
+        prefix.extend_from_slice(&evtok(Some(player)));
+        let v = mk_take(&mut self.alliances[al_tok], AL_OTHER, tr, 966.0, &prefix);
+        as_num(&v) as usize
+    }
+
+    // ---- G5k Step 2 facade accessors (codes ≥ 968) ---------------------------
+
+    /// `mg.units(...types)` — the typed form (968), a unit-token list.
+    fn mg_units_typed(&mut self, tr: &mut Vec<f64>, types: &[String]) -> Vec<usize> {
+        let v = mk_take(&mut self.mg, MG_UNITS_TYPED, tr, 968.0, &ev_strs(types));
+        as_tok_list(&v)
+    }
+    /// `game.unitInfo(ty).cost(game, player)` (969) — gold as the f64 side.
+    fn mg_unit_info_cost(&mut self, tr: &mut Vec<f64>, ty: &str, player: usize) -> i64 {
+        let mut prefix = evs(ty);
+        prefix.extend_from_slice(&evtok(Some(player)));
+        let v = mk_take(&mut self.mg, MG_UNIT_INFO_COST, tr, 969.0, &prefix);
+        as_num(&v) as i64
+    }
+    /// `mg.config().startingGold(info)` (970) — the PlayerInfo object is
+    /// encoded verbatim (the mock returns the scripted number).
+    #[allow(dead_code)]
+    fn mg_starting_gold(&mut self, tr: &mut Vec<f64>, info: &JsVal) -> i64 {
+        let prefix = ev_enc(info);
+        let v = mk_take(&mut self.mg, MG_STARTING_GOLD, tr, 970.0, &prefix);
+        as_num(&v) as i64
+    }
+    /// `mg.nations()` (971) — a player-token list.
+    #[allow(dead_code)]
+    fn mg_nations(&mut self, tr: &mut Vec<f64>) -> Vec<usize> {
+        let v = mk_take(&mut self.mg, MG_NATIONS, tr, 971.0, &[]);
+        as_tok_list(&v)
+    }
+    /// `mg.isOnMap({x, y})` (972) — the Cell object encodes as `{x, y}`.
+    #[allow(dead_code)]
+    fn mg_is_on_map(&mut self, tr: &mut Vec<f64>, x: f64, y: f64) -> bool {
+        let cell = JsVal::Obj(vec![
+            ("x".to_string(), JsVal::Num(x)),
+            ("y".to_string(), JsVal::Num(y)),
+        ]);
+        let prefix = ev_enc(&cell);
+        let v = mk_take(&mut self.mg, MG_IS_ON_MAP, tr, 972.0, &prefix);
+        as_bool(&v)
+    }
+    /// `mg.config().trainStationMinRange()` (973).
+    #[allow(dead_code)]
+    fn mg_train_station_min_range(&mut self, tr: &mut Vec<f64>) -> f64 {
+        let v = mk_take(&mut self.mg, MG_TRAIN_STATION_MIN_RANGE, tr, 973.0, &[]);
+        as_num(&v)
+    }
+    /// `mg.config().samRange(level)` (974).
+    #[allow(dead_code)]
+    fn mg_sam_range(&mut self, tr: &mut Vec<f64>, level: f64) -> f64 {
+        let v = mk_take(&mut self.mg, MG_SAM_RANGE, tr, 974.0, &ev1(level));
+        as_num(&v)
+    }
+    /// `mg.config().defaultSamRange()` (975).
+    #[allow(dead_code)]
+    fn mg_default_sam_range(&mut self, tr: &mut Vec<f64>) -> f64 {
+        let v = mk_take(&mut self.mg, MG_DEFAULT_SAM_RANGE, tr, 975.0, &[]);
+        as_num(&v)
+    }
+    /// `mg.config().trainGold(kind, troops, player)` (976) — a Gold number.
+    #[allow(dead_code)]
+    fn mg_train_gold(&mut self, tr: &mut Vec<f64>, kind: &str, troops: f64, player: usize) -> f64 {
+        let mut prefix = evs(kind);
+        prefix.extend_from_slice(&ev1(troops));
+        prefix.extend_from_slice(&evtok(Some(player)));
+        let v = mk_take(&mut self.mg, MG_TRAIN_GOLD, tr, 976.0, &prefix);
+        as_num(&v)
+    }
+    /// `mg.sharedWaterComponents(player)` (977) — a component-id list or null.
+    #[allow(dead_code)]
+    fn mg_shared_water_components(&mut self, tr: &mut Vec<f64>, player: usize) -> Option<Vec<f64>> {
+        let v = mk_take(&mut self.mg, MG_SHARED_WATER_COMPONENTS, tr, 977.0, &evtok(Some(player)));
+        match v {
+            JsVal::Null | JsVal::Undef | JsVal::Absent => None,
+            JsVal::Arr(items) => Some(items.iter().map(as_num).collect()),
+            _ => None,
+        }
+    }
+    /// `mg.getWaterComponentSize(tile)` (978) — a number or null.
+    #[allow(dead_code)]
+    fn mg_get_water_component_size(&mut self, tr: &mut Vec<f64>, tile: f64) -> Option<f64> {
+        let v = mk_take(&mut self.mg, MG_GET_WATER_COMPONENT_SIZE, tr, 978.0, &ev1(tile));
+        match v {
+            JsVal::Null | JsVal::Undef | JsVal::Absent => None,
+            JsVal::Num(n) => Some(n),
+            _ => None,
+        }
+    }
+    /// `mg.railNetwork().stationManager().getAll()` (979) — station identity is
+    /// the unit token, so this yields a unit-token list.
+    #[allow(dead_code)]
+    fn mg_station_manager_get_all(&mut self, tr: &mut Vec<f64>) -> Vec<usize> {
+        let v = mk_take(&mut self.mg, MG_STATION_MANAGER_GET_ALL, tr, 979.0, &[]);
+        as_tok_list(&v)
+    }
+    /// `mg.magnitude(tile)` (980) — grid-delegated when `spec.map` exists.
+    #[allow(dead_code)]
+    fn mg_magnitude(&mut self, tr: &mut Vec<f64>, tile: f64) -> f64 {
+        if let Some(ref map) = self.el_map {
+            let v = map.magnitude(tile);
+            tr.push(980.0);
+            tr.extend_from_slice(&ev1(tile));
+            tr.extend_from_slice(&ev1(v));
+            return v;
+        }
+        let v = mk_take(&mut self.mg, MG_MAGNITUDE, tr, 980.0, &ev1(tile));
+        as_num(&v)
+    }
+    /// `mg.isOcean(tile)` (981) — grid-delegated when `spec.map` exists.
+    #[allow(dead_code)]
+    fn mg_is_ocean(&mut self, tr: &mut Vec<f64>, tile: f64) -> bool {
+        if let Some(ref map) = self.el_map {
+            let v = map.is_ocean(tile);
+            tr.push(981.0);
+            tr.extend_from_slice(&ev1(tile));
+            tr.extend_from_slice(&evb(v));
+            return v;
+        }
+        let v = mk_take(&mut self.mg, MG_IS_OCEAN, tr, 981.0, &ev1(tile));
+        as_bool(&v)
+    }
+    /// `player.unitsConstructed(ty)` (982) — a truthy number in TS.
+    fn pl_units_constructed(&mut self, tr: &mut Vec<f64>, tok: usize, ty: &str) -> f64 {
+        let v = self.pl(tok, PL_UNITS_CONSTRUCTED, tr, 982.0, &evs(ty));
+        as_num(&v)
+    }
+    /// `player.unitsOwned(ty)` (983).
+    #[allow(dead_code)]
+    fn pl_units_owned(&mut self, tr: &mut Vec<f64>, tok: usize, ty: &str) -> f64 {
+        let v = self.pl(tok, PL_UNITS_OWNED, tr, 983.0, &evs(ty));
+        as_num(&v)
+    }
+    /// `player.info()` (984) — the plain PlayerInfo object.
+    #[allow(dead_code)]
+    fn pl_info(&mut self, tr: &mut Vec<f64>, tok: usize) -> JsVal {
+        self.pl(tok, PL_INFO, tr, 984.0, &[])
+    }
+    /// `unit.wasDestroyedByEnemy()` (985).
+    fn un_was_destroyed_by_enemy(&mut self, tr: &mut Vec<f64>, uid: usize) -> bool {
+        let v = self.un(uid, UN_WAS_DESTROYED_BY_ENEMY, tr, 985.0, &[]);
+        as_bool(&v)
+    }
+    /// `unit.destroyer()` (986) — a unit token or null.
+    fn un_destroyer(&mut self, tr: &mut Vec<f64>, uid: usize) -> Option<usize> {
+        let v = self.un(uid, UN_DESTROYER, tr, 986.0, &[]);
+        as_opt_tok(&v)
+    }
+    /// `player.isAlliedWith(other)` (987).
+    fn pl_is_allied_with(&mut self, tr: &mut Vec<f64>, tok: usize, other: usize) -> bool {
+        let v = self.pl(tok, PL_IS_ALLIED_WITH, tr, 987.0, &evtok(Some(other)));
+        as_bool(&v)
+    }
+
+    // ---- G5k construction records (code 307) --------------------------------
+
+    /// `mg.addExecution(new TransportShipExecution(player, dst, troops))` (tag 18).
+    fn mg_add_transport_ship_exec(
+        &mut self,
+        tr: &mut Vec<f64>,
+        player: usize,
+        dst: f64,
+        troops: f64,
+    ) {
+        tr.push(307.0);
+        tr.push(TAG_TRANSPORT_SHIP_EXEC);
+        push_val(tr, &JsVal::Num(player as f64));
+        push_val(tr, &JsVal::Num(dst));
+        push_val(tr, &JsVal::Num(troops));
+        push_val(tr, &JsVal::Undef);
+    }
+    /// `mg.addExecution(new DonateTroopsExecution(sender, recipientID, troops))` (tag 19).
+    fn mg_add_donate_troops_exec(
+        &mut self,
+        tr: &mut Vec<f64>,
+        sender: usize,
+        recipient_id: &str,
+        troops: Option<f64>,
+    ) {
+        tr.push(307.0);
+        tr.push(TAG_DONATE_TROOPS_EXEC);
+        push_val(tr, &JsVal::Num(sender as f64));
+        push_val(tr, &JsVal::Str(recipient_id.to_string()));
+        push_val(
+            tr,
+            &match troops {
+                Some(t) => JsVal::Num(t),
+                None => JsVal::Null,
+            },
+        );
+        push_val(tr, &JsVal::Undef);
+    }
+    /// `mg.addExecution(new AllianceExtensionExecution(from, toID))` (tag 20).
+    fn mg_add_alliance_extension_exec(
+        &mut self,
+        tr: &mut Vec<f64>,
+        from: usize,
+        to_id: &str,
+    ) {
+        tr.push(307.0);
+        tr.push(TAG_ALLIANCE_EXTENSION_EXEC);
+        push_val(tr, &JsVal::Num(from as f64));
+        push_val(tr, &JsVal::Str(to_id.to_string()));
+        push_val(tr, &JsVal::Undef);
+    }
+    /// `mg.addExecution(new DeleteUnitExecution(player, unitId))` (tag 21).
+    fn mg_add_delete_unit_exec(&mut self, tr: &mut Vec<f64>, player: usize, unit_id: f64) {
+        tr.push(307.0);
+        tr.push(TAG_DELETE_UNIT_EXEC);
+        push_val(tr, &JsVal::Num(player as f64));
+        push_val(tr, &JsVal::Num(unit_id));
+        push_val(tr, &JsVal::Undef);
+    }
+
+    // ---- G5k Step 2 construction records (code 307, tags 22-25) --------------
+
+    /// `mg.addExecution(new SpawnExecution(gameID, playerInfo, tile?))` (tag 22).
+    fn mg_add_spawn_exec(
+        &mut self,
+        tr: &mut Vec<f64>,
+        game_id: &str,
+        player_info: &JsVal,
+        tile: Option<f64>,
+    ) {
+        tr.push(307.0);
+        tr.push(TAG_SPAWN_EXEC);
+        push_val(tr, &JsVal::Str(game_id.to_string()));
+        push_val(tr, player_info);
+        push_val(
+            tr,
+            &match tile {
+                Some(t) => JsVal::Num(t),
+                None => JsVal::Undef,
+            },
+        );
+        push_val(tr, &JsVal::Undef);
+    }
+    /// `mg.addExecution(new AllianceRequestExecution(requestor, recipientID))` (tag 23).
+    fn mg_add_alliance_request_exec(
+        &mut self,
+        tr: &mut Vec<f64>,
+        requestor: usize,
+        recipient_id: &str,
+    ) {
+        tr.push(307.0);
+        tr.push(TAG_ALLIANCE_REQUEST_EXEC);
+        push_val(tr, &JsVal::Num(requestor as f64));
+        push_val(tr, &JsVal::Str(recipient_id.to_string()));
+        push_val(tr, &JsVal::Undef);
+    }
+    /// `mg.addExecution(new ConstructionExecution(player, type, tile,
+    /// rocketDirectionUp?, amount?))` (tag 24).
+    fn mg_add_construction_exec(
+        &mut self,
+        tr: &mut Vec<f64>,
+        player: usize,
+        construction_type: &str,
+        tile: f64,
+    ) {
+        tr.push(307.0);
+        tr.push(TAG_CONSTRUCTION_EXEC);
+        push_val(tr, &JsVal::Num(player as f64));
+        push_val(tr, &JsVal::Str(construction_type.to_string()));
+        push_val(tr, &JsVal::Num(tile));
+        push_val(tr, &JsVal::Undef);
+        push_val(tr, &JsVal::Undef);
+        push_val(tr, &JsVal::Undef);
+    }
+    /// `mg.addExecution(new UpgradeStructureExecution(player, unitId))` (tag 25).
+    #[allow(dead_code)]
+    fn mg_add_upgrade_structure_exec(
+        &mut self,
+        tr: &mut Vec<f64>,
+        player: usize,
+        unit_id: f64,
+    ) {
+        tr.push(307.0);
+        tr.push(TAG_UPGRADE_STRUCTURE_EXEC);
+        push_val(tr, &JsVal::Num(player as f64));
+        push_val(tr, &JsVal::Num(unit_id));
+        push_val(tr, &JsVal::Undef);
+    }
+
     // ---- G5j: `WarshipExecution` (class 41) ---------------------------------
 
     fn warship_execution(
@@ -12025,6 +12693,4013 @@ impl ExecHarness {
             }
         }
     }
+
+    // ---- G5k: `TribeExecution` (class 43) + `AiAttackBehavior` ---------------
+
+    fn tribe_execution(
+        &mut self,
+        kind: u8,
+        ticks: f64,
+        tr: &mut Vec<f64>,
+    ) -> Result<JsVal, String> {
+        match kind {
+            3 => Ok(JsVal::Bool(self.flag)),
+            4 => Ok(JsVal::Bool(false)),
+            1 => Ok(JsVal::Undef),
+            2 => {
+                self.tribe_tick(ticks, tr)?;
+                Ok(JsVal::Undef)
+            }
+            _ => unreachable!(),
+        }
+    }
+
+    fn tribe_tick(&mut self, ticks: f64, tr: &mut Vec<f64>) -> Result<(), String> {
+        // `ticks % this.attackRate !== this.attackTick` gate.
+        if ticks % self.te_attack_rate != self.te_attack_tick {
+            return Ok(());
+        }
+        // `!this.tribe.isAlive()` gate.
+        if !self.pl_is_alive(tr, self.te_tribe) {
+            self.flag = false;
+            return Ok(());
+        }
+        if !self.te_attack_behavior {
+            // Lazy AiAttackBehavior ctor + first `sendAttack(terraNullius)`.
+            self.te_attack_behavior = true;
+            self.ai_send_attack(tr, TN_TOK, TargetVia::Tn, false)?;
+            return Ok(());
+        }
+        self.tribe_accept_alliance_requests(tr);
+        self.tribe_delete_next_structure(tr);
+        self.tribe_maybe_attack(tr)?;
+        Ok(())
+    }
+
+    /// `acceptAllAllianceRequests()`.
+    fn tribe_accept_alliance_requests(&mut self, tr: &mut Vec<f64>) {
+        let reqs = self.pl_incoming_alliance_requests(tr, self.te_tribe); // 720
+        for r in reqs {
+            self.rq_accept(tr, r); // 271
+        }
+        let alliances = self.pl_alliances(tr, self.te_tribe); // 954
+        for al in alliances {
+            if !self.al_only_one_agreed(tr, al) {
+                // 260
+                continue;
+            }
+            let human = self.al_other(tr, al, self.te_tribe); // 966
+            let hid = self.pl_id(tr, human); // 231
+            self.mg_add_alliance_extension_exec(tr, self.te_tribe, &hid);
+        }
+    }
+
+    /// `deleteNextStructure()`.
+    fn tribe_delete_next_structure(&mut self, tr: &mut Vec<f64>) {
+        if !self.pl_can_delete_unit(tr, self.te_tribe) {
+            // 324
+            return;
+        }
+        let units = self.pl_units_all(tr, self.te_tribe); // 241 (no args)
+        for u in units {
+            let ty = self.un_type(tr, u); // 283
+            if !STRUCTURES_TYPES.contains(&ty.as_str()) {
+                continue;
+            }
+            if self.un_is_marked_for_deletion(tr, u) {
+                // 913
+                continue;
+            }
+            let uid = self.un_id(tr, u); // 340
+            self.mg_add_delete_unit_exec(tr, self.te_tribe, uid);
+            return;
+        }
+    }
+
+    /// `maybeAttack()`.
+    fn tribe_maybe_attack(&mut self, tr: &mut Vec<f64>) -> Result<(), String> {
+        let to_attack = self.ai_get_neighbor_traitor_to_attack(tr);
+        if let Some(ta) = to_attack {
+            let friendly = self.pl_is_friendly(tr, self.te_tribe, Some(ta)); // 242
+            let odds = if friendly { 6.0 } else { 3.0 };
+            let rng = self.random.as_mut().unwrap();
+            if rng.chance(odds) {
+                let alliance = self.pl_alliance_with(tr, self.te_tribe, Some(ta)); // 243
+                if let Some(al) = alliance {
+                    self.pl_break_alliance(tr, self.te_tribe, al); // 244
+                }
+                if self.ai_send_attack(tr, ta, TargetVia::Nb, false)? {
+                    return Ok(());
+                }
+            }
+        }
+        if self.te_neighbors_tn {
+            let neighbors = self.pl_nearby(tr, self.te_tribe); // 245
+            let has_tn = neighbors.iter().any(|&n| !self.nb_is_player(tr, n)); // 257
+            if has_tn {
+                if self.ai_send_attack(tr, TN_TOK, TargetVia::Tn, false)? {
+                    return Ok(());
+                }
+            } else {
+                self.te_neighbors_tn = false;
+            }
+        }
+        self.ai_attack_random_target(tr)?;
+        Ok(())
+    }
+
+    // ---- NationExecution (class 44) ------------------------------------------
+
+    fn nation_execution(
+        &mut self,
+        kind: u8,
+        ticks: f64,
+        tr: &mut Vec<f64>,
+    ) -> Result<JsVal, String> {
+        match kind {
+            3 => Ok(JsVal::Bool(self.flag)),
+            4 => Ok(JsVal::Bool(true)), // `activeDuringSpawnPhase(): true`
+            1 => {
+                self.ne_init(tr)?;
+                Ok(JsVal::Undef)
+            }
+            2 => {
+                self.ne_tick(ticks, tr)?;
+                Ok(JsVal::Undef)
+            }
+            _ => unreachable!(),
+        }
+    }
+
+    /// `init(mg)`.
+    fn ne_init(&mut self, tr: &mut Vec<f64>) -> Result<(), String> {
+        let rate = self.ne_get_attack_rate(tr)?;
+        self.ne_attack_rate = rate;
+        let rng = self.random.as_mut().unwrap();
+        self.ne_attack_tick = rng.next_int(0.0, rate) as f64;
+        let id = self.ne_nation_id.clone();
+        if !self.mg_has_player(tr, &id) {
+            // 210
+            let info = self.ne_player_info.clone();
+            self.ne_player = self.mg_add_player(tr, &info); // 605
+        } else {
+            self.ne_player = self.mg_player(tr, &id); // 211
+        }
+        if let Some(p) = self.ne_player {
+            self.te_tribe = p;
+        }
+        self.ne_initialized = true;
+        Ok(())
+    }
+
+    /// `getAttackRate()`.
+    fn ne_get_attack_rate(&mut self, tr: &mut Vec<f64>) -> Result<f64, String> {
+        let diff = self.mg_difficulty(tr); // 402
+        let rng = self.random.as_mut().unwrap();
+        match diff.as_str() {
+            DIFFICULTY_EASY => Ok(rng.next_int(65.0, 100.0) as f64),
+            DIFFICULTY_MEDIUM => Ok(rng.next_int(55.0, 70.0) as f64),
+            DIFFICULTY_HARD => Ok(rng.next_int(45.0, 60.0) as f64),
+            DIFFICULTY_IMPOSSIBLE => Ok(rng.next_int(30.0, 50.0) as f64),
+            other => Err(format!("Unexpected value: {other}")),
+        }
+    }
+
+    /// `tick(ticks)`.
+    fn ne_tick(&mut self, ticks: f64, tr: &mut Vec<f64>) -> Result<(), String> {
+        // Ship tracking gate (short-circuit order mirrors the TS `&&` chain).
+        if self.ne_behaviors_initialized {
+            if let Some(pl) = self.ne_player {
+                if self.pl_is_alive(tr, pl) // 233
+                    && self.mg_difficulty(tr) != DIFFICULTY_EASY // 402
+                    && {
+                        let c = self.pl_units_constructed(tr, pl, UNIT_PORT); // 982
+                        c != 0.0 && !c.is_nan()
+                    }
+                    && !self.mg_is_unit_disabled(tr, UNIT_WARSHIP)
+                // 511
+                {
+                    self.ne_track_ships_and_retaliate(tr)?;
+                }
+            }
+        }
+
+        let pl = match self.ne_player {
+            Some(p) => p,
+            None => return Ok(()),
+        };
+
+        if self.mg_in_spawn_phase(tr) {
+            // 216
+            if self.pl_has_spawned(tr, pl) {
+                // 530
+                if ticks % self.ne_attack_rate != self.ne_attack_tick {
+                    return Ok(());
+                }
+            } else if self.ne_spawn_exec_added {
+                return Ok(());
+            }
+            if self.ne_spawn_cell.is_none() {
+                let gid = self.el_game_id.clone();
+                let info = self.ne_player_info.clone();
+                self.mg_add_spawn_exec(tr, &gid, &info, None);
+                self.ne_spawn_exec_added = true;
+                return Ok(());
+            }
+            let team = self.pl_team(tr, pl); // 248
+            if !matches!(team, JsVal::Null) {
+                let key = as_str(&team);
+                let area_v = self.mg_team_spawn_area(tr, &key); // 613
+                if let Some((ax, ay, aw, ah)) = Self::area_from_val(&area_v) {
+                    let (cx, cy) = self.ne_spawn_cell.unwrap();
+                    let in_area =
+                        cx >= ax && cx < ax + aw && cy >= ay && cy < ay + ah;
+                    if !in_area {
+                        let gid = self.el_game_id.clone();
+                        let info = self.ne_player_info.clone();
+                        self.mg_add_spawn_exec(tr, &gid, &info, None);
+                        self.ne_spawn_exec_added = true;
+                        return Ok(());
+                    }
+                }
+            }
+            let rl = self.ne_random_spawn_land(tr)?;
+            if let Some(tile) = rl {
+                let gid = self.el_game_id.clone();
+                let info = self.ne_player_info.clone();
+                self.mg_add_spawn_exec(tr, &gid, &info, Some(tile));
+                self.ne_spawn_exec_added = true;
+            }
+            // `console.warn` is not traced.
+            return Ok(());
+        }
+
+        if self.ne_spawn_exec_added && !self.pl_has_spawned(tr, pl) {
+            // 530
+            return Ok(());
+        }
+
+        if !self.pl_is_alive(tr, pl) {
+            // 233
+            self.flag = false;
+            return Ok(());
+        }
+
+        if !self.ne_behaviors_initialized {
+            self.ne_initialize_behaviors(tr)?;
+            self.ai_force_send_attack(tr, TN_TOK)?;
+            return Ok(());
+        }
+
+        if ticks % self.ne_attack_rate != self.ne_attack_tick {
+            if self.pl_is_alive(tr, pl) {
+                // 233
+                let offset = ticks % self.ne_attack_rate;
+                let one_third = (self.ne_attack_tick
+                    + (self.ne_attack_rate / 3.0).floor())
+                    % self.ne_attack_rate;
+                let two_thirds = (self.ne_attack_tick
+                    + ((self.ne_attack_rate * 2.0) / 3.0).floor())
+                    % self.ne_attack_rate;
+                if offset == one_third || offset == two_thirds {
+                    self.ne_handle_structures(tr)?;
+                }
+            }
+            return Ok(());
+        }
+
+        self.ne_maybe_send_casual_emoji(tr)?;
+        self.ne_update_relations_from_embargos(tr)?;
+        self.ne_handle_alliance_requests(tr)?;
+        self.ne_handle_alliance_extension_requests(tr)?;
+        self.ne_consider_mirv(tr)?;
+        self.ne_handle_structures(tr)?;
+        self.ne_maybe_spawn_warship(tr)?;
+        self.ne_handle_embargoes_to_hostile_nations(tr)?;
+        self.ai_maybe_attack(tr)?;
+        self.ne_counter_warship_infestation(tr)?;
+        self.ne_maybe_send_nuke(tr)?;
+        Ok(())
+    }
+
+    /// `initializeBehaviors()`. Only the `NationNukeBehavior` field
+    /// initializers trace: `cost(AtomBomb)` (512 -> 969), `cost(HydrogenBomb)`
+    /// (512 -> 969) and `random.chance(3)`. The other six constructors read
+    /// nothing.
+    fn ne_initialize_behaviors(&mut self, tr: &mut Vec<f64>) -> Result<(), String> {
+        let pl = self.ne_player.ok_or("Player not initialized")?;
+        let atom = self.ne_cost(tr, UNIT_ATOM_BOMB, pl);
+        let hydro = self.ne_cost(tr, UNIT_HYDROGEN_BOMB, pl);
+        self.ne_atom_perceived_cost = atom;
+        self.ne_hydro_perceived_cost = hydro;
+        self.ne_is_hydro_nation = self.random.as_mut().unwrap().chance(3.0);
+        self.ne_behaviors_initialized = true;
+        Ok(())
+    }
+
+    /// `game.unitInfo(type).cost(game, player)` — the paired 512 / 969 reads.
+    fn ne_cost(&mut self, tr: &mut Vec<f64>, ty: &str, player: usize) -> i64 {
+        let info = self.mg_unit_info(tr, ty); // 512
+        let _ = info;
+        self.mg_unit_info_cost(tr, ty, player) // 969
+    }
+
+    /// `randomSpawnLand()`.
+    fn ne_random_spawn_land(&mut self, tr: &mut Vec<f64>) -> Result<Option<f64>, String> {
+        let (cell_x, cell_y) = self.ne_spawn_cell.ok_or("not initialized")?;
+        let delta = 25.0;
+        let mut tries = 0;
+        while tries < 50 {
+            tries += 1;
+            let x = self
+                .random
+                .as_mut()
+                .unwrap()
+                .next_int(cell_x - delta, cell_x + delta) as f64;
+            let y = self
+                .random
+                .as_mut()
+                .unwrap()
+                .next_int(cell_y - delta, cell_y + delta) as f64;
+            if !self.mg_is_valid_coord(tr, x, y) {
+                // 616
+                continue;
+            }
+            let tile = self.mg_ref(tr, x, y); // 609
+            if self.mg_is_land(tr, tile) // 304
+                && !self.mg_has_owner(tr, tile) // 607
+                && !self.mg_is_impassable(tr, tile)
+            // 617
+            {
+                if self.mg_terrain_type(tr, tile) == TERRAIN_MOUNTAIN // 805
+                    && self.random.as_mut().unwrap().chance(2.0)
+                {
+                    continue;
+                }
+                return Ok(Some(tile));
+            }
+        }
+        Ok(None)
+    }
+
+    /// `updateRelationsFromEmbargos()`.
+    fn ne_update_relations_from_embargos(&mut self, tr: &mut Vec<f64>) -> Result<(), String> {
+        let pl = match self.ne_player {
+            Some(p) => p,
+            None => return Ok(()),
+        };
+        let others: Vec<usize> = self
+            .mg_players(tr) // 221
+            .into_iter()
+            .filter(|&o| {
+                let oid = self.pl_id(tr, o); // 231
+                let pid = self.pl_id(tr, pl); // 231 (re-read per element)
+                oid != pid
+            })
+            .collect();
+        for &other in &others {
+            let has1 = self.pl_has_embargo_against(tr, other, Some(pl)); // 238
+            let not_applied = has1 && {
+                let oid = self.pl_id(tr, other); // 231
+                !self.ne_embargo_malus_applied.contains(&oid)
+            };
+            if has1 && not_applied {
+                self.pl_update_relation(tr, pl, Some(other), -20.0); // 237
+                let oid = self.pl_id(tr, other); // 231 (`add(other.id())`)
+                if !self.ne_embargo_malus_applied.contains(&oid) {
+                    self.ne_embargo_malus_applied.push(oid);
+                }
+            } else if !self.pl_has_embargo_against(tr, other, Some(pl)) // 238 (re-read)
+                && {
+                    let oid = self.pl_id(tr, other); // 231
+                    self.ne_embargo_malus_applied.contains(&oid)
+                }
+            {
+                self.pl_update_relation(tr, pl, Some(other), 20.0); // 237
+                let oid = self.pl_id(tr, other); // 231 (`delete(other.id())`)
+                self.ne_embargo_malus_applied.retain(|x| x != &oid);
+            }
+        }
+        Ok(())
+    }
+
+    /// `handleEmbargoesToHostileNations()`.
+    fn ne_handle_embargoes_to_hostile_nations(&mut self, tr: &mut Vec<f64>) -> Result<(), String> {
+        let pl = match self.ne_player {
+            Some(p) => p,
+            None => return Ok(()),
+        };
+        let others: Vec<usize> = self
+            .mg_players(tr) // 221
+            .into_iter()
+            .filter(|&o| {
+                let oid = self.pl_id(tr, o); // 231
+                let pid = self.pl_id(tr, pl); // 231 (re-read per element)
+                oid != pid
+            })
+            .collect();
+        let difficulty = self.mg_difficulty(tr); // 402
+        let is_higher = difficulty == DIFFICULTY_HARD || difficulty == DIFFICULTY_IMPOSSIBLE;
+        let team_game = self.mg_game_mode(tr) == GAME_MODE_TEAM; // 520
+
+        for &other in &others {
+            if team_game
+                && is_higher
+                && self.pl_type(tr, other) != PLAYER_TYPE_BOT // 251
+                && !self.pl_is_on_same_team(tr, pl, Some(other))
+            // 250
+            {
+                if !self.pl_has_embargo_against(tr, pl, Some(other)) {
+                    // 238
+                    self.pl_add_embargo(tr, pl, Some(other), false); // 253
+                }
+                continue;
+            }
+            #[allow(clippy::if_same_then_else)]
+            if self.pl_relation(tr, pl, Some(other)) <= RELATION_HOSTILE // 412
+                && !self.pl_has_embargo_against(tr, pl, Some(other)) // 238
+                && !self.pl_is_on_same_team(tr, pl, Some(other))
+            // 250
+            {
+                self.pl_add_embargo(tr, pl, Some(other), false); // 253
+            } else if self.pl_relation(tr, pl, Some(other)) >= RELATION_NEUTRAL // 412
+                && self.pl_has_embargo_against(tr, pl, Some(other)) // 238
+                && difficulty != DIFFICULTY_HARD
+                && difficulty != DIFFICULTY_IMPOSSIBLE
+            {
+                self.pl_stop_embargo(tr, pl, Some(other)); // 254
+            } else if self.pl_relation(tr, pl, Some(other)) >= RELATION_FRIENDLY // 412
+                && self.pl_has_embargo_against(tr, pl, Some(other)) // 238
+                && difficulty != DIFFICULTY_IMPOSSIBLE
+            {
+                self.pl_stop_embargo(tr, pl, Some(other)); // 254
+            }
+        }
+        Ok(())
+    }
+
+    // ---- nation behavior entry points (implemented in the `ne_*` family) ----
+
+    // ---- NationEmojiBehavior (ported inline) ---------------------------------
+
+    /// `maybeSendCasualEmoji()`.
+    fn ne_maybe_send_casual_emoji(&mut self, tr: &mut Vec<f64>) -> Result<(), String> {
+        if self.ne_game_over {
+            return Ok(());
+        }
+        self.ne_check_overwhelmed_by_attacks(tr)?;
+        self.ne_check_very_small_attack(tr)?;
+        self.ne_congratulate_winner(tr)?;
+        self.ne_brag(tr)?;
+        self.ne_charm_allies(tr)?;
+        self.ne_annoy_traitors(tr)?;
+        self.ne_find_rat(tr)?;
+        self.ne_greet_nearby_players(tr)?;
+        Ok(())
+    }
+
+    fn ne_check_overwhelmed_by_attacks(&mut self, tr: &mut Vec<f64>) -> Result<(), String> {
+        let pl = self.ne_player.ok_or("Player not initialized")?;
+        if !self.random.as_mut().unwrap().chance(16.0) {
+            return Ok(());
+        }
+        let incoming = self.pl_incoming_attacks(tr, pl); // 822
+        if incoming.is_empty() {
+            return Ok(());
+        }
+        let mut incoming_troops = 0.0;
+        for a in &incoming {
+            incoming_troops += self.at_troops(tr, *a); // 830
+        }
+        let our_troops = self.pl_troops(tr, pl); // 418
+        if incoming_troops >= our_troops * 3.0 {
+            self.ne_send_emoji(tr, Rec::All, "EMOJI_OVERWHELMED")?;
+        }
+        Ok(())
+    }
+
+    fn ne_check_very_small_attack(&mut self, tr: &mut Vec<f64>) -> Result<(), String> {
+        let pl = self.ne_player.ok_or("Player not initialized")?;
+        if !self.random.as_mut().unwrap().chance(8.0) {
+            return Ok(());
+        }
+        let incoming = self.pl_incoming_attacks(tr, pl); // 822
+        if incoming.is_empty() {
+            return Ok(());
+        }
+        let our_troops = self.pl_troops(tr, pl); // 418
+        if our_troops <= 0.0 {
+            return Ok(());
+        }
+        for a in &incoming {
+            let attacker = match self.at_attacker(tr, *a) {
+                // 842
+                Some(t) => t,
+                None => continue,
+            };
+            if self.pl_type(tr, attacker) != PLAYER_TYPE_HUMAN {
+                // 251
+                continue;
+            }
+            if self.at_troops(tr, *a) < our_troops * 0.1 {
+                // 830
+                let list = if self.random.as_mut().unwrap().chance(2.0) {
+                    "EMOJI_CONFUSED"
+                } else {
+                    "EMOJI_BORED"
+                };
+                self.ne_maybe_send_emoji(tr, Rec::P(attacker), list)?;
+            }
+        }
+        Ok(())
+    }
+
+    fn ne_congratulate_winner(&mut self, tr: &mut Vec<f64>) -> Result<(), String> {
+        let pl = self.ne_player.ok_or("Player not initialized")?;
+        let winner = self.mg_get_winner(tr); // 600
+        if matches!(winner, JsVal::Null) || matches!(winner, JsVal::Absent) {
+            return Ok(());
+        }
+        self.ne_game_over = true;
+        let is_team_game = self.mg_game_mode(tr) == GAME_MODE_TEAM; // 520
+        if is_team_game {
+            let team = self.pl_team(tr, pl); // 248
+            // `winner === this.player.team()`: only two equal team strings
+            // can be `===` (a Player object never equals a string / null).
+            if matches!((&winner, &team), (JsVal::Str(a), JsVal::Str(b)) if a == b) {
+                return Ok(());
+            }
+            self.ne_send_emoji(tr, Rec::All, "EMOJI_CONGRATULATE")?;
+        } else {
+            if matches!(winner, JsVal::Str(_)) {
+                return Ok(()); // a team string, not a player
+            }
+            let nations: Vec<usize> = self
+                .mg_players(tr) // 221
+                .into_iter()
+                .filter(|&p| self.pl_type(tr, p) == PLAYER_TYPE_NATION) // 251
+                .collect();
+            let sorted = self.sort_players_by_tiles(tr, nations);
+            match sorted.first() {
+                Some(&first) if first == pl => {
+                    let wtok = as_num(&winner) as usize;
+                    self.ne_send_emoji(tr, Rec::P(wtok), "EMOJI_CONGRATULATE")?;
+                }
+                _ => {}
+            }
+        }
+        Ok(())
+    }
+
+    fn ne_brag(&mut self, tr: &mut Vec<f64>) -> Result<(), String> {
+        let pl = self.ne_player.ok_or("Player not initialized")?;
+        if !self.random.as_mut().unwrap().chance(300.0) {
+            return Ok(());
+        }
+        let players = self.mg_players(tr); // 221
+        let sorted = self.sort_players_by_tiles(tr, players);
+        if sorted.is_empty() || sorted[0] != pl {
+            return Ok(());
+        }
+        self.ne_send_emoji(tr, Rec::All, "EMOJI_BRAG")
+    }
+
+    fn ne_charm_allies(&mut self, tr: &mut Vec<f64>) -> Result<(), String> {
+        let pl = self.ne_player.ok_or("Player not initialized")?;
+        if !self.random.as_mut().unwrap().chance(250.0) {
+            return Ok(());
+        }
+        let human_allies: Vec<usize> = self
+            .pl_allies(tr, pl) // 964
+            .into_iter()
+            .filter(|&a| self.pl_type(tr, a) == PLAYER_TYPE_HUMAN) // 251
+            .collect();
+        if human_allies.is_empty() {
+            return Ok(());
+        }
+        let idx = self
+            .random
+            .as_mut()
+            .unwrap()
+            .rand_element(&human_allies)
+            .copied()
+            .unwrap();
+        let list = if self.random.as_mut().unwrap().chance(3.0) {
+            "EMOJI_LOVE"
+        } else {
+            "EMOJI_CHARM_ALLIES"
+        };
+        self.ne_send_emoji(tr, Rec::P(idx), list)
+    }
+
+    fn ne_annoy_traitors(&mut self, tr: &mut Vec<f64>) -> Result<(), String> {
+        let pl = self.ne_player.ok_or("Player not initialized")?;
+        if !self.random.as_mut().unwrap().chance(40.0) {
+            return Ok(());
+        }
+        let traitors: Vec<usize> = self
+            .mg_players(tr) // 221
+            .into_iter()
+            .filter(|&p| {
+                self.pl_type(tr, p) == PLAYER_TYPE_HUMAN // 251
+                    && !self.pl_is_friendly(tr, p, Some(pl)) // 242
+                    && self.pl_is_traitor(tr, p) // 826
+            })
+            .collect();
+        if traitors.is_empty() {
+            return Ok(());
+        }
+        let idx = self
+            .random
+            .as_mut()
+            .unwrap()
+            .rand_element(&traitors)
+            .copied()
+            .unwrap();
+        self.ne_send_emoji(tr, Rec::P(idx), "EMOJI_CLOWN")
+    }
+
+    fn ne_find_rat(&mut self, tr: &mut Vec<f64>) -> Result<(), String> {
+        self.ne_player.ok_or("Player not initialized")?;
+        if self.mg_ticks(tr) < 6000.0 {
+            // 212
+            return Ok(());
+        }
+        if !self.random.as_mut().unwrap().chance(10000.0) {
+            return Ok(());
+        }
+        let threshold = self.mg_num_land_tiles(tr) * 0.01; // 501
+        let small: Vec<usize> = self
+            .mg_players(tr) // 221
+            .into_iter()
+            .filter(|&p| {
+                self.pl_type(tr, p) == PLAYER_TYPE_HUMAN // 251
+                    && self.pl_num_tiles_owned(tr, p) < threshold // 532
+                    && self.pl_num_tiles_owned(tr, p) > 0.0 // 532 (re-read)
+            })
+            .collect();
+        if small.is_empty() {
+            return Ok(());
+        }
+        let idx = self
+            .random
+            .as_mut()
+            .unwrap()
+            .rand_element(&small)
+            .copied()
+            .unwrap();
+        self.ne_send_emoji(tr, Rec::P(idx), "EMOJI_RAT")
+    }
+
+    fn ne_greet_nearby_players(&mut self, tr: &mut Vec<f64>) -> Result<(), String> {
+        let pl = self.ne_player.ok_or("Player not initialized")?;
+        if self.mg_ticks(tr) > 600.0 {
+            // 212
+            return Ok(());
+        }
+        if !self.random.as_mut().unwrap().chance(250.0) {
+            return Ok(());
+        }
+        let nearby = self.pl_nearby(tr, pl); // 245
+        let humans: Vec<usize> = nearby
+            .into_iter()
+            .filter(|&n| {
+                self.nb_is_player(tr, n) // 257
+                    && self.pl_type(tr, n) == PLAYER_TYPE_HUMAN // 251
+            })
+            .collect();
+        if humans.is_empty() {
+            return Ok(());
+        }
+        let idx = self
+            .random
+            .as_mut()
+            .unwrap()
+            .rand_element(&humans)
+            .copied()
+            .unwrap();
+        self.ne_send_emoji(tr, Rec::P(idx), "EMOJI_GREET")
+    }
+
+    /// `maybeSendEmoji(other, emojisList)`.
+    fn ne_maybe_send_emoji(
+        &mut self,
+        tr: &mut Vec<f64>,
+        other: Rec,
+        list: &str,
+    ) -> Result<(), String> {
+        if !self.ne_should_send_emoji(tr, other, true)? {
+            return Ok(());
+        }
+        self.ne_send_emoji(tr, other, list)
+    }
+
+    /// `maybeSendAttackEmoji(otherPlayer)`.
+    fn ne_maybe_send_attack_emoji(&mut self, tr: &mut Vec<f64>, other: usize) -> Result<(), String> {
+        let pl = self.ne_player.ok_or("Player not initialized")?;
+        if !self.ne_should_send_emoji(tr, Rec::P(other), true)? {
+            return Ok(());
+        }
+        if self.pl_relation(tr, pl, Some(other)) >= RELATION_NEUTRAL {
+            // 412
+            if !self.random.as_mut().unwrap().chance(2.0) {
+                return Ok(());
+            }
+            return self.ne_send_emoji(tr, Rec::P(other), "EMOJI_AGGRESSIVE_ATTACK");
+        }
+        if !self.random.as_mut().unwrap().chance(4.0) {
+            return Ok(());
+        }
+        self.ne_send_emoji(tr, Rec::P(other), "EMOJI_ATTACK")
+    }
+
+    /// `sendEmoji(otherPlayer, emojisList)`.
+    fn ne_send_emoji(&mut self, tr: &mut Vec<f64>, other: Rec, list: &str) -> Result<(), String> {
+        let pl = self.ne_player.ok_or("Player not initialized")?;
+        if !self.ne_should_send_emoji(tr, other, false)? {
+            return Ok(());
+        }
+        if !self.pl_can_send_emoji(tr, pl, other) {
+            // 410
+            return Ok(());
+        }
+        let ids = emoji_ids(list);
+        let emoji = self
+            .random
+            .as_mut()
+            .unwrap()
+            .rand_element(&ids)
+            .copied()
+            .unwrap_or(f64::NAN);
+        let recipient_id = match other {
+            Rec::All => ALL_PLAYERS.to_string(),
+            Rec::P(t) => self.pl_id(tr, t), // 231
+            _ => return Ok(()),
+        };
+        self.mg_add_execution_emoji(tr, pl, &recipient_id, emoji);
+        Ok(())
+    }
+
+    /// `shouldSendEmoji(otherPlayer, limitEmojisByTime = true)`.
+    fn ne_should_send_emoji(
+        &mut self,
+        tr: &mut Vec<f64>,
+        other: Rec,
+        limit: bool,
+    ) -> Result<bool, String> {
+        if other == Rec::All {
+            return Ok(true);
+        }
+        let pl = self.ne_player.ok_or("Player not initialized")?;
+        if self.pl_type(tr, pl) == PLAYER_TYPE_BOT {
+            // 251
+            return Ok(false);
+        }
+        match other {
+            Rec::P(t) => {
+                if self.pl_type(tr, t) != PLAYER_TYPE_HUMAN {
+                    // 251
+                    return Ok(false);
+                }
+                if limit {
+                    let last_sent = self
+                        .ne_last_emoji_sent
+                        .iter()
+                        .find(|(k, _)| *k == t)
+                        .map(|(_, v)| *v)
+                        .unwrap_or(-300.0);
+                    if self.mg_ticks(tr) - last_sent <= 300.0 {
+                        // 212
+                        return Ok(false);
+                    }
+                    let now = self.mg_ticks(tr); // 212 (re-read for `set`)
+                    if let Some(e) = self.ne_last_emoji_sent.iter_mut().find(|(k, _)| *k == t) {
+                        e.1 = now;
+                    } else {
+                        self.ne_last_emoji_sent.push((t, now));
+                    }
+                }
+                Ok(true)
+            }
+            _ => Ok(false),
+        }
+    }
+
+    /// `respondToMIRV(game, random, mirvTarget)` (module-level helper).
+    fn ne_respond_to_mirv(&mut self, tr: &mut Vec<f64>, mirv_target: usize) -> Result<(), String> {
+        if !self.random.as_mut().unwrap().chance(8.0) {
+            return Ok(());
+        }
+        if !self.pl_can_send_emoji(tr, mirv_target, Rec::All) {
+            // 410
+            return Ok(());
+        }
+        let ids = emoji_ids("EMOJI_OVERWHELMED");
+        let emoji = self
+            .random
+            .as_mut()
+            .unwrap()
+            .rand_element(&ids)
+            .copied()
+            .unwrap_or(f64::NAN);
+        self.mg_add_execution_emoji(tr, mirv_target, ALL_PLAYERS, emoji);
+        Ok(())
+    }
+
+    // ---- NationAllianceBehavior (ported inline) ------------------------------
+
+    /// `handleAllianceRequests()`.
+    fn ne_handle_alliance_requests(&mut self, tr: &mut Vec<f64>) -> Result<(), String> {
+        let pl = self.ne_player.ok_or("Player not initialized")?;
+        if self.mg_disable_alliances(tr) {
+            // 958
+            return Ok(());
+        }
+        let reqs = self.pl_incoming_alliance_requests(tr, pl); // 720
+        for r in reqs {
+            let created = self.rq_created_at(tr, r); // 274
+            let spawn_turns = self.mg_num_spawn_phase_turns(tr); // 215
+            if created <= spawn_turns + 1.0 {
+                self.rq_reject(tr, r); // 272
+                continue;
+            }
+            let requestor = self.rq_requestor(tr, r); // 744
+            let ok = match requestor {
+                Some(req_tok) => self.ne_get_alliance_decision(tr, req_tok, true)?,
+                None => false,
+            };
+            if ok {
+                self.rq_accept(tr, r); // 271
+            } else {
+                self.rq_reject(tr, r); // 272
+            }
+        }
+        Ok(())
+    }
+
+    /// `handleAllianceExtensionRequests()`.
+    fn ne_handle_alliance_extension_requests(
+        &mut self,
+        tr: &mut Vec<f64>,
+    ) -> Result<(), String> {
+        let pl = self.ne_player.ok_or("Player not initialized")?;
+        if self.mg_disable_alliances(tr) {
+            // 958
+            return Ok(());
+        }
+        let alliances = self.pl_alliances(tr, pl); // 954
+        for al in alliances {
+            if !self.al_only_one_agreed(tr, al) {
+                // 260
+                continue;
+            }
+            let human = self.al_other(tr, al, pl); // 966
+            if !self.ne_get_alliance_decision(tr, human, true)? {
+                continue;
+            }
+            let hid = self.pl_id(tr, human); // 231
+            self.mg_add_alliance_extension_exec(tr, pl, &hid);
+        }
+        Ok(())
+    }
+
+    /// `maybeSendAllianceRequests(borderingEnemies)`.
+    fn ne_maybe_send_alliance_requests(
+        &mut self,
+        tr: &mut Vec<f64>,
+        bordering_enemies: &[usize],
+    ) -> Result<(), String> {
+        let pl = self.ne_player.ok_or("Player not initialized")?;
+        if self.mg_disable_alliances(tr) {
+            // 958
+            return Ok(());
+        }
+        for &enemy in bordering_enemies {
+            if !self.random.as_mut().unwrap().chance(30.0) {
+                continue;
+            }
+            if !self.ne_acceptable_player_type(tr, enemy)? {
+                continue;
+            }
+            if !self.pl_can_send_alliance_request(tr, pl, Some(enemy)) {
+                // 235
+                continue;
+            }
+            if self.ne_get_alliance_decision(tr, enemy, false)? {
+                let eid = self.pl_id(tr, enemy); // 231
+                self.mg_add_alliance_request_exec(tr, pl, &eid);
+            }
+        }
+        Ok(())
+    }
+
+    /// `(p.type() === Bot && difficulty === Easy) || p.type() !== Bot` — the
+    /// `||` re-reads `type()` unless the left arm short-circuits to `true`.
+    fn ne_acceptable_player_type(&mut self, tr: &mut Vec<f64>, p: usize) -> Result<bool, String> {
+        if self.pl_type(tr, p) == PLAYER_TYPE_BOT {
+            // 251
+            if self.mg_difficulty(tr) == DIFFICULTY_EASY {
+                // 402
+                return Ok(true);
+            }
+        }
+        Ok(self.pl_type(tr, p) != PLAYER_TYPE_BOT) // 251 (second read)
+    }
+
+    /// `getAllianceDecision(otherPlayer, isResponse)`.
+    fn ne_get_alliance_decision(
+        &mut self,
+        tr: &mut Vec<f64>,
+        other: usize,
+        is_response: bool,
+    ) -> Result<bool, String> {
+        if self.ne_is_confused(tr)? {
+            let rng = self.random.as_mut().unwrap();
+            return Ok(rng.chance(2.0));
+        }
+        if self.pl_is_traitor(tr, other) {
+            // 826
+            let roll = self.random.as_mut().unwrap().next_int(0.0, 100.0);
+            if roll >= 10 {
+                if is_response && self.random.as_mut().unwrap().chance(3.0) {
+                    self.ne_send_emoji(tr, Rec::P(other), "EMOJI_CONFUSED")?;
+                }
+                return Ok(false);
+            }
+        }
+        if self.ne_has_too_many_alliances(tr, other)? {
+            return Ok(false);
+        }
+        if self.ne_is_alliance_partner_threat(tr, other)? {
+            if !is_response && self.random.as_mut().unwrap().chance(6.0) {
+                self.ne_send_emoji(tr, Rec::P(other), "EMOJI_SCARED_OF_THREAT")?;
+            }
+            if is_response && self.random.as_mut().unwrap().chance(6.0) {
+                self.ne_send_emoji(tr, Rec::P(other), "EMOJI_LOVE")?;
+            }
+            return Ok(true);
+        }
+        if self.ne_should_reject_in_team_game(tr)? {
+            return Ok(false);
+        }
+        let pl = self.ne_player.ok_or("Player not initialized")?;
+        if self.pl_relation(tr, pl, Some(other)) < RELATION_NEUTRAL {
+            // 412
+            if is_response && self.random.as_mut().unwrap().chance(3.0) {
+                self.ne_send_emoji(tr, Rec::P(other), "EMOJI_CONFUSED")?;
+            }
+            return Ok(false);
+        }
+        if self.ne_is_alliance_partner_friendly(tr, other)? {
+            if self.random.as_mut().unwrap().chance(3.0) {
+                self.ne_send_emoji(tr, Rec::P(other), "EMOJI_HANDSHAKE")?;
+            }
+            return Ok(true);
+        }
+        if self.ne_check_already_enough_alliances(tr, other)? {
+            return Ok(false);
+        }
+        if self.ne_is_earlygame(tr)? {
+            return Ok(true);
+        }
+        self.ne_is_alliance_partner_similarly_strong(tr, other)
+    }
+
+    /// `hasTooManyAlliances(otherPlayer)`.
+    fn ne_has_too_many_alliances(&mut self, tr: &mut Vec<f64>, other: usize) -> Result<bool, String> {
+        let difficulty = self.mg_difficulty(tr); // 402
+        if difficulty != DIFFICULTY_HARD && difficulty != DIFFICULTY_IMPOSSIBLE {
+            return Ok(false);
+        }
+        let total_players = self
+            .mg_players(tr) // 221
+            .into_iter()
+            .filter(|&p| self.pl_type(tr, p) != PLAYER_TYPE_BOT) // 251
+            .count() as f64;
+        let other_alliances = self.pl_alliances(tr, other).len() as f64; // 954
+        if difficulty == DIFFICULTY_HARD {
+            Ok(other_alliances >= total_players * 0.5)
+        } else {
+            Ok(other_alliances >= total_players * 0.25)
+        }
+    }
+
+    /// `isConfused()`.
+    fn ne_is_confused(&mut self, tr: &mut Vec<f64>) -> Result<bool, String> {
+        let diff = self.mg_difficulty(tr); // 402
+        let rng = self.random.as_mut().unwrap();
+        match diff.as_str() {
+            DIFFICULTY_EASY => Ok(rng.chance(10.0)),
+            DIFFICULTY_MEDIUM => Ok(rng.chance(20.0)),
+            DIFFICULTY_HARD => Ok(rng.chance(40.0)),
+            DIFFICULTY_IMPOSSIBLE => Ok(false),
+            other => Err(format!("Unexpected value: {other}")),
+        }
+    }
+
+    /// `isEarlygame()`.
+    fn ne_is_earlygame(&mut self, tr: &mut Vec<f64>) -> Result<bool, String> {
+        let spawn_ticks = self.mg_num_spawn_phase_turns(tr); // 215
+        let difficulty = self.mg_difficulty(tr); // 402
+        let (limit, floor) = match difficulty.as_str() {
+            DIFFICULTY_EASY => (3000.0, 10.0),
+            DIFFICULTY_MEDIUM => (1800.0, 30.0),
+            DIFFICULTY_HARD => (1800.0, 50.0),
+            DIFFICULTY_IMPOSSIBLE => (600.0, 70.0),
+            other => return Err(format!("Unexpected value: {other}")),
+        };
+        if self.mg_ticks(tr) >= limit + spawn_ticks {
+            // 212
+            return Ok(false);
+        }
+        let roll = self.random.as_mut().unwrap().next_int(0.0, 100.0);
+        Ok(roll >= floor as i64)
+    }
+
+    /// `isAlliancePartnerThreat(otherPlayer)`.
+    fn ne_is_alliance_partner_threat(&mut self, tr: &mut Vec<f64>, other: usize) -> Result<bool, String> {
+        let pl = self.ne_player.ok_or("Player not initialized")?;
+        let difficulty = self.mg_difficulty(tr); // 402
+        match difficulty.as_str() {
+            DIFFICULTY_EASY => Ok(false),
+            DIFFICULTY_MEDIUM => {
+                let ot = self.pl_troops(tr, other); // 418
+                let pt = self.pl_troops(tr, pl); // 418
+                Ok(ot > pt * 2.5)
+            }
+            DIFFICULTY_HARD => {
+                let ot = self.pl_troops(tr, other); // 418
+                let pt = self.pl_troops(tr, pl); // 418
+                #[allow(clippy::neg_cmp_op_on_partial_ord)]
+                if !(ot > pt) {
+                    return Ok(false);
+                }
+                let om = self.mg_max_troops(tr, Rec::P(other)); // 401
+                let pm = self.mg_max_troops(tr, Rec::P(pl)); // 401
+                Ok(om > pm * 2.0)
+            }
+            DIFFICULTY_IMPOSSIBLE => {
+                // The three `const` booleans are eagerly evaluated before the
+                // `||` chain, so every `troops()` pair is read regardless of
+                // the earlier results.
+                let ot = self.pl_troops(tr, other); // 418
+                let pt = self.pl_troops(tr, pl); // 418
+                let more_troops = ot > pt * 1.5;
+                let ot2 = self.pl_troops(tr, other); // 418
+                let pt2 = self.pl_troops(tr, pl); // 418
+                let more_max_troops = if ot2 > pt2 {
+                    let om = self.mg_max_troops(tr, Rec::P(other)); // 401
+                    let pm = self.mg_max_troops(tr, Rec::P(pl)); // 401
+                    om > pm * 1.5
+                } else {
+                    false
+                };
+                let ot3 = self.pl_troops(tr, other); // 418
+                let pt3 = self.pl_troops(tr, pl); // 418
+                let more_tiles = if ot3 > pt3 {
+                    let ont = self.pl_num_tiles_owned(tr, other); // 532
+                    let pnt = self.pl_num_tiles_owned(tr, pl); // 532
+                    ont > pnt * 1.5
+                } else {
+                    false
+                };
+                Ok(more_troops || more_max_troops || more_tiles)
+            }
+            other => Err(format!("Unexpected value: {other}")),
+        }
+    }
+
+    /// `shouldRejectInTeamGame()`.
+    fn ne_should_reject_in_team_game(&mut self, tr: &mut Vec<f64>) -> Result<bool, String> {
+        if self.mg_game_mode(tr) != GAME_MODE_TEAM {
+            // 520
+            return Ok(false);
+        }
+        let difficulty = self.mg_difficulty(tr); // 402
+        match difficulty.as_str() {
+            DIFFICULTY_EASY => Ok(self.random.as_mut().unwrap().next_int(0.0, 100.0) < 25),
+            DIFFICULTY_MEDIUM => Ok(self.random.as_mut().unwrap().next_int(0.0, 100.0) < 50),
+            DIFFICULTY_HARD => Ok(self.random.as_mut().unwrap().next_int(0.0, 100.0) < 75),
+            DIFFICULTY_IMPOSSIBLE => Ok(true),
+            other => Err(format!("Unexpected value: {other}")),
+        }
+    }
+
+    /// `checkAlreadyEnoughAlliances(otherPlayer)`.
+    fn ne_check_already_enough_alliances(
+        &mut self,
+        tr: &mut Vec<f64>,
+        other: usize,
+    ) -> Result<bool, String> {
+        let pl = self.ne_player.ok_or("Player not initialized")?;
+        let difficulty = self.mg_difficulty(tr); // 402
+        match difficulty.as_str() {
+            DIFFICULTY_EASY => Ok(false),
+            DIFFICULTY_MEDIUM => {
+                let n = self.pl_alliances(tr, pl).len() as f64; // 954
+                let roll = self.random.as_mut().unwrap().next_int(4.0, 6.0) as f64;
+                Ok(n >= roll)
+            }
+            DIFFICULTY_HARD | DIFFICULTY_IMPOSSIBLE => {
+                let nearby = self.pl_nearby(tr, pl); // 245
+                let bordering: Vec<usize> = nearby
+                    .into_iter()
+                    .filter(|&n| {
+                        self.nb_is_player(tr, n) // 257
+                            && self.pl_type(tr, n) != PLAYER_TYPE_BOT // 251
+                    })
+                    .collect();
+                let friends: Vec<usize> = bordering
+                    .iter()
+                    .copied()
+                    .filter(|&o| self.pl_is_friendly(tr, pl, Some(o))) // 242
+                    .collect();
+                if bordering.len() >= 2 && bordering.contains(&other) {
+                    return Ok((bordering.len() as f64) <= (friends.len() as f64) + 1.0);
+                }
+                let n = self.pl_alliances(tr, pl).len() as f64; // 954
+                if difficulty == DIFFICULTY_HARD {
+                    let roll = self.random.as_mut().unwrap().next_int(3.0, 5.0) as f64;
+                    Ok(n >= roll)
+                } else {
+                    let roll = self.random.as_mut().unwrap().next_int(2.0, 4.0) as f64;
+                    Ok(n >= roll)
+                }
+            }
+            other => Err(format!("Unexpected value: {other}")),
+        }
+    }
+
+    /// `isAlliancePartnerFriendly(otherPlayer)`.
+    fn ne_is_alliance_partner_friendly(
+        &mut self,
+        tr: &mut Vec<f64>,
+        other: usize,
+    ) -> Result<bool, String> {
+        let pl = self.ne_player.ok_or("Player not initialized")?;
+        let difficulty = self.mg_difficulty(tr); // 402
+        match difficulty.as_str() {
+            DIFFICULTY_EASY | DIFFICULTY_MEDIUM => {
+                Ok(self.pl_relation(tr, pl, Some(other)) == RELATION_FRIENDLY) // 412
+            }
+            DIFFICULTY_HARD => {
+                if self.pl_relation(tr, pl, Some(other)) != RELATION_FRIENDLY {
+                    // 412
+                    return Ok(false);
+                }
+                Ok(self.random.as_mut().unwrap().next_int(0.0, 100.0) >= 17)
+            }
+            DIFFICULTY_IMPOSSIBLE => {
+                if self.pl_relation(tr, pl, Some(other)) != RELATION_FRIENDLY {
+                    // 412
+                    return Ok(false);
+                }
+                Ok(self.random.as_mut().unwrap().next_int(0.0, 100.0) >= 33)
+            }
+            other => Err(format!("Unexpected value: {other}")),
+        }
+    }
+
+    /// `isAlliancePartnerSimilarlyStrong(otherPlayer)`.
+    fn ne_is_alliance_partner_similarly_strong(
+        &mut self,
+        tr: &mut Vec<f64>,
+        other: usize,
+    ) -> Result<bool, String> {
+        let pl = self.ne_player.ok_or("Player not initialized")?;
+        let difficulty = self.mg_difficulty(tr); // 402
+        let (troop_lo, troop_hi, tile_lo, tile_hi) = match difficulty.as_str() {
+            DIFFICULTY_EASY => (60.0, 70.0, 70.0, 80.0),
+            DIFFICULTY_MEDIUM => (70.0, 80.0, 80.0, 90.0),
+            DIFFICULTY_HARD => (75.0, 85.0, 85.0, 95.0),
+            DIFFICULTY_IMPOSSIBLE => (80.0, 90.0, 90.0, 100.0),
+            other => return Err(format!("Unexpected value: {other}")),
+        };
+
+        let mut player_outgoing = 0.0;
+        for a in self.pl_outgoing_attacks(tr, pl) {
+            // 721
+            player_outgoing += self.at_troops(tr, a); // 830
+        }
+        let mut other_outgoing = 0.0;
+        for a in self.pl_outgoing_attacks(tr, other) {
+            // 721
+            other_outgoing += self.at_troops(tr, a); // 830
+        }
+        let player_total = self.pl_troops(tr, pl) + player_outgoing; // 418
+        let other_total = self.pl_troops(tr, other) + other_outgoing; // 418
+
+        let troop_pct = self.random.as_mut().unwrap().next_int(troop_lo, troop_hi) as f64 / 100.0;
+        let troop_threshold = player_total * troop_pct;
+        let tile_pct = self.random.as_mut().unwrap().next_int(tile_lo, tile_hi) as f64 / 100.0;
+        let tile_threshold = self.pl_num_tiles_owned(tr, pl) * tile_pct; // 532
+
+        // Both `const` booleans are eagerly evaluated before the `||`.
+        let has_comparable_troops = other_total > troop_threshold;
+        let other_tiles = self.pl_num_tiles_owned(tr, other); // 532
+        let has_comparable_tiles =
+            other_tiles > tile_threshold && other_total > player_total * 0.5;
+        Ok(has_comparable_troops || has_comparable_tiles)
+    }
+
+    /// `maybeBetray(otherPlayer, juiciestAlly, borderingFriends, borderingEnemies)`.
+    fn ne_maybe_betray(
+        &mut self,
+        tr: &mut Vec<f64>,
+        other: usize,
+        juiciest_ally: Option<usize>,
+        bordering_friends: &[usize],
+        bordering_enemies: &[usize],
+    ) -> Result<bool, String> {
+        let pl = self.ne_player.ok_or("Player not initialized")?;
+        if !self.pl_is_allied_with(tr, pl, other) {
+            // 987
+            return Ok(false);
+        }
+        let difficulty = self.mg_difficulty(tr); // 402
+
+        if (difficulty == DIFFICULTY_HARD || difficulty == DIFFICULTY_IMPOSSIBLE)
+            && juiciest_ally == Some(other)
+            && self.ne_is_safe_to_betray(tr, other, bordering_friends, bordering_enemies)?
+        {
+            self.ne_betray(tr, other)?;
+            return Ok(true);
+        }
+
+        if (difficulty == DIFFICULTY_EASY || difficulty == DIFFICULTY_MEDIUM)
+            && !(difficulty == DIFFICULTY_EASY && self.pl_type(tr, other) == PLAYER_TYPE_HUMAN)
+            && {
+                let pt = self.pl_troops(tr, pl); // 418
+                let ot = self.pl_troops(tr, other); // 418
+                pt >= ot * 10.0
+            }
+        {
+            self.ne_betray(tr, other)?;
+            return Ok(true);
+        }
+
+        if difficulty != DIFFICULTY_EASY
+            && self.pl_is_traitor(tr, other)
+            && {
+                // 826
+                let ot = self.pl_troops(tr, other); // 418
+                let pt = self.pl_troops(tr, pl); // 418
+                ot < pt * 1.2
+            }
+        {
+            self.ne_betray(tr, other)?;
+            return Ok(true);
+        }
+
+        if difficulty != DIFFICULTY_EASY
+            && bordering_friends.len() + bordering_enemies.len() == 1
+            && {
+                let ot = self.pl_troops(tr, other); // 418
+                let pt = self.pl_troops(tr, pl); // 418
+                ot * 3.0 < pt
+            }
+        {
+            self.ne_betray(tr, other)?;
+            return Ok(true);
+        }
+
+        Ok(false)
+    }
+
+    /// `findJuiciestAlly(borderingFriends)`.
+    fn ne_find_juiciest_ally(
+        &mut self,
+        tr: &mut Vec<f64>,
+        bordering_friends: &[usize],
+    ) -> Result<Option<usize>, String> {
+        let pl = self.ne_player.ok_or("Player not initialized")?;
+        let candidates: Vec<usize> = bordering_friends
+            .iter()
+            .copied()
+            .filter(|&f| self.pl_is_allied_with(tr, pl, f)) // 987
+            .collect();
+        Ok(self.ai_find_juiciest_target(tr, &candidates))
+    }
+
+    /// `isSafeToBetray(target, borderingFriends, borderingEnemies)`.
+    fn ne_is_safe_to_betray(
+        &mut self,
+        tr: &mut Vec<f64>,
+        target: usize,
+        bordering_friends: &[usize],
+        bordering_enemies: &[usize],
+    ) -> Result<bool, String> {
+        let pl = self.ne_player.ok_or("Player not initialized")?;
+        let mut other_allies: Vec<usize> = Vec::new();
+        if !self.pl_is_traitor(tr, target) {
+            // 826
+            for &f in bordering_friends {
+                if f != target && self.pl_is_allied_with(tr, pl, f) {
+                    // 987
+                    other_allies.push(f);
+                }
+            }
+        }
+        let mut threats: Vec<usize> = vec![target];
+        threats.extend_from_slice(bordering_enemies);
+        threats.extend(other_allies.iter().copied());
+        let mut nearby = 0.0;
+        for &threat in &threats {
+            let mut outgoing = 0.0;
+            for a in self.pl_outgoing_attacks(tr, threat) {
+                // 721
+                outgoing += self.at_troops(tr, a); // 830
+            }
+            nearby += self.pl_troops(tr, threat) + outgoing; // 418
+        }
+        let pt = self.pl_troops(tr, pl); // 418
+        Ok(nearby < pt * 0.33)
+    }
+
+    /// `betray(target)`.
+    fn ne_betray(&mut self, tr: &mut Vec<f64>, target: usize) -> Result<(), String> {
+        let pl = self.ne_player.ok_or("Player not initialized")?;
+        if let Some(al) = self.pl_alliance_with(tr, pl, Some(target)) {
+            // 243
+            self.pl_break_alliance(tr, pl, al); // 244
+        }
+        Ok(())
+    }
+
+    /// `NationMIRVBehavior.considerMIRV()`. The boolean return value is
+    /// discarded by `NationExecution.tick()`, so early exits just `return`.
+    fn ne_consider_mirv(&mut self, tr: &mut Vec<f64>) -> Result<(), String> {
+        let pl = self.ne_player.ok_or("not initialized")?;
+        if self.mg_is_unit_disabled(tr, UNIT_MIRV) {
+            // 511
+            return Ok(());
+        }
+        let silos = self.pl_units(tr, pl, &[UNIT_MISSILE_SILO.to_string()]); // 241
+        if silos.is_empty() {
+            return Ok(());
+        }
+        let cost = self.ne_cost(tr, UNIT_MIRV, pl); // 512 -> 969
+        if self.pl_gold(tr, pl) < cost {
+            // 417 (read after the cost pair, mirroring the TS `<` operand order)
+            return Ok(());
+        }
+        let odds = self.ne_mirv_hesitation_odds(tr)?; // 402
+        if self.random.as_mut().unwrap().chance(odds) {
+            return Ok(());
+        }
+        let inbound = self.ne_select_counter_mirv_target(tr, pl)?;
+        if let Some(t) = inbound {
+            if !self.ne_was_recently_mirved(tr, t)? {
+                self.ne_maybe_send_mirv(tr, t)?;
+                return Ok(());
+            }
+        }
+        let vd = self.ne_select_victory_denial_target(tr, pl)?;
+        if let Some(t) = vd {
+            if !self.ne_was_recently_mirved(tr, t)? {
+                self.ne_maybe_send_mirv(tr, t)?;
+                return Ok(());
+            }
+        }
+        let sr = self.ne_select_steamroll_stop_target(tr, pl)?;
+        if let Some(t) = sr {
+            if !self.ne_was_recently_mirved(tr, t)? {
+                self.ne_maybe_send_mirv(tr, t)?;
+                return Ok(());
+            }
+        }
+        Ok(())
+    }
+
+    /// `get hesitationOdds()`.
+    fn ne_mirv_hesitation_odds(&mut self, tr: &mut Vec<f64>) -> Result<f64, String> {
+        let difficulty = self.mg_difficulty(tr); // 402
+        match difficulty.as_str() {
+            DIFFICULTY_EASY => Ok(2.0),
+            DIFFICULTY_MEDIUM => Ok(4.0),
+            DIFFICULTY_HARD => Ok(8.0),
+            DIFFICULTY_IMPOSSIBLE => Ok(16.0),
+            other => Err(format!("Unexpected value: {other}")),
+        }
+    }
+
+    /// `get victoryDenialThresholdPercent()`.
+    fn ne_mirv_victory_denial_percent(&mut self, tr: &mut Vec<f64>) -> Result<f64, String> {
+        let difficulty = self.mg_difficulty(tr); // 402
+        match difficulty.as_str() {
+            DIFFICULTY_EASY => Ok(75.0),
+            DIFFICULTY_MEDIUM => Ok(65.0),
+            DIFFICULTY_HARD => Ok(55.0),
+            DIFFICULTY_IMPOSSIBLE => Ok(40.0),
+            other => Err(format!("Unexpected value: {other}")),
+        }
+    }
+
+    /// `get steamrollCityGapMultiplier()`.
+    fn ne_mirv_steamroll_gap_multiplier(&mut self, tr: &mut Vec<f64>) -> Result<f64, String> {
+        let difficulty = self.mg_difficulty(tr); // 402
+        match difficulty.as_str() {
+            DIFFICULTY_EASY => Ok(2.0),
+            DIFFICULTY_MEDIUM => Ok(1.5),
+            DIFFICULTY_HARD => Ok(1.25),
+            DIFFICULTY_IMPOSSIBLE => Ok(1.15),
+            other => Err(format!("Unexpected value: {other}")),
+        }
+    }
+
+    /// `get steamrollMinLeaderCities()`.
+    fn ne_mirv_steamroll_min_leader_cities(&mut self, tr: &mut Vec<f64>) -> Result<f64, String> {
+        let difficulty = self.mg_difficulty(tr); // 402
+        match difficulty.as_str() {
+            DIFFICULTY_EASY => Ok(20.0),
+            DIFFICULTY_MEDIUM => Ok(10.0),
+            DIFFICULTY_HARD => Ok(10.0),
+            DIFFICULTY_IMPOSSIBLE => Ok(8.0),
+            other => Err(format!("Unexpected value: {other}")),
+        }
+    }
+
+    /// `getValidMirvTargetPlayers()`. The `&&` chain short-circuits exactly as
+    /// in TS: `p !== player` skips all facade reads for our own token.
+    fn ne_get_valid_mirv_target_players(&mut self, tr: &mut Vec<f64>, pl: usize) -> Vec<usize> {
+        let mut out = Vec::new();
+        for p in self.mg_players(tr) {
+            // 221
+            if p == pl {
+                continue;
+            }
+            if !self.pl_is_player(tr, p) {
+                // 259
+                continue;
+            }
+            if self.pl_type(tr, p) == PLAYER_TYPE_BOT {
+                // 251
+                continue;
+            }
+            if self.pl_is_on_same_team(tr, pl, Some(p)) {
+                // 250
+                continue;
+            }
+            out.push(p);
+        }
+        out
+    }
+
+    /// `selectCounterMirvTarget()`.
+    fn ne_select_counter_mirv_target(
+        &mut self,
+        tr: &mut Vec<f64>,
+        pl: usize,
+    ) -> Result<Option<usize>, String> {
+        let valid = self.ne_get_valid_mirv_target_players(tr, pl);
+        let mut attackers = Vec::new();
+        for p in valid {
+            if self.ne_is_inbound_mirv_from(tr, pl, p)? {
+                attackers.push(p);
+            }
+        }
+        if attackers.is_empty() {
+            return Ok(None);
+        }
+        let sorted = self.sort_players_by_tiles(tr, attackers);
+        Ok(sorted.first().copied())
+    }
+
+    /// `isInboundMIRVFrom(attacker)`.
+    fn ne_is_inbound_mirv_from(
+        &mut self,
+        tr: &mut Vec<f64>,
+        pl: usize,
+        attacker: usize,
+    ) -> Result<bool, String> {
+        let mirvs = self.pl_units(tr, attacker, &[UNIT_MIRV.to_string()]); // 241
+        for m in mirvs {
+            let dst = match self.un_target_tile(tr, m) {
+                // 282
+                Some(d) if js_truthy(d) => d,
+                _ => continue,
+            };
+            if !self.mg_has_owner(tr, dst) {
+                // 607
+                continue;
+            }
+            let owner = self.mg_owner(tr, dst); // 222
+            if owner == Some(pl) {
+                return Ok(true);
+            }
+        }
+        Ok(false)
+    }
+
+    /// `selectVictoryDenialTarget()`.
+    fn ne_select_victory_denial_target(
+        &mut self,
+        tr: &mut Vec<f64>,
+        pl: usize,
+    ) -> Result<Option<usize>, String> {
+        let total_land = self.mg_num_land_tiles(tr); // 501
+        if total_land == 0.0 {
+            return Ok(None);
+        }
+        let percent = self.ne_mirv_victory_denial_percent(tr)?; // 402
+        let scaled = total_land * percent;
+        let valid = self.ne_get_valid_mirv_target_players(tr, pl);
+        let mut best: Option<(usize, f64)> = None;
+        for p in valid {
+            let mut severity = 0.0;
+            let team = self.pl_team(tr, p); // 248
+            if !matches!(team, JsVal::Null) {
+                let mut members = Vec::new();
+                for x in self.mg_players(tr) {
+                    // 221 (re-read per team candidate)
+                    let xt = self.pl_team(tr, x); // 248
+                    if !js_val_eq(&xt, &team) {
+                        continue;
+                    }
+                    if !self.pl_is_player(tr, x) {
+                        // 259
+                        continue;
+                    }
+                    members.push(x);
+                }
+                let mut team_territory = 0.0;
+                for m in &members {
+                    team_territory += self.pl_num_tiles_owned(tr, *m); // 532
+                }
+                if team_territory * 100.0 >= scaled {
+                    let mut largest: Option<usize> = None;
+                    let mut largest_tiles = -1.0;
+                    for m in &members {
+                        let tiles = self.pl_num_tiles_owned(tr, *m); // 532 (re-read)
+                        if tiles > largest_tiles {
+                            largest_tiles = tiles;
+                            largest = Some(*m);
+                        }
+                    }
+                    if largest == Some(p) {
+                        severity = team_territory;
+                    }
+                }
+            } else {
+                let tiles = self.pl_num_tiles_owned(tr, p); // 532
+                if tiles * 100.0 >= scaled {
+                    severity = tiles;
+                }
+            }
+            if severity > 0.0 {
+                let take = match best {
+                    None => true,
+                    Some((_, bs)) => severity > bs,
+                };
+                if take {
+                    best = Some((p, severity));
+                }
+            }
+        }
+        Ok(best.map(|(p, _)| p))
+    }
+
+    /// `selectSteamrollStopTarget()`. The `{p, cityCount}` pairs are built
+    /// before the sort, so the comparator itself traces nothing.
+    fn ne_select_steamroll_stop_target(
+        &mut self,
+        tr: &mut Vec<f64>,
+        pl: usize,
+    ) -> Result<Option<usize>, String> {
+        let valid = self.ne_get_valid_mirv_target_players(tr, pl);
+        if valid.is_empty() {
+            return Ok(None);
+        }
+        let mut scored: Vec<(usize, f64)> = Vec::new();
+        for p in self.mg_players(tr) {
+            // 221
+            if !self.pl_is_player(tr, p) {
+                // 259
+                continue;
+            }
+            let cc = self.pl_unit_count(tr, p, UNIT_CITY); // 823
+            scored.push((p, cc));
+        }
+        scored.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+        if scored.len() < 2 {
+            return Ok(None);
+        }
+        let top = scored[0];
+        let min_leader = self.ne_mirv_steamroll_min_leader_cities(tr)?; // 402
+        if top.1 <= min_leader {
+            return Ok(None);
+        }
+        let second = scored[1].1;
+        let mult = self.ne_mirv_steamroll_gap_multiplier(tr)?; // 402
+        if top.1 >= second * mult && valid.contains(&top.0) {
+            return Ok(Some(top.0));
+        }
+        Ok(None)
+    }
+
+    /// `wasRecentlyMirved(target)` (static `recentMirvTargets` map).
+    fn ne_was_recently_mirved(&mut self, tr: &mut Vec<f64>, target: usize) -> Result<bool, String> {
+        let id = self.pl_id(tr, target); // 231
+        let last = match self.ne_recent_mirv.iter().find(|(k, _)| *k == id) {
+            Some((_, v)) => *v,
+            None => return Ok(false),
+        };
+        Ok(self.mg_ticks(tr) - last < MIRV_COOLDOWN_TICKS) // 212
+    }
+
+    /// `recordMirvHit(target)`.
+    fn ne_record_mirv_hit(&mut self, tr: &mut Vec<f64>, target: usize) {
+        let id = self.pl_id(tr, target); // 231
+        let now = self.mg_ticks(tr); // 212
+        if let Some(e) = self.ne_recent_mirv.iter_mut().find(|(k, _)| *k == id) {
+            e.1 = now;
+        } else {
+            self.ne_recent_mirv.push((id, now));
+        }
+    }
+
+    /// `maybeSendMIRV(enemy)`.
+    fn ne_maybe_send_mirv(&mut self, tr: &mut Vec<f64>, enemy: usize) -> Result<(), String> {
+        let pl = self.ne_player.ok_or("not initialized")?;
+        self.ne_maybe_send_attack_emoji(tr, enemy)?;
+        let center = self.ne_calculate_territory_center(tr, enemy)?;
+        if let Some(c) = center {
+            let spawn = self.pl_can_build(tr, pl, UNIT_MIRV, c); // 534
+            if Self::js_truthy(&spawn) {
+                self.mg_add_mirv(tr, pl, c);
+                self.ne_record_mirv_hit(tr, enemy);
+                self.ne_send_emoji(tr, Rec::All, "EMOJI_NUKE")?;
+                self.ne_respond_to_mirv(tr, enemy)?;
+            }
+        }
+        Ok(())
+    }
+
+    /// `Util.calculateTerritoryCenter(game, target)` (inlined).
+    fn ne_calculate_territory_center(
+        &mut self,
+        tr: &mut Vec<f64>,
+        target: usize,
+    ) -> Result<Option<f64>, String> {
+        let border = self.pl_border_tiles(tr, target); // 635
+        if border.is_empty() {
+            return Ok(None);
+        }
+        let (mut min_x, mut max_x) = (f64::INFINITY, f64::NEG_INFINITY);
+        let (mut min_y, mut max_y) = (f64::INFINITY, f64::NEG_INFINITY);
+        for &t in &border {
+            let x = self.mg_x(tr, t); // 603
+            let y = self.mg_y(tr, t); // 604
+            if x < min_x {
+                min_x = x;
+            }
+            if x > max_x {
+                max_x = x;
+            }
+            if y < min_y {
+                min_y = y;
+            }
+            if y > max_y {
+                max_y = y;
+            }
+        }
+        let center_x = ((min_x + max_x) / 2.0).floor();
+        let center_y = ((min_y + max_y) / 2.0).floor();
+        let center_tile = self.mg_ref(tr, center_x, center_y); // 609
+        if self.mg_owner(tr, center_tile) == Some(target) {
+            // 222
+            return Ok(Some(center_tile));
+        }
+        let mut closest: Option<f64> = None;
+        let mut closest_d2 = f64::INFINITY;
+        for &t in &border {
+            let dx = self.mg_x(tr, t) - center_x; // 603 (re-read)
+            let dy = self.mg_y(tr, t) - center_y; // 604 (re-read)
+            let d2 = dx * dx + dy * dy;
+            if d2 < closest_d2 {
+                closest_d2 = d2;
+                closest = Some(t);
+            }
+        }
+        Ok(closest)
+    }
+
+    fn ne_handle_structures(&mut self, _tr: &mut Vec<f64>) -> Result<(), String> {
+        Ok(())
+    }
+
+    // ---- NationWarshipBehavior (ported inline) ------------------------------
+
+    /// `maybeSpawnWarship()`. The boolean return value is discarded by
+    /// `tick()`, so early exits just `return`.
+    fn ne_maybe_spawn_warship(&mut self, tr: &mut Vec<f64>) -> Result<(), String> {
+        let pl = self.ne_player.ok_or("not initialized")?;
+        if self.mg_is_unit_disabled(tr, UNIT_WARSHIP) {
+            // 511
+            return Ok(());
+        }
+        if !self.random.as_mut().unwrap().chance(50.0) {
+            return Ok(());
+        }
+        let ports = self.pl_units(tr, pl, &[UNIT_PORT.to_string()]); // 241
+        let ships = self.pl_units(tr, pl, &[UNIT_WARSHIP.to_string()]); // 241
+        if ports.is_empty() || !ships.is_empty() {
+            return Ok(());
+        }
+        let gold = self.pl_gold(tr, pl); // 417 (read before the cost pair)
+        let cost = self.ne_cost(tr, UNIT_WARSHIP, pl); // 512 -> 969
+        if gold <= cost {
+            return Ok(());
+        }
+        let port = match self.random.as_mut().unwrap().rand_element(&ports) {
+            Some(p) => *p,
+            None => return Ok(()),
+        };
+        let port_tile = self.un_tile(tr, port); // 344
+        let target_tile = self.ne_warship_spawn_tile(tr, port_tile, 250.0);
+        let target = match target_tile {
+            Some(t) => t,
+            None => return Ok(()),
+        };
+        let can_build = self.pl_can_build(tr, pl, UNIT_WARSHIP, target); // 534
+        if matches!(can_build, JsVal::Bool(false)) {
+            return Ok(());
+        }
+        self.mg_add_construction_exec(tr, pl, UNIT_WARSHIP, target);
+        Ok(())
+    }
+
+    /// `warshipSpawnTile(portTile, radius)`. Each attempt reads `game.x` /
+    /// `game.y` twice (both `nextInt` bounds evaluate `this.game.x(portTile)`).
+    fn ne_warship_spawn_tile(
+        &mut self,
+        tr: &mut Vec<f64>,
+        port_tile: f64,
+        radius: f64,
+    ) -> Option<f64> {
+        for _ in 0..50 {
+            let x_lo = self.mg_x(tr, port_tile) - radius; // 603
+            let x_hi = self.mg_x(tr, port_tile) + radius; // 603 (re-read)
+            let rand_x = self.random.as_mut().unwrap().next_int(x_lo, x_hi) as f64;
+            let y_lo = self.mg_y(tr, port_tile) - radius; // 604
+            let y_hi = self.mg_y(tr, port_tile) + radius; // 604 (re-read)
+            let rand_y = self.random.as_mut().unwrap().next_int(y_lo, y_hi) as f64;
+            if !self.mg_is_valid_coord(tr, rand_x, rand_y) {
+                // 616
+                continue;
+            }
+            let tile = self.mg_ref(tr, rand_x, rand_y); // 609
+            if !self.mg_is_water(tr, tile) {
+                // 508
+                continue;
+            }
+            return Some(tile);
+        }
+        None
+    }
+
+    /// `trackShipsAndRetaliate()`.
+    fn ne_track_ships_and_retaliate(&mut self, tr: &mut Vec<f64>) -> Result<(), String> {
+        self.ne_track_transport_ships_and_retaliate(tr)?;
+        self.ne_track_trade_ships_and_retaliate(tr)?;
+        self.ne_track_incoming_transports_and_retaliate(tr)
+    }
+
+    /// `trackTransportShipsAndRetaliate()`. The tracked sets keep JS `Set`
+    /// insertion order and dedupe on the unit token.
+    fn ne_track_transport_ships_and_retaliate(&mut self, tr: &mut Vec<f64>) -> Result<(), String> {
+        let pl = self.ne_player.ok_or("not initialized")?;
+        if self.mg_is_unit_disabled(tr, UNIT_TRANSPORT_SHIP) {
+            // 511
+            return Ok(());
+        }
+        for u in self.pl_units(tr, pl, &[UNIT_TRANSPORT_SHIP.to_string()]) {
+            // 241
+            if !self.ne_tracked_transport.contains(&u) {
+                self.ne_tracked_transport.push(u);
+            }
+        }
+        let mut i = 0usize;
+        while i < self.ne_tracked_transport.len() {
+            let ship = self.ne_tracked_transport[i];
+            if self.un_is_active(tr, ship) {
+                // 280
+                i += 1;
+                continue;
+            }
+            if self.un_was_destroyed_by_enemy(tr, ship) {
+                // 985
+                if self.un_destroyer(tr, ship).is_some() {
+                    // 986
+                    let tile = self.un_tile(tr, ship); // 344
+                    let destroyer = self.un_destroyer(tr, ship); // 986 (re-read)
+                    if let Some(d) = destroyer {
+                        self.ne_maybe_retaliate_with_warship(tr, tile, d, false)?;
+                    }
+                }
+            }
+            self.ne_tracked_transport.remove(i);
+        }
+        Ok(())
+    }
+
+    /// `trackTradeShipsAndRetaliate()`.
+    fn ne_track_trade_ships_and_retaliate(&mut self, tr: &mut Vec<f64>) -> Result<(), String> {
+        let pl = self.ne_player.ok_or("not initialized")?;
+        for u in self.pl_units(tr, pl, &[UNIT_TRADE_SHIP.to_string()]) {
+            // 241
+            if !self.ne_tracked_trade.contains(&u) {
+                self.ne_tracked_trade.push(u);
+            }
+        }
+        let mut i = 0usize;
+        while i < self.ne_tracked_trade.len() {
+            let ship = self.ne_tracked_trade[i];
+            if !self.un_is_active(tr, ship) {
+                // 280
+                self.ne_tracked_trade.remove(i);
+                continue;
+            }
+            let owner = self.un_owner(tr, ship); // 286
+            let oid = match owner {
+                Some(o) => self.pl_id(tr, o), // 231
+                None => {
+                    return Err("Cannot read properties of undefined (reading 'id')".into())
+                }
+            };
+            let pid = self.pl_id(tr, pl); // 231
+            if oid != pid {
+                let tile = self.un_tile(tr, ship); // 344
+                let owner2 = self.un_owner(tr, ship); // 286 (re-read)
+                if let Some(o) = owner2 {
+                    self.ne_maybe_retaliate_with_warship(tr, tile, o, true)?;
+                }
+                self.ne_tracked_trade.remove(i);
+                continue;
+            }
+            i += 1;
+        }
+        Ok(())
+    }
+
+    /// `trackIncomingTransportsAndRetaliate()`.
+    fn ne_track_incoming_transports_and_retaliate(&mut self, tr: &mut Vec<f64>) -> Result<(), String> {
+        let pl = self.ne_player.ok_or("not initialized")?;
+        for p in self.mg_units_typed(tr, &[UNIT_TRANSPORT_SHIP.to_string()]) {
+            // 968
+            let target = match self.un_target_tile(tr, p) {
+                // 282
+                Some(t) if js_truthy(t) => t,
+                _ => continue,
+            };
+            if !self.un_is_active(tr, p) {
+                // 280
+                continue;
+            }
+            let st = self.un_transport_ship_state(tr, p); // 850
+            if val_field(&st, "isRetreating").map(as_bool).unwrap_or(false) {
+                continue;
+            }
+            let oid = self.mg_owner_id(tr, target); // 223
+            let sid = self.pl_small_id(tr, pl); // 230
+            if oid != sid {
+                continue;
+            }
+            let owner = match self.un_owner(tr, p) {
+                // 286
+                Some(o) => o,
+                None => {
+                    return Err("Cannot read properties of undefined (reading 'smallID')".into())
+                }
+            };
+            let osid = self.pl_small_id(tr, owner); // 230
+            let psid = self.pl_small_id(tr, pl); // 230 (re-read)
+            if osid == psid {
+                continue;
+            }
+            if !self.ne_tracked_incoming.contains(&p) {
+                self.ne_tracked_incoming.push(p);
+            }
+        }
+
+        let mut i = 0usize;
+        while i < self.ne_tracked_incoming.len() {
+            let transport = self.ne_tracked_incoming[i];
+            let target = self.un_target_tile(tr, transport); // 282
+            let mut finished = !self.un_is_active(tr, transport); // 280
+            if !finished {
+                match target {
+                    None => finished = true,
+                    Some(t) => {
+                        let st = self.un_transport_ship_state(tr, transport); // 850
+                        let _ = t;
+                        finished = val_field(&st, "isRetreating")
+                            .map(as_bool)
+                            .unwrap_or(false);
+                    }
+                }
+            }
+            if finished {
+                self.ne_tracked_incoming.remove(i);
+                self.ne_dealt_with.retain(|x| *x != transport);
+                continue;
+            }
+            if self.ne_dealt_with.contains(&transport) {
+                i += 1;
+                continue;
+            }
+            let t = target.unwrap();
+            let tt = self.un_tile(tr, transport); // 344
+            let distance_to_target = self.mg_manhattan_dist(tr, tt, t); // 509
+            if distance_to_target < 20.0 {
+                self.ne_dealt_with.push(transport);
+                i += 1;
+                continue;
+            }
+            let owner = match self.un_owner(tr, transport) {
+                // 286
+                Some(o) => o,
+                None => {
+                    return Err("Cannot read properties of undefined (reading 'isAlliedWith')".into())
+                }
+            };
+            if self.pl_is_allied_with(tr, owner, pl) {
+                // 987
+                i += 1;
+                continue;
+            }
+            let pid = self.pl_id(tr, pl); // 231
+            let has_nearby = self.mg_has_unit_nearby_pid(tr, t, 90.0, UNIT_WARSHIP, &pid); // 305
+            let mut patrolling = false;
+            if !has_nearby {
+                let warships = self.pl_units(tr, pl, &[UNIT_WARSHIP.to_string()]); // 241
+                for w in warships {
+                    let ws = self.un_warship_state(tr, w); // 928
+                    let patrol_tile = match val_field(&ws, "patrolTile") {
+                        Some(JsVal::Num(p)) => *p,
+                        _ => continue,
+                    };
+                    if self.mg_manhattan_dist(tr, t, patrol_tile) < 90.0 {
+                        // 509
+                        patrolling = true;
+                        break;
+                    }
+                }
+            }
+            if has_nearby || patrolling {
+                self.ne_dealt_with.push(transport);
+                i += 1;
+                continue;
+            }
+            let ocean = self.ne_warship_spawn_tile(tr, t, 30.0);
+            match ocean {
+                None => {
+                    i += 1;
+                    continue;
+                }
+                Some(o) => {
+                    let owner2 = self.un_owner(tr, transport); // 286 (re-read)
+                    if let Some(o2) = owner2 {
+                        self.ne_maybe_retaliate_with_warship(tr, o, o2, false)?;
+                    }
+                    self.ne_dealt_with.push(transport);
+                    // `break` — leave the iteration loop entirely.
+                    break;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// `maybeRetaliateWithWarship(tile, enemy, reason)`. `trade` selects the
+    /// relation malus (`-7.5` for `"trade"`, `-15` for `"transport"`).
+    fn ne_maybe_retaliate_with_warship(
+        &mut self,
+        tr: &mut Vec<f64>,
+        tile: f64,
+        enemy: usize,
+        trade: bool,
+    ) -> Result<(), String> {
+        let pl = self.ne_player.ok_or("not initialized")?;
+        if enemy == pl {
+            return Ok(());
+        }
+        let ships = self.pl_units(tr, pl, &[UNIT_WARSHIP.to_string()]); // 241
+        if ships.len() >= 10 {
+            self.ne_maybe_move_warship(tr, tile)?;
+            return Ok(());
+        }
+        // Only the matching difficulty arm evaluates its `nextInt`.
+        let difficulty = self.mg_difficulty(tr); // 402
+        let roll = match difficulty.as_str() {
+            DIFFICULTY_MEDIUM => self.random.as_mut().unwrap().next_int(0.0, 100.0) < 15,
+            DIFFICULTY_HARD => self.random.as_mut().unwrap().next_int(0.0, 100.0) < 50,
+            DIFFICULTY_IMPOSSIBLE => self.random.as_mut().unwrap().next_int(0.0, 100.0) < 80,
+            _ => false,
+        };
+        if roll {
+            let can_build = self.pl_can_build(tr, pl, UNIT_WARSHIP, tile); // 534
+            if matches!(can_build, JsVal::Bool(false)) {
+                self.ne_maybe_move_warship(tr, tile)?;
+                return Ok(());
+            }
+            self.mg_add_construction_exec(tr, pl, UNIT_WARSHIP, tile);
+            self.ne_maybe_send_emoji(tr, Rec::P(enemy), "EMOJI_WARSHIP_RETALIATION")?;
+            let malus = if trade { -7.5 } else { -15.0 };
+            self.pl_update_relation(tr, pl, Some(enemy), malus); // 237
+        }
+        Ok(())
+    }
+
+    /// `maybeMoveWarship(tile)`.
+    fn ne_maybe_move_warship(&mut self, tr: &mut Vec<f64>, tile: f64) -> Result<(), String> {
+        let pl = self.ne_player.ok_or("not initialized")?;
+        if !self.mg_is_water(tr, tile) {
+            // 508
+            return Ok(());
+        }
+        let warships = self.pl_units(tr, pl, &[UNIT_WARSHIP.to_string()]); // 241
+        let mut filtered = Vec::new();
+        for w in warships {
+            let ws = self.un_warship_state(tr, w); // 928
+            let patrol_tile = match val_field(&ws, "patrolTile") {
+                Some(JsVal::Num(p)) => *p,
+                _ => continue,
+            };
+            let wt = self.un_tile(tr, w); // 344
+            if self.mg_manhattan_dist(tr, wt, patrol_tile) < 130.0 {
+                // 509
+                filtered.push(w);
+            }
+        }
+        let sorted = self.ne_sort_warships_by_dist(tr, filtered, tile);
+        if let Some(w) = sorted.first() {
+            self.un_update_warship_state(tr, *w, tile); // 342
+        }
+        Ok(())
+    }
+
+    /// V8 binary insertion sort for the distance comparator
+    /// `(a, b) => dist(a.tile(), tile) - dist(b.tile(), tile)`, invoked as
+    /// `Compare(element, mid)` — the element side is read first.
+    fn ne_sort_warships_by_dist(
+        &mut self,
+        tr: &mut Vec<f64>,
+        mut arr: Vec<usize>,
+        tile: f64,
+    ) -> Vec<usize> {
+        let n = arr.len();
+        if n <= 1 {
+            return arr;
+        }
+        for i in 1..n {
+            let element = arr[i];
+            let (mut lo, mut hi) = (0usize, i);
+            while lo < hi {
+                let mid = (lo + hi) / 2;
+                let et = self.un_tile(tr, element); // 344
+                let ed = self.mg_manhattan_dist(tr, et, tile); // 509
+                let mt = self.un_tile(tr, arr[mid]); // 344
+                let md = self.mg_manhattan_dist(tr, mt, tile); // 509
+                if ed - md < 0.0 {
+                    hi = mid;
+                } else {
+                    lo = mid + 1;
+                }
+            }
+            if lo < i {
+                arr.remove(i);
+                arr.insert(lo, element);
+            }
+        }
+        arr
+    }
+
+    /// `counterWarshipInfestation()`.
+    fn ne_counter_warship_infestation(&mut self, tr: &mut Vec<f64>) -> Result<(), String> {
+        let pl = self.ne_player.ok_or("not initialized")?;
+        if !self.ne_should_counter_warship_infestation(tr)? {
+            return Ok(());
+        }
+        let team = self.pl_team(tr, pl); // 248
+        let is_team_game = !matches!(team, JsVal::Null);
+        if !self.ne_is_rich_player(tr, is_team_game)? {
+            return Ok(());
+        }
+        let target = if is_team_game {
+            self.ne_find_team_game_warship_target(tr)?
+        } else {
+            self.ne_find_ffa_warship_target(tr)?
+        };
+        if let Some((_player, warship)) = target {
+            self.ne_build_counter_warship(tr, warship)?;
+        }
+        Ok(())
+    }
+
+    /// `shouldCounterWarshipInfestation()`.
+    fn ne_should_counter_warship_infestation(&mut self, tr: &mut Vec<f64>) -> Result<bool, String> {
+        let pl = self.ne_player.ok_or("not initialized")?;
+        if self.mg_is_unit_disabled(tr, UNIT_WARSHIP) {
+            // 511
+            return Ok(false);
+        }
+        let difficulty = self.mg_difficulty(tr); // 402
+        if difficulty != DIFFICULTY_HARD && difficulty != DIFFICULTY_IMPOSSIBLE {
+            return Ok(false);
+        }
+        if self.mg_unit_count(tr, UNIT_WARSHIP) <= 10.0 {
+            // 506
+            return Ok(false);
+        }
+        let cost = self.ne_cost(tr, UNIT_WARSHIP, pl); // 512 -> 969
+        if cost > self.pl_gold(tr, pl) {
+            // 417 (cost is the left operand, so gold is read second)
+            return Ok(false);
+        }
+        if self.pl_units(tr, pl, &[UNIT_PORT.to_string()]).is_empty() {
+            // 241
+            return Ok(false);
+        }
+        if self.pl_units(tr, pl, &[UNIT_WARSHIP.to_string()]).len() >= 10 {
+            // 241
+            return Ok(false);
+        }
+        Ok(true)
+    }
+
+    /// `isRichPlayer(isTeamGame)`.
+    fn ne_is_rich_player(&mut self, tr: &mut Vec<f64>, is_team_game: bool) -> Result<bool, String> {
+        let pl = self.ne_player.ok_or("not initialized")?;
+        let mut players = Vec::new();
+        for p in self.mg_players(tr) {
+            // 221
+            if self.pl_type(tr, p) == PLAYER_TYPE_HUMAN {
+                // 251
+                continue;
+            }
+            if is_team_game {
+                let pt = self.pl_team(tr, p); // 248
+                let mt = self.pl_team(tr, pl); // 248 (re-read per candidate)
+                if !js_val_eq(&pt, &mt) {
+                    continue;
+                }
+            }
+            players.push(p);
+        }
+        let sorted = self.ne_sort_players_by_gold(tr, players);
+        for p in sorted.iter().take(3) {
+            let a = self.pl_id(tr, *p); // 231
+            let b = self.pl_id(tr, pl); // 231 (re-read per candidate)
+            if a == b {
+                return Ok(true);
+            }
+        }
+        Ok(false)
+    }
+
+    /// V8 binary insertion sort for `(a, b) => Number(b.gold() - a.gold())`
+    /// (`BigInt` difference coerced by `Number`), invoked as
+    /// `Compare(element, mid)` — the mid side is read first.
+    fn ne_sort_players_by_gold(&mut self, tr: &mut Vec<f64>, mut arr: Vec<usize>) -> Vec<usize> {
+        let n = arr.len();
+        if n <= 1 {
+            return arr;
+        }
+        for i in 1..n {
+            let element = arr[i];
+            let (mut lo, mut hi) = (0usize, i);
+            while lo < hi {
+                let mid = (lo + hi) / 2;
+                let mg = self.pl_gold(tr, arr[mid]) as f64; // 417
+                let eg = self.pl_gold(tr, element) as f64; // 417
+                if mg - eg < 0.0 {
+                    hi = mid;
+                } else {
+                    lo = mid + 1;
+                }
+            }
+            if lo < i {
+                arr.remove(i);
+                arr.insert(lo, element);
+            }
+        }
+        arr
+    }
+
+    /// `findTeamGameWarshipTarget()`. The `Map` keeps JS insertion order.
+    fn ne_find_team_game_warship_target(
+        &mut self,
+        tr: &mut Vec<f64>,
+    ) -> Result<Option<(usize, usize)>, String> {
+        let pl = self.ne_player.ok_or("not initialized")?;
+        let mut keys: Vec<String> = Vec::new();
+        let mut counts: Vec<usize> = Vec::new();
+        let mut members: Vec<Vec<usize>> = Vec::new();
+        for p in self.mg_players(tr) {
+            // 221
+            let friendly = self.pl_is_friendly(tr, pl, Some(p)); // 242
+            let mut skip = friendly;
+            if !friendly {
+                let a = self.pl_id(tr, p); // 231
+                let b = self.pl_id(tr, pl); // 231
+                skip = a == b;
+            }
+            if skip {
+                continue;
+            }
+            let team = self.pl_team(tr, p); // 248
+            if matches!(team, JsVal::Null) {
+                continue;
+            }
+            let team_key = as_str(&team);
+            let warship_count = self.pl_units(tr, p, &[UNIT_WARSHIP.to_string()]).len(); // 241
+            let idx = match keys.iter().position(|k| *k == team_key) {
+                Some(i) => i,
+                None => {
+                    keys.push(team_key);
+                    counts.push(0);
+                    members.push(Vec::new());
+                    keys.len() - 1
+                }
+            };
+            counts[idx] += warship_count;
+            members[idx].push(p);
+        }
+        for idx in 0..counts.len() {
+            if counts[idx] <= 15 {
+                continue;
+            }
+            // `reduce` with a `null` seed: the element warship count is read
+            // before the current max's.
+            let mut best: Option<usize> = None;
+            for p in members[idx].clone() {
+                let count = self.pl_units(tr, p, &[UNIT_WARSHIP.to_string()]).len(); // 241
+                let max_count = match best {
+                    Some(m) => self.pl_units(tr, m, &[UNIT_WARSHIP.to_string()]).len(), // 241
+                    None => 0,
+                };
+                if count > max_count {
+                    best = Some(p);
+                }
+            }
+            if let Some(m) = best {
+                let warships = self.pl_units(tr, m, &[UNIT_WARSHIP.to_string()]); // 241 (re-read)
+                if warships.len() > 3 {
+                    if let Some(w) = self.random.as_mut().unwrap().rand_element(&warships) {
+                        return Ok(Some((m, *w)));
+                    }
+                }
+            }
+        }
+        Ok(None)
+    }
+
+    /// `findFreeForAllWarshipTarget()`.
+    fn ne_find_ffa_warship_target(
+        &mut self,
+        tr: &mut Vec<f64>,
+    ) -> Result<Option<(usize, usize)>, String> {
+        let pl = self.ne_player.ok_or("not initialized")?;
+        let mut enemies = Vec::new();
+        for p in self.mg_players(tr) {
+            // 221
+            if self.pl_is_friendly(tr, pl, Some(p)) {
+                // 242
+                continue;
+            }
+            let a = self.pl_id(tr, p); // 231
+            let b = self.pl_id(tr, pl); // 231
+            if a == b {
+                continue;
+            }
+            enemies.push(p);
+        }
+        for enemy in enemies {
+            let enemy_warships = self.pl_units(tr, enemy, &[UNIT_WARSHIP.to_string()]); // 241
+            if enemy_warships.len() > 10 {
+                if let Some(w) = self.random.as_mut().unwrap().rand_element(&enemy_warships) {
+                    return Ok(Some((enemy, *w)));
+                }
+            }
+        }
+        Ok(None)
+    }
+
+    /// `buildCounterWarship(target)` — only `target.warship` is read.
+    fn ne_build_counter_warship(&mut self, tr: &mut Vec<f64>, warship: usize) -> Result<(), String> {
+        let pl = self.ne_player.ok_or("not initialized")?;
+        let wt = self.un_tile(tr, warship); // 344
+        let can_build = self.pl_can_build(tr, pl, UNIT_WARSHIP, wt); // 534
+        if matches!(can_build, JsVal::Bool(false)) {
+            let wt2 = self.un_tile(tr, warship); // 344 (re-read)
+            self.ne_maybe_move_warship(tr, wt2)?;
+            return Ok(());
+        }
+        let wt3 = self.un_tile(tr, warship); // 344 (second read for the record)
+        self.mg_add_construction_exec(tr, pl, UNIT_WARSHIP, wt3);
+        self.ne_send_emoji(tr, Rec::All, "EMOJI_WARSHIP_RETALIATION")?;
+        Ok(())
+    }
+
+    fn ne_maybe_send_nuke(&mut self, _tr: &mut Vec<f64>) -> Result<(), String> {
+        Ok(())
+    }
+
+    // ---- AiAttackBehavior methods (ported inline) -----------------------------
+
+    /// `sendAttack(target, force = false)`. `via` selects which mock object
+    /// class the target reached us through, so `target.isPlayer()` traces on
+    /// the same code the TS harness records (259 `Player`, 257 `Neighbor`,
+    /// untraced `false` for the `TerraNullius` singleton).
+    fn ai_send_attack(
+        &mut self,
+        tr: &mut Vec<f64>,
+        target: usize,
+        via: TargetVia,
+        force: bool,
+    ) -> Result<bool, String> {
+        if !force && !self.ai_should_attack(tr, target, via)? {
+            return Ok(false);
+        }
+        if self.ai_target_is_player(tr, target, via) {
+            if self.pl_shares_border_with(tr, self.te_tribe, target) {
+                // 962
+                return self.ai_send_land_attack(tr, target, via);
+            }
+            return self.ai_send_boat_attack(tr, target, via);
+        }
+        // TerraNullius: land-only adjacency check.
+        if self.ai_has_land_border_with_tn(tr) {
+            return self.ai_send_land_attack(tr, TN_TOK, TargetVia::Tn);
+        }
+        // (the `else` arm below is `sendBoatAttackToNearbyTerraNullius`)
+        self.ai_send_boat_attack_to_nearby_tn(tr)
+    }
+
+    /// `target.isPlayer()` as traced on the target's concrete mock class.
+    fn ai_target_is_player(&mut self, tr: &mut Vec<f64>, target: usize, via: TargetVia) -> bool {
+        match via {
+            TargetVia::Pl => self.pl_is_player(tr, target), // 259
+            TargetVia::Nb => self.nb_is_player(tr, target), // 257
+            TargetVia::Tn => false,                         // TerraNullius: untraced
+        }
+    }
+
+    /// `forceSendAttack(target)`.
+    #[allow(dead_code)]
+    fn ai_force_send_attack(&mut self, tr: &mut Vec<f64>, target: usize) -> Result<(), String> {
+        let troops = self.pl_troops(tr, self.te_tribe) / 2.0; // 418
+        let tid = if self.pl_is_player(tr, target) {
+            // 259
+            Some(self.pl_id(tr, target)) // 231
+        } else {
+            self.tn_id(tr);
+            None
+        };
+        self.mg_add_attack_exec(tr, troops, self.te_tribe, tid.as_deref(), None, true);
+        Ok(())
+    }
+
+    /// `shouldAttack(other)`.
+    fn ai_should_attack(
+        &mut self,
+        tr: &mut Vec<f64>,
+        other: usize,
+        via: TargetVia,
+    ) -> Result<bool, String> {
+        // `other.isPlayer() === false || other.type() !== Human ||
+        // other.isTraitor() || player.type() === Bot || playerTeams === HvN`
+        // — every `||` arm short-circuits, so the facade reads stop at the
+        // first truthy arm.
+        if !self.ai_target_is_player(tr, other, via) {
+            return Ok(true);
+        }
+        if self.pl_type(tr, other) != PLAYER_TYPE_HUMAN {
+            // 251
+            return Ok(true);
+        }
+        if self.pl_is_traitor(tr, other) {
+            // 826
+            return Ok(true);
+        }
+        if self.pl_type(tr, self.te_tribe) == PLAYER_TYPE_BOT {
+            // 251
+            return Ok(true);
+        }
+        let pt = self.mg_player_teams(tr); // 960
+        if matches!(&pt, JsVal::Str(s) if s == HUMANS_VS_NATIONS) {
+            return Ok(true);
+        }
+        let diff = self.mg_difficulty(tr); // 402
+        let rng = self.random.as_mut().unwrap();
+        if diff == DIFFICULTY_EASY && rng.next_int(0.0, 4.0) != 0 {
+            return Ok(false);
+        }
+        if diff == DIFFICULTY_MEDIUM && rng.chance(4.0) {
+            return Ok(false);
+        }
+        Ok(true)
+    }
+
+    /// `hasLandBorderWithTerraNullius()`.
+    fn ai_has_land_border_with_tn(&mut self, tr: &mut Vec<f64>) -> bool {
+        let border_tiles = self.pl_border_tiles(tr, self.te_tribe); // 635
+        for tile in border_tiles {
+            let neighbors = self.mg_neighbors4_map(tr, tile); // map().neighbors4
+            for nb in neighbors {
+                if self.mg_is_land(tr, nb)
+                    && !self.mg_is_impassable(tr, nb)
+                    && !self.mg_has_owner(tr, nb)
+                {
+                    return true;
+                }
+            }
+        }
+        false
+    }
+
+    /// `shoreTiles(player)`.
+    fn ai_shore_tiles(&mut self, tr: &mut Vec<f64>, player: usize) -> Vec<f64> {
+        let border_tiles = self.pl_border_tiles(tr, player); // 635
+        let mut out = Vec::new();
+        for t in border_tiles {
+            if self.mg_is_shore(tr, t) {
+                // 967 (`game.isShore`, forEach over the whole border set)
+                out.push(t);
+            }
+        }
+        out
+    }
+
+    /// `sendBoatAttackToNearbyTerraNullius()`.
+    fn ai_send_boat_attack_to_nearby_tn(
+        &mut self,
+        tr: &mut Vec<f64>,
+    ) -> Result<bool, String> {
+        if self.mg_is_unit_disabled(tr, UNIT_TRANSPORT_SHIP) {
+            // 511
+            return Ok(false);
+        }
+        if self.pl_unit_count(tr, self.te_tribe, UNIT_TRANSPORT_SHIP)
+            >= self.mg_boat_max_number(tr)
+        {
+            return Ok(false);
+        }
+        let directions: [(f64, f64); 4] = [(0.0, -1.0), (0.0, 1.0), (-1.0, 0.0), (1.0, 0.0)];
+        let shores = self.ai_shore_tiles(tr, self.te_tribe);
+        let mut i = 0;
+        while i < shores.len() {
+            let border = shores[i];
+            let bx = self.mg_x(tr, border); // 603
+            let by = self.mg_y(tr, border); // 604
+            for &(dx, dy) in &directions {
+                let x1 = bx + dx;
+                let y1 = by + dy;
+                if !self.mg_is_valid_coord(tr, x1, y1) {
+                    // 616
+                    continue;
+                }
+                let r1 = self.mg_ref(tr, x1, y1); // 609
+                if !self.mg_is_water(tr, r1) {
+                    // 508
+                    continue;
+                }
+                let nx = bx + dx * 5.0;
+                let ny = by + dy * 5.0;
+                if !self.mg_is_valid_coord(tr, nx, ny) {
+                    continue;
+                }
+                let tile = self.mg_ref(tr, nx, ny);
+                if !self.mg_is_land(tr, tile) {
+                    continue;
+                }
+                if self.mg_is_impassable(tr, tile) {
+                    continue;
+                }
+                if self.mg_has_owner(tr, tile) {
+                    continue;
+                }
+                if self.mg_has_fallout(tr, tile) {
+                    continue;
+                }
+                if !self.ai_can_build_transport_ship(tr, tile)? {
+                    continue;
+                }
+                let troops = js_min(
+                    self.pl_troops(tr, self.te_tribe) / 5.0,
+                    self.ai_troop_send_cap_for_expansion(tr)?,
+                );
+                if troops < 1.0 {
+                    return Ok(false);
+                }
+                self.mg_add_transport_ship_exec(tr, self.te_tribe, tile, troops);
+                return Ok(true);
+            }
+            i += 10;
+        }
+        Ok(false)
+    }
+
+    /// `sendLandAttack(target)`.
+    fn ai_send_land_attack(
+        &mut self,
+        tr: &mut Vec<f64>,
+        target: usize,
+        via: TargetVia,
+    ) -> Result<bool, String> {
+        let troops = self.ai_calculate_attack_troops(tr, target, via, true)?;
+        let troops = match troops {
+            Some(t) => t,
+            None => return Ok(false),
+        };
+        let tid = if self.ai_target_is_player(tr, target, via) {
+            // 259 / 257 / untraced
+            Some(self.pl_id(tr, target)) // 231
+        } else {
+            self.tn_id(tr);
+            None
+        };
+        self.mg_add_attack_exec(tr, troops, self.te_tribe, tid.as_deref(), None, true);
+        Ok(true)
+    }
+
+    /// `sendBoatAttack(target)`.
+    fn ai_send_boat_attack(
+        &mut self,
+        tr: &mut Vec<f64>,
+        target: usize,
+        via: TargetVia,
+    ) -> Result<bool, String> {
+        if self.mg_is_unit_disabled(tr, UNIT_TRANSPORT_SHIP) {
+            // 511
+            return Ok(false);
+        }
+        let my_shore = self.ai_shore_tiles(tr, self.te_tribe);
+        let their_shore = self.ai_shore_tiles(tr, target);
+        let closest = self.ai_closest_two_tiles(tr, &my_shore, &their_shore);
+        let (_, cy) = match closest {
+            Some(pair) => pair,
+            None => return Ok(false),
+        };
+        if !self.ai_can_build_transport_ship(tr, cy)? {
+            return Ok(false);
+        }
+        let troops = self.ai_calculate_attack_troops(tr, target, via, false)?;
+        let troops = match troops {
+            Some(t) => t,
+            None => return Ok(false),
+        };
+        self.mg_add_transport_ship_exec(tr, self.te_tribe, cy, troops);
+        Ok(true)
+    }
+
+    /// `calculateAttackTroops(target, nonBotTroops)`. TS calls
+    /// `target.isPlayer()` independently at six points, so each guard
+    /// re-traces it (never cached).
+    fn ai_calculate_attack_troops(
+        &mut self,
+        tr: &mut Vec<f64>,
+        target: usize,
+        via: TargetVia,
+        land: bool,
+    ) -> Result<Option<f64>, String> {
+        let max_troops = self.mg_max_troops(tr, Rec::P(self.te_tribe)); // 401
+        let bot_with_structures = self.ai_target_is_player(tr, target, via) // 259/257
+            && self.pl_type(tr, target) == PLAYER_TYPE_BOT // 251
+            && {
+                let units = self.pl_units_all(tr, target); // 241
+                units
+                    .iter()
+                    .any(|&u| STRUCTURES_TYPES.contains(&self.un_type(tr, u).as_str()))
+            };
+        let use_reserve =
+            self.ai_target_is_player(tr, target, via) && !bot_with_structures; // 259/257
+        let reserve_ratio = if use_reserve {
+            self.te_reserve_ratio
+        } else {
+            self.te_expand_ratio
+        };
+        let target_troops = max_troops * reserve_ratio;
+
+        let is_bot_attack = self.ai_target_is_player(tr, target, via) // 259/257
+            && self.pl_type(tr, target) == PLAYER_TYPE_BOT // 251
+            && self.pl_type(tr, self.te_tribe) != PLAYER_TYPE_BOT; // 251
+        let mut troops = if is_bot_attack {
+            let max = self.pl_troops(tr, self.te_tribe) - target_troops - self.te_bot_attack_troops_sent;
+            self.ai_calculate_bot_attack_troops(tr, target, max)?
+        } else if land {
+            self.pl_troops(tr, self.te_tribe) - target_troops // 418
+        } else {
+            self.pl_troops(tr, self.te_tribe) / 5.0 // 418
+        };
+
+        // Hard & Impossible: cap by neighbor troop threshold.
+        let cap = if self.ai_target_is_player(tr, target, via) {
+            // 259/257
+            self.ai_troop_send_cap(tr)?
+        } else {
+            self.ai_troop_send_cap_for_expansion(tr)?
+        };
+        troops = js_min(troops, cap);
+
+        if troops < 1.0 {
+            return Ok(None);
+        }
+
+        // Hard & Impossible: don't attack if we'd send less than 20%.
+        if self.ai_target_is_player(tr, target, via) // 259/257
+            && self.ai_is_attack_too_weak(tr, troops, target)?
+        {
+            return Ok(None);
+        }
+
+        // Nation emoji hook (skipped when emojiBehavior is undefined).
+        if self.ai_target_is_player(tr, target, via) // 259/257
+            && self.pl_type(tr, self.te_tribe) == PLAYER_TYPE_NATION
+        {
+            // 251 — `emojiBehavior` is undefined for tribes: the TS throws.
+            if !self.te_is_nation {
+                return Err("not initialized".into());
+            }
+            self.ne_maybe_send_attack_emoji(tr, target)?;
+        }
+
+        if is_bot_attack {
+            self.te_bot_attack_troops_sent += troops;
+        }
+
+        Ok(Some(troops))
+    }
+
+    /// `calculateBotAttackTroops(target, maxTroops)`.
+    fn ai_calculate_bot_attack_troops(
+        &mut self,
+        tr: &mut Vec<f64>,
+        target: usize,
+        max_troops: f64,
+    ) -> Result<f64, String> {
+        let diff = self.mg_difficulty(tr); // 402
+        if diff == DIFFICULTY_EASY {
+            return Ok(max_troops);
+        }
+        let mut troops = self.pl_troops(tr, target) * 4.0; // 418
+        // `troops > maxTroops` — the inner branch re-reads `target.troops()`.
+        if troops > max_troops {
+            if max_troops < self.pl_troops(tr, target) * 2.0 {
+                // 418
+                troops = 0.0;
+            } else {
+                troops = max_troops;
+            }
+        }
+        Ok(troops)
+    }
+
+    /// `isAttackTooWeak(troops, target)`.
+    fn ai_is_attack_too_weak(
+        &mut self,
+        tr: &mut Vec<f64>,
+        troops: f64,
+        target: usize,
+    ) -> Result<bool, String> {
+        if self.pl_type(tr, self.te_tribe) == PLAYER_TYPE_BOT {
+            // 251
+            return Ok(false);
+        }
+        if self.mg_game_mode(tr) == GAME_MODE_TEAM {
+            // 520
+            return Ok(false);
+        }
+        if !self.pl_incoming_attacks(tr, self.te_tribe).is_empty() {
+            // 822
+            return Ok(false);
+        }
+        let diff = self.mg_difficulty(tr); // 402
+        Ok((diff == DIFFICULTY_HARD || diff == DIFFICULTY_IMPOSSIBLE)
+            && troops < self.pl_troops(tr, target) * 0.2) // 418
+    }
+
+    /// `troopSendCap()`.
+    fn ai_troop_send_cap(&mut self, tr: &mut Vec<f64>) -> Result<f64, String> {
+        if self.pl_type(tr, self.te_tribe) == PLAYER_TYPE_BOT {
+            // 251
+            return Ok(f64::INFINITY);
+        }
+        if self.mg_game_mode(tr) == GAME_MODE_TEAM {
+            // 520
+            return Ok(f64::INFINITY);
+        }
+        let diff = self.mg_difficulty(tr); // 402
+        let retain_fraction = match diff.as_str() {
+            "Hard" => 0.75,
+            "Impossible" => 0.9,
+            _ => return Ok(f64::INFINITY),
+        };
+        let mut max_neighbor_troops: f64 = 0.0;
+        let neighbors = self.pl_nearby(tr, self.te_tribe); // 245
+        for n in &neighbors {
+            let n = *n;
+            if !self.nb_is_player(tr, n) {
+                // 257
+                continue;
+            }
+            if self.pl_is_friendly(tr, self.te_tribe, Some(n)) {
+                // 242
+                continue;
+            }
+            if self.pl_type(tr, n) == PLAYER_TYPE_BOT {
+                // 251
+                continue;
+            }
+            // `n.troops() > maxNeighborTroops && (maxNeighborTroops = n.troops())`
+            // — the condition and the assignment read `troops()` independently.
+            if self.pl_troops(tr, n) > max_neighbor_troops {
+                // 418
+                max_neighbor_troops = self.pl_troops(tr, n); // 418
+            }
+        }
+        let mut cap;
+        if max_neighbor_troops == 0.0 {
+            cap = f64::INFINITY;
+        } else {
+            let min_retained = (max_neighbor_troops * retain_fraction).ceil();
+            cap = js_max(0.0, self.pl_troops(tr, self.te_tribe) - min_retained);
+        }
+        // Nations under attack may retaliate with at least the incoming troops.
+        let incoming = self.pl_incoming_attacks(tr, self.te_tribe); // 822
+        if !incoming.is_empty() {
+            let total: f64 = incoming
+                .iter()
+                .map(|&a| self.at_troops(tr, a))
+                .sum();
+            cap = js_max(cap, total);
+        }
+        Ok(cap)
+    }
+
+    /// `troopSendCapForExpansion()`.
+    fn ai_troop_send_cap_for_expansion(&mut self, tr: &mut Vec<f64>) -> Result<f64, String> {
+        let cap = self.ai_troop_send_cap(tr)?;
+        if cap > 0.0 {
+            return Ok(cap);
+        }
+        Ok((self.pl_troops(tr, self.te_tribe) * 0.05).ceil()) // 418
+    }
+
+    /// `getNeighborTraitorToAttack()`.
+    fn ai_get_neighbor_traitor_to_attack(&mut self, tr: &mut Vec<f64>) -> Option<usize> {
+        if self.mg_disable_alliances(tr) {
+            // 958
+            return None;
+        }
+        let neighbors = self.pl_nearby(tr, self.te_tribe); // 245
+        let traitors: Vec<usize> = neighbors
+            .iter()
+            .filter(|&&n| {
+                self.nb_is_player(tr, n) // 257
+                    && !self.pl_is_friendly(tr, self.te_tribe, Some(n)) // 242
+                    && self.pl_is_traitor(tr, n) // 826
+            })
+            .copied()
+            .collect();
+        if traitors.is_empty() {
+            return None;
+        }
+        let rng = self.random.as_mut().unwrap();
+        rng.rand_element(&traitors).copied()
+    }
+
+    /// `attackRandomTarget()`.
+    fn ai_attack_random_target(&mut self, tr: &mut Vec<f64>) -> Result<(), String> {
+        // Save up troops until trigger ratio.
+        if !self.ai_has_trigger_ratio_troops(tr) {
+            return Ok(());
+        }
+        // Retaliate against incoming attacks.
+        if let Some(attacker) = self.ai_find_incoming_attack_player(tr) {
+            if self.ai_send_attack(tr, attacker, TargetVia::Pl, true)? {
+                return Ok(());
+            }
+        }
+        // Select a traitor.
+        if let Some(traitor) = self.ai_get_neighbor_traitor_to_attack(tr) {
+            let rng = self.random.as_mut().unwrap();
+            #[allow(clippy::collapsible_if)]
+            if rng.chance(3.0) {
+                if self.ai_send_attack(tr, traitor, TargetVia::Nb, false)? {
+                    return Ok(());
+                }
+            }
+        }
+        // Choose a new enemy randomly.
+        let neighbors = self.pl_nearby(tr, self.te_tribe); // 245
+        let shuffled = {
+            let rng = self.random.as_mut().unwrap();
+            rng.shuffle_array(&neighbors)
+        };
+        for neighbor in shuffled {
+            if !self.nb_is_player(tr, neighbor) {
+                // 257
+                continue;
+            }
+            if self.pl_is_friendly(tr, self.te_tribe, Some(neighbor)) {
+                // 242
+                continue;
+            }
+            // `neighbor.type() === Nation || neighbor.type() === Human` —
+            // two independent `type()` reads with `||` short-circuit.
+            let is_nation_or_human = self.pl_type(tr, neighbor) == PLAYER_TYPE_NATION // 251
+                || self.pl_type(tr, neighbor) == PLAYER_TYPE_HUMAN; // 251
+            if is_nation_or_human {
+                let rng = self.random.as_mut().unwrap();
+                if rng.chance(2.0) {
+                    continue;
+                }
+            }
+            if self.ai_send_attack(tr, neighbor, TargetVia::Nb, false)? {
+                return Ok(());
+            }
+        }
+        Ok(())
+    }
+
+    /// `hasTriggerRatioTroops()`.
+    fn ai_has_trigger_ratio_troops(&mut self, tr: &mut Vec<f64>) -> bool {
+        let max_troops = self.mg_max_troops(tr, Rec::P(self.te_tribe)); // 401
+        let ratio = self.pl_troops(tr, self.te_tribe) / max_troops; // 418
+        ratio >= self.te_trigger_ratio
+    }
+
+    /// `hasReserveRatioTroops()`.
+    #[allow(dead_code)]
+    fn ai_has_reserve_ratio_troops(&mut self, tr: &mut Vec<f64>) -> bool {
+        let max_troops = self.mg_max_troops(tr, Rec::P(self.te_tribe)); // 401
+        let ratio = self.pl_troops(tr, self.te_tribe) / max_troops; // 418
+        ratio >= self.te_reserve_ratio
+    }
+
+    /// `findIncomingAttackPlayer()`.
+    fn ai_find_incoming_attack_player(&mut self, tr: &mut Vec<f64>) -> Option<usize> {
+        let mut incoming = self.pl_incoming_attacks(tr, self.te_tribe); // 822
+        incoming.retain(|&a| {
+            let attacker = self.at_attacker(tr, a); // 832
+            !self.pl_is_friendly(tr, self.te_tribe, attacker) // 242
+        });
+        // Ignore bot attacks if we are not a bot.
+        if self.pl_type(tr, self.te_tribe) != PLAYER_TYPE_BOT {
+            // 251
+            incoming.retain(|&a| {
+                let attacker = self.at_attacker(tr, a); // 832
+                self.pl_type(tr, attacker.unwrap_or(usize::MAX)) != PLAYER_TYPE_BOT
+                // 251
+            });
+        }
+        let mut largest_attack: f64 = 0.0;
+        let mut largest_attacker: Option<usize> = None;
+        for &a in &incoming {
+            // `if (attack.troops() <= largestAttack) continue;`
+            // `largestAttack = attack.troops();` — two independent reads.
+            let troops = self.at_troops(tr, a); // 830
+            if troops <= largest_attack {
+                continue;
+            }
+            largest_attack = self.at_troops(tr, a); // 830
+            largest_attacker = self.at_attacker(tr, a); // 832
+        }
+        largest_attacker
+    }
+
+    /// `maybeAttack()` — the full AiAttackBehavior.maybeAttack pipeline.
+    /// Note: `allianceBehavior` is undefined for tribes, so the
+    /// `maybeSendAllianceRequests` call is skipped.
+    #[allow(dead_code)]
+    fn ai_maybe_attack(&mut self, tr: &mut Vec<f64>) -> Result<(), String> {
+        // Build the bordering player set (insertion order).
+        let mut bordering_set: Vec<usize> = Vec::new();
+        let mut border_has_non_nuked_tn = false;
+        let small_id = self.pl_small_id(tr, self.te_tribe); // 230
+        let border_tiles = self.pl_border_tiles(tr, self.te_tribe); // 635
+        for t in border_tiles {
+            let visit = |slf: &mut Self, tr: &mut Vec<f64>, nb: f64| {
+                if !slf.mg_is_land(tr, nb) || slf.mg_is_impassable(tr, nb) {
+                    return;
+                }
+                // `ownerID(t) === smallID` and `playerBySmallID(ownerID(t))`
+                // read `ownerID` independently.
+                let oid = slf.mg_owner_id(tr, nb); // 223
+                if oid == small_id {
+                    return;
+                }
+                let owner = slf.mg_player_by_small_id(tr, oid); // 703
+                if let Some(ot) = as_opt_tok(&owner) {
+                    if slf.pl_is_player(tr, ot) && !bordering_set.contains(&ot) {
+                        bordering_set.push(ot);
+                    }
+                }
+                if !slf.mg_has_owner(tr, nb) && !slf.mg_has_fallout(tr, nb) {
+                    border_has_non_nuked_tn = true;
+                }
+            };
+            self.mg_for_each_neighbor(tr, t, visit); // 807 (callback form, trailing Undef)
+        }
+        let nearby = self.pl_nearby(tr, self.te_tribe); // 245
+        for &n in &nearby {
+            if self.nb_is_player(tr, n) {
+                // 257
+                let pt = self.nb_player_tok(tr, n);
+                if let Some(t) = pt {
+                    if !bordering_set.contains(&t) {
+                        bordering_set.push(t);
+                    }
+                }
+            }
+        }
+        // Sort by troops ascending (stable).
+        let mut bordering_players = bordering_set;
+        bordering_players.sort_by(|&a, &b| {
+            let ta = self.pl_troops(tr, a); // 418
+            let tb = self.pl_troops(tr, b); // 418
+            ta.partial_cmp(&tb).unwrap_or(std::cmp::Ordering::Equal)
+        });
+        // TS runs two independent `filter` passes — `isFriendly` is traced
+        // twice per player.
+        let mut friends: Vec<usize> = Vec::new();
+        for &o in &bordering_players {
+            if self.pl_is_friendly(tr, self.te_tribe, Some(o)) {
+                // 242
+                friends.push(o);
+            }
+        }
+        let mut enemies: Vec<usize> = Vec::new();
+        for &o in &bordering_players {
+            if !self.pl_is_friendly(tr, self.te_tribe, Some(o)) {
+                // 242 (second pass)
+                enemies.push(o);
+            }
+        }
+
+        // Attack TerraNullius but not nuked territory.
+        let has_non_nuked_tn = border_has_non_nuked_tn
+            || nearby.iter().any(|&n| !self.nb_is_player(tr, n)); // 257
+        #[allow(clippy::collapsible_if)]
+        if has_non_nuked_tn {
+            if self.ai_send_attack(tr, TN_TOK, TargetVia::Tn, false)? {
+                return Ok(());
+            }
+        }
+
+        if enemies.is_empty() {
+            let rng = self.random.as_mut().unwrap();
+            if rng.chance(5.0) {
+                self.ai_attack_with_random_boat(tr, &[])?;
+            }
+        } else {
+            let rng = self.random.as_mut().unwrap();
+            if rng.chance(10.0) {
+                self.ai_attack_with_random_boat(tr, &enemies)?;
+                return Ok(());
+            }
+            // `allianceBehavior.maybeSendAllianceRequests(enemies)` —
+            // undefined for tribes (skipped), nation-routed when present.
+            if self.te_is_nation {
+                self.ne_maybe_send_alliance_requests(tr, &enemies)?;
+            }
+        }
+
+        self.ai_attack_best_target(tr, &friends, &enemies)?;
+        Ok(())
+    }
+
+    /// `attackBestTarget(borderingFriends, borderingEnemies)`.
+    fn ai_attack_best_target(
+        &mut self,
+        tr: &mut Vec<f64>,
+        bordering_friends: &[usize],
+        bordering_enemies: &[usize],
+    ) -> Result<(), String> {
+        // Attack bots with structures first.
+        #[allow(clippy::collapsible_if)]
+        if self.ai_has_neighboring_bot_with_structures(tr) {
+            if self.ai_attack_bots(tr)? {
+                return Ok(());
+            }
+        }
+        // Save up troops until reserve ratio.
+        if !self.ai_has_reserve_ratio_troops(tr) {
+            return Ok(());
+        }
+        // Maybe save up until trigger ratio.
+        if !self.ai_has_trigger_ratio_troops(tr) {
+            let rng = self.random.as_mut().unwrap();
+            if !rng.chance(10.0) {
+                return Ok(());
+            }
+        }
+        // Get attack strategies in priority order.
+        let strategies = self.ai_get_attack_strategies(bordering_friends, bordering_enemies);
+        for s in strategies {
+            if self.ai_run_strategy(tr, &s, bordering_friends, bordering_enemies)? {
+                return Ok(());
+            }
+        }
+        Ok(())
+    }
+
+    /// `getAttackStrategies(borderingFriends, borderingEnemies)`.
+    fn ai_get_attack_strategies(
+        &mut self,
+        _friends: &[usize],
+        _enemies: &[usize],
+    ) -> Vec<AiStrategy> {
+        let mut scratch = Vec::new();
+        let diff = self.mg_difficulty(&mut scratch); // 402
+        match diff.as_str() {
+            "Easy" => vec![
+                AiStrategy::Nuked,
+                AiStrategy::Bots,
+                AiStrategy::Retaliate,
+                AiStrategy::Assist,
+                AiStrategy::Betray,
+                AiStrategy::Hated,
+                AiStrategy::Weakest,
+            ],
+            "Medium" => vec![
+                AiStrategy::Bots,
+                AiStrategy::Nuked,
+                AiStrategy::Retaliate,
+                AiStrategy::Assist,
+                AiStrategy::Betray,
+                AiStrategy::Hated,
+                AiStrategy::Afk,
+                AiStrategy::Traitor,
+                AiStrategy::Weakest,
+                AiStrategy::Island,
+                AiStrategy::Donate,
+            ],
+            "Hard" => vec![
+                AiStrategy::Bots,
+                AiStrategy::Retaliate,
+                AiStrategy::Assist,
+                AiStrategy::Betray,
+                AiStrategy::Nuked,
+                AiStrategy::Traitor,
+                AiStrategy::Afk,
+                AiStrategy::Hated,
+                AiStrategy::VeryWeak,
+                AiStrategy::Juicy,
+                AiStrategy::Victim,
+                AiStrategy::Weakest,
+                AiStrategy::Island,
+                AiStrategy::Donate,
+            ],
+            "Impossible" => vec![
+                AiStrategy::Retaliate,
+                AiStrategy::Bots,
+                AiStrategy::VeryWeak,
+                AiStrategy::Betray,
+                AiStrategy::Assist,
+                AiStrategy::Victim,
+                AiStrategy::Traitor,
+                AiStrategy::Juicy,
+                AiStrategy::Afk,
+                AiStrategy::Nuked,
+                AiStrategy::Hated,
+                AiStrategy::Weakest,
+                AiStrategy::Island,
+                AiStrategy::Donate,
+            ],
+            _ => vec![],
+        }
+    }
+
+    /// Run one attack strategy.
+    fn ai_run_strategy(
+        &mut self,
+        tr: &mut Vec<f64>,
+        s: &AiStrategy,
+        bordering_friends: &[usize],
+        bordering_enemies: &[usize],
+    ) -> Result<bool, String> {
+        match s {
+            AiStrategy::Retaliate => {
+                if let Some(attacker) = self.ai_find_incoming_attack_player(tr) {
+                    return self.ai_send_attack(tr, attacker, TargetVia::Pl, true);
+                }
+                Ok(false)
+            }
+            AiStrategy::Bots => self.ai_attack_bots(tr),
+            AiStrategy::Assist => self.ai_assist_allies(tr),
+            AiStrategy::Traitor => {
+                if let Some(t) = self.ai_find_traitor(tr, bordering_enemies) {
+                    return self.ai_send_attack(tr, t, TargetVia::Pl, false);
+                }
+                Ok(false)
+            }
+            AiStrategy::Afk => {
+                #[allow(clippy::bool_comparison)]
+                let afk = bordering_enemies.iter().find(|&&e| {
+                    self.pl_is_disconnected(tr, e) // 531
+                        && (self.ai_is_ffa(tr) == false
+                            || self.pl_troops(tr, e) < self.pl_troops(tr, self.te_tribe) * 3.0)
+                });
+                match afk {
+                    Some(&a) => self.ai_send_attack(tr, a, TargetVia::Pl, false),
+                    None => Ok(false),
+                }
+            }
+            AiStrategy::Betray => {
+                self.ai_maybe_betray_and_attack(tr, bordering_friends, bordering_enemies)
+            }
+            AiStrategy::Nuked => {
+                if self.ai_is_bordering_nuked_territory(tr) {
+                    return self.ai_send_attack(tr, TN_TOK, TargetVia::Tn, false);
+                }
+                Ok(false)
+            }
+            AiStrategy::Victim => {
+                if let Some(v) = self.ai_find_victim(tr, bordering_enemies) {
+                    return self.ai_send_attack(tr, v, TargetVia::Pl, false);
+                }
+                Ok(false)
+            }
+            AiStrategy::Juicy => {
+                if let Some(t) = self.ai_find_juicy_target(tr, bordering_enemies) {
+                    return self.ai_send_attack(tr, t, TargetVia::Pl, false);
+                }
+                Ok(false)
+            }
+            AiStrategy::Hated => {
+                let relations = self.pl_all_relations_sorted(tr, self.te_tribe); // 965
+                for (rel, other) in relations {
+                    if rel != RELATION_HOSTILE {
+                        continue;
+                    }
+                    if self.pl_is_friendly(tr, self.te_tribe, Some(other)) {
+                        // 242
+                        continue;
+                    }
+                    if self.ai_is_ffa(tr)
+                        && self.pl_troops(tr, other) > self.pl_troops(tr, self.te_tribe) * 3.0
+                    {
+                        continue;
+                    }
+                    return self.ai_send_attack(tr, other, TargetVia::Pl, false);
+                }
+                Ok(false)
+            }
+            AiStrategy::VeryWeak => {
+                if let Some(v) = self.ai_find_very_weak_enemy(tr, bordering_enemies) {
+                    return self.ai_send_attack(tr, v, TargetVia::Pl, false);
+                }
+                Ok(false)
+            }
+            AiStrategy::Weakest => {
+                if !bordering_enemies.is_empty() {
+                    let weakest = bordering_enemies[0];
+                    if !self.ai_is_ffa(tr)
+                        || self.pl_troops(tr, weakest) < self.pl_troops(tr, self.te_tribe)
+                    {
+                        return self.ai_send_attack(tr, weakest, TargetVia::Pl, false);
+                    }
+                }
+                Ok(false)
+            }
+            AiStrategy::Island => {
+                if bordering_enemies.is_empty() {
+                    if let Some(e) = self.ai_find_nearest_island_enemy(tr)? {
+                        return self.ai_send_attack(tr, e, TargetVia::Pl, false);
+                    }
+                }
+                Ok(false)
+            }
+            AiStrategy::Donate => self.ai_donate_troops(tr),
+        }
+    }
+
+    /// `isFFA()`.
+    fn ai_is_ffa(&mut self, tr: &mut Vec<f64>) -> bool {
+        self.mg_game_mode(tr) == GAME_MODE_FFA // 520
+    }
+
+    /// `hasNeighboringBotWithStructures()`.
+    fn ai_has_neighboring_bot_with_structures(&mut self, tr: &mut Vec<f64>) -> bool {
+        let nearby = self.pl_nearby(tr, self.te_tribe); // 245
+        nearby.iter().any(|&n| {
+            if !self.nb_is_player(tr, n) {
+                return false;
+            }
+            let pt = match self.nb_player_tok(tr, n) {
+                Some(t) => t,
+                None => return false,
+            };
+            self.pl_type(tr, pt) == PLAYER_TYPE_BOT // 251
+                && !self.pl_is_friendly(tr, self.te_tribe, Some(pt)) // 242
+                && {
+                    let units = self.pl_units_all(tr, pt); // 241
+                    units
+                        .iter()
+                        .any(|&u| STRUCTURES_TYPES.contains(&self.un_type(tr, u).as_str()))
+                }
+        })
+    }
+
+    /// `attackBots()`.
+    fn ai_attack_bots(&mut self, tr: &mut Vec<f64>) -> Result<bool, String> {
+        let nearby = self.pl_nearby(tr, self.te_tribe); // 245
+        // TS filter order: `n.isPlayer() && isFriendly(n) === false &&
+        // n.type() === Bot` (the `filter_map` cast is erased in JS).
+        let mut bots: Vec<usize> = Vec::new();
+        for &n in &nearby {
+            if !self.nb_is_player(tr, n) {
+                // 257
+                continue;
+            }
+            if self.pl_is_friendly(tr, self.te_tribe, Some(n)) {
+                // 242
+                continue;
+            }
+            if self.pl_type(tr, n) == PLAYER_TYPE_BOT {
+                // 251
+                bots.push(n);
+            }
+        }
+        if bots.is_empty() {
+            return Ok(false);
+        }
+        self.te_bot_attack_troops_sent = 0.0;
+
+        // Sort by density (troops / tiles), structure-owners first.
+        let mut sorted = bots.clone();
+        sorted.sort_by(|&a, &b| {
+            let a_has = {
+                let units = self.pl_units_all(tr, a);
+                units
+                    .iter()
+                    .any(|&u| STRUCTURES_TYPES.contains(&self.un_type(tr, u).as_str()))
+            };
+            let b_has = {
+                let units = self.pl_units_all(tr, b);
+                units
+                    .iter()
+                    .any(|&u| STRUCTURES_TYPES.contains(&self.un_type(tr, u).as_str()))
+            };
+            if a_has != b_has {
+                return if a_has {
+                    std::cmp::Ordering::Less
+                } else {
+                    std::cmp::Ordering::Greater
+                };
+            }
+            let da = self.pl_troops(tr, a) / self.pl_num_tiles_owned(tr, a); // 418 / 532
+            let db = self.pl_troops(tr, b) / self.pl_num_tiles_owned(tr, b); // 418 / 532
+            da.partial_cmp(&db).unwrap_or(std::cmp::Ordering::Equal)
+        });
+
+        let max_parallel = self.ai_get_bot_attack_max_parallelism(tr)?;
+        let reduced: Vec<usize> = sorted.into_iter().take(max_parallel as usize).collect();
+        for bot in reduced {
+            self.ai_send_attack(tr, bot, TargetVia::Nb, false)?;
+        }
+        Ok(self.te_bot_attack_troops_sent > 0.0)
+    }
+
+    /// `getBotAttackMaxParallelism()`.
+    fn ai_get_bot_attack_max_parallelism(&mut self, tr: &mut Vec<f64>) -> Result<f64, String> {
+        let diff = self.mg_difficulty(tr); // 402
+        match diff.as_str() {
+            "Easy" => Ok(1.0),
+            "Medium" => {
+                let rng = self.random.as_mut().unwrap();
+                Ok(if rng.chance(2.0) { 1.0 } else { 2.0 })
+            }
+            "Hard" => Ok(3.0),
+            "Impossible" => Ok(100.0),
+            other => Err(format!("Unexpected value: {other}")),
+        }
+    }
+
+    /// `assistAllies()` — `emojiBehavior` is undefined for tribes, so this
+    /// throws if reached. (Not reachable from TribeExecution.)
+    fn ai_assist_allies(&mut self, tr: &mut Vec<f64>) -> Result<bool, String> {
+        if !self.te_is_nation {
+            return Err("not initialized".into());
+        }
+        let pl = self.ne_player.ok_or("Player not initialized")?;
+        if self.mg_disable_alliances(tr) {
+            // 958
+            return Ok(false);
+        }
+        let allies = self.pl_allies(tr, pl); // 964
+        for ally in allies {
+            let targets = self.pl_targets(tr, ally); // 963
+            if targets.is_empty() {
+                continue;
+            }
+            if self.pl_relation(tr, pl, Some(ally)) < RELATION_FRIENDLY {
+                // 412
+                self.ne_send_emoji(tr, Rec::P(ally), "EMOJI_ASSIST_RELATION_TOO_LOW")?;
+                continue;
+            }
+            for target in targets {
+                if target == pl {
+                    self.ne_send_emoji(tr, Rec::P(ally), "EMOJI_ASSIST_TARGET_ME")?;
+                    continue;
+                }
+                if self.pl_is_friendly(tr, pl, Some(target)) {
+                    // 242
+                    self.ne_send_emoji(tr, Rec::P(ally), "EMOJI_ASSIST_TARGET_ALLY")?;
+                    continue;
+                }
+                if !self.ai_send_attack(tr, target, TargetVia::Pl, false)? {
+                    continue;
+                }
+                self.pl_update_relation(tr, pl, Some(ally), -20.0); // 237
+                self.ne_send_emoji(tr, Rec::P(ally), "EMOJI_ASSIST_ACCEPT")?;
+                return Ok(true);
+            }
+        }
+        Ok(false)
+    }
+
+    /// `findTraitor(borderingEnemies)`.
+    fn ai_find_traitor(
+        &mut self,
+        tr: &mut Vec<f64>,
+        bordering_enemies: &[usize],
+    ) -> Option<usize> {
+        if self.mg_disable_alliances(tr) {
+            // 958
+            return None;
+        }
+        bordering_enemies.iter().find(|&&e| {
+            self.pl_is_traitor(tr, e) // 826
+                && (!self.ai_is_ffa(tr)
+                    || self.pl_troops(tr, e) < self.pl_troops(tr, self.te_tribe) * 1.2)
+        }).copied()
+    }
+
+    /// `maybeBetrayAndAttack(borderingFriends, borderingEnemies)` —
+    /// `allianceBehavior` is undefined for tribes, so this throws if reached.
+    fn ai_maybe_betray_and_attack(
+        &mut self,
+        tr: &mut Vec<f64>,
+        friends: &[usize],
+        enemies: &[usize],
+    ) -> Result<bool, String> {
+        if !self.te_is_nation {
+            return Err("not initialized".into());
+        }
+        if self.mg_disable_alliances(tr) {
+            // 958
+            return Ok(false);
+        }
+        if !friends.is_empty() {
+            // Computed once, not per friend below.
+            let juiciest_ally = self.ne_find_juiciest_ally(tr, friends)?;
+            for &friend in friends {
+                if self.ne_maybe_betray(tr, friend, juiciest_ally, friends, enemies)? {
+                    return self.ai_send_attack(tr, friend, TargetVia::Pl, true);
+                }
+            }
+        }
+        Ok(false)
+    }
+
+    /// `isBorderingNukedTerritory()`.
+    fn ai_is_bordering_nuked_territory(&mut self, tr: &mut Vec<f64>) -> bool {
+        if self.mg_is_unit_disabled(tr, UNIT_MISSILE_SILO) {
+            // 511
+            return false;
+        }
+        let border_tiles = self.pl_border_tiles(tr, self.te_tribe); // 635
+        for tile in border_tiles {
+            // `game.neighbors4(tile, nbuf)` — the Game facade (804), not
+            // `map.neighbors4`.
+            let neighbors = self.mg_neighbors4(tr, tile);
+            for nb in neighbors {
+                if self.mg_is_land(tr, nb)
+                    && !self.mg_has_owner(tr, nb)
+                    && self.mg_has_fallout(tr, nb)
+                {
+                    return true;
+                }
+            }
+        }
+        false
+    }
+
+    /// `findVictim(borderingEnemies)`.
+    fn ai_find_victim(
+        &mut self,
+        tr: &mut Vec<f64>,
+        bordering_enemies: &[usize],
+    ) -> Option<usize> {
+        bordering_enemies
+            .iter()
+            .find(|&&e| {
+                if self.ai_is_ffa(tr)
+                    && self.pl_troops(tr, e) > self.pl_troops(tr, self.te_tribe) * 1.2
+                {
+                    return false;
+                }
+                let incoming = self.pl_incoming_attacks(tr, e); // 822
+                let total: f64 = incoming.iter().map(|&a| self.at_troops(tr, a)).sum();
+                total > self.pl_troops(tr, e) * 0.5 // 418
+            })
+            .copied()
+    }
+
+    /// `findVeryWeakEnemy(borderingEnemies)` — TS `filter` visits **every**
+    /// enemy (no short-circuit), then takes `[0]`.
+    fn ai_find_very_weak_enemy(
+        &mut self,
+        tr: &mut Vec<f64>,
+        bordering_enemies: &[usize],
+    ) -> Option<usize> {
+        let mut found: Option<usize> = None;
+        for &e in bordering_enemies {
+            let max_troops = self.mg_max_troops(tr, Rec::P(e)); // 401
+            let ok = self.pl_troops(tr, e) < max_troops * 0.15 // 418
+                && (!self.ai_is_ffa(tr)
+                    || self.pl_troops(tr, e) < self.pl_troops(tr, self.te_tribe) * 1.2);
+            if ok && found.is_none() {
+                found = Some(e);
+            }
+        }
+        found
+    }
+
+    /// `findJuicyTarget(borderingEnemies)` — the candidates are filtered to
+    /// troops ≤ 75% of ours, then `findJuiciestTarget` ranks them.
+    fn ai_find_juicy_target(
+        &mut self,
+        tr: &mut Vec<f64>,
+        bordering_enemies: &[usize],
+    ) -> Option<usize> {
+        let candidates: Vec<usize> = bordering_enemies
+            .iter()
+            .filter(|&&e| self.pl_troops(tr, e) <= self.pl_troops(tr, self.te_tribe) * 0.75)
+            .copied()
+            .collect();
+        self.ai_find_juiciest_target(tr, &candidates)
+    }
+
+    /// `findJuiciestTarget(game, candidates)` — inlined from
+    /// `nation/NationUtils.ts` (G5e `LowestN` precedent: plain helper inside
+    /// exec_layer.rs).
+    fn ai_find_juiciest_target(
+        &mut self,
+        tr: &mut Vec<f64>,
+        candidates: &[usize],
+    ) -> Option<usize> {
+        if candidates.is_empty() {
+            return None;
+        }
+        // Compute per-candidate stats. TS reads `u.type()` up to three times
+        // per unit (`Structures.has(u.type()) && u.type() !== DefensePost &&
+        // u.type() !== MissileSilo`) with `&&` short-circuit, and `u.level()`
+        // only when all three hold.
+        let mut stats: Vec<(usize, f64, f64, f64)> = Vec::new(); // (tok, structureCount, troopGapRatio, tiles)
+        for &p in candidates {
+            let units = self.pl_units_all(tr, p); // 241
+            let structure_count: f64 = units
+                .iter()
+                .map(|&u| {
+                    if !STRUCTURES_TYPES.contains(&self.un_type(tr, u).as_str()) {
+                        // 283
+                        return 0.0;
+                    }
+                    if self.un_type(tr, u) == UNIT_DEFENSE_POST {
+                        // 283
+                        return 0.0;
+                    }
+                    if self.un_type(tr, u) == UNIT_MISSILE_SILO {
+                        // 283
+                        return 0.0;
+                    }
+                    self.un_level(tr, u) // 540
+                })
+                .sum();
+            let max_troops = self.mg_max_troops(tr, Rec::P(p)); // 401
+            let troop_gap_ratio = if max_troops > 0.0 {
+                1.0 - self.pl_troops(tr, p) / max_troops // 418
+            } else {
+                0.0
+            };
+            let tiles = self.pl_num_tiles_owned(tr, p); // 532
+            stats.push((p, structure_count, troop_gap_ratio, tiles));
+        }
+        // Normalize each stat and score.
+        let scs: Vec<f64> = stats.iter().map(|s| s.1).collect();
+        let tgrs: Vec<f64> = stats.iter().map(|s| s.2).collect();
+        let tls: Vec<f64> = stats.iter().map(|s| s.3).collect();
+        let normalize = |value: f64, values: &[f64]| -> f64 {
+            let min = values.iter().fold(f64::INFINITY, |a, &b| js_min(a, b));
+            let max = values.iter().fold(f64::NEG_INFINITY, |a, &b| js_max(a, b));
+            if max > min {
+                (value - min) / (max - min)
+            } else {
+                0.0
+            }
+        };
+        let mut best: Option<usize> = None;
+        let mut best_score = f64::NEG_INFINITY;
+        for &(p, sc, tgr, tl) in &stats {
+            let score = normalize(sc, &scs) + normalize(tgr, &tgrs) + normalize(tl, &tls);
+            if score > best_score {
+                best_score = score;
+                best = Some(p);
+            }
+        }
+        best
+    }
+
+    /// `findNearestIslandEnemy()`.
+    fn ai_find_nearest_island_enemy(
+        &mut self,
+        tr: &mut Vec<f64>,
+    ) -> Result<Option<usize>, String> {
+        if self.mg_is_unit_disabled(tr, UNIT_TRANSPORT_SHIP) {
+            // 511
+            return Ok(None);
+        }
+        if self.pl_unit_count(tr, self.te_tribe, UNIT_TRANSPORT_SHIP)
+            >= self.mg_boat_max_number(tr)
+        {
+            return Ok(None);
+        }
+        // `Array.from(borderTiles()).some(t => game.isShore(t))` — short
+        // circuit on the first shore tile.
+        let border_tiles = self.pl_border_tiles(tr, self.te_tribe); // 635
+        let has_shore = border_tiles
+            .into_iter()
+            .any(|t| self.mg_is_shore(tr, t)); // 967
+        if !has_shore {
+            return Ok(None);
+        }
+        let all_players = self.mg_players(tr); // 221
+        let filtered: Vec<usize> = all_players
+            .iter()
+            .filter(|&&p| {
+                if p == self.te_tribe {
+                    return false;
+                }
+                if self.pl_is_friendly(tr, self.te_tribe, Some(p)) {
+                    // 242
+                    return false;
+                }
+                !self.ai_is_ffa(tr) || self.pl_troops(tr, p) < self.pl_troops(tr, self.te_tribe)
+            })
+            .copied()
+            .collect();
+        if filtered.is_empty() {
+            return Ok(None);
+        }
+        let my_center = self.ai_get_player_center(tr, self.te_tribe)?;
+        let mut sorted: Vec<(usize, f64)> = filtered
+            .iter()
+            .map(|&p| {
+                let pc = self.ai_get_player_center(tr, p)?;
+                // `game.ref(playerCenter.x, playerCenter.y)` is re-called per
+                // entry (609, 609) before the manhattanDist (509).
+                let my_tile = self.mg_ref(tr, my_center.0, my_center.1); // 609
+                let p_tile = self.mg_ref(tr, pc.0, pc.1); // 609
+                let dist = self.mg_manhattan_dist(tr, my_tile, p_tile); // 509
+                Ok((p, dist))
+            })
+            .collect::<Result<Vec<_>, String>>()?;
+        sorted.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
+
+        let mut reachable: Vec<usize> = Vec::new();
+        for &(p, _) in &sorted {
+            // `shoreTiles(this.player)` is recomputed every iteration in TS.
+            let my_shore = self.ai_shore_tiles(tr, self.te_tribe);
+            let their_shore = self.ai_shore_tiles(tr, p);
+            let closest = self.ai_closest_two_tiles(tr, &my_shore, &their_shore);
+            let (_, cy) = match closest {
+                Some(pair) => pair,
+                None => continue,
+            };
+            if self.ai_can_build_transport_ship(tr, cy)? {
+                reachable.push(p);
+                if reachable.len() >= 2 {
+                    break;
+                }
+            }
+        }
+        if reachable.is_empty() {
+            return Ok(None);
+        }
+        if reachable.len() >= 2 {
+            let rng = self.random.as_mut().unwrap();
+            if rng.chance(3.0) {
+                return Ok(Some(reachable[1]));
+            }
+        }
+        Ok(Some(reachable[0]))
+    }
+
+    /// `getPlayerCenter(player)`.
+    fn ai_get_player_center(
+        &mut self,
+        tr: &mut Vec<f64>,
+        player: usize,
+    ) -> Result<(f64, f64), String> {
+        // Check if largestClusterBoundingBox is set (G5j field).
+        // We read it via the scripted mock — it's set by PlayerExecution.
+        // For the tribe scenarios, we fall back to calculateBoundingBoxCenter.
+        let border_tiles = self.pl_border_tiles(tr, player); // 635
+        if border_tiles.is_empty() {
+            return Ok((0.0, 0.0));
+        }
+        // calculateBoundingBoxCenter inline.
+        let mut min_x = f64::INFINITY;
+        let mut max_x = f64::NEG_INFINITY;
+        let mut min_y = f64::INFINITY;
+        let mut max_y = f64::NEG_INFINITY;
+        for &t in &border_tiles {
+            let x = self.mg_x(tr, t); // 603
+            let y = self.mg_y(tr, t); // 604
+            if x < min_x {
+                min_x = x;
+            }
+            if x > max_x {
+                max_x = x;
+            }
+            if y < min_y {
+                min_y = y;
+            }
+            if y > max_y {
+                max_y = y;
+            }
+        }
+        Ok((
+            ((min_x + max_x) / 2.0).floor(),
+            ((min_y + max_y) / 2.0).floor(),
+        ))
+    }
+
+    /// `closestTwoTiles(x, y)` — inlined from `execution/Util.ts`. Uses the
+    /// ElMap width when available; otherwise falls back to scripted width.
+    fn ai_closest_two_tiles(
+        &mut self,
+        tr: &mut Vec<f64>,
+        x: &[f64],
+        y: &[f64],
+    ) -> Option<(f64, f64)> {
+        let w = if let Some(ref map) = self.el_map {
+            map.w
+        } else {
+            self.mg_width(tr) // 610
+        };
+        crate::exec_util::closest_two_tiles_w(w, x, y)
+    }
+
+    /// `attackWithRandomBoat(borderingEnemies)`.
+    fn ai_attack_with_random_boat(
+        &mut self,
+        tr: &mut Vec<f64>,
+        bordering_enemies: &[usize],
+    ) -> Result<(), String> {
+        if self.mg_is_unit_disabled(tr, UNIT_TRANSPORT_SHIP) {
+            // 511
+            return Ok(());
+        }
+        if self.pl_unit_count(tr, self.te_tribe, UNIT_TRANSPORT_SHIP)
+            >= self.mg_boat_max_number(tr)
+        {
+            return Ok(());
+        }
+        let shore = self.ai_shore_tiles(tr, self.te_tribe);
+        if shore.is_empty() {
+            return Ok(());
+        }
+        let src = {
+            let rng = self.random.as_mut().unwrap();
+            match rng.rand_element(&shore) {
+                Some(&s) => s,
+                None => return Ok(()),
+            }
+        };
+        // High-interest targets first (unowned or bot-owned).
+        let dst = match self.ai_find_random_boat_target(tr, src, bordering_enemies, true)? {
+            Some(d) => Some(d),
+            None => self.ai_find_random_boat_target(tr, src, bordering_enemies, false)?,
+        };
+        let dst = match dst {
+            Some(d) => d,
+            None => return Ok(()),
+        };
+        let owner = self.mg_owner(tr, dst); // 222
+        // `owner.isPlayer()` — 259 on a Player, untraced `false` on the
+        // TerraNullius singleton (`None`); TS calls it twice (cap ternary,
+        // too-weak gate), so re-trace at each point.
+        let owner_is_player = owner.map(|o| self.pl_is_player(tr, o)).unwrap_or(false); // 259
+        let cap = if owner_is_player {
+            self.ai_troop_send_cap(tr)?
+        } else {
+            self.ai_troop_send_cap_for_expansion(tr)?
+        };
+        let troops = js_min(self.pl_troops(tr, self.te_tribe) / 5.0, cap);
+        if troops < 1.0 {
+            return Ok(());
+        }
+        if owner.map(|o| self.pl_is_player(tr, o)).unwrap_or(false) // 259 (second call)
+            && self.ai_is_attack_too_weak(tr, troops, owner.unwrap())?
+        {
+            return Ok(());
+        }
+        self.mg_add_transport_ship_exec(tr, self.te_tribe, dst, troops);
+        Ok(())
+    }
+
+    /// `findRandomBoatTarget(tile, borderingEnemies, highInterestOnly)`.
+    fn ai_find_random_boat_target(
+        &mut self,
+        tr: &mut Vec<f64>,
+        tile: f64,
+        bordering_enemies: &[usize],
+        high_interest_only: bool,
+    ) -> Result<Option<f64>, String> {
+        let x = self.mg_x(tr, tile); // 603
+        let y = self.mg_y(tr, tile); // 604
+        let mut unreachable: Vec<String> = Vec::new(); // insertion-ordered Set<PlayerID>
+        for _ in 0..500 {
+            let (rand_x, rand_y) = {
+                let rng = self.random.as_mut().unwrap();
+                (
+                    rng.next_int(x - 150.0, x + 150.0) as f64,
+                    rng.next_int(y - 150.0, y + 150.0) as f64,
+                )
+            };
+            if !self.mg_is_valid_coord(tr, rand_x, rand_y) {
+                // 616
+                continue;
+            }
+            let rand_tile = self.mg_ref(tr, rand_x, rand_y); // 609
+            if !self.mg_is_land(tr, rand_tile) {
+                // 304
+                continue;
+            }
+            if self.mg_is_impassable(tr, rand_tile) {
+                // 617
+                continue;
+            }
+            let owner = self.mg_owner(tr, rand_tile); // 222
+            if owner == Some(self.te_tribe) {
+                continue;
+            }
+            // Skip unreachable players. TS: `owner.isPlayer() && has(owner.id())`
+            // — 259 fires for every owned tile, 231 only when it is a player.
+            if let Some(o) = owner {
+                if self.pl_is_player(tr, o) {
+                    // 259
+                    let oid = self.pl_id(tr, o); // 231
+                    if unreachable.contains(&oid) {
+                        continue;
+                    }
+                }
+            }
+            // Don't send boats to players with which we share a border.
+            if let Some(o) = owner {
+                if self.pl_is_player(tr, o) && bordering_enemies.contains(&o) {
+                    // 259
+                    continue;
+                }
+            }
+            // FFA: skip stronger players. `isFFA() && isPlayer() && troops cmp`
+            // — 520, then 259, then 418 x2, each gated by the previous arm.
+            if self.ai_is_ffa(tr) {
+                // 520
+                if let Some(o) = owner {
+                    if self.pl_is_player(tr, o) {
+                        // 259
+                        if self.pl_troops(tr, o) > self.pl_troops(tr, self.te_tribe) {
+                            continue;
+                        }
+                    }
+                }
+            }
+            // `!owner.isPlayer() || <arm>` — 259 always, arm only for players.
+            let matches = match owner {
+                None => true,
+                Some(o) => {
+                    if !self.pl_is_player(tr, o) {
+                        // 259
+                        true
+                    } else if high_interest_only {
+                        self.pl_type(tr, o) == PLAYER_TYPE_BOT // 251
+                    } else {
+                        !self.pl_is_friendly(tr, o, Some(self.te_tribe)) // 242
+                    }
+                }
+            };
+            if !matches {
+                continue;
+            }
+            if !self.ai_can_build_transport_ship(tr, rand_tile)? {
+                if let Some(o) = owner {
+                    if self.pl_is_player(tr, o) {
+                        // 259
+                        let oid = self.pl_id(tr, o); // 231
+                        unreachable.push(oid);
+                    }
+                }
+                continue;
+            }
+            return Ok(Some(rand_tile));
+        }
+        Ok(None)
+    }
+
+    /// `canBuildTransportShip(game, player, tile)` — inlined from
+    /// `game/TransportShipUtils.ts`.
+    fn ai_can_build_transport_ship(
+        &mut self,
+        tr: &mut Vec<f64>,
+        tile: f64,
+    ) -> Result<bool, String> {
+        if self.pl_unit_count(tr, self.te_tribe, UNIT_TRANSPORT_SHIP) // 823
+            >= self.mg_boat_max_number(tr) // 801
+        {
+            return Ok(false);
+        }
+        let dst = self.mg_target_transport_tile(tr, self.te_tribe, tile); // 880
+        let dst = match dst {
+            Some(d) => d,
+            None => return Ok(false),
+        };
+        let other = self.mg_owner(tr, tile); // 222
+        if other == Some(self.te_tribe) {
+            return Ok(false);
+        }
+        if let Some(o) = other {
+            if self.pl_is_player(tr, o) && !self.pl_can_attack_player(tr, self.te_tribe, o) {
+                // 259, 820
+                return Ok(false);
+            }
+        }
+        let shore = self.mg_closest_shore_by_water(tr, self.te_tribe, dst); // 961
+        Ok(shore.is_some())
+    }
+
+    /// `donateTroops()`.
+    fn ai_donate_troops(&mut self, tr: &mut Vec<f64>) -> Result<bool, String> {
+        if self.mg_game_mode(tr) != GAME_MODE_TEAM {
+            // 520
+            return Ok(false);
+        }
+        if self.mg_game_type(tr) == GAME_TYPE_PUBLIC {
+            // 214
+            return Ok(false);
+        }
+        if !self.mg_donate_troops_cfg(tr) {
+            // 959
+            return Ok(false);
+        }
+        let w = self.mg_get_winner(tr); // 600
+        if !matches!(w, JsVal::Null) {
+            // TS: `getWinner() !== null` — the harness only ever returns
+            // `null` or a Player object.
+            return Ok(false);
+        }
+        let diff = self.mg_difficulty(tr); // 402
+        match diff.as_str() {
+            "Easy" => return Ok(false),
+            "Medium" => {
+                let rng = self.random.as_mut().unwrap();
+                if !rng.chance(4.0) {
+                    return Ok(false);
+                }
+            }
+            "Hard" => {
+                let rng = self.random.as_mut().unwrap();
+                if !rng.chance(2.0) {
+                    return Ok(false);
+                }
+            }
+            "Impossible" => {}
+            other => return Err(format!("Unexpected value: {other}")),
+        }
+
+        // Find teammates in combat. TS runs two independent `filter` passes,
+        // so 250 traces for every player first, then 822/721 only for the
+        // surviving teammates.
+        let all_players = self.mg_players(tr); // 221
+        let same_team: Vec<usize> = all_players
+            .iter()
+            .copied()
+            .filter(|&p| self.pl_is_on_same_team(tr, self.te_tribe, Some(p))) // 250
+            .collect();
+        let teammates: Vec<usize> = same_team
+            .into_iter()
+            .filter(|&p| {
+                !self.pl_incoming_attacks(tr, p).is_empty() // 822
+                    || !self.pl_outgoing_attacks(tr, p).is_empty() // 721
+            })
+            .collect();
+        if teammates.is_empty() {
+            return Ok(false);
+        }
+        // Sort by troop percentage ascending.
+        let mut with_pct: Vec<(usize, f64)> = teammates
+            .iter()
+            .map(|&t| {
+                let max_t = self.mg_max_troops(tr, Rec::P(t)); // 401
+                let pct = self.pl_troops(tr, t) / js_max(max_t, 1.0); // 418
+                (t, pct)
+            })
+            .collect();
+        with_pct.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
+
+        let mut selected: Option<usize> = None;
+        for &(t, _) in &with_pct {
+            if self.pl_can_donate_troops(tr, self.te_tribe, Rec::P(t)) {
+                // 413
+                selected = Some(t);
+                break;
+            }
+        }
+        let selected = match selected {
+            Some(s) => s,
+            None => return Ok(false),
+        };
+
+        let max_troops = self.mg_max_troops(tr, Rec::P(self.te_tribe)); // 401
+        let troops_to_keep = max_troops * self.te_reserve_ratio;
+        let available = self.pl_troops(tr, self.te_tribe) - troops_to_keep; // 418
+        if available < 1.0 {
+            return Ok(false);
+        }
+        let sid = self.pl_id(tr, selected); // 231
+        self.mg_add_donate_troops_exec(tr, self.te_tribe, &sid, Some(available));
+        Ok(true)
+    }
+
+    // ---- G5k helpers for the map/facade bridge -------------------------------
+
+    /// `mg.map().neighbors4(tile, buf)` — delegates to ElMap when available,
+    /// otherwise to the scripted `mg.neighbors4` facade.
+    fn mg_neighbors4_map(&mut self, tr: &mut Vec<f64>, tile: f64) -> Vec<f64> {
+        if let Some(ref map) = self.el_map {
+            let n = map.neighbors4(tile, &mut self.te_nbuf);
+            return self.te_nbuf[..n].to_vec();
+        }
+        self.mg_neighbors4(tr, tile) // 804
+    }
+
+    /// `player.units()` — no-args variant (returns all unit tokens).
+    fn pl_units_all(&mut self, tr: &mut Vec<f64>, tok: usize) -> Vec<usize> {
+        let v = self.pl(tok, PL_UNITS, tr, 241.0, &ev_strs(&[]));
+        as_tok_list(&v)
+    }
+
+    /// `alliance.onlyOneAgreedToExtend()` — scripted facade (260).
+    fn al_only_one_agreed(&mut self, tr: &mut Vec<f64>, tok: usize) -> bool {
+        let v = mk_take(&mut self.alliances[tok], AL_ONLY_ONE_AGREED, tr, 260.0, &[tok as f64]);
+        as_bool(&v)
+    }
+
+    /// Resolve a neighbor token to a player token. Neighbors wrap player tokens
+    /// in the harness (the neighbor token IS the player token for players).
+    fn nb_player_tok(&mut self, _tr: &mut Vec<f64>, tok: usize) -> Option<usize> {
+        if tok == TN_TOK {
+            return None;
+        }
+        Some(tok)
+    }
+}
+
+/// G5k: how a `Player | TerraNullius` target reached `AiAttackBehavior`. The
+/// harness traces `isPlayer()` on the concrete object class: `Player` objects
+/// (259), `Neighbor` objects returned by `player.nearby()` (257), or the
+/// untraced `TerraNullius` singleton.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum TargetVia {
+    Pl,
+    Nb,
+    Tn,
+}
+
+/// G5k: the `AiAttackBehavior.getAttackStrategies` strategy ids (the TS
+/// closures are modelled as an enum dispatched by `ai_run_strategy`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum AiStrategy {
+    Nuked,
+    Bots,
+    Retaliate,
+    Assist,
+    Betray,
+    Hated,
+    Weakest,
+    VeryWeak,
+    Juicy,
+    Victim,
+    Afk,
+    Traitor,
+    Island,
+    Donate,
 }
 
 /// G5j: the `floodFillWithGen` include predicate kind.

@@ -26598,6 +26598,13 @@ const elWarshipC = (
 const elPlayerExecC = (
   await loadTs("src/core/execution/PlayerExecution.ts")
 ).PlayerExecution;
+const elTribeExecC = (
+  await loadTs("src/core/execution/TribeExecution.ts")
+).TribeExecution;
+// G5k Step 2: `NationExecution` is the REAL (prepared-copy) source.
+const elNationExecC = (
+  await loadTs("src/core/execution/NationExecution.ts")
+).NationExecution;
 // A `Game` (mg) ctor argument for `TribeSpawner.gs`; resolved by the `elDef`
 // args map to `elC.mg` (the Rust ctor table sees the facade group token).
 const elMgRef = { __elmg: true };
@@ -26756,7 +26763,8 @@ function elPlayerObj(tok, slots) {
     },
     nearby: () => {
       const ts = elRet(m, 15, 245, [tok]);
-      return (ts || []).map((t) => elC.neighbors[t]);
+      // G5k: a TerraNullius neighbor resolves to the untraced TN singleton.
+      return (ts || []).map((t) => (t === EL_TN_TOK ? elTNObj : elC.neighbors[t]));
     },
     canTarget: (o) => elRet(m, 16, 246, [tok, ...elEvTok(o)]),
     team: () => elRet(m, 18, 248, [tok]),
@@ -26869,6 +26877,25 @@ function elPlayerObj(tok, slots) {
     addGold: (g, t) => elVoid(910, [tok, ...elEv1(Number(g)), ...elEv1(t)]),
     addPiracyGold: (g) => elVoid(911, [tok, ...elEv1(Number(g))]),
     addTradeGold: (g) => elVoid(912, [tok, ...elEv1(Number(g))]),
+    // G5k (`AiAttackBehavior`).
+    sharesBorderWith: (o) => elRet(m, 67, 962, [tok, ...elEvTok(o)]),
+    targets: () => {
+      const ts = elRet(m, 68, 963, [tok]);
+      return (ts || []).map((t) => elC.players[t]);
+    },
+    allies: () => {
+      const ts = elRet(m, 69, 964, [tok]);
+      return (ts || []).map((t) => elC.players[t]);
+    },
+    // `allRelationsSorted()` returns `{relation, player}` objects; `player` is
+    // resolved to the player facade post-trace (like `getEmbargoes`).
+    allRelationsSorted: () => {
+      const list = elRet(m, 70, 965, [tok]);
+      return (list || []).map((e) => ({
+        relation: e.relation,
+        player: elC.players[e.player],
+      }));
+    },
     // G5j (`WarshipExecution` / `PlayerExecution`).
     inDoomsdayClock: () => elRet(m, 63, 940, [tok]),
     captureUnit: (u) => elVoid(941, [tok, ...elEvTok(u)]),
@@ -26899,6 +26926,12 @@ function elPlayerObj(tok, slots) {
         target: elC.players[e.target],
       }));
     },
+    // G5k Step 2 (`NationExecution` / nation behaviors).
+    unitsConstructed: (ty) => elRet(m, 71, 982, [tok, ...elEvs(ty)]),
+    unitsOwned: (ty) => elRet(m, 72, 983, [tok, ...elEvs(ty)]),
+    // `info()` returns the plain PlayerInfo object (scripted verbatim).
+    info: () => elRet(m, 73, 984, [tok]),
+    isAlliedWith: (o) => elRet(m, 74, 987, [tok, ...elEvTok(o)]),
   };
 }
 function elAllianceObj(tok, slots) {
@@ -26912,6 +26945,12 @@ function elAllianceObj(tok, slots) {
     // G5j (`PlayerExecution.tick` alliance expiry).
     expiresAt: () => elRet(m, 4, 956, [tok]),
     expire: () => elVoid(957, [tok]),
+    // G5k (`TribeExecution.acceptAllAllianceRequests`): the other alliance
+    // member's player token.
+    other: (p) => {
+      const t = elRet(m, 5, 966, [tok, ...elEv1(p._tok)]);
+      return t == null ? null : elC.players[t];
+    },
   };
 }
 function elRequestObj(tok, slots) {
@@ -27011,6 +27050,14 @@ function elUnitObj(tok, slots) {
     warshipState: () => elRet(m, 50, 928, [tok]),
     recordTradeCapture: () => elVoid(929, [tok]),
     isSafeFromPirates: () => elRet(m, 51, 939, [tok]),
+    // G5k Step 2 (`NationWarshipBehavior.trackShipsAndRetaliate`). The real
+    // `Unit.destroyer()` returns a `Player` (see the `Unit` interface in
+    // `Game.ts`), so the scripted token resolves to a player facade.
+    wasDestroyedByEnemy: () => elRet(m, 52, 985, [tok]),
+    destroyer: () => {
+      const t = elRet(m, 53, 986, [tok]);
+      return t == null ? undefined : elC.players[t];
+    },
   };
 }
 // G5g: the `Attack` object returned by `Player.createAttack` and read through
@@ -27050,6 +27097,15 @@ function elNeighborObj(tok, slots) {
     isPlayer: () => elRet(m, 0, 257, [tok]),
     isOnSameTeam: (o) => elRet(m, 1, 258, [tok, ...elEvTok(o)]),
     updateRelation: (o, amt) => elVoid(256, [tok, ...elEvTok(o), ...elEv1(amt)]),
+    // G5k (`AiAttackBehavior`): the real `Neighbor` delegates its player
+    // accessors to the underlying player, so the trace lands on the player
+    // mock (neighbor tokens ARE player tokens in the harness).
+    type: () => elC.players[tok].type(),
+    troops: () => elC.players[tok].troops(),
+    isTraitor: () => elC.players[tok].isTraitor(),
+    id: () => elC.players[tok].id(),
+    units: (types) => elC.players[tok].units(types),
+    numTilesOwned: () => elC.players[tok].numTilesOwned(),
   };
 }
 function elMgObj(slots) {
@@ -27088,6 +27144,10 @@ function elMgObj(slots) {
       },
       get gameMapSize() {
         return elRet(m, 75, 615, []);
+      },
+      // G5k (`AiAttackBehavior.isFFA` / `shouldAttack` playerTeams check).
+      get playerTeams() {
+        return elRet(m, 117, 960, []);
       },
     }),
     trainStationMaxRange: () => elRet(m, 28, 309, []),
@@ -27150,6 +27210,16 @@ function elMgObj(slots) {
     troopIncreaseRate: (p) => elRet(m, 112, 946, [...elEvTok(p)]),
     goldAdditionRate: (p) => elRet(m, 113, 947, [...elEvTok(p)]),
     temporaryEmbargoDuration: () => elRet(m, 114, 948, []),
+    // G5k (`AiAttackBehavior`).
+    disableAlliances: () => elRet(m, 115, 958, []),
+    donateTroops: () => elRet(m, 116, 959, []),
+    // G5k Step 2 (`NationExecution` / nation behaviors).
+    startingGold: (info) => elRet(m, 122, 970, encVal(info)),
+    trainStationMinRange: () => elRet(m, 125, 973, []),
+    samRange: (lv) => elRet(m, 126, 974, elEv1(lv)),
+    defaultSamRange: () => elRet(m, 127, 975, []),
+    trainGold: (kind, troops, p) =>
+      elRet(m, 128, 976, [...elEvs(kind), ...elEv1(troops), ...elEvTok(p)]),
   };
   return {
     config: () => cfg,
@@ -27171,6 +27241,9 @@ function elMgObj(slots) {
     },
     owner: (tile) => {
       const t = elRet(m, 12, 222, elEv1(tile));
+      // G5k: a scripted TN token resolves to the TerraNullius singleton (the
+      // Rust side branches on the token; `isPlayer()` is untraced `false`).
+      if (t === EL_TN_TOK) return elTNObj;
       return t == null ? null : elC.players[t];
     },
     // G5j: grid-delegated when `elC.mapGrid` exists (the trace records the
@@ -27406,6 +27479,99 @@ function elMgObj(slots) {
         );
         return;
       }
+      // G5k: `AiAttackBehavior` / `TribeExecution` spawn the four collaborator
+      // executions. The prepared ctors have no observable side effect.
+      if (cn === "TransportShipExecution") {
+        elT.push(
+          307,
+          18,
+          ...elEvTok(exec.attacker),
+          ...encVal(exec.ref),
+          ...encVal(exec.troops),
+          ...encVal(undefined),
+        );
+        return;
+      }
+      if (cn === "DonateTroopsExecution") {
+        elT.push(
+          307,
+          19,
+          ...elEvTok(exec.sender),
+          ...encVal(exec.recipientID),
+          ...encVal(exec.troops),
+          ...encVal(undefined),
+        );
+        return;
+      }
+      if (cn === "AllianceExtensionExecution") {
+        elT.push(
+          307,
+          20,
+          ...elEvTok(exec.from),
+          ...encVal(exec.toID),
+          ...encVal(undefined),
+        );
+        return;
+      }
+      if (cn === "DeleteUnitExecution") {
+        elT.push(
+          307,
+          21,
+          ...elEvTok(exec.player),
+          ...encVal(exec.unitId),
+          ...encVal(undefined),
+        );
+        return;
+      }
+      // G5k Step 2 (`NationExecution` / nation behaviors).
+      if (cn === "SpawnExecution") {
+        // `gameID` is a plain ctor parameter (not stored on the instance);
+        // `elDef` stashes the class-44 ctor argument in `elC.gameID`.
+        elT.push(
+          307,
+          22,
+          ...encVal(elC.gameID),
+          ...encVal(exec.playerInfo),
+          ...encVal(exec.tile),
+          ...encVal(undefined),
+        );
+        return;
+      }
+      if (cn === "AllianceRequestExecution") {
+        elT.push(
+          307,
+          23,
+          ...elEvTok(exec.requestor),
+          ...encVal(exec.recipientID),
+          ...encVal(undefined),
+        );
+        return;
+      }
+      if (cn === "ConstructionExecution") {
+        elT.push(
+          307,
+          24,
+          ...elEvTok(exec.player),
+          ...encVal(exec.constructionType),
+          ...encVal(exec.tile),
+          ...encVal(exec.rocketDirectionUp),
+          ...encVal(exec.amount),
+          ...encVal(undefined),
+        );
+        return;
+      }
+      if (cn === "UpgradeStructureExecution") {
+        // The `amount` ctor default (1) is not modeled on the Rust side (the
+        // nation path always upgrades by 1), so it is not recorded.
+        elT.push(
+          307,
+          25,
+          ...elEvTok(exec.player),
+          ...encVal(exec.unitId),
+          ...encVal(undefined),
+        );
+        return;
+      }
       // G5j: `WarshipExecution.shootTarget` spawns a `ShellExecution` (tag 1).
       if (cn === "ShellExecution") {
         elT.push(
@@ -27489,7 +27655,23 @@ function elMgObj(slots) {
     // G5h (`TradeShipExecution.tick`).
     isShoreline: (tile) => elRet(m, 93, 901, elEv1(tile)),
     manhattanDist: (a, b) => elRet(m, 43, 509, [...elEv1(a), ...elEv1(b)]),
-    unitInfo: (ty) => elRet(m, 46, 512, elEvs(ty)),
+    // G5k Step 2: the nation `cost()` path (`game.unitInfo(type).cost(game,
+    // player)`) traces 512 first, then 969 with `(type, playerToken)`. The
+    // returned object's `cost` reads mg slot 121 (the Rust side mirrors this as
+    // `mg_unit_info` then `mg_unit_info_cost`). The plain object form keeps the
+    // legacy `constructionDuration` / `upgradable` field reads unchanged.
+    unitInfo: (ty) => {
+      const v = elRet(m, 46, 512, elEvs(ty));
+      if (v !== null && typeof v === "object" && "cost" in v) {
+        const { cost, ...rest } = v;
+        return {
+          ...rest,
+          cost: (_game, player) =>
+            elRet(m, 121, 969, [...elEvs(ty), ...elEvTok(player)]),
+        };
+      }
+      return v;
+    },
     // G5e.
     getWinner: () => {
       const t = elRet(m, 60, 600, []);
@@ -27537,11 +27719,49 @@ function elMgObj(slots) {
     // G5f.
     playerBySmallID: (id) => {
       const t = elRet(m, 82, 703, elEv1(id));
+      // G5k: TN smallID sentinel maps to the singleton (untraced isPlayer).
+      if (t === EL_TN_TOK) return elTNObj;
       return t == null ? null : elC.players[t];
     },
-    units: () => {
-      const ts = elRet(m, 88, 709, []);
+    // G5k Step 2: `mg.units(...types)` (the typed form, code 968 / slot 120)
+    // dispatches on the argument count; the no-arg legacy form (709 / slot 88)
+    // stays byte-identical for the existing scenarios.
+    units: (...types) => {
+      if (types.length === 0) {
+        const ts = elRet(m, 88, 709, []);
+        return (ts || []).map((t) => elC.units[t]);
+      }
+      const ts = elRet(m, 120, 968, elEvStrs(types));
       return (ts || []).map((t) => elC.units[t]);
+    },
+    // G5k Step 2 (`NationUtils.randTerritoryTile`): `mg.isOnMap(new Cell(x, y))`
+    // encodes the Cell as a plain `{x, y}` object (its own fields are the only
+    // enumerable ones).
+    isOnMap: (cell) => elRet(m, 124, 972, encVal({ x: cell.x, y: cell.y })),
+    // G5k Step 2 (`NationStructureBehavior`): `mg.nations()` — a player-token list.
+    nations: () => {
+      const ts = elRet(m, 123, 971, []);
+      return (ts || []).map((t) => elC.players[t]);
+    },
+    // G5k Step 2 (`NationStructureBehavior.refreshSharedWater`).
+    sharedWaterComponents: (p) => elRet(m, 129, 977, elEvTok(p)),
+    getWaterComponentSize: (t) => elRet(m, 130, 978, elEv1(t)),
+    // G5k Step 2: grid-delegated when `elC.mapGrid` exists (like `ownerID`).
+    magnitude: (tile) => {
+      if (elC.mapGrid) {
+        const v = elC.mapGrid.magnitude(tile);
+        elT.push(980, ...elEv1(tile), ...elEv1(v));
+        return v;
+      }
+      return elRet(m, 132, 980, elEv1(tile));
+    },
+    isOcean: (tile) => {
+      if (elC.mapGrid) {
+        const v = elC.mapGrid.isOcean(tile);
+        elT.push(981, ...elEv1(tile), ...elEvb(v));
+        return v;
+      }
+      return elRet(m, 133, 981, elEv1(tile));
     },
     euclideanDistSquared: (a, b) =>
       elRet(m, 89, 710, [...elEv1(a), ...elEv1(b)]),
@@ -27605,6 +27825,10 @@ function elMgObj(slots) {
     // stub reads `game.__targetTransportTile`).
     __targetTransportTile: (attacker, ref) =>
       elRet(m, 880, 880, [...elEvTok(attacker), ...elEv1(ref)]),
+    // G5k (`AiAttackBehavior.shoreTiles` / the `__stub/g5k.ts` canBuild stub).
+    isShore: (tile) => elRet(m, 118, 967, elEv1(tile)),
+    __closestShoreByWater: (player, tile) =>
+      elRet(m, 119, 961, [...elEvTok(player), ...elEv1(tile)]),
     // `WaterPathFinder(mg, stagger)` (the `__stub/pathfinding` stub reads
     // `game.__waterPathFinder`).
     __waterPathFinder: {
@@ -27695,6 +27919,15 @@ function elMgObj(slots) {
       };
     },
     railNetwork: () => ({
+      // G5k Step 2 (`NationStructureBehavior` station-cluster scan): the
+      // scripted unit-token list (code 979 / slot 131) resolves to the
+      // canonical station facades, so `getCluster` reuses the 920 trace.
+      stationManager: () => ({
+        getAll: () => {
+          const ts = elRet(m, 131, 979, []);
+          return (ts || []).map((t) => elC.mg.__railStationFor(elC.units[t]));
+        },
+      }),
       connectStation: (station) => elVoid(916, [...elEv1(station.unit._tok)]),
       findStationsPath: (from, to) => {
         const ts = elRet(m, 97, 917, [
@@ -27841,6 +28074,10 @@ function elDef(name, classId, cls, args, spec, ops) {
     railroads: spec.railroads || [],
   };
   elC.mg = elMgObj(elSlots(110, spec.mg));
+  // G5k Step 2: `NationExecution`'s gameID ctor argument (args[0]) is stashed
+  // so the `SpawnExecution` recorder (tag 22) can encode it — `gameID` is not
+  // a stored field on the prepared `SpawnExecution`.
+  if (classId === 44) elC.gameID = args[0];
 
   const setup = {
     c: classId,
@@ -31368,6 +31605,425 @@ elDef(
     },
   },
   [[0], [1, 0], [2, 100], [3], [4]],
+);
+
+// -- 43 TribeExecution (+ AiAttackBehavior) ----------------------------------
+// The tribe player is a `PlayerType.Bot` (TribeSpawner), so every
+// `troopSendCap` / `isAttackTooWeak` / `shouldAttack` guard short-circuits on
+// the tribe's own `type()` (251). The ctor draws 5 PRNG values from
+// `simpleHash(id())`: "t1" -> rate 40 tick 9 trig .59 resv .34 exp .13,
+// "t2" -> rate 56 tick 0 trig .53 resv .36 exp .17,
+// "t3" -> rate 64 tick 55 trig .51 resv .39 exp .1.
+
+// Gate: `ticks % attackRate !== attackTick` -> the tick traces nothing.
+elDef(
+  "el_tribe_gate_skip",
+  43,
+  elTribeExecC,
+  [elPlayerRef(0)],
+  { a: [0], players: [{ 0: [0], 1: ["t1"] }] },
+  [[0], [1, 0], [2, 8], [3], [4]],
+);
+
+// Death: the attack tick fires but the tribe is not alive -> inactive.
+elDef(
+  "el_tribe_death",
+  43,
+  elTribeExecC,
+  [elPlayerRef(0)],
+  { a: [0], players: [{ 0: [0], 1: ["t2"], 3: [false] }] },
+  [[0], [1, 0], [2, 0], [3], [4]],
+);
+
+// First attack tick: lazy `AiAttackBehavior` ctor + `sendAttack(terraNullius)`
+// over a land border -> `AttackExecution` (tag 16) against the TN id (null).
+elDef(
+  "el_tribe_first_tick_land",
+  43,
+  elTribeExecC,
+  [elPlayerRef(0)],
+  {
+    a: [0],
+    mg: { 32: [1000], 39: [[13]], 23: [true], 77: [false], 67: [false] },
+    players: [
+      {
+        0: [0],
+        1: ["t1"],
+        3: [true],
+        21: ["BOT"],
+        41: [500],
+        50: [[12]],
+      },
+    ],
+  },
+  [[0], [1, 0], [2, 9], [3], [4]],
+);
+
+// First attack tick without a land border: `sendBoatAttackToNearbyTerraNullius`
+// scans the shore tiles, finds an unowned land tile 5 water steps away, passes
+// `canBuildTransportShip` (the TN owner branch skips 259/820) and spawns a
+// `TransportShipExecution` (tag 18).
+elDef(
+  "el_tribe_boat_tn",
+  43,
+  elTribeExecC,
+  [elPlayerRef(0)],
+  {
+    a: [0],
+    mg: {
+      45: [false], // isUnitDisabled("Transport")
+      90: [5, 5], // boatMaxNumber
+      23: [false, true], // isLand(21) (no land border) then isLand(128)
+      77: [false], // isImpassable(21) then isImpassable(128)
+      67: [false], // hasOwner(21) then hasOwner(128)
+      118: [true, false], // isShore over the border set
+      63: [5], // x(border)
+      64: [3], // y(border)
+      76: [true, false, true, true], // isValidCoord (5,2) (5,-2) (5,4) (5,8)
+      69: [102, 104, 128], // ref
+      42: [true, true], // isWater 102, 104
+      8: [false], // hasFallout 128
+      // (23/77/67 for tile 128 come from the shared FIFO below)
+      880: [104], // __targetTransportTile
+      12: [1000000], // owner(128) -> TerraNullius token
+      119: [104], // __closestShoreByWater
+      39: [[21]], // neighbors4(20) -> 21 (not land)
+    },
+    players: [
+      {
+        0: [0],
+        1: ["t3"],
+        3: [true],
+        21: ["BOT"],
+        41: [100],
+        50: [[20], [20, 21]],
+        59: [0, 0], // unitCount("Transport") twice
+      },
+    ],
+  },
+  [[0], [1, 0], [2, 55], [3], [4]],
+);
+
+// Second attack tick: alliance-request acceptance + extension (tag 20),
+// structure deletion (tag 21), then `maybeAttack` picks the neighboring
+// traitor and lands an attack (tag 16) against its player id.
+elDef(
+  "el_tribe_accept_delete_traitor",
+  43,
+  elTribeExecC,
+  [elPlayerRef(0)],
+  {
+    a: [0],
+    mg: { 32: [1000, 1000], 39: [[13]], 115: [false], 23: [true], 77: [false], 67: [false] },
+    players: [
+      {
+        0: [0],
+        1: ["t1"],
+        3: [true, true],
+        11: [[0]], // units() for deleteNextStructure
+        12: [false, false], // isFriendly(traitor)
+        13: [null], // allianceWith(traitor)
+        15: [[2]], // nearby() -> neighbor token 2
+        21: ["BOT"],
+        31: [true], // canDeleteUnit
+        41: [500, 900],
+        50: [[12]],
+        53: [[0]], // incomingAllianceRequests -> request 0
+        65: [[0]], // alliances -> alliance 0
+        67: [true], // sharesBorderWith(traitor)
+      },
+      { 1: ["p2"] }, // alliance.other -> 966 resolves player token 1
+      {
+        0: [2],
+        1: ["p2x"],
+        11: [[1]], // units() -> unit 1 (Warship, not a structure)
+        21: ["BOT"],
+        62: [true], // isTraitor
+      },
+    ],
+    neighbors: [{}, {}, { 0: [true] }],
+    requests: [{}],
+    alliances: [{ 0: [true], 5: [1] }],
+    units: [
+      { 3: ["City"], 7: [7], 49: [false] },
+      { 3: ["Warship"] },
+    ],
+  },
+  [[0], [1, 0], [2, 9], [2, 49], [3], [4]],
+);
+
+// Second attack tick with alliances disabled: no traitor, no TerraNullius
+// neighbor -> `attackRandomTarget` retaliates against the largest incoming
+// attack and lands a forced attack (tag 16) on its attacker.
+elDef(
+  "el_tribe_random_target",
+  43,
+  elTribeExecC,
+  [elPlayerRef(0)],
+  {
+    a: [0],
+    mg: { 32: [1000, 1000, 1000], 39: [[13]], 115: [true], 23: [true], 77: [false], 67: [false] },
+    players: [
+      {
+        0: [0],
+        1: ["t2"],
+        3: [true, true],
+        12: [false], // isFriendly(attacker)
+        15: [[1]], // nearby() -> neighbor token 1
+        21: ["BOT"],
+        31: [false], // canDeleteUnit
+        41: [600, 600, 600],
+        50: [[12]],
+        53: [[]],
+        58: [[0]], // incomingAttacks -> attack 0
+        65: [[]],
+        67: [true], // sharesBorderWith(attacker)
+      },
+      { 0: [1], 1: ["p1x"], 21: ["HUMAN"], 26: [true] },
+    ],
+    neighbors: [{}, { 0: [true] }],
+    attacks: [{ 12: [1, 1], 0: [100, 100] }],
+  },
+  [[0], [1, 0], [2, 0], [2, 56], [3], [4]],
+);
+
+// -- 44 NationExecution (G5k Step 2) ------------------------------------------
+// The ctor draws 3 ratios from `simpleHash(id) + simpleHash(gameID)`; `init`
+// draws the attack rate + tick (difficulty-gated). Known streams (gid "g1"):
+//   n1: Easy rate 66 tick 42 (oneThird 64, twoThirds 20)
+//   n3: Hard rate 59 tick 18 (forbidden 18/37/57), retaliate roll 27 (<50),
+//       incoming roll (after 2 spawn-tile draws) 1 (<50)
+//   n4: Hard rate 51 tick 18 (forbidden 18/35/1), retaliate roll 38 (<50)
+// `handleStructures` / `maybeSendNuke` are Rust no-ops, so the full attack
+// tick and the 1/3-2/3 structure ticks are NOT scripted here.
+
+// init: nation player not in the game yet -> `addPlayer` (605) with the plain
+// PlayerInfo object; `isActive` / `activeDuringSpawnPhase` are constant.
+elDef(
+  "el_nation_init_new_player",
+  44,
+  elNationExecC,
+  ["g1", { playerInfo: { id: "n1", name: "N1" } }],
+  {
+    a: ["g1", { playerInfo: { id: "n1", name: "N1" } }],
+    mg: { 33: ["Easy"], 0: [false], 65: [0] },
+    players: [{ 0: [0] }],
+  },
+  [[0], [1, 0], [3], [4]],
+);
+
+// init: the player already exists -> `mg.player` (211); Hard attack rate.
+elDef(
+  "el_nation_init_existing_player",
+  44,
+  elNationExecC,
+  ["g1", { playerInfo: { id: "n2", name: "N2" } }],
+  {
+    a: ["g1", { playerInfo: { id: "n2", name: "N2" } }],
+    mg: { 33: ["Hard"], 0: [true], 1: [0] },
+    players: [{ 0: [0] }],
+  },
+  [[0], [1, 0], [3], [4]],
+);
+
+// Spawn phase, nation without a spawn cell -> `SpawnExecution` (tag 22) with
+// an undefined tile; the second tick waits on `spawnExecAdded`.
+elDef(
+  "el_nation_spawn_no_cell",
+  44,
+  elNationExecC,
+  ["g1", { playerInfo: { id: "n1", name: "N1" } }],
+  {
+    a: ["g1", { playerInfo: { id: "n1", name: "N1" } }],
+    mg: { 33: ["Easy"], 0: [true], 1: [0], 6: [true, true] },
+    players: [{ 0: [0], 43: [false, false] }],
+  },
+  [[0], [1, 0], [2, 0], [2, 5], [3], [4]],
+);
+
+// Spawn phase, team spawn area configured and the spawn cell outside it ->
+// random `SpawnExecution` (undefined tile) instead of the manifest cell.
+elDef(
+  "el_nation_spawn_team_outside",
+  44,
+  elNationExecC,
+  ["g1", { playerInfo: { id: "n2", name: "N2" }, spawnCell: { x: 50, y: 50 } }],
+  {
+    a: ["g1", { playerInfo: { id: "n2", name: "N2" }, spawnCell: { x: 50, y: 50 } }],
+    mg: {
+      33: ["Easy"], 0: [true], 1: [0], 6: [true],
+      73: [{ x: 0, y: 0, width: 10, height: 10 }],
+    },
+    players: [{ 0: [0], 43: [false], 18: ["0"] }],
+  },
+  [[0], [1, 0], [2, 0], [3], [4]],
+);
+
+// Spawn phase, no team: `randomSpawnLand` finds a valid unowned non-impassable
+// Plains tile on the first try -> `SpawnExecution` (tag 22) with tile 777.
+elDef(
+  "el_nation_spawn_random_land",
+  44,
+  elNationExecC,
+  ["g1", { playerInfo: { id: "n3", name: "N3" }, spawnCell: { x: 10, y: 10 } }],
+  {
+    a: ["g1", { playerInfo: { id: "n3", name: "N3" }, spawnCell: { x: 10, y: 10 } }],
+    mg: {
+      33: ["Easy"], 0: [true], 1: [0], 6: [true],
+      76: [true], 69: [777], 23: [true], 67: [false], 77: [false], 26: [0],
+    },
+    players: [{ 0: [0], 43: [false], 18: [null] }],
+  },
+  [[0], [1, 0], [2, 0], [3], [4]],
+);
+
+// Spawn phase, all 50 random coordinates invalid -> only the `console.warn`
+// path (untraced); no execution is added.
+elDef(
+  "el_nation_spawn_fail",
+  44,
+  elNationExecC,
+  ["g1", { playerInfo: { id: "n4", name: "N4" }, spawnCell: { x: 10, y: 10 } }],
+  {
+    a: ["g1", { playerInfo: { id: "n4", name: "N4" }, spawnCell: { x: 10, y: 10 } }],
+    mg: {
+      33: ["Easy"], 0: [true], 1: [0], 6: [true],
+      76: new Array(50).fill(false),
+    },
+    players: [{ 0: [0], 43: [false], 18: [null] }],
+  },
+  [[0], [1, 0], [2, 0], [3], [4]],
+);
+
+// Post-spawn tick with a dead nation -> `active = false` (isActive false).
+elDef(
+  "el_nation_death",
+  44,
+  elNationExecC,
+  ["g1", { playerInfo: { id: "n5", name: "N5" }, spawnCell: { x: 1, y: 1 } }],
+  {
+    a: ["g1", { playerInfo: { id: "n5", name: "N5" }, spawnCell: { x: 1, y: 1 } }],
+    mg: { 33: ["Easy"], 0: [true], 1: [0], 6: [false] },
+    players: [{ 0: [0], 3: [false] }],
+  },
+  [[0], [1, 0], [2, 100], [3], [4]],
+);
+
+// First post-spawn tick: `initializeBehaviors` (the nuke cost pair 512/969 x2
+// + chance(3)) then `forceSendAttack(terraNullius)` -> AttackExecution tag 16
+// with a null target id (TN `id()` 811). Second tick 101: Easy short-circuits
+// the ship gate and 101 % 66 = 35 misses the attack / 1-3 / 2-3 gates.
+elDef(
+  "el_nation_gate_skip_easy",
+  44,
+  elNationExecC,
+  ["g1", { playerInfo: { id: "n1", name: "N1" }, spawnCell: { x: 1, y: 1 } }],
+  {
+    a: ["g1", { playerInfo: { id: "n1", name: "N1" }, spawnCell: { x: 1, y: 1 } }],
+    mg: {
+      33: ["Easy", "Easy"], 0: [true], 1: [0], 6: [false, false],
+      46: [{ cost: 150 }, { cost: 500 }], 121: [150, 500],
+    },
+    players: [{ 0: [0], 3: [true, true, true, true], 41: [1000] }],
+  },
+  [[0], [1, 0], [2, 100], [2, 101], [3], [4]],
+);
+
+// Hard ship gate (233/402/982/511) -> transport retaliation: a tracked
+// destroyed transport (280 false, 985 true, 986 player token) retaliates with
+// a warship (roll 27 < 50): canBuild true -> Construction tag 24 -> emoji
+// ladder (251 x4, 212 x2, 410, 231, tag 2) -> updateRelation -15 (237).
+// Tick 200 % 59 = 23 misses the attack / 1-3 / 2-3 gates.
+elDef(
+  "el_nation_ship_transport_retaliate",
+  44,
+  elNationExecC,
+  ["g1", { playerInfo: { id: "n3", name: "N3" }, spawnCell: { x: 1, y: 1 } }],
+  {
+    a: ["g1", { playerInfo: { id: "n3", name: "N3" }, spawnCell: { x: 1, y: 1 } }],
+    mg: {
+      0: [true], 33: ["Hard", "Hard", "Hard"], 1: [0], 6: [false, false],
+      46: [{ cost: 150 }, { cost: 500 }], 121: [150, 500],
+      2: [1000, 1000], 45: [false, false], 120: [[]],
+    },
+    players: [
+      {
+        0: [0], 3: [true, true, true, true], 41: [1000],
+        11: [[0], [], []], 71: [5],
+        21: ["NATION", "NATION", "NATION", "NATION"],
+        47: [true], 34: [true],
+      },
+      { 0: [1], 1: ["x3"], 21: ["HUMAN", "HUMAN"] },
+    ],
+    units: [{ 0: [false], 52: [true], 53: [1, 1], 11: [500] }],
+  },
+  [[0], [1, 0], [2, 100], [2, 200], [3], [4]],
+);
+
+// Trade-ship capture: an active trade ship (280 true) whose owner id differs
+// from the nation id (286/231/231) -> retaliation with the -7.5 trade malus.
+// n4 Hard: roll 38 < 50; 200 % 51 = 47 misses the tick gates.
+elDef(
+  "el_nation_ship_trade_retaliate",
+  44,
+  elNationExecC,
+  ["g1", { playerInfo: { id: "n4", name: "N4" }, spawnCell: { x: 1, y: 1 } }],
+  {
+    a: ["g1", { playerInfo: { id: "n4", name: "N4" }, spawnCell: { x: 1, y: 1 } }],
+    mg: {
+      0: [true], 33: ["Hard", "Hard", "Hard"], 1: [0], 6: [false, false],
+      46: [{ cost: 150 }, { cost: 500 }], 121: [150, 500],
+      2: [1000, 1000], 45: [false, false], 120: [[]],
+    },
+    players: [
+      {
+        0: [0], 1: ["n4"], 3: [true, true, true, true], 41: [1000],
+        11: [[], [0], []], 71: [5],
+        21: ["NATION", "NATION", "NATION", "NATION"],
+        47: [true], 34: [true],
+      },
+      { 0: [1], 1: ["y4", "y4"], 21: ["HUMAN", "HUMAN"] },
+    ],
+    units: [{ 0: [true], 6: [1, 1], 11: [600] }],
+  },
+  [[0], [1, 0], [2, 100], [2, 200], [3], [4]],
+);
+
+// Incoming-transport tracking: `mg.units("Transport")` (968) yields an active
+// non-retreating transport targeting a nation-owned tile (282/280/850/223/230),
+// owned by an enemy (286/230/230). The tracked pass finds it un-dealt
+// (344/509 >= 20), not allied (987), no patrolling warship (231/305/241/928/509
+// >= 90), `warshipSpawnTile` succeeds on the first try (603 x2 / 604 x2 / 616 /
+// 609 / 508) and retaliation (roll 1 < 50) fires tag 24 + emoji + -15.
+elDef(
+  "el_nation_ship_incoming_retaliate",
+  44,
+  elNationExecC,
+  ["g1", { playerInfo: { id: "n3", name: "N3" }, spawnCell: { x: 1, y: 1 } }],
+  {
+    a: ["g1", { playerInfo: { id: "n3", name: "N3" }, spawnCell: { x: 1, y: 1 } }],
+    mg: {
+      0: [true], 33: ["Hard", "Hard", "Hard"], 1: [0], 6: [false, false],
+      46: [{ cost: 150 }, { cost: 500 }], 121: [150, 500],
+      2: [1000, 1000], 45: [false, false], 120: [[0]],
+      13: [5], 24: [false], 43: [100, 150],
+      63: [40, 40], 64: [40, 40], 76: [true], 69: [800], 42: [true],
+    },
+    players: [
+      {
+        0: [5, 5], 1: ["n3"], 3: [true, true, true, true], 41: [1000],
+        11: [[], [], [1], [1]], 71: [5],
+        21: ["NATION", "NATION", "NATION", "NATION"],
+        47: [true], 34: [true],
+      },
+      { 0: [9], 1: ["x3"], 21: ["HUMAN", "HUMAN"], 74: [false] },
+    ],
+    units: [
+      { 2: [700, 700], 0: [true, true], 48: [{ isRetreating: false }, { isRetreating: false }], 11: [710], 6: [1, 1, 1] },
+      { 50: [{ patrolTile: 999 }] },
+    ],
+  },
+  [[0], [1, 0], [2, 100], [2, 200], [3], [4]],
 );
 
 const structures = {

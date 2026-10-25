@@ -2859,6 +2859,27 @@ WebSockets — stays excluded, mirroring the `src/core` exclusions).
     `alliances`, `955` `getEmbargoes`, `956` `allianceExpiresAt`, `957`
     `allianceExpire`. 8 new scenarios (`el_warship_*` × 4 + `el_player_*` × 4,
     40 ops), 253 scenarios / 1,079 ops and 1,274,671 wasm comparisons.
+92. **`execution/` layer, part 11** (`execution`, G5k) — `TribeExecution`
+    (class 43, `TribeExecution.ts` + the inlined `AiAttackBehavior`) and
+    `NationExecution` (class 44, `NationExecution.ts` + the `ne_*` behavior
+    families: init / `randomSpawnLand`, the attack-rate gate, death, alliance
+    request / decision / betray, the MIRV ladder, emoji social, warship
+    tracking + retaliation, embargo relation updates; `handleStructures` /
+    `maybeSendNuke` stay no-ops, and the alliance / betray / MIRV / emoji
+    ladders ship unvectorized until a follow-up step ports the structure /
+    nuke behaviors). Facade codes pick up where G5j stopped at 957: Step 1
+    mg `958`–`961` config gates + `967` `isShore` + `961`
+    `__closestShoreByWater`, player `962`–`965` (`sharesBorderWith` /
+    `targets` / `allies` / `allRelationsSorted`), alliance slot 5 `966`
+    `other()`, downstream tags `18`–`21` (TransportShip / DonateTroops /
+    AllianceExtension / DeleteUnit); Step 2 mg `968`–`981` (typed `units`,
+    `unitInfo.cost`, `startingGold`, `nations`, `isOnMap`, train / SAM config,
+    water components, `stationManager().getAll()`, grid-delegated `magnitude`
+    / `isOcean`), player `982`–`984` (`unitsConstructed` / `unitsOwned` /
+    `info`), unit `985`–`986` (`wasDestroyedByEnemy` / `destroyer`),
+    downstream tags `22`–`25` (Spawn / AllianceRequest / Construction /
+    UpgradeStructure). 17 new scenarios (`el_tribe_*` × 6 + `el_nation_*` ×
+    11, 90 ops), 270 scenarios / 1,169 ops and 1,278,012 wasm comparisons.
 
 Regenerate whenever a ported source changes:
 

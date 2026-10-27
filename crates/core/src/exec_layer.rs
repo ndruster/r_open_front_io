@@ -121,9 +121,13 @@
 //! (`considerMirv`, counter-MIRV / victory-denial / steamroll target
 //! selection) and the warship behavior (spawn, transport / trade-ship
 //! tracking + retaliation, infestation counter, team / FFA targeting,
-//! `buildCounterWarship`). `NationStructureBehavior.handleStructures()` and
-//! `NationNukeBehavior.maybeSendNuke()` are no-ops — their facade surface
-//! stays excluded. The nation player reuses the tribe token (`te_tribe`);
+//! `buildCounterWarship`). `NationStructureBehavior.handleStructures()` (G5l)
+//! and `NationNukeBehavior.maybeSendNuke()` (G5m) are ported inline as well,
+//! including the nuke target ladder (`findBestNukeTarget` — retaliation,
+//! high-density, FFA-crown, ally-assist, most-hated, strongest-team), the
+//! tile scoring / trajectory-interception helpers and the full
+//! `maybeDestroyEnemySam` SAM-outing with the silo-upgrade fallback. The
+//! nation player reuses the tribe token (`te_tribe`);
 //! the eleven Step-2 scenarios (`el_nation_init_new_player` /
 //! `_init_existing_player` / `_spawn_no_cell` / `_spawn_team_outside` /
 //! `_spawn_random_land` / `_spawn_fail` / `_death` / `_gate_skip_easy` /
@@ -131,8 +135,11 @@
 //! `_ship_incoming_retaliate`) pin the init difficulty branches, the
 //! `randomSpawnLand` paths, the death gate, the attack-rate gate and the
 //! three warship tracking / retaliation chains. The alliance / betray / MIRV
-//! / emoji ladders stay unvectorized for now — a full attack-tick scenario
-//! needs the excluded structure / nuke behaviors.
+//! ladders stay unvectorized for now; the `el_struct_*` scenarios (G5l) pin
+//! the structure spawn-tile ladder at the one-third / two-thirds gates and
+//! the `el_nuke_no_silo` / `el_nuke_retaliation_hydro` scenarios (G5m) pin
+//! full attack-tick runs — the no-silo early exit and the retaliation
+//! Hydrogen-Bomb launch through `findBestNukeTarget` → `sendNuke`.
 //!
 //! # G5b facade additions (codes ≥ 300)
 //!
@@ -523,6 +530,7 @@
 //! (Game.ts:233-240, declaration order of the `unitTypeGroup`).
 
 use crate::doomsday_clock::{DrainConfig, FloorConfig, Profile};
+use crate::exec_util::closest_two_tiles_w;
 use crate::js_json::{push_str, push_val, read_val, val_field, JsVal};
 use crate::jsnum::{js_max, js_min, js_round};
 use crate::pathfinding::flat_heap::FlatBinaryHeap;
@@ -642,6 +650,14 @@ const RELATION_HOSTILE: f64 = 0.0;
 const RELATION_DISTRUSTFUL: f64 = 1.0;
 const RELATION_NEUTRAL: f64 = 2.0;
 const RELATION_FRIENDLY: f64 = 3.0;
+/// `MAX_NATION_SILO_UPGRADE_LEVEL` (NationNukeBehavior.ts) — silo-level cap
+/// for the `maybeDestroyEnemySam` upgrade fallback.
+const NN_MAX_NATION_SILO_UPGRADE_LEVEL: f64 = 5.0;
+/// `HIGH_DENSITY_NUKE_THRESHOLD` — level-weighted structure density above
+/// which the richest impossible nation pre-emptively nukes.
+const NN_HIGH_DENSITY_NUKE_THRESHOLD: f64 = 1.0 / 75.0;
+/// `MIN_LEVEL_SUM_FOR_HIGH_DENSITY_NUKE`.
+const NN_MIN_LEVEL_SUM_FOR_HIGH_DENSITY_NUKE: f64 = 5.0;
 /// `GameMapSize.Compact`.
 const GAME_MAP_SIZE_COMPACT: &str = "Compact";
 /// `RankedType` members.
@@ -1524,12 +1540,9 @@ pub struct ExecHarness {
     // player id; one instance per scenario so a field is equivalent).
     ne_recent_mirv: Vec<(String, f64)>,
     // `NationNukeBehavior` state.
-    #[allow(dead_code)]
     ne_recently_sent_nukes: Vec<(f64, f64, String)>,
-    #[allow(dead_code)]
     ne_atom_bombs_launched: f64,
     ne_atom_perceived_cost: i64,
-    #[allow(dead_code)]
     ne_hydro_bombs_launched: f64,
     ne_hydro_perceived_cost: i64,
     ne_is_hydro_nation: bool,
@@ -10575,9 +10588,7 @@ impl ExecHarness {
         let v = self.pl(tok, PL_TARGETS, tr, 963.0, &[]);
         as_tok_list(&v)
     }
-    /// `player.allies()` (964) — a player-token list. Used only by the
-    /// unreachable `assistAllies` arm.
-    #[allow(dead_code)]
+    /// `player.allies()` (964) — a player-token list.
     fn pl_allies(&mut self, tr: &mut Vec<f64>, tok: usize) -> Vec<usize> {
         let v = self.pl(tok, PL_ALLIES, tr, 964.0, &[]);
         as_tok_list(&v)
@@ -16417,9 +16428,1168 @@ impl ExecHarness {
         Ok(())
     }
 
-    fn ne_maybe_send_nuke(&mut self, _tr: &mut Vec<f64>) -> Result<(), String> {
+    // ---- NationNukeBehavior (NationNukeBehavior.ts, G5m) -----------------------
+
+    /// `boundingBoxTiles(gm, center, radius)` (Util.ts) — edge-only walk:
+    /// top/bottom rows via `minY`/`maxY`, then the side columns strictly
+    /// between them. Every coordinate read and `isValidCoord`/`ref` check is
+    /// a traced facade read (603/604/616/609).
+    fn nn_bounding_box_tiles(&mut self, tr: &mut Vec<f64>, center: f64, radius: f64) -> Vec<f64> {
+        let center_x = self.mg_x(tr, center); // 603
+        let center_y = self.mg_y(tr, center); // 604
+        let (min_x, max_x) = (center_x - radius, center_x + radius);
+        let (min_y, max_y) = (center_y - radius, center_y + radius);
+        let mut tiles = Vec::new();
+        let mut x = min_x;
+        while x <= max_x {
+            if self.mg_is_valid_coord(tr, x, min_y) {
+                // 616 + 609
+                tiles.push(self.mg_ref(tr, x, min_y));
+            }
+            if self.mg_is_valid_coord(tr, x, max_y) && min_y != max_y {
+                // 616 + 609
+                tiles.push(self.mg_ref(tr, x, max_y));
+            }
+            x += 1.0;
+        }
+        let mut y = min_y + 1.0;
+        while y < max_y {
+            if self.mg_is_valid_coord(tr, min_x, y) {
+                // 616 + 609
+                tiles.push(self.mg_ref(tr, min_x, y));
+            }
+            if self.mg_is_valid_coord(tr, max_x, y) && min_x != max_x {
+                // 616 + 609
+                tiles.push(self.mg_ref(tr, max_x, y));
+            }
+            y += 1.0;
+        }
+        tiles
+    }
+
+    /// `removeOldNukeEvents()` — `ticks()` (212) is read unconditionally;
+    /// the `while` only pops when the FIFO head aged out.
+    fn nn_remove_old_nuke_events(&mut self, tr: &mut Vec<f64>) {
+        let max_age = 600.0;
+        let tick = self.mg_ticks(tr); // 212
+        while !self.ne_recently_sent_nukes.is_empty()
+            && self.ne_recently_sent_nukes[0].0 + max_age < tick
+        {
+            self.ne_recently_sent_nukes.remove(0);
+        }
+    }
+
+    /// `isUnderHeavyAttack()` — `incomingAttacks()` (822) troops sum vs.
+    /// `troops()` (418).
+    fn nn_is_under_heavy_attack(&mut self, tr: &mut Vec<f64>, pl: usize) -> bool {
+        let incoming = self.pl_incoming_attacks(tr, pl); // 822
+        let mut total_incoming = 0.0;
+        for &a in &incoming {
+            total_incoming += self.at_troops(tr, a); // 830
+        }
+        let my_troops = self.pl_troops(tr, pl); // 418
+        total_incoming >= my_troops
+    }
+
+    /// `getPerceivedNukeCost(type)` — every `return this.cost(ty)` re-reads
+    /// `unitInfo(ty).cost` (969); the three gates read players / isUnitDisabled
+    /// / gameMode / gold / difficulty in source order.
+    fn nn_get_perceived_nuke_cost(&mut self, tr: &mut Vec<f64>, pl: usize, ty: &str) -> i64 {
+        if self.mg_players(tr).len() == 2 {
+            // 221
+            return self.ne_cost(tr, ty, pl);
+        }
+        if self.mg_is_unit_disabled(tr, UNIT_MIRV) {
+            // 511
+            return self.ne_cost(tr, ty, pl);
+        }
+        if self.mg_game_mode(tr) == GAME_MODE_TEAM
+            // 520
+            && self.pl_gold(tr, pl) > self.ne_cost(tr, UNIT_HYDROGEN_BOMB, pl)
+        // 417 + 969
+        {
+            return self.ne_cost(tr, ty, pl);
+        }
+        if self.pl_gold(tr, pl) > self.ne_cost(tr, UNIT_MIRV, pl) + self.ne_cost(tr, UNIT_HYDROGEN_BOMB, pl)
+        // 417 + 969 + 969
+        {
+            return self.ne_cost(tr, ty, pl);
+        }
+        let difficulty = self.mg_difficulty(tr); // 402
+        if (difficulty == DIFFICULTY_HARD || difficulty == DIFFICULTY_IMPOSSIBLE)
+            && self.nn_is_under_heavy_attack(tr, pl)
+        {
+            return self.ne_cost(tr, ty, pl);
+        }
+        if ty == UNIT_ATOM_BOMB {
+            self.ne_atom_perceived_cost
+        } else {
+            self.ne_hydro_perceived_cost
+        }
+    }
+
+    /// `isRichestNation()`.
+    fn nn_is_richest_nation(&mut self, tr: &mut Vec<f64>, pl: usize) -> bool {
+        let my_gold = self.pl_gold(tr, pl); // 417
+        for other in self.mg_players(tr) {
+            // 221
+            if other == pl {
+                continue;
+            }
+            if self.pl_type(tr, other) != PLAYER_TYPE_NATION {
+                // 251
+                continue;
+            }
+            if self.pl_gold(tr, other) > my_gold {
+                // 417
+                return false;
+            }
+        }
+        true
+    }
+
+    /// `findHighDensityTarget()` — density is levelSum / numTilesOwned against
+    /// the 1/75 threshold.
+    fn nn_find_high_density_target(&mut self, tr: &mut Vec<f64>, pl: usize) -> Option<usize> {
+        let mut best_target: Option<usize> = None;
+        let mut best_density = NN_HIGH_DENSITY_NUKE_THRESHOLD;
+        for other in self.mg_players(tr) {
+            // 221
+            if other == pl {
+                continue;
+            }
+            if self.pl_type(tr, other) == PLAYER_TYPE_BOT {
+                // 251
+                continue;
+            }
+            if self.pl_is_friendly(tr, pl, Some(other)) {
+                // 242
+                continue;
+            }
+            let tiles_owned = self.pl_num_tiles_owned(tr, other); // 532
+            if tiles_owned == 0.0 {
+                continue;
+            }
+            let structures = self.pl_units(
+                tr,
+                other,
+                &STRUCTURES_TYPES.iter().map(|s| s.to_string()).collect::<Vec<String>>(),
+            ); // 241
+            let mut level_sum = 0.0;
+            for &s in &structures {
+                level_sum += self.un_level(tr, s); // 540
+            }
+            if level_sum < NN_MIN_LEVEL_SUM_FOR_HIGH_DENSITY_NUKE {
+                continue;
+            }
+            let density = level_sum / tiles_owned;
+            if density > best_density {
+                best_density = density;
+                best_target = Some(other);
+            }
+        }
+        best_target
+    }
+
+    /// `findFFACrownTarget()` — FFA-only crown logic with the
+    /// `b.numTilesOwned() - a.numTilesOwned()` V8 sort (532 comparator).
+    fn nn_find_ffa_crown_target(&mut self, tr: &mut Vec<f64>, pl: usize) -> Option<usize> {
+        let difficulty = self.mg_difficulty(tr); // 402
+        if self.mg_game_mode(tr) != GAME_MODE_FFA {
+            // 520
+            return None;
+        }
+        let players = self.mg_players(tr); // 221
+        if players.len() <= 1 {
+            return None;
+        }
+        let sorted = self.sort_players_by_tiles(tr, players);
+        let first_place = sorted[0];
+        if difficulty == DIFFICULTY_IMPOSSIBLE && first_place == pl && sorted.len() >= 2 {
+            let second_place = sorted[1];
+            if !self.pl_is_friendly(tr, pl, Some(second_place)) {
+                // 242
+                return Some(second_place);
+            }
+        }
+        if first_place == pl || self.pl_is_friendly(tr, pl, Some(first_place)) {
+            // 242
+            return None;
+        }
+        let without_fallout = self.mg_num_land_tiles(tr) - self.mg_num_tiles_with_fallout(tr);
+        // 501, 502
+        if without_fallout <= 0.0 {
+            return None;
+        }
+        let first_share = self.pl_num_tiles_owned(tr, first_place) / without_fallout; // 532
+        let my_share = self.pl_num_tiles_owned(tr, pl) / without_fallout; // 532
+        let threshold = match difficulty.as_str() {
+            "Easy" => 0.4,
+            "Medium" => 0.3,
+            "Hard" => 0.2,
+            "Impossible" => 0.1,
+            _ => unreachable!("unknown difficulty"),
+        };
+        if first_share - my_share > threshold {
+            return Some(first_place);
+        }
+        None
+    }
+
+    /// `findStrongestTeamTarget()` — Team-only; sorts team totals stably
+    /// (comparator is facade-free so only the order matters).
+    fn nn_find_strongest_team_target(&mut self, tr: &mut Vec<f64>, pl: usize) -> Option<usize> {
+        if self.mg_game_mode(tr) != GAME_MODE_TEAM {
+            // 520
+            return None;
+        }
+        let players = self.mg_players(tr); // 221
+        if players.len() <= 1 {
+            return None;
+        }
+        // `teamTiles.set(team, (teamTiles.get(team) ?? 0) + numTilesOwned())`
+        // then `teamPlayers.push` — numTilesOwned (532) read once per player.
+        let mut team_tiles: Vec<(String, f64)> = Vec::new();
+        let mut team_players: Vec<(String, Vec<usize>)> = Vec::new();
+        for p in players {
+            let team = match self.pl_team(tr, p) {
+                // 248
+                JsVal::Str(s) => s,
+                _ => continue,
+            };
+            let tiles = self.pl_num_tiles_owned(tr, p); // 532
+            match team_tiles.iter_mut().find(|(t, _)| *t == team) {
+                Some(e) => e.1 += tiles,
+                None => team_tiles.push((team.clone(), tiles)),
+            }
+            match team_players.iter_mut().find(|(t, _)| *t == team) {
+                Some(e) => e.1.push(p),
+                None => team_players.push((team, vec![p])),
+            }
+        }
+        if team_tiles.is_empty() {
+            return None;
+        }
+        let mut sorted_teams = team_tiles;
+        sorted_teams.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+        let mut strongest_team = sorted_teams[0].0.clone();
+        // If the strongest team is ours, fall back to the second strongest.
+        if let JsVal::Str(my_team) = self.pl_team(tr, pl) {
+            // 248
+            if strongest_team == my_team {
+                if sorted_teams.len() > 1 {
+                    strongest_team = sorted_teams[1].0.clone();
+                } else {
+                    return None;
+                }
+            }
+        }
+        let (_, members) = team_players.iter().find(|(t, _)| *t == strongest_team)?;
+        // Filter out friendly players.
+        let mut valid_targets: Vec<usize> = Vec::new();
+        for &m in members {
+            if !self.pl_is_friendly(tr, pl, Some(m)) {
+                // 242
+                valid_targets.push(m);
+            }
+        }
+        if valid_targets.is_empty() {
+            return None;
+        }
+        let rng = self.random.as_mut().unwrap();
+        if rng.chance(2.0) {
+            // Strongest player:
+            // `reduce((prev, current) => maxTroops(prev) > maxTroops(current) ? prev : current)`
+            // — prev read before current, n - 1 times each; ties keep `current`.
+            let mut prev = valid_targets[0];
+            for &current in &valid_targets[1..] {
+                let pv = self.mg_max_troops(tr, Rec::P(prev)); // 401
+                let cv = self.mg_max_troops(tr, Rec::P(current)); // 401
+                // `maxTroops(prev) > maxTroops(current) ? prev : current` —
+                // NaN must keep `current`, so the negated form stays.
+                #[allow(clippy::neg_cmp_op_on_partial_ord)]
+                let keep = pv > cv;
+                prev = if keep { prev } else { current };
+            }
+            return Some(prev);
+        }
+        // Random player: `randElement` — PseudoRandom, untraced.
+        let idx = rng.next_int(0.0, valid_targets.len() as f64) as usize;
+        valid_targets.get(idx.min(valid_targets.len() - 1)).copied()
+    }
+
+    /// `findBestNukeTarget()` — 1v1 > retaliation > richest+density >
+    /// Impossible crown > allies > most-hated > FFA crown > team ladder.
+    fn nn_find_best_nuke_target(&mut self, tr: &mut Vec<f64>, pl: usize) -> Option<usize> {
+        // `const { difficulty: diff } = this.game.config().gameConfig()` — 402
+        // read before everything else.
+        let diff = self.mg_difficulty(tr); // 402
+        // On Hard & Impossible with only 2 players left, target the other one.
+        if (diff == DIFFICULTY_HARD || diff == DIFFICULTY_IMPOSSIBLE)
+            && self.mg_players(tr).len() == 2
+        {
+            // 221 — `players().find(...)` re-reads the list.
+            let players = self.mg_players(tr); // 221
+            if let Some(&other) = players.iter().find(|&&p| p != pl) {
+                return Some(other);
+            }
+        }
+        // Retaliate against incoming attacks (most important).
+        if let Some(t) = self.ai_find_incoming_attack_player(tr, pl) {
+            return Some(t);
+        }
+        // Impossible: the richest nation hunts high-density targets.
+        if diff == DIFFICULTY_IMPOSSIBLE && self.nn_is_richest_nation(tr, pl) {
+            let rng = self.random.as_mut().unwrap();
+            if rng.chance(2.0) {
+                return self.nn_find_high_density_target(tr, pl);
+            }
+        }
+        // `const { difficulty, gameMode } = ...` — 402 re-read then 520.
+        let difficulty = self.mg_difficulty(tr); // 402
+        let game_mode = self.mg_game_mode(tr); // 520
+        if difficulty == DIFFICULTY_IMPOSSIBLE && game_mode == GAME_MODE_FFA {
+            // Nuke the crown owning > 50% of the map.
+            let without_fallout =
+                self.mg_num_land_tiles(tr) - self.mg_num_tiles_with_fallout(tr); // 501, 502
+            if without_fallout > 0.0 {
+                let players = self.mg_players(tr); // 221
+                let sorted = self.sort_players_by_tiles(tr, players); // 532 comparator
+                let crown = sorted[0];
+                if crown != pl && !self.pl_is_friendly(tr, pl, Some(crown)) {
+                    // 242
+                    let crown_share = self.pl_num_tiles_owned(tr, crown) / without_fallout; // 532
+                    if crown_share > 0.5 {
+                        return Some(crown);
+                    }
+                }
+            }
+        }
+        // Assist allies: nuke the first non-friendly target of any friendly ally.
+        for ally in self.pl_allies(tr, pl) {
+            // 964
+            let ally_targets = self.pl_targets(tr, ally); // 963
+            if ally_targets.is_empty() {
+                continue;
+            }
+            if self.pl_relation(tr, pl, Some(ally)) < RELATION_FRIENDLY {
+                // 412
+                continue;
+            }
+            let ally_targets = self.pl_targets(tr, ally); // 963 (re-read)
+            for &target in &ally_targets {
+                if target == pl {
+                    continue;
+                }
+                if self.pl_is_friendly(tr, pl, Some(target)) {
+                    // 242
+                    continue;
+                }
+                return Some(target);
+            }
+        }
+        // Most hated hostile player, skipping much weaker ones.
+        let my_max_troops = self.mg_max_troops(tr, Rec::P(pl)); // 401
+        for (rel, other) in self.pl_all_relations_sorted(tr, pl) {
+            // 965
+            if rel != RELATION_HOSTILE {
+                continue;
+            }
+            if self.pl_is_friendly(tr, pl, Some(other)) {
+                // 242
+                continue;
+            }
+            let other_max_troops = self.mg_max_troops(tr, Rec::P(other)); // 401
+            if my_max_troops >= other_max_troops * 2.0 {
+                continue;
+            }
+            return Some(other);
+        }
+        if let Some(t) = self.nn_find_ffa_crown_target(tr, pl) {
+            return Some(t);
+        }
+        if let Some(t) = self.nn_find_strongest_team_target(tr, pl) {
+            return Some(t);
+        }
+        None
+    }
+
+    /// `isTeammateAlreadyNukingThisSpot(tile, nukeType)`.
+    fn nn_is_teammate_already_nuking_this_spot(
+        &mut self,
+        tr: &mut Vec<f64>,
+        pl: usize,
+        tile: f64,
+        nuke_type: &str,
+    ) -> bool {
+        let (our_inner, _) = self.mg_nuke_magnitudes(tr, nuke_type); // 224
+        let active_nukes = self.mg_units_typed(tr, &[UNIT_ATOM_BOMB.to_string(), UNIT_HYDROGEN_BOMB.to_string()]); // 968
+        for nuke in active_nukes {
+            let nuke_owner = self.un_owner(tr, nuke); // 286
+            if nuke_owner == Some(pl) {
+                continue;
+            }
+            if !self.pl_is_friendly(tr, pl, nuke_owner) {
+                // 242
+                continue;
+            }
+            let Some(target_tile) = self.un_target_tile(tr, nuke) else {
+                // 282
+                continue;
+            };
+            let teammate_type = self.un_type(tr, nuke); // 283
+            let (_, teammate_inner) = self.mg_nuke_magnitudes(tr, &teammate_type); // 224
+            let dist_squared = self.mg_euclidean_dist_squared(tr, tile, target_tile); // 710
+            if dist_squared <= (our_inner + teammate_inner) * (our_inner + teammate_inner) {
+                return true;
+            }
+        }
+        false
+    }
+
+    /// `isTrajectoryInterceptableBySam(spawnTile, targetTile, excludedSamIds?)`
+    /// — Parabola (751) sweep + per-SAM level/range checks (707/306/286/242/
+    /// 340/540/974).
+    fn nn_is_trajectory_interceptable_by_sam(
+        &mut self,
+        tr: &mut Vec<f64>,
+        pl: usize,
+        spawn_tile: f64,
+        target_tile: f64,
+        excluded_sam_ids: Option<&[f64]>,
+    ) -> bool {
+        let _speed = self.mg_nuke_speed(tr, UNIT_ATOM_BOMB); // 700
+        let trajectory = self.mg_parabola_find_path(tr, spawn_tile, target_tile); // 751
+        if trajectory.is_empty() {
+            return false;
+        }
+        let target_range = self.mg_default_nuke_targetable_range(tr); // 702
+        let target_range_sq = target_range * target_range; // `r ** 2` is one read
+        let mut untargetable_start: i64 = -1;
+        let mut untargetable_end: i64 = -1;
+        for (i, &tile) in trajectory.iter().enumerate() {
+            let i = i as i64;
+            if untargetable_start == -1 {
+                if self.mg_euclidean_dist_squared(tr, tile, spawn_tile) > target_range_sq {
+                    // 710
+                    if self.mg_euclidean_dist_squared(tr, tile, target_tile) < target_range_sq {
+                        // 710
+                        break;
+                    } else {
+                        untargetable_start = i;
+                    }
+                }
+            } else if self.mg_euclidean_dist_squared(tr, tile, target_tile) < target_range_sq {
+                // 710
+                untargetable_end = i;
+                break;
+            }
+        }
+        let mut i: i64 = 0;
+        while (i as usize) < trajectory.len() {
+            if untargetable_start != -1
+                && untargetable_end != -1
+                && i == untargetable_start
+            {
+                i = untargetable_end - 1;
+                i += 1;
+                continue;
+            }
+            let tile = trajectory[i as usize];
+            let max_sam = self.mg_max_sam_range(tr); // 707
+            let nearby_sams =
+                self.mg_nearby_units_d2(tr, tile, max_sam, &[UNIT_SAM_LAUNCHER.to_string()]); // 306
+            for (sam, sam_d2) in nearby_sams {
+                let owner = self.un_owner(tr, sam); // 286
+                if owner == Some(pl) {
+                    continue;
+                }
+                if self.pl_is_friendly(tr, pl, owner) {
+                    // 242
+                    continue;
+                }
+                if let Some(ex) = excluded_sam_ids {
+                    // `excludedSamIds?.has(...)` — `id()` (340) only read when
+                    // the set exists.
+                    let id = self.un_id(tr, sam); // 340
+                    if ex.contains(&id) {
+                        continue;
+                    }
+                }
+                let level = self.un_level(tr, sam); // 540
+                let range = self.mg_sam_range(tr, level); // 974
+                if sam_d2 <= range * range {
+                    return true;
+                }
+            }
+            i += 1;
+        }
+        false
+    }
+
+    /// `isValidNukeTile(tile, target)` — owner match or Hard/Impossible
+    /// terra-nullius / hostile-team rules.
+    fn nn_is_valid_nuke_tile(
+        &mut self,
+        tr: &mut Vec<f64>,
+        pl: usize,
+        t: f64,
+        nuke_target: usize,
+    ) -> bool {
+        let difficulty = self.mg_difficulty(tr); // 402
+        let owner = self.mg_owner(tr, t); // 222 — Option<usize>, None = TN
+        if owner == Some(nuke_target) {
+            return true;
+        }
+        if difficulty == DIFFICULTY_HARD || difficulty == DIFFICULTY_IMPOSSIBLE {
+            // `!owner.isPlayer() || (gameMode === Team && owner.isPlayer() &&
+            // !isFriendly(owner))` — `isPlayer()` is a traced 259 read per
+            // call, and the third conjunct re-calls it (second read).
+            if !self.pl_is_player_owner(tr, owner) {
+                return true;
+            }
+            if self.mg_game_mode(tr) == GAME_MODE_TEAM {
+                // 520
+                if self.pl_is_player_owner(tr, owner) {
+                    // 259 (re-read)
+                    if !self.pl_is_friendly(tr, pl, owner) {
+                        // 242
+                        return true;
+                    }
+                }
+            }
+            return false;
+        }
+        false
+    }
+
+    /// `owner.isPlayer()` — the TN singleton is an untraced constant `false`;
+    /// player tokens trace 259.
+    fn pl_is_player_owner(&mut self, tr: &mut Vec<f64>, owner: Option<usize>) -> bool {
+        match owner {
+            Some(tok) => self.pl_is_player(tr, tok),
+            None => false,
+        }
+    }
+
+    /// `closestTwoTiles(game, a, b)` — one `width()` read (610); the sort and
+    /// sweep are facade-free (coords are decoded from the tile id).
+    fn nn_closest_two_tiles(
+        &mut self,
+        tr: &mut Vec<f64>,
+        a: &[f64],
+        b: &[f64],
+    ) -> Option<(f64, f64)> {
+        let w = self.mg_width(tr); // 610
+        closest_two_tiles_w(w, a, b)
+    }
+
+    /// `nukeTileScore(tile, silos, targets, nukeType)`.
+    fn nn_nuke_tile_score(
+        &mut self,
+        tr: &mut Vec<f64>,
+        tile: f64,
+        silos: &[usize],
+        targets: &[usize],
+        nuke_type: &str,
+    ) -> f64 {
+        let (_magnitude_inner, magnitude_outer) = self.mg_nuke_magnitudes(tr, nuke_type); // 224
+        let mut tile_value = 0.0;
+        // `.filter(euclDistFN(tile, outer))` — tile + dist read per unit, no
+        // short-circuit; `.map(...)` then adds the per-type level weight.
+        for &unit in targets {
+            let ut = self.un_tile(tr, unit); // 978
+            let d2 = self.mg_euclidean_dist_squared(tr, tile, ut); // 710
+            // JS `!(d2 <= outer²)` — NaN must `continue`.
+            #[allow(clippy::neg_cmp_op_on_partial_ord)]
+            if !(d2 <= magnitude_outer * magnitude_outer) {
+                continue;
+            }
+            let level = self.un_level(tr, unit); // 540
+            let uty = self.un_type(tr, unit); // 283
+            tile_value += match uty.as_str() {
+                "City" => 25_000.0 * level,
+                "Defense Post" => 5_000.0 * level,
+                "Missile Silo" => 50_000.0 * level,
+                "Port" => 15_000.0 * level,
+                "Factory" => 15_000.0 * level,
+                _ => 0.0,
+            };
+        }
+        let difficulty = self.mg_difficulty(tr); // 402
+        if difficulty == DIFFICULTY_MEDIUM {
+            // `.some((unit) => unit.type() === SAMLauncher &&
+            // euclDist50(unit.tile()))` — short-circuits on the first hit.
+            for &unit in targets {
+                let uty = self.un_type(tr, unit); // 283
+                if uty == UNIT_SAM_LAUNCHER {
+                    let ut = self.un_tile(tr, unit); // 978
+                    let d2 = self.mg_euclidean_dist_squared(tr, tile, ut); // 710
+                    if d2 <= 50.0 * 50.0 {
+                        return -1.0;
+                    }
+                }
+            }
+        }
+        if difficulty == DIFFICULTY_IMPOSSIBLE && nuke_type == UNIT_HYDROGEN_BOMB {
+            let (_, hydro_outer) = self.mg_nuke_magnitudes(tr, UNIT_HYDROGEN_BOMB); // 224
+            let nearby_sams = self.mg_nearby_units_d2(
+                tr,
+                tile,
+                hydro_outer,
+                &[UNIT_SAM_LAUNCHER.to_string()],
+            ); // 306
+            for (sam, _d2) in nearby_sams {
+                let sam_level = self.un_level(tr, sam); // 540
+                if sam_level >= NN_MAX_NATION_SILO_UPGRADE_LEVEL {
+                    continue;
+                }
+                let sam_range = self.mg_sam_range(tr, sam_level); // 974
+                let sam_tile = self.un_tile(tr, sam); // 978
+                let d2 = self.mg_euclidean_dist_squared(tr, tile, sam_tile); // 710
+                let dist = d2.sqrt();
+                if dist > sam_range {
+                    tile_value += 100_000.0 * sam_level;
+                }
+            }
+        }
+        // `closestTwoTiles(game, siloTiles, [tile])` — silo tiles first, then
+        // the scored tile.
+        let mut silo_tiles = Vec::with_capacity(silos.len());
+        for &silo in silos {
+            silo_tiles.push(self.un_tile(tr, silo)); // 978
+        }
+        let (closest_x, closest_y) = match self.nn_closest_two_tiles(tr, &silo_tiles, &[tile]) {
+            Some(p) => p,
+            None => return -1.0,
+        };
+        let distance_squared = self.mg_euclidean_dist_squared(tr, closest_x, closest_y); // 710
+        let distance_penalty = distance_squared.sqrt() * 30.0;
+        let base = tile_value;
+        tile_value = (base * 0.2).max(base - distance_penalty);
+        // `recentlySentNukes.filter(...).map(...).reduce(...)` — per entry:
+        // nukeMagnitudes (224) then dist (710); each hit subtracts 1M.
+        let recent = self.ne_recently_sent_nukes.clone();
+        for (_tick, recent_tile, recent_type) in recent {
+            let (recent_inner, _) = self.mg_nuke_magnitudes(tr, &recent_type); // 224
+            let d2 = self.mg_euclidean_dist_squared(tr, tile, recent_tile); // 710
+            if d2 <= recent_inner * recent_inner {
+                tile_value -= 1_000_000.0;
+            }
+        }
+        tile_value
+    }
+
+    /// `sendNuke(tile, nukeType, targetPlayer)` — tick (212), the perceived-
+    /// cost inflation (bigint *150/125 /100 as exact i64 math), the
+    /// NukeExecution record (307 + TAG_NUKE) and the EMOJI_NUKE ladder.
+    fn nn_send_nuke(
+        &mut self,
+        tr: &mut Vec<f64>,
+        pl: usize,
+        tile: f64,
+        nuke_type: &str,
+        target_player: usize,
+        wait_ticks: f64,
+    ) -> Result<(), String> {
+        let tick = self.mg_ticks(tr); // 212
+        self.ne_recently_sent_nukes
+            .push((tick, tile, nuke_type.to_string()));
+        if nuke_type == UNIT_ATOM_BOMB {
+            self.ne_atom_bombs_launched += 1.0;
+            self.ne_atom_perceived_cost = self.ne_atom_perceived_cost * 150 / 100;
+        } else if nuke_type == UNIT_HYDROGEN_BOMB {
+            self.ne_hydro_bombs_launched += 1.0;
+            self.ne_hydro_perceived_cost = self.ne_hydro_perceived_cost * 125 / 100;
+        }
+        self.mg_add_nuke(tr, nuke_type, pl, tile, None, -1.0, wait_ticks, None);
+        self.ne_maybe_send_emoji(tr, Rec::P(target_player), "EMOJI_NUKE")?;
         Ok(())
     }
+
+    /// V8's binary insertion sort with the ascending `a.level() - b.level()`
+    /// comparator (540). Invoked as `Compare(element, mid)`, so the ELEMENT's
+    /// level is read before the mid's.
+    fn nn_sort_units_by_level(&mut self, tr: &mut Vec<f64>, mut arr: Vec<usize>) -> Vec<usize> {
+        let n = arr.len();
+        if n <= 1 {
+            return arr;
+        }
+        for i in 1..n {
+            let element = arr[i];
+            let (mut lo, mut hi) = (0usize, i);
+            while lo < hi {
+                let mid = (lo + hi) / 2;
+                let ev = self.un_level(tr, element); // 540
+                let mv = self.un_level(tr, arr[mid]); // 540
+                if ev - mv < 0.0 {
+                    hi = mid;
+                } else {
+                    lo = mid + 1;
+                }
+            }
+            if lo < i {
+                arr.remove(i);
+                arr.insert(lo, element);
+            }
+        }
+        arr
+    }
+
+    /// `maybeDestroyEnemySam(target)` — the Impossible-only AtomBomb salvo
+    /// meant to overwhelm the target's SAM cover (NationNukeBehavior.ts
+    /// lines 780-1005).
+    fn nn_maybe_destroy_enemy_sam(
+        &mut self,
+        tr: &mut Vec<f64>,
+        pl: usize,
+        nuke_target: usize,
+    ) -> Result<(), String> {
+        if self.mg_is_unit_disabled(tr, UNIT_ATOM_BOMB) {
+            // 511
+            return Ok(());
+        }
+        // Don't launch another salvo if we already have atom bombs in flight.
+        let our_atom_bombs = self.pl_units(tr, pl, &[UNIT_ATOM_BOMB.to_string()]); // 241
+        if !our_atom_bombs.is_empty() {
+            return Ok(());
+        }
+        let atom_cost = self.ne_cost(tr, UNIT_ATOM_BOMB, pl); // 969
+        let enemy_sams = self.pl_units(tr, nuke_target, &[UNIT_SAM_LAUNCHER.to_string()]); // 241
+        if enemy_sams.is_empty() {
+            return Ok(());
+        }
+        // `player.units(MissileSilo).filter(silo => !silo.isUnderConstruction())`.
+        let all_our_silos = self.pl_units(tr, pl, &[UNIT_MISSILE_SILO.to_string()]); // 241
+        let mut our_silos: Vec<usize> = Vec::new();
+        for s in all_our_silos {
+            if !self.un_is_under_construction(tr, s) {
+                // 345
+                our_silos.push(s);
+            }
+        }
+        if our_silos.is_empty() {
+            return Ok(());
+        }
+        // `enemySams.slice().sort((a, b) => a.level() - b.level())` — V8 binary
+        // insertion sort, element level read before the mid's.
+        let sorted_sams = self.nn_sort_units_by_level(tr, enemy_sams); // 540 comparator
+        let mut needs_more_silos = false;
+        // First failed attempt, for `maybeUpgradeHelpfulSilo`:
+        // (targetTile, coveringSamIds, totalBombs).
+        let mut failed_target: Option<(f64, Vec<f64>, f64)> = None;
+        for &target_sam in &sorted_sams {
+            let target_tile = self.un_tile(tr, target_sam); // 978
+            // Every enemy SAM whose range covers the target tile will try to
+            // intercept, so the salvo must beat their combined capacity.
+            let covering_sams = self.nn_find_enemy_sams_covering_tile(tr, pl, target_tile);
+            let mut covering_sam_ids: Vec<f64> = Vec::with_capacity(covering_sams.len());
+            for &s in &covering_sams {
+                covering_sam_ids.push(self.un_id(tr, s)); // 340
+            }
+            let mut total_interceptions = 0.0;
+            for &s in &covering_sams {
+                total_interceptions += self.un_level(tr, s); // 540
+            }
+            let bombs_needed = total_interceptions + 1.0;
+            // `nukeSpeed` only configures the untraced Parabola ctor; the 700
+            // read itself is traced.
+            let _nuke_speed = self.mg_nuke_speed(tr, UNIT_ATOM_BOMB); // 700
+            // Per-silo launch planning; slots = level - missileTimerQueue length.
+            let mut all_available_silos: Vec<(usize, f64, f64, bool)> = Vec::new();
+            for &silo in &our_silos {
+                let level = self.un_level(tr, silo); // 540
+                let queue = self.un_missile_timer_queue(tr, silo); // 346
+                let available_slots = level - as_arr_nums(&queue).len() as f64;
+                if available_slots <= 0.0 {
+                    continue;
+                }
+                let silo_tile = self.un_tile(tr, silo); // 978 (interceptability arg)
+                let interceptable = self.nn_is_trajectory_interceptable_by_sam(
+                    tr,
+                    pl,
+                    silo_tile,
+                    target_tile,
+                    Some(&covering_sam_ids),
+                );
+                let silo_tile2 = self.un_tile(tr, silo); // 978 (findPath arg, re-read)
+                let trajectory = self.mg_parabola_find_path(tr, silo_tile2, target_tile); // 751
+                if trajectory.is_empty() {
+                    continue;
+                }
+                all_available_silos.push((
+                    silo,
+                    available_slots,
+                    trajectory.len() as f64,
+                    interceptable,
+                ));
+            }
+            // `allAvailableSilos.sort((a, b) => manhattanDist(a.silo.tile(),
+            // targetTile) - manhattanDist(b.silo.tile(), targetTile))` — V8
+            // binary insertion sort, element's tile/dist read before the mid's.
+            let n = all_available_silos.len();
+            for i in 1..n {
+                let element = all_available_silos[i];
+                let (mut lo, mut hi) = (0usize, i);
+                while lo < hi {
+                    let mid = (lo + hi) / 2;
+                    let ev = {
+                        let et = self.un_tile(tr, element.0); // 978
+                        self.mg_manhattan_dist(tr, et, target_tile) // 509
+                    };
+                    let mv = {
+                        let mt = self.un_tile(tr, all_available_silos[mid].0); // 978
+                        self.mg_manhattan_dist(tr, mt, target_tile) // 509
+                    };
+                    if ev - mv < 0.0 {
+                        hi = mid;
+                    } else {
+                        lo = mid + 1;
+                    }
+                }
+                if lo < i {
+                    all_available_silos.remove(i);
+                    all_available_silos.insert(lo, element);
+                }
+            }
+            // Flatten into a per-bomb launch sequence: each silo contributes
+            // `slots` consecutive bombs (NukeExecution's pick order).
+            let mut launch_sequence: Vec<(f64, bool)> = Vec::new(); // (flightTicks, interceptable)
+            for &(_, slots, flight_ticks, interceptable) in &all_available_silos {
+                for _ in 0..slots as i64 {
+                    launch_sequence.push((flight_ticks, interceptable));
+                }
+            }
+            let sam_cooldown = self.mg_sam_cooldown(tr); // 708
+            let max_total_arrival_spread = (sam_cooldown / 2.0).floor();
+            // Extra bombs: 1 for every 5, for SAMs built while in flight.
+            let extra_bombs = (bombs_needed / 5.0).floor();
+            let total_bombs = bombs_needed + extra_bombs;
+            // Bombs from silos whose trajectory is not blocked by non-covering SAMs.
+            let mut unblocked_bombs: Vec<(usize, f64)> = Vec::new(); // (index, flightTicks)
+            for (i, &(flight_ticks, interceptable)) in launch_sequence.iter().enumerate() {
+                if !interceptable {
+                    unblocked_bombs.push((i, flight_ticks));
+                }
+            }
+            if (unblocked_bombs.len() as f64) < total_bombs {
+                if failed_target.is_none() {
+                    failed_target = Some((target_tile, covering_sam_ids.clone(), total_bombs));
+                }
+                needs_more_silos = true;
+                continue;
+            }
+            // Facade-free comparator (`a.flightTicks - b.flightTicks`): the
+            // stable result order is all that matters.
+            let mut sorted_by_flight = unblocked_bombs.clone();
+            sorted_by_flight
+                .sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
+            // Sliding window of maxTotalArrivalSpread capturing the most bombs.
+            let mut best_window_start = 0usize;
+            let mut best_window_count = 0usize;
+            for start in 0..sorted_by_flight.len() {
+                let mut end = start;
+                while end < sorted_by_flight.len()
+                    && sorted_by_flight[end].1 - sorted_by_flight[start].1
+                        <= max_total_arrival_spread
+                {
+                    end += 1;
+                }
+                if end - start > best_window_count {
+                    best_window_count = end - start;
+                    best_window_start = start;
+                }
+            }
+            if (best_window_count as f64) < total_bombs {
+                if failed_target.is_none() {
+                    failed_target = Some((target_tile, covering_sam_ids.clone(), total_bombs));
+                }
+                needs_more_silos = true;
+                continue;
+            }
+            // Pick totalBombs with the lowest launch-sequence indices.
+            let window_bombs =
+                sorted_by_flight[best_window_start..best_window_start + best_window_count].to_vec();
+            let mut window_by_index = window_bombs;
+            window_by_index.sort_by_key(|b| b.0); // facade-free, stable
+            let selected = &window_by_index[..total_bombs as usize];
+            let selected_set: std::collections::HashSet<usize> = selected.iter().map(|b| b.0).collect();
+            let bombs_to_fire = (selected[selected.len() - 1].0 + 1) as f64;
+            let selected_flight_min = selected
+                .iter()
+                .map(|b| b.1)
+                .fold(f64::INFINITY, f64::min);
+            let stagger_interval = (max_total_arrival_spread / total_bombs).floor().max(1.0);
+            let mut selected_idx = 0.0f64;
+            let mut wait_ticks_per_bomb: Vec<f64> = Vec::new();
+            for (i, &(flight_ticks, _)) in
+                launch_sequence.iter().enumerate().take(bombs_to_fire as usize)
+            {
+                if selected_set.contains(&i) {
+                    let target_arrival = selected_flight_min + selected_idx * stagger_interval;
+                    wait_ticks_per_bomb.push((target_arrival - flight_ticks).max(0.0));
+                    selected_idx += 1.0;
+                } else {
+                    // Wasted bomb (interceptable or out-of-window).
+                    wait_ticks_per_bomb.push(0.0);
+                }
+            }
+            // `atomCost * BigInt(bombsToFire)` vs. `gold()` — exact small-int f64 math.
+            let total_cost = atom_cost as f64 * bombs_to_fire;
+            if (self.pl_gold(tr, pl) as f64) < total_cost {
+                // 417
+                continue;
+            }
+            // Fire the salvo; NukeExecution picks silos in the same Manhattan
+            // distance order we planned.
+            for &wait_ticks in &wait_ticks_per_bomb {
+                self.nn_send_nuke(
+                    tr,
+                    pl,
+                    target_tile,
+                    UNIT_ATOM_BOMB,
+                    nuke_target,
+                    wait_ticks,
+                )?;
+            }
+            return Ok(());
+        }
+        // Couldn't destroy any SAM — upgrade silos only if capacity was the
+        // bottleneck (not when we merely lack gold).
+        if needs_more_silos {
+            if let Some((target_tile, covering_sam_ids, total_bombs)) = failed_target {
+                self.nn_maybe_upgrade_helpful_silo(
+                    tr,
+                    pl,
+                    target_tile,
+                    &covering_sam_ids,
+                    total_bombs,
+                );
+            }
+        }
+        Ok(())
+    }
+
+    /// `findEnemySamsCoveringTile(tile)` (NationNukeBehavior.ts lines
+    /// 1010-1029) — every enemy SAM in maxSamRange whose own range covers
+    /// `tile`.
+    fn nn_find_enemy_sams_covering_tile(
+        &mut self,
+        tr: &mut Vec<f64>,
+        pl: usize,
+        tile: f64,
+    ) -> Vec<usize> {
+        let max_sam = self.mg_max_sam_range(tr); // 707
+        let nearby = self.mg_nearby_units_d2(tr, tile, max_sam, &[UNIT_SAM_LAUNCHER.to_string()]); // 306
+        let mut result = Vec::new();
+        for (sam, sam_d2) in nearby {
+            let owner = self.un_owner(tr, sam); // 286
+            if owner == Some(pl) {
+                continue;
+            }
+            if self.pl_is_friendly(tr, pl, owner) {
+                // 242
+                continue;
+            }
+            let level = self.un_level(tr, sam); // 540
+            let range = self.mg_sam_range(tr, level); // 974
+            if sam_d2 <= range * range {
+                result.push(sam);
+            }
+        }
+        result
+    }
+
+    /// `maybeUpgradeHelpfulSilo(failedTarget)` (NationNukeBehavior.ts lines
+    /// 1037-1099) — upgrade a silo whose trajectory to the failed target is
+    /// unblocked and that is best protected by our own SAMs.
+    fn nn_maybe_upgrade_helpful_silo(
+        &mut self,
+        tr: &mut Vec<f64>,
+        pl: usize,
+        failed_target_tile: f64,
+        covering_sam_ids: &[f64],
+        total_bombs: f64,
+    ) {
+        let silos = self.pl_units(tr, pl, &[UNIT_MISSILE_SILO.to_string()]); // 241
+        if silos.is_empty() {
+            return;
+        }
+        // First pass: silos with an unblocked trajectory to the failed target.
+        let mut unblocked_silos: Vec<usize> = Vec::new();
+        for &silo in &silos {
+            let silo_tile = self.un_tile(tr, silo); // 978
+            if !self.nn_is_trajectory_interceptable_by_sam(
+                tr,
+                pl,
+                silo_tile,
+                failed_target_tile,
+                Some(covering_sam_ids),
+            ) {
+                unblocked_silos.push(silo);
+            }
+        }
+        if unblocked_silos.is_empty() {
+            return;
+        }
+        // Bail out if unreachable even at max silo level.
+        let max_achievable_slots =
+            unblocked_silos.len() as f64 * NN_MAX_NATION_SILO_UPGRADE_LEVEL;
+        if max_achievable_slots < total_bombs {
+            return;
+        }
+        let our_sams = self.pl_units(tr, pl, &[UNIT_SAM_LAUNCHER.to_string()]); // 241
+        let mut best_silo: Option<usize> = None;
+        let mut best_protection = -1.0;
+        for &silo in &unblocked_silos {
+            if self.un_level(tr, silo) >= NN_MAX_NATION_SILO_UPGRADE_LEVEL {
+                // 540
+                continue;
+            }
+            if !self.pl_can_upgrade_unit(tr, pl, silo) {
+                // 326
+                continue;
+            }
+            let mut protection = 0.0;
+            for &sam in &our_sams {
+                let sam_level = self.un_level(tr, sam); // 540
+                let range = self.mg_sam_range(tr, sam_level); // 974
+                let silo_tile = self.un_tile(tr, silo); // 978
+                let sam_tile = self.un_tile(tr, sam); // 978
+                let d2 = self.mg_euclidean_dist_squared(tr, silo_tile, sam_tile); // 710
+                if d2 <= range * range {
+                    protection += self.un_level(tr, sam); // 540 (re-read)
+                }
+            }
+            if protection > best_protection {
+                best_protection = protection;
+                best_silo = Some(silo);
+            }
+        }
+        if let Some(silo) = best_silo {
+            let silo_id = self.un_id(tr, silo); // 340
+            self.mg_add_upgrade_structure_exec(tr, pl, silo_id);
+        }
+    }
+
+    /// `NationNukeBehavior.maybeSendNuke()` — the real G5m port.
+    fn ne_maybe_send_nuke(&mut self, tr: &mut Vec<f64>) -> Result<(), String> {
+        let pl = self.ne_player.ok_or("Player not initialized")?;
+        // `player.units(MissileSilo)` (241) then the three isUnitDisabled
+        // gates (511) — `||`/`&&` short-circuit in source order.
+        let silos = self.pl_units(tr, pl, &[UNIT_MISSILE_SILO.to_string()]);
+        if silos.is_empty()
+            || self.mg_is_unit_disabled(tr, UNIT_MISSILE_SILO)
+            || (self.mg_is_unit_disabled(tr, UNIT_ATOM_BOMB)
+                && self.mg_is_unit_disabled(tr, UNIT_HYDROGEN_BOMB))
+        {
+            return Ok(());
+        }
+        let Some(nuke_target) = self.nn_find_best_nuke_target(tr, pl) else {
+            return Ok(());
+        };
+        if self.pl_type(tr, nuke_target) == PLAYER_TYPE_BOT {
+            // 251
+            return Ok(());
+        }
+        if self.pl_is_on_same_team(tr, pl, Some(nuke_target)) {
+            // 250
+            return Ok(());
+        }
+        if !self.ai_should_attack(tr, pl, nuke_target, TargetVia::Pl)? {
+            return Ok(());
+        }
+        let hydro_cost = self.nn_get_perceived_nuke_cost(tr, pl, UNIT_HYDROGEN_BOMB);
+        let atom_cost = self.nn_get_perceived_nuke_cost(tr, pl, UNIT_ATOM_BOMB);
+        let nuke_type: &str = if !self.mg_is_unit_disabled(tr, UNIT_HYDROGEN_BOMB)
+            && self.pl_gold(tr, pl) >= hydro_cost
+        {
+            // 511 + 417
+            UNIT_HYDROGEN_BOMB
+        } else if !self.mg_is_unit_disabled(tr, UNIT_ATOM_BOMB)
+            && (!self.ne_is_hydro_nation || self.nn_is_under_heavy_attack(tr, pl))
+            && self.pl_gold(tr, pl) >= atom_cost
+        {
+            // 511 + (no facade) + 417
+            UNIT_ATOM_BOMB
+        } else {
+            return Ok(());
+        };
+        let (_, outer) = self.mg_nuke_magnitudes(tr, nuke_type); // 224
+        let structures = self.pl_units(
+            tr,
+            nuke_target,
+            &STRUCTURES_TYPES.iter().map(|s| s.to_string()).collect::<Vec<String>>(),
+        ); // 241
+        let mut structure_tiles = Vec::with_capacity(structures.len());
+        for &s in &structures {
+            structure_tiles.push(self.un_tile(tr, s)); // 978
+        }
+        let difficulty = self.mg_difficulty(tr); // 402
+        let num_random_tiles = if difficulty == DIFFICULTY_IMPOSSIBLE { 30.0 } else { 10.0 };
+        let random_tiles = self.ne_rand_territory_tile_array(tr, nuke_target, num_random_tiles)?;
+        let mut all_tiles = random_tiles;
+        all_tiles.extend(structure_tiles);
+        self.nn_remove_old_nuke_events(tr); // 212
+        let mut best_tile: Option<f64> = None;
+        let mut best_value = -1.0;
+        // `new Set(allTiles)` — insertion-order dedup; `tile === null` skips.
+        let mut dedup: Vec<f64> = Vec::new();
+        for tile in all_tiles {
+            if dedup.contains(&tile) {
+                continue;
+            }
+            dedup.push(tile);
+            let mut bounding = self.nn_bounding_box_tiles(tr, tile, outer);
+            bounding.extend(self.nn_bounding_box_tiles(tr, tile, (outer / 2.0).floor()));
+            if bounding
+                .iter()
+                .any(|&t| !self.nn_is_valid_nuke_tile(tr, pl, t, nuke_target))
+            {
+                continue;
+            }
+            let spawn_tile = self.pl_can_build(tr, pl, nuke_type, tile); // 534
+            if matches!(spawn_tile, JsVal::Bool(false)) {
+                continue;
+            }
+            let spawn_tile_num = as_num(&spawn_tile);
+            if self.mg_game_mode(tr) == GAME_MODE_TEAM
+                && difficulty != DIFFICULTY_EASY
+                && self.nn_is_teammate_already_nuking_this_spot(tr, pl, tile, nuke_type)
+            {
+                continue;
+            }
+            if (difficulty == DIFFICULTY_HARD || difficulty == DIFFICULTY_IMPOSSIBLE)
+                && self.nn_is_trajectory_interceptable_by_sam(
+                    tr,
+                    pl,
+                    spawn_tile_num,
+                    tile,
+                    None,
+                )
+            {
+                continue;
+            }
+            let value = self.nn_nuke_tile_score(tr, tile, &silos, &structures, nuke_type);
+            if value > best_value {
+                best_tile = Some(tile);
+                best_value = value;
+            }
+        }
+        match best_tile {
+            Some(tile) if best_value > 0.0 || difficulty != DIFFICULTY_IMPOSSIBLE => {
+                self.nn_send_nuke(tr, pl, tile, nuke_type, nuke_target, 0.0)?;
+            }
+            // JS: `bestTile !== null` gate failing still reaches the
+            // Impossible SAM-destroy fallback.
+            _ if difficulty == DIFFICULTY_IMPOSSIBLE => {
+                self.nn_maybe_destroy_enemy_sam(tr, pl, nuke_target)?;
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+
 
     // ---- AiAttackBehavior methods (ported inline) -----------------------------
 
@@ -16434,7 +17604,7 @@ impl ExecHarness {
         via: TargetVia,
         force: bool,
     ) -> Result<bool, String> {
-        if !force && !self.ai_should_attack(tr, target, via)? {
+        if !force && !self.ai_should_attack(tr, self.te_tribe, target, via)? {
             return Ok(false);
         }
         if self.ai_target_is_player(tr, target, via) {
@@ -16480,6 +17650,7 @@ impl ExecHarness {
     fn ai_should_attack(
         &mut self,
         tr: &mut Vec<f64>,
+        pl: usize,
         other: usize,
         via: TargetVia,
     ) -> Result<bool, String> {
@@ -16498,7 +17669,7 @@ impl ExecHarness {
             // 826
             return Ok(true);
         }
-        if self.pl_type(tr, self.te_tribe) == PLAYER_TYPE_BOT {
+        if self.pl_type(tr, pl) == PLAYER_TYPE_BOT {
             // 251
             return Ok(true);
         }
@@ -16892,7 +18063,7 @@ impl ExecHarness {
             return Ok(());
         }
         // Retaliate against incoming attacks.
-        if let Some(attacker) = self.ai_find_incoming_attack_player(tr) {
+        if let Some(attacker) = self.ai_find_incoming_attack_player(tr, self.te_tribe) {
             if self.ai_send_attack(tr, attacker, TargetVia::Pl, true)? {
                 return Ok(());
             }
@@ -16955,14 +18126,14 @@ impl ExecHarness {
     }
 
     /// `findIncomingAttackPlayer()`.
-    fn ai_find_incoming_attack_player(&mut self, tr: &mut Vec<f64>) -> Option<usize> {
-        let mut incoming = self.pl_incoming_attacks(tr, self.te_tribe); // 822
+    fn ai_find_incoming_attack_player(&mut self, tr: &mut Vec<f64>, pl: usize) -> Option<usize> {
+        let mut incoming = self.pl_incoming_attacks(tr, pl); // 822
         incoming.retain(|&a| {
             let attacker = self.at_attacker(tr, a); // 832
-            !self.pl_is_friendly(tr, self.te_tribe, attacker) // 242
+            !self.pl_is_friendly(tr, pl, attacker) // 242
         });
         // Ignore bot attacks if we are not a bot.
-        if self.pl_type(tr, self.te_tribe) != PLAYER_TYPE_BOT {
+        if self.pl_type(tr, pl) != PLAYER_TYPE_BOT {
             // 251
             incoming.retain(|&a| {
                 let attacker = self.at_attacker(tr, a); // 832
@@ -17198,7 +18369,7 @@ impl ExecHarness {
     ) -> Result<bool, String> {
         match s {
             AiStrategy::Retaliate => {
-                if let Some(attacker) = self.ai_find_incoming_attack_player(tr) {
+                if let Some(attacker) = self.ai_find_incoming_attack_player(tr, self.te_tribe) {
                     return self.ai_send_attack(tr, attacker, TargetVia::Pl, true);
                 }
                 Ok(false)

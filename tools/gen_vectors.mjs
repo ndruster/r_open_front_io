@@ -27664,16 +27664,23 @@ function elMgObj(slots) {
     // G5k Step 2: the nation `cost()` path (`game.unitInfo(type).cost(game,
     // player)`) traces 512 first, then 969 with `(type, playerToken)`. The
     // returned object's `cost` reads mg slot 121 (the Rust side mirrors this as
-    // `mg_unit_info` then `mg_unit_info_cost`). The plain object form keeps the
-    // legacy `constructionDuration` / `upgradable` field reads unchanged.
+    // `mg_unit_info` then `mg_unit_info_cost`). The real `Game` returns a
+    // BigInt `Gold`, and nation code does BigInt arithmetic on it
+    // (`perceivedCost * 125n`, `cost(MIRV) + cost(HydrogenBomb)`), so the
+    // wrapper converts the scripted number to BigInt while the trace still
+    // records the plain number form. The plain object form keeps the legacy
+    // `constructionDuration` / `upgradable` field reads unchanged.
     unitInfo: (ty) => {
       const v = elRet(m, 46, 512, elEvs(ty));
       if (v !== null && typeof v === "object" && "cost" in v) {
         const { cost, ...rest } = v;
         return {
           ...rest,
-          cost: (_game, player) =>
-            elRet(m, 121, 969, [...elEvs(ty), ...elEvTok(player)]),
+          cost: (_game, player) => {
+            const c = elTake(m, 121);
+            elT.push(969, ...elEvs(ty), ...elEvTok(player), ...encVal(Number(c)));
+            return typeof c === "number" ? BigInt(c) : c;
+          },
         };
       }
       return v;
@@ -32180,6 +32187,97 @@ elDef(
     ],
   },
   [[0], [1, 0], [2, 100], [2, 116], [3], [4]],
+);
+
+// G5m N1: n3 (Hard) at an attack tick (136 % 59 == 18) with no missile
+// silos -> maybeSendNuke exits at the `silos.length === 0` gate before
+// findBestNukeTarget. All unit types are disabled: considerMIRV returns at
+// the MIRV gate, the post-save-up check returns at its Silo gate, the build
+// order is fully skipped, and warship spawning/countering return at their
+// Warship gates. The full attack-tick ladder (casual emoji, embargo
+// relations, alliance gates, structures, warship, attack, nuke gate) runs
+// with no observable side effects. The TransportShip read in
+// attackWithRandomBoat only happens when the chance(5) boat roll hits; all
+// slot values are `true` (and the FIFO reuses its last value), so both
+// branch outcomes script the same list.
+elDef(
+  "el_nuke_no_silo",
+  44,
+  elNationExecC,
+  ["g1", { playerInfo: { id: "n3", name: "N3" }, spawnCell: { x: 5, y: 5 } }],
+  {
+    a: ["g1", { playerInfo: { id: "n3", name: "N3" }, spawnCell: { x: 5, y: 5 } }],
+    mg: {
+      0: [true], 1: [0], 2: [136], 6: [false], 11: [[0]], 12: [0],
+      14: [{ outer: 30, inner: 10 }], 28: [15], 32: [10000], 33: ["Hard"],
+      35: [100000], 40: [0], 45: [true, true, true, true, true, true, true,
+        true, true, true, true, true, true, true, true, true],
+      46: [{ cost: 100, upgradable: false }], 54: ["FFA"], 60: [null],
+      63: [5], 64: [5], 69: [55], 115: [true], 121: [100], 122: [1000],
+      123: [[]], 124: [true], 125: [10], 129: [null], 132: [5],
+    },
+    players: [
+      {
+        0: [0], 1: ["n3"], 3: [true], 8: [false], 11: [[]], 12: [false],
+        15: [[]], 20: [false], 21: ["NATION"], 26: [true], 34: [true],
+        35: [0.0], 40: [5000], 41: [100], 45: [10000], 47: [true], 50: [[]],
+        58: [[]], 62: [false], 66: [[]], 68: [[]], 69: [[]], 70: [[]],
+        71: [0], 72: [0],
+      },
+    ],
+  },
+  [[0], [1, 0], [2, 100], [2, 136], [3], [4]],
+);
+
+// G5m N2: n1 (Easy) at an attack tick (108 % 66 == 42) retaliating against
+// an incoming attack: findBestNukeTarget returns the attacker via
+// findIncomingAttackPlayer, a Hydrogen Bomb is launched at the attacker's
+// border tile 55 (recorded as a 307/3 NukeExecution). Actor units contain
+// one Missile Silo so the silo gate passes; getPerceivedNukeCost takes the
+// two-player short-circuit (both perceived costs re-read the unit-info
+// cost). Enemy border tile 55 feeds randTerritoryTileArray's bounding box;
+// the 10 sampled tiles all resolve to 55 and Set-dedupe to one candidate.
+// isValidCoord returns false so the candidate's bounding box tiles are all
+// skipped without owner reads (every bounding tile would otherwise be
+// terra nullius and invalid on Easy). The chance(5) boat roll in
+// maybeAttack is branch-ambiguous: position 11 is `true` (a disabled
+// TransportShip when the roll hits, a disabled Warship for the counter
+// check when it misses) and the trailing `false` run feeds the nuke-path
+// isUnitDisabled reads (Silo, Atom, Hydro) in both outcomes.
+elDef(
+  "el_nuke_retaliation_hydro",
+  44,
+  elNationExecC,
+  ["g1", { playerInfo: { id: "n1", name: "N1" }, spawnCell: { x: 5, y: 5 } }],
+  {
+    a: ["g1", { playerInfo: { id: "n1", name: "N1" }, spawnCell: { x: 5, y: 5 } }],
+    mg: {
+      0: [true], 1: [0], 2: [108], 6: [false], 11: [[0, 1]],
+      12: [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1000000],
+      14: [{ outer: 30, inner: 10 }], 32: [10000], 33: ["Easy"], 35: [100000],
+      45: [true, true, true, true, true, true, true, true, true, true, true,
+        false, false, false, false],
+      46: [{ cost: 500, upgradable: false }], 54: ["FFA"], 60: [null],
+      63: [5], 64: [5], 69: [55], 70: [5], 76: [false], 89: [0], 115: [true],
+      121: [500], 122: [1000], 123: [[]], 124: [true], 129: [null],
+    },
+    players: [
+      {
+        0: [0], 1: ["n1"], 3: [true], 8: [false], 11: [[0]], 12: [false],
+        15: [[]], 20: [false], 21: ["NATION"], 26: [true], 34: [true],
+        35: [2.0], 40: [50000000], 41: [100], 45: [10000], 47: [55],
+        50: [[]], 58: [[0]], 62: [false], 66: [[]], 68: [[]], 69: [[]],
+        70: [[]], 71: [0], 72: [0],
+      },
+      {
+        0: [1], 1: ["x3"], 3: [true], 8: [false], 11: [[]], 20: [false],
+        21: ["NATION"], 26: [true], 43: [true], 45: [100], 50: [[55]],
+      },
+    ],
+    units: [{ 3: ["Missile Silo"], 7: [1], 11: [55], 20: [1] }],
+    attacks: [{ 0: [100], 12: [1] }],
+  },
+  [[0], [1, 0], [2, 100], [2, 108], [3], [4]],
 );
 
 const structures = {

@@ -163,7 +163,12 @@
 //! gate + four cost reads through mg 121), the sole candidate is skipped by a
 //! teammate Hydrogen Bomb whose targetTile collapses the distance read to
 //! 0 <= (10+10)^2, and the tick ends with pure facade reads and no execution
-//! records (Hard has no maybeDestroyEnemySam fallback).
+//! records (Hard has no maybeDestroyEnemySam fallback). `el_nuke_recent_filter`
+//! drives two attack ticks of one Easy nation: tick 108 launches the
+//! retaliation HydrogenBomb and pushes the recent entry, tick 174 replays the
+//! chain with removeOldNukeEvents keeping it (66 < 600 maxAge) and the
+//! nukeTileScore recent filter subtracting 1_000_000 from the 0-valued tile,
+//! so bestTile stays null and no second nuke is recorded.
 //!
 //! # G5b facade additions (codes ≥ 300)
 //!

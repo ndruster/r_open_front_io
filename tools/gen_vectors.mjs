@@ -32720,6 +32720,62 @@ elDef(
   [[0], [1, 0], [2, 100], [2, 136], [3], [4]],
 );
 
+// G5o D: the recentlySentNukes proximity penalty inside nukeTileScore, driven
+// across two attack ticks of the same Easy nation. Tick 108 is the
+// el_nuke_retaliation_hydro skeleton verbatim: it launches a HydrogenBomb at
+// tile 55 (307/3 + EMOJI_NUKE) and pushes [108, 55, HydrogenBomb] onto
+// recentlySentNukes. Tick 174 is the nation's next attack tick (n1 rate 66,
+// 174 % 66 == 42): removeOldNukeEvents reads ticks and keeps the recent entry
+// (108 + 600 >= 174, maxAge 600 ticks not elapsed), the retaliation chain
+// replays identically, and nukeTileScore(55) reaches the recent-target
+// filter - nukeMagnitudes(HydrogenBomb).inner (mg 14 replay) and
+// euclideanDistSquared(55, 55) collapsing to 0 <= 100 - subtracting 1_000_000
+// from the 0-valued tile. bestValue starts at -1, so bestTile stays null, and
+// Easy has no maybeDestroyEnemySam fallback: the second tick records facade
+// reads and the routine attack executions but no second nuke. All facade
+// scripts double the per-tick FIFO (mg 45's 11-true/4-false strategy set
+// twice, mg 12's ten owner reads per randTerritoryTileArray pass); mg 2 must
+// distinguish the ticks (three reads per tick: removeOldNukeEvents, sendNuke
+// and the NukeExecution-adjacent read replayed 108 then 174).
+elDef(
+  "el_nuke_recent_filter",
+  44,
+  elNationExecC,
+  ["g1", { playerInfo: { id: "n1", name: "N1" }, spawnCell: { x: 5, y: 5 } }],
+  {
+    a: ["g1", { playerInfo: { id: "n1", name: "N1" }, spawnCell: { x: 5, y: 5 } }],
+    mg: {
+      0: [true], 1: [0], 2: [108, 108, 108, 174, 174, 174], 6: [false],
+      11: [[0, 1]],
+      12: [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+        1000000, 1000000],
+      14: [{ outer: 30, inner: 10 }], 32: [10000], 33: ["Easy"], 35: [100000],
+      45: [true, true, true, true, true, true, true, true, true, true, true,
+        false, false, false, false, true, true, true, true, true, true, true,
+        true, true, true, true, false, false, false, false],
+      46: [{ cost: 500, upgradable: false }], 54: ["FFA"], 60: [null],
+      63: [5], 64: [5], 69: [55], 70: [5], 76: [false], 89: [0], 115: [true],
+      121: [500], 122: [1000], 123: [[]], 124: [true], 129: [null],
+    },
+    players: [
+      {
+        0: [0], 1: ["n1"], 3: [true], 8: [false], 11: [[0]], 12: [false],
+        15: [[]], 20: [false], 21: ["NATION"], 26: [true], 34: [true],
+        35: [2.0], 40: [50000000], 41: [100], 45: [10000], 47: [55],
+        50: [[]], 58: [[0]], 62: [false], 66: [[]], 68: [[]], 69: [[]],
+        70: [[]], 71: [0], 72: [0],
+      },
+      {
+        0: [1], 1: ["x3"], 3: [true], 8: [false], 11: [[]], 20: [false],
+        21: ["NATION"], 26: [true], 43: [true], 45: [100], 50: [[55]],
+      },
+    ],
+    units: [{ 3: ["Missile Silo"], 7: [1], 11: [55], 20: [1] }],
+    attacks: [{ 0: [100], 12: [1] }],
+  },
+  [[0], [1, 0], [2, 100], [2, 108], [2, 174], [3], [4]],
+);
+
 const structures = {
   votetally: vtScenarios,
   rankedcheckin: rgScenarios,

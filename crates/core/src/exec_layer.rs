@@ -170,6 +170,23 @@
 //! nukeTileScore recent filter subtracting 1_000_000 from the 0-valued tile,
 //! so bestTile stays null and no second nuke is recorded.
 //!
+//! G5p opens the NationStructureBehavior deep paths: `el_struct_upgrade_city`
+//! (Easy density-triggered upgrade — the 1/1000 density passes
+//! UPGRADE_DENSITY_THRESHOLD, `config.unitInfo(City).upgradable` is read
+//! through the mg-47 facade that zero-density scenarios short-circuit away,
+//! and the Easy 70% random pick selects the only upgradable City, emitting a
+//! 307/25 `UpgradeStructureExecution`) and `el_struct_upgrade_sam_score`
+//! (Hard 25% roll misses into the SAM-protection scoring: a level-2 SAM
+//! covers city 0 at dist² 100 <= 3600 for score 17.5 while city 1 sits at
+//! 1_000_000, the descending sort keeps city 0 first, and the units slot FIFO
+//! is arg-agnostic across units(City) / units(Structures.types) /
+//! units(SAMLauncher)). Both scenarios also pin the NationExecution tick
+//! side-gate: attackRate/attackTick derive from the scenario PRNG
+//! (`simpleHash(id)+simpleHash(gameID)` — g1 Easy 66/42, g2 Hard 51/41), and
+//! handleStructures runs at the one-third / two-thirds offsets (B1 tick 130,
+//! B2 tick 126) while non-matching ticks only initialize the behaviors
+//! (nuke-ctor cost cache reads + the 307/16 forceSendAttack record).
+//!
 //! # G5b facade additions (codes ≥ 300)
 //!
 //! `mg`: `300` isValidRef, `301` getWaterComponent, `302` hasWaterComponent,
@@ -15222,9 +15239,13 @@ impl ExecHarness {
                 let d = self.mg_euclidean_dist_squared(tr, st, mt); // 710
                 if d <= r_sq {
                     score += 10.0;
-                    let lv2 = self.un_level(tr, sam); // 540 (re-read)
+                    // TS 808 + 809 are two separate sam.level() reads: the
+                    // `> 1` guard and the bonus multiplier each consume one
+                    // 540 event from the unit slot FIFO.
+                    let lv2 = self.un_level(tr, sam); // 540 (line 808)
                     if lv2 > 1.0 {
-                        score += (lv2 - 1.0) * 7.5;
+                        let lv3 = self.un_level(tr, sam); // 540 (line 809)
+                        score += (lv3 - 1.0) * 7.5;
                     }
                 }
             }

@@ -32776,6 +32776,106 @@ elDef(
   [[0], [1, 0], [2, 100], [2, 108], [2, 174], [3], [4]],
 );
 
+// G5p B1: the density-triggered upgrade branch of maybeSpawnStructure. Same
+// Easy city-gate skeleton as el_struct_city_spawn, but the nation already
+// owns a City (player slot 11 -> unit token 0) and numTilesOwned 1000 against
+// a single structure gives density 1/1000 > 1/1500, so the flow enters the
+// upgrade branch instead of structureSpawnTile. Two config.unitInfo facades
+// are involved: mg 46 (mg.unitInfo, wire 512) feeds the cost closure (969
+// events) and mg 47 (config.unitInfo, wire 513) supplies `.upgradable` at
+// NationStructureBehavior.ts:621 — the latter is only reached when the
+// density check passes (S1 short-circuits at 0 density and never scripts
+// mg 47). maybeUpgradeStructure re-runs getTotalStructureDensity, consuming
+// a second numTilesOwned (player 45) and a third units() (player 11); the
+// units slot FIFO is arg-agnostic (units(Structures.types) flattens to the
+// six-name list but replays the same slot). findBestStructureToUpgrade
+// filters through canUpgradeUnit (player 33 true) and the Easy 70% random
+// pick (nextInt(0,100) < 70) selects the only upgradable structure;
+// mg 126 (config.samRange) / mg 89 (euclideanDistSquared) and the second
+// unit tile value cover the 30% SAM-scoring fallback and stay unconsumed on
+// the random path. addExecution emits a 307/25 UpgradeStructureExecution for
+// unit id 5; no ConstructionExecution is recorded and the tile-scan slots
+// (mg 63/64/69/12/124, player 47/50) stay unconsumed.
+elDef(
+  "el_struct_upgrade_city",
+  44,
+  elNationExecC,
+  ["g1", { playerInfo: { id: "n1", name: "N1" }, spawnCell: { x: 5, y: 5 } }],
+  {
+    a: ["g1", { playerInfo: { id: "n1", name: "N1" }, spawnCell: { x: 5, y: 5 } }],
+    mg: {
+      0: [true], 1: [0], 2: [130], 6: [false], 33: ["Easy"], 45: [false],
+      46: [{ cost: 100, upgradable: true }], 47: [{ cost: 100, upgradable: true }],
+      54: ["FFA"], 121: [100],
+      123: [[]], 129: [null], 35: [100000], 14: [{ outer: 30, inner: 10 }],
+      28: [15], 125: [10], 63: [5], 64: [5], 69: [55], 12: [0], 124: [true],
+      132: [5], 126: [60], 89: [100],
+    },
+    players: [
+      {
+        0: [0], 3: [true], 11: [[0], [0], [0], [0]], 33: [true], 40: [500],
+        41: [1000], 45: [1000, 1000], 47: [true], 50: [[55]], 72: [0],
+      },
+    ],
+    units: [{ 3: ["City"], 7: [5], 11: [55, 55], 20: [1] }],
+  },
+  [[0], [1, 0], [2, 100], [2, 130], [3], [4]],
+);
+
+// G5p B2: the SAM-scoring fallback of findBestStructureToUpgrade. Hard
+// difficulty (mg 33) drops the random-pick chance to 25%, so the nextInt(0,100)
+// roll misses and the flow scores the upgradable pool against SAM protection
+// instead. Two owned Cities (units pool [0,1]) plus a level-2 SAM Launcher
+// (unit 2) give density 3/1000 > 1/1500; the units slot FIFO is arg-agnostic,
+// so it replays [0,1] for units(City), the full [0,1,2] twice for
+// units(Structures.types) (lines 745 and 722) and [2] for
+// units(SAMLauncher). Hard also arms the NationExecution warship preamble
+// (unitsConstructed(Port) -> 0 short-circuits it, player 71) and the
+// SAM-first high-gold branch (startingGold mg 122 -> 1000 < 3M skips it,
+// player 73 info). Structure ticks must hit the handleStructures side-gate
+// (NationExecution.ts:181): attackRate/attackTick derive from the scenario
+// PRNG (simpleHash("n1")+simpleHash("g2") -> rate 51, attackTick 41, offsets
+// 7/24), so tick 126 (offset 24, two-thirds) runs handleStructures alone
+// while tick 100 only initializes the behaviors (nuke-ctor cost cache + 307/16
+// forceSendAttack). The scoring loop reads sam.tile() twice (one per
+// candidate; unit 11 has two values) and consumes mg 126 samRange (60 ->
+// 3600 squared) and mg 89 euclideanDistSquared FIFO [100, 1000000]: city 0
+// sits inside SAM range (score 10 + 7.5 for level 2) while city 1 is
+// outranged (score 0), so the descending sort puts city 0 first regardless
+// of the nextInt(0,5) tie-break noise; the 50% chance(2) second-pick branch
+// may still select index 1. addExecution emits a 307/25
+// UpgradeStructureExecution for whichever id the PRNG picked (5 or 6).
+elDef(
+  "el_struct_upgrade_sam_score",
+  44,
+  elNationExecC,
+  ["g2", { playerInfo: { id: "n1", name: "N1" }, spawnCell: { x: 5, y: 5 } }],
+  {
+    a: ["g2", { playerInfo: { id: "n1", name: "N1" }, spawnCell: { x: 5, y: 5 } }],
+    mg: {
+      0: [true], 1: [0], 2: [126], 6: [false], 33: ["Hard"], 45: [false],
+      46: [{ cost: 100, upgradable: true }], 47: [{ cost: 100, upgradable: true }],
+      54: ["FFA"], 121: [100], 122: [1000],
+      123: [[]], 129: [null], 35: [100000], 14: [{ outer: 30, inner: 10 }],
+      28: [15], 125: [10], 63: [5], 64: [5], 69: [55], 12: [0], 124: [true],
+      132: [5], 126: [60], 89: [100, 1000000],
+    },
+    players: [
+      {
+        0: [0], 3: [true], 11: [[0, 1], [0, 1, 2], [0, 1, 2], [2]],
+        33: [true, true], 40: [500], 41: [1000], 45: [1000, 1000],
+        47: [true], 50: [[55]], 71: [0], 72: [0], 73: [{}],
+      },
+    ],
+    units: [
+      { 3: ["City"], 7: [5], 11: [55], 20: [1] },
+      { 3: ["City"], 7: [6], 11: [66], 20: [1] },
+      { 3: ["SAM Launcher"], 7: [7], 11: [77, 77], 20: [2] },
+    ],
+  },
+  [[0], [1, 0], [2, 100], [2, 126], [3], [4]],
+);
+
 const structures = {
   votetally: vtScenarios,
   rankedcheckin: rgScenarios,

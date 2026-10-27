@@ -139,7 +139,15 @@
 //! the structure spawn-tile ladder at the one-third / two-thirds gates and
 //! the `el_nuke_no_silo` / `el_nuke_retaliation_hydro` scenarios (G5m) pin
 //! full attack-tick runs — the no-silo early exit and the retaliation
-//! Hydrogen-Bomb launch through `findBestNukeTarget` → `sendNuke`.
+//! Hydrogen-Bomb launch through `findBestNukeTarget` → `sendNuke` — and the
+//! four G5n scenarios pin the deep paths: `el_nuke_sam_outing` (Impossible
+//! SAM-outing overwhelm: the covering-SAM scan, bombsNeeded/totalBombs math
+//! and the staggered 0/16/32-waitTick AtomBomb launch), `el_nuke_sam_upgrade`
+//! (silo too small → `maybeUpgradeHelpfulSilo` emitting an
+//! `UpgradeStructureExecution`), `el_nuke_ffa_crown` (FFA crown-share target
+//! selection through numLandTiles / numTilesWithFallout) and
+//! `el_nuke_team_strongest` (strongest-team target selection — it caught the
+//! cached `players()` reuse where the TS loop re-reads the facade).
 //!
 //! # G5b facade additions (codes ≥ 300)
 //!
@@ -16649,9 +16657,11 @@ impl ExecHarness {
         }
         // `teamTiles.set(team, (teamTiles.get(team) ?? 0) + numTilesOwned())`
         // then `teamPlayers.push` — numTilesOwned (532) read once per player.
+        // The loop re-calls game.players() (TS 375) rather than reusing the
+        // length-check list, so the facade read is traced twice.
         let mut team_tiles: Vec<(String, f64)> = Vec::new();
         let mut team_players: Vec<(String, Vec<usize>)> = Vec::new();
-        for p in players {
+        for p in self.mg_players(tr) {
             let team = match self.pl_team(tr, p) {
                 // 248
                 JsVal::Str(s) => s,

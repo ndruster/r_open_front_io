@@ -32280,6 +32280,262 @@ elDef(
   [[0], [1, 0], [2, 100], [2, 108], [3], [4]],
 );
 
+// G5n A: n7 (Impossible, attack rate 49 tick 3 via
+// PseudoRandom(simpleHash("n7")+simpleHash("g1")); 101 % 49 == 3) exhausting
+// the shallow nuke path so maybeDestroyEnemySam fires its full salvo plan.
+// Two players only, so findBestNukeTarget takes the Hard/Impossible
+// two-player short-circuit (x3 is returned before the incoming-attack and
+// crown checks) and getPerceivedNukeCost returns the raw unit-info cost.
+// The hydro branch wins (both perceived costs equal the mocked 500 gold and
+// gold is 50000000), so the chance(3) isHydroNation roll is never branched
+// on. randTerritoryTileArray's bounding box collapses around border tile 200
+// (mg.x/y mock to 5/5 and ref always returns 200, owner reads return x3), so
+// all 30 samples resolve to tile 200 which Set-dedupes with the enemy SAM's
+// own structure tile into one candidate. isValidCoord returns false so the
+// bounding box is empty, and canBuild is scripted false, so the candidate is
+// rejected before the Hard/Impossible trajectory check -> bestTile stays
+// null -> maybeDestroyEnemySam. There the single enemy SAM (level 2, tile
+// 200, id 200) covers its own tile (nearbyUnits returns {u:1,d2:100},
+// samRange mocks 60 so 100 <= 3600), giving bombsNeeded = 2 + 1 = 3,
+// extraBombs = 0, totalBombs = 3. The one silo (level 4, empty missile
+// timer queue, tile 100) has 4 slots; its trajectory [100,150,200] mocks
+// flightTicks = 3 and every per-tile nearbyUnits scan returns empty, so the
+// bomb is not interceptable. All four unblocked bombs share flightTicks 3,
+// the sliding window (spread = floor(100/2) = 50) captures all 4, the three
+// lowest indices are selected, bombsToFire = 3 and the stagger interval is
+// floor(50/3) = 16, producing waitTicks 0/16/32. Gold covers
+// 500 * 3 = 1500, so three 307/3 NukeExecution records (AtomBomb at tile
+// 200, waitTicks 0/16/32) plus an EMOJI_NUKE EmojiExecution per bomb are
+// emitted. The isUnitDisabled script keeps the 13 pre-nuke-path true reads
+// (Impossible's wider maybeAttack strategy set reads MIRV/Silo/City/Silo/
+// Atom/Atom/Hydro/MIRV/Port/Factory/SAM before the MissileSilo nuke-support
+// probe and counterWarshipInfestation's Warship check; Easy stops earlier,
+// which is why el_nuke_retaliation_hydro only needs 11) and then feeds four
+// false reads: the gate's Silo and Atom reads (Atom false short-circuits the
+// && pair), the hydro branch's Hydro read, and maybeDestroyEnemySam's own
+// AtomBomb re-check. mg.unitCount(Warship) mocks 0 so
+// shouldCounterWarshipInfestation quits before its port/gold probes.
+elDef(
+  "el_nuke_sam_outing",
+  44,
+  elNationExecC,
+  ["g1", { playerInfo: { id: "n7", name: "N7" }, spawnCell: { x: 5, y: 5 } }],
+  {
+    a: ["g1", { playerInfo: { id: "n7", name: "N7" }, spawnCell: { x: 5, y: 5 } }],
+    mg: {
+      0: [true], 1: [0], 2: [101], 6: [false], 11: [[0, 1]],
+      12: [1], 14: [{ outer: 30, inner: 10 }], 25: [[{ u: 1, d2: 100 }], []],
+      32: [10000], 33: ["Impossible"], 35: [100000], 40: [0],
+      45: [true, true, true, true, true, true, true, true, true, true, true,
+        true, true, false, false, false, false],
+      46: [{ cost: 500, upgradable: false }], 54: ["FFA"], 60: [null],
+      63: [5], 64: [5], 69: [200], 70: [5], 76: [false], 79: [5], 81: [30],
+      86: [300], 87: [100], 89: [0], 99: [[100, 150, 200]], 115: [true],
+      121: [500], 122: [1000], 123: [[]], 124: [true], 126: [60],
+      129: [null],
+    },
+    players: [
+      {
+        0: [0], 1: ["n7"], 3: [true], 8: [false], 11: [[0], [], [0]],
+        12: [false], 15: [[]], 20: [false], 21: ["NATION"], 26: [true],
+        34: [true], 35: [2.0], 40: [50000000], 41: [100], 45: [10000],
+        47: [false], 50: [[]], 58: [[0]], 62: [false], 66: [[]], 68: [[]],
+        69: [[]], 70: [[]], 71: [0], 72: [0],
+      },
+      {
+        0: [1], 1: ["x3"], 3: [true], 8: [false], 11: [[1]], 20: [false],
+        21: ["NATION"], 26: [true], 43: [true], 45: [100], 50: [[200]],
+      },
+    ],
+    units: [
+      { 3: ["Missile Silo"], 6: [0], 7: [100], 11: [100], 12: [false],
+        13: [[]], 20: [4] },
+      { 3: ["SAM Launcher"], 6: [1], 7: [200], 11: [200], 20: [2] },
+    ],
+    attacks: [{ 0: [100], 12: [1] }],
+  },
+  [[0], [1, 0], [2, 100], [2, 101], [3], [4]],
+);
+
+// G5n B: same Impossible setup as el_nuke_sam_outing but the actor's only
+// silo is level 1, so the overwhelm plan cannot fire. Everything through the
+// launch-sequence loop replays identically (one covering SAM -> bombsNeeded
+// 2 + 1 = 3, totalBombs 3; the level-1 silo with an empty missile timer
+// queue has 1 slot; its trajectory [100,150,200] is not interceptable), but
+// unblockedBombs.length (1) < totalBombs (3) sets launchFailed and skips the
+// window selection and gold check entirely. maybeDestroyEnemySam then falls
+// into maybeUpgradeHelpfulSilo({targetTile: 200, coveringSamIds: {200},
+// totalBombs: 3}): the silo list is re-read, the three-argument
+// isTrajectoryInterceptableBySam re-runs with the covering-id exclusion set
+// (third findPath call, every per-tile nearbyUnits scan empty), the
+// max-achievable-slots guard passes (1 * 5 >= 3), the actor owns no SAMs so
+// protection stays 0, the silo is below the level cap, canUpgradeUnit mocks
+// true, and one 307/25 UpgradeStructureExecution for the silo (id 100) is
+// emitted.
+elDef(
+  "el_nuke_sam_upgrade",
+  44,
+  elNationExecC,
+  ["g1", { playerInfo: { id: "n7", name: "N7" }, spawnCell: { x: 5, y: 5 } }],
+  {
+    a: ["g1", { playerInfo: { id: "n7", name: "N7" }, spawnCell: { x: 5, y: 5 } }],
+    mg: {
+      0: [true], 1: [0], 2: [101], 6: [false], 11: [[0, 1]],
+      12: [1], 14: [{ outer: 30, inner: 10 }], 25: [[{ u: 1, d2: 100 }], []],
+      32: [10000], 33: ["Impossible"], 35: [100000], 40: [0],
+      45: [true, true, true, true, true, true, true, true, true, true, true,
+        true, true, false, false, false, false],
+      46: [{ cost: 500, upgradable: false }], 54: ["FFA"], 60: [null],
+      63: [5], 64: [5], 69: [200], 70: [5], 76: [false], 79: [5], 81: [30],
+      86: [300], 87: [100], 89: [0], 99: [[100, 150, 200]], 115: [true],
+      121: [500], 122: [1000], 123: [[]], 124: [true], 126: [60],
+      129: [null],
+    },
+    players: [
+      {
+        0: [0], 1: ["n7"], 3: [true], 8: [false], 11: [[0], [], [0]],
+        12: [false], 15: [[]], 20: [false], 21: ["NATION"], 26: [true],
+        33: [true], 34: [true], 35: [2.0], 40: [50000000], 41: [100],
+        45: [10000], 47: [false], 50: [[]], 58: [[0]], 62: [false],
+        66: [[]], 68: [[]], 69: [[]], 70: [[]], 71: [0], 72: [0],
+      },
+      {
+        0: [1], 1: ["x3"], 3: [true], 8: [false], 11: [[1]], 20: [false],
+        21: ["NATION"], 26: [true], 43: [true], 45: [100], 50: [[200]],
+      },
+    ],
+    units: [
+      { 3: ["Missile Silo"], 6: [0], 7: [100], 11: [100], 12: [false],
+        13: [[]], 20: [1] },
+      { 3: ["SAM Launcher"], 6: [1], 7: [200], 11: [200], 20: [2] },
+    ],
+    attacks: [{ 0: [100], 12: [1] }],
+  },
+  [[0], [1, 0], [2, 100], [2, 101], [3], [4]],
+);
+
+// G5n C: the FFA crown-share target selection inside findBestNukeTarget.
+// Three players so the Hard/Impossible two-player short-circuit is skipped;
+// n7 has no incoming attacks (slot 58 empty) so the retaliation check falls
+// through. isRichestNation returns false (crown x1 owns more gold than n7),
+// so the high-density chance(2) roll is short-circuited away and the RNG
+// stream stays deterministic. The Impossible+FFA crown branch then reads
+// numLandTiles (mg 35 -> 1000) and numTilesWithFallout (mg 36 -> 0), sorts
+// the players by numTilesOwned (n7 10000, x1 20000, x2 100) and crowns x1
+// with share 20000/1000 = 20 > 0.5, returning x1 as the nuke target.
+// Downstream:
+// x1 is a NATION, not on n7's team, shouldAttack passes, both perceived
+// costs equal the mocked 500 and gold covers Hydro. randTerritoryTileArray
+// collapses around x1's border tile 300 (all 30 samples resolve there via
+// the owner mock), x1 owns no structures so the candidate set is {300},
+// canBuild mocks false and bestTile stays null. maybeDestroyEnemySam finds
+// no enemy SAM launchers (x1 units empty) so it returns false after its
+// AtomBomb gate, the units(AtomBomb) probe (empty) and the ourSilos read;
+// launchFailed stays false so maybeUpgradeHelpfulSilo is never reached and
+// no execution is emitted at tick 101.
+elDef(
+  "el_nuke_ffa_crown",
+  44,
+  elNationExecC,
+  ["g1", { playerInfo: { id: "n7", name: "N7" }, spawnCell: { x: 5, y: 5 } }],
+  {
+    a: ["g1", { playerInfo: { id: "n7", name: "N7" }, spawnCell: { x: 5, y: 5 } }],
+    mg: {
+      0: [true], 1: [0], 2: [101], 6: [false], 11: [[0, 1, 2]],
+      12: [1], 14: [{ outer: 30, inner: 10 }], 32: [10000], 33: ["Impossible"],
+      35: [1000], 36: [0], 40: [0], 45: [true, true, true, true, true, true,
+        true, true, true, true, true, true, true, false, false, false, false],
+      46: [{ cost: 500, upgradable: false }], 54: ["Free For All"], 60: [null],
+      63: [5], 64: [5], 69: [300], 70: [5], 76: [false], 79: [5], 81: [30],
+      86: [300], 87: [100], 89: [0], 115: [true], 121: [500], 122: [1000],
+      123: [[]], 124: [true], 129: [null],
+    },
+    players: [
+      {
+        0: [0], 1: ["n7"], 3: [true], 8: [false], 11: [[0], [], [0]],
+        12: [false], 15: [[]], 20: [false], 21: ["NATION"], 26: [true],
+        34: [true], 35: [2.0], 40: [50000000], 41: [100], 45: [10000],
+        47: [false], 50: [[]], 58: [[]], 62: [false], 66: [[]], 68: [[]],
+        69: [[]], 70: [[]], 71: [0], 72: [0],
+      },
+      {
+        0: [1], 1: ["x1"], 3: [true], 8: [false], 11: [[]], 20: [false],
+        21: ["NATION"], 26: [true], 40: [60000000], 43: [true], 45: [20000],
+        50: [[300]],
+      },
+      {
+        0: [2], 1: ["x2"], 3: [true], 8: [false], 11: [[]], 20: [false],
+        21: ["NATION"], 26: [true], 43: [true], 45: [100], 50: [[]],
+      },
+    ],
+    units: [
+      { 3: ["Missile Silo"], 6: [0], 7: [100], 11: [100], 12: [false],
+        13: [[]], 20: [4] },
+    ],
+  },
+  [[0], [1, 0], [2, 100], [2, 101], [3], [4]],
+);
+
+// G5n D: the strongest-team target selection inside findBestNukeTarget.
+// Three players in two teams: n7 and x2 share team "1", x1 owns team "2".
+// The Hard/Impossible two-player short-circuit is skipped (3 players), the
+// retaliation check falls through (slot 58 empty), isRichestNation is false
+// (x1 owns more gold, short-circuiting the chance(2) dense-target roll), the
+// FFA crown branch is skipped (gameMode "Team"), the ally-assist and
+// most-hated loops iterate empty lists, and findStrongestTeamTarget sums
+// numTilesOwned per team (team "2": 20000, team "1": 10000 + 100 = 10100),
+// picks team "2" as the strongest (not n7's own team), filters its players
+// by isFriendly (x1 stays) and then returns x1 regardless of which side of
+// the chance(2) strongest-vs-random fork the RNG takes, because team "2"
+// has exactly one member. Downstream mirrors el_nuke_ffa_crown: x1 is a
+// NATION off-team, shouldAttack passes, Hydro is affordable, the candidate
+// set collapses to border tile 300, canBuild mocks false, and
+// maybeDestroyEnemySam returns early on x1's empty SAM list without
+// emitting any execution.
+elDef(
+  "el_nuke_team_strongest",
+  44,
+  elNationExecC,
+  ["g1", { playerInfo: { id: "n7", name: "N7" }, spawnCell: { x: 5, y: 5 } }],
+  {
+    a: ["g1", { playerInfo: { id: "n7", name: "N7" }, spawnCell: { x: 5, y: 5 } }],
+    mg: {
+      0: [true], 1: [0], 2: [101], 6: [false], 11: [[0, 1, 2]],
+      12: [1], 14: [{ outer: 30, inner: 10 }], 32: [10000], 33: ["Impossible"],
+      40: [0], 45: [true, true, true, true, true, true,
+        true, true, true, true, true, true, true, false, false, false, false],
+      46: [{ cost: 500, upgradable: false }], 54: ["Team"], 60: [null],
+      63: [5], 64: [5], 69: [300], 70: [5], 76: [false], 79: [5], 81: [30],
+      86: [300], 87: [100], 89: [0], 115: [true], 121: [500], 122: [1000],
+      123: [[]], 124: [true], 129: [null],
+    },
+    players: [
+      {
+        0: [0], 1: ["n7"], 3: [true], 8: [false], 11: [[0], [], [0]],
+        12: [false], 15: [[]], 18: ["1"], 20: [false], 21: ["NATION"],
+        26: [true], 34: [true], 35: [2.0], 40: [50000000], 41: [100],
+        45: [10000], 47: [false], 50: [[]], 58: [[]], 62: [false], 66: [[]],
+        68: [[]], 69: [[]], 70: [[]], 71: [0], 72: [0],
+      },
+      {
+        0: [1], 1: ["x1"], 3: [true], 8: [false], 11: [[]], 18: ["2"],
+        20: [false], 21: ["NATION"], 26: [true], 40: [60000000], 43: [true],
+        45: [20000], 50: [[300]],
+      },
+      {
+        0: [2], 1: ["x2"], 3: [true], 8: [false], 11: [[]], 18: ["1"],
+        20: [false], 21: ["NATION"], 26: [true], 43: [true], 45: [100],
+        50: [[]],
+      },
+    ],
+    units: [
+      { 3: ["Missile Silo"], 6: [0], 7: [100], 11: [100], 12: [false],
+        13: [[]], 20: [4] },
+    ],
+  },
+  [[0], [1, 0], [2, 100], [2, 101], [3], [4]],
+);
+
 const structures = {
   votetally: vtScenarios,
   rankedcheckin: rgScenarios,

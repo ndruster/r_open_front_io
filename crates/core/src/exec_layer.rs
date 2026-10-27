@@ -186,6 +186,24 @@
 //! handleStructures runs at the one-third / two-thirds offsets (B1 tick 130,
 //! B2 tick 126) while non-matching ticks only initialize the behaviors
 //! (nuke-ctor cost cache reads + the 307/16 forceSendAttack record).
+//! `el_struct_dp_front` (B3) completes the family with the Hard defense-post
+//! front path: tick 109 (offset 7) walks the full City-build pipeline
+//! (save-up target via MIRV+HydrogenBomb cost pairs, SAM-first dying on
+//! startingGold < 3M, maybeSpawnStructure -> randTerritoryTileArray ->
+//! cityValue connectivity setup -> 25-tile magnitude+border-dist scan, two
+//! canBuild reads per placement — structureSpawnTile plus the
+//! maybeSpawnStructure re-check) and bumps placementsCount to 1, so tick 126
+//! (offset 24) enters tryBuildDefensePost: incomingAttacks (player 58, wire
+//! 822) with a null sourceTile and a real attacker clears the boat filter,
+//! troops 400/1000 pass the 0.35 threat ratio, both border tiles become front
+//! tiles via neighbors4 (mg 39, wire 804) + owner (mg 12), and
+//! sampleTilesNearFront's manhattan ring walk (width/height/x/y mg 70/71/63/
+//! 64 over the border Set) lands 25 tiles inside the [0.75x, 1.5x] x
+//! borderSpacing depth ring with no fallback. Both placements emit 307/17
+//! `ConstructionExecution`. The scenario also pins the sticky FIFO tail
+//! semantics (an exhausted slot repeats its last value) and the one long
+//! owner FIFO: 25 owned reads for the territory sampler, two attacker-owned
+//! front reads, then owned again for the post scan.
 //!
 //! # G5b facade additions (codes ≥ 300)
 //!

@@ -32876,6 +32876,69 @@ elDef(
   [[0], [1, 0], [2, 100], [2, 126], [3], [4]],
 );
 
+// G5p-A (B3): the Hard defense-post front path. Tick 109 (one-third offset 7)
+// runs the full City-build pipeline: isInPostSaveUpBlockedPhase resolves the
+// save-up target (mg 45 all-enabled sticky -> MIRV + HydrogenBomb costs via
+// mg 46/121, gold 500 covers them), the SAM-first branch dies on startingGold
+// (mg 122 -> 1000 < 3M, after info() player 73), the crowded-map branch dies
+// on nation density (mg 35 100000 land tiles vs one nation), and
+// maybeSpawnStructure(City) walks structureSpawnTile: randTerritoryTileArray
+// over the two-tile bounding box (borderTiles [55, 551555] -> mg 63/64 x/y
+// 55/0 and 555/551, ref/owner sticky so every sample lands on owned tile 78),
+// then cityValue setup (nukeMagnitudes outer 30 -> borderSpacing,
+// trainStationMaxRange 28 / MinRange 125, connectivity roll + empty station
+// mocks mg 131 + trainGold mg 128, units(Factory) for cross-spacing) and the
+// 25-tile magnitude+border-dist scan (ring walk over the border Set reads
+// width/height mg 70/71). All values tie at 5 + min(23, 30), so exactly one
+// canBuild (player 47) fires and the City lands on tile 78: 307/17,
+// placementsCount 0 -> 1. Tick 126 (two-thirds offset 24) then takes the
+// defense-post branch: incomingAttacks (player 58 -> attack token 0) with
+// sourceTile null and attacker -> player 1 clears the boat filter, troops
+// 400/1000 >= 0.35 gives allowed = ceil(0.4/0.4) = 1; both border tiles are
+// front tiles (neighbors4 mg 39 -> [56], owner mg 12 -> attacker token 1);
+// units(DefensePost) empty short-circuits countDefensePostsNearFront, the
+// DefensePost cost is 100 vs 500 gold, and sampleTilesNearFront collects 25
+// tiles whose sticky coords (78, 0) sit at manhattan distance 23 from border
+// tile 55 — inside the [0.75x, 1.5x] x 30 depth ring — so no fallback scan.
+// The final loop re-checks canBuild and emits the second 307/17 for
+// DefensePost on tile 78. mg 12 (owner) is the only deliberate multi-value
+// FIFO: 25 owned reads for the territory sampler, two attacker-owned reads
+// for the front tiles, then sticky owned for the post scan.
+elDef(
+  "el_struct_dp_front",
+  44,
+  elNationExecC,
+  ["g2", { playerInfo: { id: "n1", name: "N1" }, spawnCell: { x: 5, y: 5 } }],
+  {
+    a: ["g2", { playerInfo: { id: "n1", name: "N1" }, spawnCell: { x: 5, y: 5 } }],
+    mg: {
+      0: [true], 1: [0], 2: [109], 6: [false],
+      12: [...Array(25).fill(0), 1, 1, 0],
+      14: [{ outer: 30, inner: 10 }],
+      28: [15], 33: ["Hard"], 35: [100000],
+      39: [[56]],
+      45: [false],
+      46: [{ cost: 100, upgradable: true }],
+      54: ["FFA"], 121: [100], 122: [1000],
+      63: [55, 555, 78], 64: [0, 551, 0],
+      69: [78], 70: [1000], 71: [1000],
+      76: [true],
+      123: [[0]], 124: [true], 125: [10],
+      128: [10], 129: [null], 131: [[]], 132: [5],
+    },
+    players: [
+      {
+        0: [0], 3: [true], 11: [[]], 15: [[]], 40: [500], 41: [1000],
+        45: [1000], 47: [true], 50: [[55, 551555]], 58: [[0]], 71: [0],
+        72: [0], 73: [{}],
+      },
+      {},
+    ],
+    attacks: [{ 0: [400], 11: [null], 12: [1] }],
+  },
+  [[0], [1, 0], [2, 100], [2, 109], [2, 126], [3], [4]],
+);
+
 const structures = {
   votetally: vtScenarios,
   rankedcheckin: rgScenarios,

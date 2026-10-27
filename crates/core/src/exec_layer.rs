@@ -157,7 +157,13 @@
 //! real parity bug: the post-closestTwoTiles distance read was recorded as
 //! `(closest_x, closest_y)` while TS 729 reads
 //! `euclideanDistSquared(tile, closestSilo)` — args swapped whenever the
-//! silo and scored tiles differ.
+//! silo and scored tiles differ. `el_nuke_team_spot_skip` walks the Team-mode
+//! isTeammateAlreadyNukingThisSpot overlap check: a Hard three-player Team
+//! retaliation leaves the getPerceivedNukeCost two-player shortcut (Team gold
+//! gate + four cost reads through mg 121), the sole candidate is skipped by a
+//! teammate Hydrogen Bomb whose targetTile collapses the distance read to
+//! 0 <= (10+10)^2, and the tick ends with pure facade reads and no execution
+//! records (Hard has no maybeDestroyEnemySam fallback).
 //!
 //! # G5b facade additions (codes ≥ 300)
 //!

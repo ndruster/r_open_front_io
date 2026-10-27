@@ -32653,6 +32653,73 @@ elDef(
   [[0], [1, 0], [2, 100], [2, 101], [3], [4]],
 );
 
+// G5o B: the Team-mode isTeammateAlreadyNukingThisSpot overlap check inside
+// the maybeSendNuke tile scan. Hard nation n3 (attack rate 59, tick 136,
+// model from the G5m attack family) retaliates against x2 in a three-player
+// Team game, so getPerceivedNukeCost leaves the two-player shortcut: the MIRV
+// gate stays open (mg 45 false), gameMode mocks "Team", the 50M gold beats
+// the HydrogenBomb cost and cost(type) is read four times through mg 121
+// (Hydro cost twice for the Hydro call, Hydro + Atom for the Atom call). The
+// Hydro branch wins as usual and randTerritoryTileArray collapses the 10
+// Hard samples onto x2's border tile 55 (mg.owner reads return x2's token 2).
+// isValidCoord stays false so the candidate set is just {55}; canBuild
+// returns 55 and the scan reaches the Team-only teammate-spot check:
+// game.units(AtomBomb, HydrogenBomb) (mg 120) returns one teammate nuke whose
+// owner is x1 (unit owner token 1), isFriendly passes on the actor's second
+// isFriendly read, targetTile mocks 55 (unit slot 2), and the distance read
+// collapses to 0 <= (10 + 10)^2, so the sole candidate is skipped. bestTile
+// stays null and Hard (unlike Impossible) has no maybeDestroyEnemySam
+// fallback, so the attack tick produces no execution records at all - the
+// recorded trace is pure facade reads, pinning the check's exact read order
+// (nukeMagnitudes.inner, game.units, owner, isFriendly, targetTile,
+// nukeMagnitudes(nuke.type()).inner, euclideanDistSquared).
+elDef(
+  "el_nuke_team_spot_skip",
+  44,
+  elNationExecC,
+  ["g1", { playerInfo: { id: "n3", name: "N3" }, spawnCell: { x: 5, y: 5 } }],
+  {
+    a: ["g1", { playerInfo: { id: "n3", name: "N3" }, spawnCell: { x: 5, y: 5 } }],
+    mg: {
+      0: [true], 1: [0], 2: [136], 6: [false], 11: [[0, 1, 2]],
+      12: [2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 1000000],
+      14: [{ outer: 30, inner: 10 }], 32: [10000], 33: ["Hard"], 35: [100000],
+      40: [0],
+      45: [true, true, true, true, true, true, true, true, true, true, true,
+        true, true, false, false, false, false],
+      46: [{ cost: 500, upgradable: false }], 54: ["Team"], 60: [null],
+      63: [5], 64: [5], 69: [55], 70: [5], 76: [false], 89: [0],
+      115: [true], 120: [[1]], 121: [500, 500, 500, 1000], 122: [1000],
+      123: [[]], 124: [true], 129: [null],
+    },
+    players: [
+      {
+        0: [0], 1: ["n3"], 3: [true], 8: [false], 11: [[0]],
+        12: [false, true], 15: [[]], 18: [1], 20: [false], 21: ["NATION"],
+        26: [true], 34: [true], 35: [2.0], 40: [50000000], 41: [100],
+        45: [10000], 47: [55], 50: [[]], 58: [[0]], 62: [false], 66: [[]],
+        68: [[]], 69: [[]], 70: [[]], 71: [0], 72: [0],
+      },
+      {
+        0: [1], 1: ["x1"], 3: [true], 8: [false], 11: [[]], 18: [1],
+        20: [false], 21: ["NATION"], 26: [true], 43: [true], 45: [100],
+        50: [[]],
+      },
+      {
+        0: [2], 1: ["x2"], 3: [true], 8: [false], 11: [[]], 18: [2],
+        20: [false], 21: ["NATION"], 26: [true], 43: [true], 45: [100],
+        50: [[55]],
+      },
+    ],
+    units: [
+      { 3: ["Missile Silo"], 7: [1], 11: [55], 20: [1] },
+      { 2: [55], 3: ["Hydrogen Bomb"], 6: [1], 7: [9], 11: [55] },
+    ],
+    attacks: [{ 0: [100], 12: [2] }],
+  },
+  [[0], [1, 0], [2, 100], [2, 136], [3], [4]],
+);
+
 const structures = {
   votetally: vtScenarios,
   rankedcheckin: rgScenarios,

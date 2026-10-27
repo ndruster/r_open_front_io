@@ -1228,7 +1228,6 @@ impl ElMap {
         self.is_land(r) && (self.terrain[r as usize] as u8 & EL_MAP_MAG_MASK) == EL_MAP_IMPASSABLE_MAG
     }
     fn owner_id(&self, r: f64) -> f64 { self.owners[r as usize] }
-    #[allow(dead_code)]
     fn magnitude(&self, r: f64) -> f64 {
         (self.terrain[r as usize] as u8 & EL_MAP_MAG_MASK) as f64
     }
@@ -1535,18 +1534,16 @@ pub struct ExecHarness {
     ne_hydro_perceived_cost: i64,
     ne_is_hydro_nation: bool,
     // `NationStructureBehavior` state.
-    #[allow(dead_code)]
     ne_placements_count: f64,
-    #[allow(dead_code)]
     ne_built_crowded: bool,
-    #[allow(dead_code)]
     ne_last_structure_tick: Option<f64>,
-    #[allow(dead_code)]
     ne_has_high_starting_gold: Option<bool>,
-    #[allow(dead_code)]
     ne_post_save_up_start_tick: Option<f64>,
-    #[allow(dead_code)]
     ne_shared_water_components: Option<Vec<f64>>,
+    /// `NationStructureBehavior.reachableStationsCache` — trade-weighted
+    /// station entries `(tile, cluster, weight)` for connectivity scoring;
+    /// cleared at the top of every `doHandleStructures()`.
+    ne_reachable_stations_cache: Option<Vec<(f64, Option<usize>, f64)>>,
 
     mg: Mock,
     players: Vec<Mock>,
@@ -1567,6 +1564,47 @@ struct ElRailroad {
     from_utok: usize,
     to_utok: usize,
     tiles: Vec<f64>,
+}
+
+/// G5l: precomputed state for one `NationStructureBehavior.structureSpawnTileValue()`
+/// closure. The TS closures capture their outer function's locals once; the
+/// per-tile body is `ne_value_at` reading this context.
+#[derive(Clone, Debug, Default)]
+struct NeSpawnValueCtx {
+    /// 0 = city, 1 = missile silo, 2 = factory, 3 = port, 4 = SAM launcher.
+    kind: u8,
+    /// `player.borderTiles()` (635) — empty for port (its closure reads none).
+    border_tiles: Vec<f64>,
+    /// Same set as `border_tiles` keyed by integer ref for the ring search.
+    border_set: std::collections::HashSet<i64>,
+    /// `nukeMagnitudes(AtomBomb).outer` (224).
+    border_spacing: f64,
+    /// `border_spacing * 2`.
+    structure_spacing: f64,
+    /// Same-type `player.units(type)` tokens (241); `tile()` (344) is re-read
+    /// per closure call like the TS `new Set(otherUnits.map(u => u.tile()))`.
+    other_units: Vec<usize>,
+    /// Factory/city: `trainStationMaxRange()` (309) and its square.
+    station_range: f64,
+    station_range_sq: f64,
+    /// Factory/city: `shouldUseConnectivityScore()` draw result.
+    use_conn: bool,
+    /// Factory/city: cached reachable stations (976/979/920/241/344/245/…).
+    reachable: Vec<(f64, Option<usize>, f64)>,
+    /// Factory/city: `trainStationMinRange() ** 2` (973).
+    min_range_sq: f64,
+    /// Factory: city tiles; city: factory tiles (241 + 344 each, deduped).
+    cross_tiles: Vec<f64>,
+    /// SAM: protectable entries `(tile, weight)` (241 no-arg + 283/344/540).
+    protect: Vec<(f64, f64)>,
+    /// SAM: `defaultSamRange() ** 2` (975).
+    range_sq: f64,
+    /// SAM: `difficulty !== Easy && nextInt(0, 100) < 25`.
+    use_coverage: bool,
+    /// SAM: coverage score per protectable tile (540/974/344/710).
+    coverage: Vec<(f64, f64)>,
+    /// `difficulty !== Easy` (SAM closure gate).
+    not_easy: bool,
 }
 
 /// `TransportShipExecution.retreatDst: TileRef | false | null`.
@@ -1719,29 +1757,17 @@ const MG_CLOSEST_SHORE_BY_WATER: usize = 119;
 // G5k Step 2 mg slots (class 44 `NationExecution` + nation behaviors).
 const MG_UNITS_TYPED: usize = 120;
 const MG_UNIT_INFO_COST: usize = 121;
-#[allow(dead_code)]
 const MG_STARTING_GOLD: usize = 122;
-#[allow(dead_code)]
 const MG_NATIONS: usize = 123;
-#[allow(dead_code)]
 const MG_IS_ON_MAP: usize = 124;
-#[allow(dead_code)]
 const MG_TRAIN_STATION_MIN_RANGE: usize = 125;
-#[allow(dead_code)]
 const MG_SAM_RANGE: usize = 126;
-#[allow(dead_code)]
 const MG_DEFAULT_SAM_RANGE: usize = 127;
-#[allow(dead_code)]
 const MG_TRAIN_GOLD: usize = 128;
-#[allow(dead_code)]
 const MG_SHARED_WATER_COMPONENTS: usize = 129;
-#[allow(dead_code)]
 const MG_GET_WATER_COMPONENT_SIZE: usize = 130;
-#[allow(dead_code)]
 const MG_STATION_MANAGER_GET_ALL: usize = 131;
-#[allow(dead_code)]
 const MG_MAGNITUDE: usize = 132;
-#[allow(dead_code)]
 const MG_IS_OCEAN: usize = 133;
 
 // player slot indices.
@@ -1812,9 +1838,7 @@ const PL_ALLIES: usize = 69;
 const PL_ALL_RELATIONS_SORTED: usize = 70;
 // G5k Step 2 player slots (`NationExecution` / `NationStructureBehavior`).
 const PL_UNITS_CONSTRUCTED: usize = 71;
-#[allow(dead_code)]
 const PL_UNITS_OWNED: usize = 72;
-#[allow(dead_code)]
 const PL_INFO: usize = 73;
 const PL_IS_ALLIED_WITH: usize = 74;
 
@@ -10601,20 +10625,17 @@ impl ExecHarness {
     }
     /// `mg.config().startingGold(info)` (970) — the PlayerInfo object is
     /// encoded verbatim (the mock returns the scripted number).
-    #[allow(dead_code)]
     fn mg_starting_gold(&mut self, tr: &mut Vec<f64>, info: &JsVal) -> i64 {
         let prefix = ev_enc(info);
         let v = mk_take(&mut self.mg, MG_STARTING_GOLD, tr, 970.0, &prefix);
         as_num(&v) as i64
     }
     /// `mg.nations()` (971) — a player-token list.
-    #[allow(dead_code)]
     fn mg_nations(&mut self, tr: &mut Vec<f64>) -> Vec<usize> {
         let v = mk_take(&mut self.mg, MG_NATIONS, tr, 971.0, &[]);
         as_tok_list(&v)
     }
     /// `mg.isOnMap({x, y})` (972) — the Cell object encodes as `{x, y}`.
-    #[allow(dead_code)]
     fn mg_is_on_map(&mut self, tr: &mut Vec<f64>, x: f64, y: f64) -> bool {
         let cell = JsVal::Obj(vec![
             ("x".to_string(), JsVal::Num(x)),
@@ -10625,25 +10646,21 @@ impl ExecHarness {
         as_bool(&v)
     }
     /// `mg.config().trainStationMinRange()` (973).
-    #[allow(dead_code)]
     fn mg_train_station_min_range(&mut self, tr: &mut Vec<f64>) -> f64 {
         let v = mk_take(&mut self.mg, MG_TRAIN_STATION_MIN_RANGE, tr, 973.0, &[]);
         as_num(&v)
     }
     /// `mg.config().samRange(level)` (974).
-    #[allow(dead_code)]
     fn mg_sam_range(&mut self, tr: &mut Vec<f64>, level: f64) -> f64 {
         let v = mk_take(&mut self.mg, MG_SAM_RANGE, tr, 974.0, &ev1(level));
         as_num(&v)
     }
     /// `mg.config().defaultSamRange()` (975).
-    #[allow(dead_code)]
     fn mg_default_sam_range(&mut self, tr: &mut Vec<f64>) -> f64 {
         let v = mk_take(&mut self.mg, MG_DEFAULT_SAM_RANGE, tr, 975.0, &[]);
         as_num(&v)
     }
     /// `mg.config().trainGold(kind, troops, player)` (976) — a Gold number.
-    #[allow(dead_code)]
     fn mg_train_gold(&mut self, tr: &mut Vec<f64>, kind: &str, troops: f64, player: usize) -> f64 {
         let mut prefix = evs(kind);
         prefix.extend_from_slice(&ev1(troops));
@@ -10652,7 +10669,6 @@ impl ExecHarness {
         as_num(&v)
     }
     /// `mg.sharedWaterComponents(player)` (977) — a component-id list or null.
-    #[allow(dead_code)]
     fn mg_shared_water_components(&mut self, tr: &mut Vec<f64>, player: usize) -> Option<Vec<f64>> {
         let v = mk_take(&mut self.mg, MG_SHARED_WATER_COMPONENTS, tr, 977.0, &evtok(Some(player)));
         match v {
@@ -10662,7 +10678,6 @@ impl ExecHarness {
         }
     }
     /// `mg.getWaterComponentSize(tile)` (978) — a number or null.
-    #[allow(dead_code)]
     fn mg_get_water_component_size(&mut self, tr: &mut Vec<f64>, tile: f64) -> Option<f64> {
         let v = mk_take(&mut self.mg, MG_GET_WATER_COMPONENT_SIZE, tr, 978.0, &ev1(tile));
         match v {
@@ -10673,13 +10688,11 @@ impl ExecHarness {
     }
     /// `mg.railNetwork().stationManager().getAll()` (979) — station identity is
     /// the unit token, so this yields a unit-token list.
-    #[allow(dead_code)]
     fn mg_station_manager_get_all(&mut self, tr: &mut Vec<f64>) -> Vec<usize> {
         let v = mk_take(&mut self.mg, MG_STATION_MANAGER_GET_ALL, tr, 979.0, &[]);
         as_tok_list(&v)
     }
     /// `mg.magnitude(tile)` (980) — grid-delegated when `spec.map` exists.
-    #[allow(dead_code)]
     fn mg_magnitude(&mut self, tr: &mut Vec<f64>, tile: f64) -> f64 {
         if let Some(ref map) = self.el_map {
             let v = map.magnitude(tile);
@@ -10692,7 +10705,6 @@ impl ExecHarness {
         as_num(&v)
     }
     /// `mg.isOcean(tile)` (981) — grid-delegated when `spec.map` exists.
-    #[allow(dead_code)]
     fn mg_is_ocean(&mut self, tr: &mut Vec<f64>, tile: f64) -> bool {
         if let Some(ref map) = self.el_map {
             let v = map.is_ocean(tile);
@@ -10710,13 +10722,11 @@ impl ExecHarness {
         as_num(&v)
     }
     /// `player.unitsOwned(ty)` (983).
-    #[allow(dead_code)]
     fn pl_units_owned(&mut self, tr: &mut Vec<f64>, tok: usize, ty: &str) -> f64 {
         let v = self.pl(tok, PL_UNITS_OWNED, tr, 983.0, &evs(ty));
         as_num(&v)
     }
     /// `player.info()` (984) — the plain PlayerInfo object.
-    #[allow(dead_code)]
     fn pl_info(&mut self, tr: &mut Vec<f64>, tok: usize) -> JsVal {
         self.pl(tok, PL_INFO, tr, 984.0, &[])
     }
@@ -10851,7 +10861,6 @@ impl ExecHarness {
         push_val(tr, &JsVal::Undef);
     }
     /// `mg.addExecution(new UpgradeStructureExecution(player, unitId))` (tag 25).
-    #[allow(dead_code)]
     fn mg_add_upgrade_structure_exec(
         &mut self,
         tr: &mut Vec<f64>,
@@ -14384,8 +14393,1414 @@ impl ExecHarness {
         Ok(closest)
     }
 
-    fn ne_handle_structures(&mut self, _tr: &mut Vec<f64>) -> Result<(), String> {
+    // ---- NationStructureBehavior (ported inline) ----------------------------
+
+    /// `spacingConstants()` — `nukeMagnitudes(AtomBomb)` (224) returns
+    /// `(inner, outer)`; `borderSpacing = outer`, `structureSpacing = outer * 2`.
+    fn ne_spacing_constants(&mut self, tr: &mut Vec<f64>) -> (f64, f64) {
+        let (_, outer) = self.mg_nuke_magnitudes(tr, UNIT_ATOM_BOMB); // 224
+        (outer, outer * 2.0)
+    }
+
+    /// Integer-keyed membership set for the `nearestTileDistCapped` ring walk
+    /// (JS `Set<number>` over integer tile refs).
+    fn ne_tile_set(v: &[f64]) -> std::collections::HashSet<i64> {
+        v.iter().map(|&t| t as i64).collect()
+    }
+
+    /// `Util.nearestTileDist(game, tiles, tile)` — linear scan, 509 per element.
+    fn ne_nearest_tile_dist(&mut self, tr: &mut Vec<f64>, tiles: &[f64], tile: f64) -> f64 {
+        let mut best = f64::INFINITY;
+        for &t in tiles {
+            let d = self.mg_manhattan_dist(tr, t, tile); // 509
+            if d < best {
+                best = d;
+            }
+        }
+        best
+    }
+
+    /// `Util.nearestTileDistCapped(game, borderTiles, tile, cap)` — the
+    /// set-like branch: `size === 0 → Infinity`, `has(tile) → 0`, then
+    /// `width()` (610), `height()` (611), `x(tile)` (603), `y(tile)` (604) and
+    /// a Manhattan-ring walk over a local membership set.
+    fn ne_nearest_tile_dist_capped(
+        &mut self,
+        tr: &mut Vec<f64>,
+        border_set: &std::collections::HashSet<i64>,
+        border_len: usize,
+        tile: f64,
+        cap: f64,
+    ) -> f64 {
+        if border_len == 0 {
+            return f64::INFINITY;
+        }
+        if border_set.contains(&(tile as i64)) {
+            return 0.0;
+        }
+        let w = self.mg_width(tr); // 610
+        let h = self.mg_height(tr); // 611
+        let cx = self.mg_x(tr, tile); // 603
+        let cy = self.mg_y(tr, tile); // 604
+        let (w_i, h_i) = (w as i64, h as i64);
+        let (cx_i, cy_i) = (cx as i64, cy as i64);
+        let cap_i = cap as i64;
+        for d in 1..=cap_i {
+            for dx in -d..=d {
+                let x = cx_i + dx;
+                if x < 0 || x >= w_i {
+                    continue;
+                }
+                let dy = d - dx.abs();
+                let y1 = cy_i - dy;
+                if y1 >= 0 && border_set.contains(&(y1 * w_i + x)) {
+                    return d as f64;
+                }
+                if dy != 0 {
+                    let y2 = cy_i + dy;
+                    if y2 < h_i && border_set.contains(&(y2 * w_i + x)) {
+                        return d as f64;
+                    }
+                }
+            }
+        }
+        f64::INFINITY
+    }
+
+    /// `new Set(units.map((u) => u.tile()))` — 344 per unit, first-insert order.
+    fn ne_unit_tiles_set(&mut self, tr: &mut Vec<f64>, units: &[usize]) -> Vec<f64> {
+        let mut out: Vec<f64> = Vec::new();
+        for &u in units {
+            let t = self.un_tile(tr, u); // 344
+            if !out.contains(&t) {
+                out.push(t);
+            }
+        }
+        out
+    }
+
+    /// The same set with `otherTiles.delete(tile)` applied.
+    fn ne_unit_tiles_set_minus(
+        &mut self,
+        tr: &mut Vec<f64>,
+        units: &[usize],
+        minus: f64,
+    ) -> Vec<f64> {
+        let mut out = self.ne_unit_tiles_set(tr, units);
+        if let Some(pos) = out.iter().position(|&x| x == minus) {
+            out.remove(pos);
+        }
+        out
+    }
+
+    /// `handleStructures()`. The boolean result is discarded by `tick()`.
+    fn ne_handle_structures(&mut self, tr: &mut Vec<f64>) -> Result<(), String> {
+        let pl = self.ne_player.ok_or("not initialized")?;
+        self.ne_handle_structures_inner(tr, pl)?;
         Ok(())
+    }
+
+    fn ne_handle_structures_inner(
+        &mut self,
+        tr: &mut Vec<f64>,
+        pl: usize,
+    ) -> Result<bool, String> {
+        if self.ne_placements_count > 0.0 && !self.mg_is_unit_disabled(tr, UNIT_DEFENSE_POST)
+        // 511
+        {
+            if self.ne_try_build_defense_post(tr, pl)? {
+                return Ok(true);
+            }
+            if self.ne_defense_post_needed(tr, pl)? {
+                return Ok(false);
+            }
+        }
+        if self.ne_is_on_structure_cooldown(tr, pl)? {
+            return Ok(false);
+        }
+        if self.ne_is_in_post_save_up_blocked_phase(tr, pl)? {
+            return Ok(false);
+        }
+        let built = self.ne_do_handle_structures(tr, pl)?;
+        if built {
+            self.ne_last_structure_tick = Some(self.mg_ticks(tr)); // 212
+            self.ne_placements_count += 1.0;
+        }
+        Ok(built)
+    }
+
+    /// `tryBuildDefensePost()`.
+    fn ne_try_build_defense_post(
+        &mut self,
+        tr: &mut Vec<f64>,
+        pl: usize,
+    ) -> Result<bool, String> {
+        let diff = self.mg_difficulty(tr); // 402
+        if diff == DIFFICULTY_EASY {
+            return Ok(false);
+        }
+        if diff == DIFFICULTY_MEDIUM && !self.random.as_mut().unwrap().chance(2.0) {
+            return Ok(false);
+        }
+        let attacks = self.pl_incoming_attacks(tr, pl); // 822
+        let mut land: Vec<usize> = Vec::new();
+        for a in attacks {
+            if self.at_source_tile(tr, a).is_none() {
+                // 841
+                land.push(a);
+            }
+        }
+        if land.is_empty() {
+            return Ok(false);
+        }
+        let our = self.pl_troops(tr, pl); // 418
+        if our <= 0.0 {
+            return Ok(false);
+        }
+        let mut incoming = 0.0;
+        for a in &land {
+            incoming += self.at_troops(tr, *a); // 830
+        }
+        let ratio = incoming / our;
+        if ratio < 0.35 {
+            return Ok(false);
+        }
+        let allowed = if diff == DIFFICULTY_MEDIUM {
+            1.0
+        } else {
+            (ratio / 0.4).ceil()
+        };
+        let front = self.ne_get_attack_front_tiles(tr, pl, &land)?;
+        let count = self.ne_count_defense_posts_near_front(tr, pl, &front, allowed)?;
+        if count >= allowed {
+            return Ok(false);
+        }
+        let cost = self.ne_cost(tr, UNIT_DEFENSE_POST, pl); // 512 -> 969
+        if self.pl_gold(tr, pl) < cost {
+            // 417
+            return Ok(false);
+        }
+        let tiles = self.ne_sample_tiles_near_front(tr, pl, &front, 25.0)?;
+        for t in tiles {
+            let can = self.pl_can_build(tr, pl, UNIT_DEFENSE_POST, t); // 534
+            if !Self::js_truthy(&can) {
+                continue;
+            }
+            self.mg_add_construction_exec(tr, pl, UNIT_DEFENSE_POST, t);
+            return Ok(true);
+        }
+        Ok(false)
+    }
+
+    /// `defensePostNeeded()`.
+    fn ne_defense_post_needed(&mut self, tr: &mut Vec<f64>, pl: usize) -> Result<bool, String> {
+        let diff = self.mg_difficulty(tr); // 402
+        if diff == DIFFICULTY_EASY {
+            return Ok(false);
+        }
+        let attacks = self.pl_incoming_attacks(tr, pl); // 822
+        let mut land: Vec<usize> = Vec::new();
+        for a in attacks {
+            if self.at_source_tile(tr, a).is_none() {
+                // 841
+                land.push(a);
+            }
+        }
+        if land.is_empty() {
+            return Ok(false);
+        }
+        let our = self.pl_troops(tr, pl); // 418
+        if our <= 0.0 {
+            return Ok(false);
+        }
+        let mut incoming = 0.0;
+        for a in &land {
+            incoming += self.at_troops(tr, *a); // 830
+        }
+        Ok(incoming / our >= 0.35)
+    }
+
+    /// `getAttackFrontTiles(landAttacks)` — 842 per attack, then the border
+    /// scan (635 -> 804 -> 222 per border tile).
+    fn ne_get_attack_front_tiles(
+        &mut self,
+        tr: &mut Vec<f64>,
+        pl: usize,
+        land: &[usize],
+    ) -> Result<Vec<f64>, String> {
+        let mut attackers: Vec<usize> = Vec::new();
+        for a in land {
+            if let Some(p) = self.at_attacker(tr, *a) {
+                // 842
+                if !attackers.contains(&p) {
+                    attackers.push(p);
+                }
+            }
+        }
+        if attackers.is_empty() {
+            return Ok(Vec::new());
+        }
+        let border = self.pl_border_tiles(tr, pl); // 635
+        let mut front: Vec<f64> = Vec::new();
+        for &bt in &border {
+            let nbrs = self.mg_neighbors4(tr, bt); // 804
+            for &n in &nbrs {
+                if let Some(o) = self.mg_owner(tr, n) {
+                    // 222
+                    if attackers.contains(&o) {
+                        front.push(bt);
+                        break;
+                    }
+                }
+            }
+        }
+        Ok(front)
+    }
+
+    /// `countDefensePostsNearFront(frontTiles, cap)`.
+    fn ne_count_defense_posts_near_front(
+        &mut self,
+        tr: &mut Vec<f64>,
+        pl: usize,
+        front: &[f64],
+        cap: f64,
+    ) -> Result<f64, String> {
+        if front.is_empty() {
+            return Ok(0.0);
+        }
+        let (bs, _) = self.ne_spacing_constants(tr); // 224
+        let range_sq = (bs * 1.5) * (bs * 1.5);
+        let dps = self.pl_units(tr, pl, &[UNIT_DEFENSE_POST.to_string()]); // 241
+        let mut count = 0.0;
+        for dp in dps {
+            for &ft in front {
+                let dt = self.un_tile(tr, dp); // 344 (re-read per pair, like TS)
+                let d = self.mg_euclidean_dist_squared(tr, dt, ft); // 710
+                if d <= range_sq {
+                    count += 1.0;
+                    if count >= cap {
+                        return Ok(count);
+                    }
+                    break;
+                }
+            }
+        }
+        Ok(count)
+    }
+
+    /// `sampleTilesNearFront(frontTiles, count, DefensePost)`.
+    fn ne_sample_tiles_near_front(
+        &mut self,
+        tr: &mut Vec<f64>,
+        pl: usize,
+        front: &[f64],
+        count: f64,
+    ) -> Result<Vec<f64>, String> {
+        if front.is_empty() {
+            return Ok(Vec::new());
+        }
+        let (bs, _) = self.ne_spacing_constants(tr); // 224
+        let search_radius = (bs * 1.5).ceil();
+        let min_border = (bs * 0.75).ceil();
+        let max_border = (bs * 1.5).ceil();
+        let border = self.pl_border_tiles(tr, pl); // 635
+        let border_set = Self::ne_tile_set(&border);
+        let spread_sq = (bs * 1.5) * (bs * 1.5);
+        let dp_units = self.pl_units(tr, pl, &[UNIT_DEFENSE_POST.to_string()]); // 241
+        let dp_tiles = self.ne_unit_tiles_set(tr, &dp_units); // 344 each
+
+        let anchors: Vec<f64> = if !dp_tiles.is_empty() {
+            let mut a: Vec<f64> = Vec::new();
+            for &ft in front {
+                let mut near = false;
+                for &dp in &dp_tiles {
+                    if self.mg_euclidean_dist_squared(tr, ft, dp) < spread_sq {
+                        // 710
+                        near = true;
+                        break;
+                    }
+                }
+                if !near {
+                    a.push(ft);
+                }
+            }
+            if a.is_empty() {
+                front.to_vec()
+            } else {
+                a
+            }
+        } else {
+            front.to_vec()
+        };
+
+        let count_i = count as usize;
+        let mut result: Vec<f64> = Vec::new();
+        let mut attempt = 0.0;
+        while attempt < count * 6.0 && result.len() < count_i {
+            attempt += 1.0;
+            let anchor = match self.random.as_mut().unwrap().rand_element(&anchors) {
+                Some(a) => *a,
+                None => break,
+            };
+            let ax = self.mg_x(tr, anchor); // 603
+            let ay = self.mg_y(tr, anchor); // 604
+            let x = self
+                .random
+                .as_mut()
+                .unwrap()
+                .next_int(ax - search_radius, ax + search_radius + 1.0) as f64;
+            let y = self
+                .random
+                .as_mut()
+                .unwrap()
+                .next_int(ay - search_radius, ay + search_radius + 1.0) as f64;
+            if !self.mg_is_valid_coord(tr, x, y) {
+                // 616
+                continue;
+            }
+            let t = self.mg_ref(tr, x, y); // 609
+            if self.mg_owner(tr, t) != Some(pl) {
+                // 222
+                continue;
+            }
+            let bd = self.ne_nearest_tile_dist_capped(tr, &border_set, border.len(), t, max_border);
+            if bd < min_border || bd > max_border {
+                continue;
+            }
+            let can = self.pl_can_build(tr, pl, UNIT_DEFENSE_POST, t); // 534
+            if !Self::js_truthy(&can) {
+                continue;
+            }
+            result.push(t);
+        }
+        if !result.is_empty() {
+            return Ok(result);
+        }
+
+        let mut fallback: Vec<f64> = Vec::new();
+        let mut attempt = 0.0;
+        while attempt < count * 4.0 && fallback.len() < count_i {
+            attempt += 1.0;
+            let anchor = match self.random.as_mut().unwrap().rand_element(&anchors) {
+                Some(a) => *a,
+                None => break,
+            };
+            let ax = self.mg_x(tr, anchor); // 603
+            let ay = self.mg_y(tr, anchor); // 604
+            let x = self
+                .random
+                .as_mut()
+                .unwrap()
+                .next_int(ax - search_radius, ax + search_radius + 1.0) as f64;
+            let y = self
+                .random
+                .as_mut()
+                .unwrap()
+                .next_int(ay - search_radius, ay + search_radius + 1.0) as f64;
+            if !self.mg_is_valid_coord(tr, x, y) {
+                // 616
+                continue;
+            }
+            let t = self.mg_ref(tr, x, y); // 609
+            if self.mg_owner(tr, t) != Some(pl) {
+                // 222
+                continue;
+            }
+            fallback.push(t);
+        }
+        Ok(fallback)
+    }
+
+    /// `isOnStructureCooldown()`.
+    fn ne_is_on_structure_cooldown(
+        &mut self,
+        tr: &mut Vec<f64>,
+        pl: usize,
+    ) -> Result<bool, String> {
+        let last = match self.ne_last_structure_tick {
+            None => return Ok(false),
+            Some(x) => x,
+        };
+        if !self.ne_has_high_starting_gold(tr, pl)? {
+            return Ok(false);
+        }
+        let gaps = [0.0, 0.0, 250.0, 150.0, 100.0];
+        let required = gaps
+            .get(self.ne_placements_count as usize)
+            .copied()
+            .unwrap_or(0.0);
+        if required == 0.0 {
+            return Ok(false);
+        }
+        Ok(self.mg_ticks(tr) - last < required) // 212
+    }
+
+    /// `hasHighStartingGold()` — cached after the first `info()` (984) +
+    /// `startingGold()` (970) pair.
+    fn ne_has_high_starting_gold(
+        &mut self,
+        tr: &mut Vec<f64>,
+        pl: usize,
+    ) -> Result<bool, String> {
+        if let Some(b) = self.ne_has_high_starting_gold {
+            return Ok(b);
+        }
+        let info = self.pl_info(tr, pl); // 984
+        let gold = self.mg_starting_gold(tr, &info); // 970
+        let b = gold >= 3_000_000;
+        self.ne_has_high_starting_gold = Some(b);
+        Ok(b)
+    }
+
+    /// `isInPostSaveUpBlockedPhase()`.
+    fn ne_is_in_post_save_up_blocked_phase(
+        &mut self,
+        tr: &mut Vec<f64>,
+        pl: usize,
+    ) -> Result<bool, String> {
+        if self.mg_is_unit_disabled(tr, UNIT_MISSILE_SILO) {
+            // 511
+            return Ok(false);
+        }
+        let target = self.ne_get_save_up_target(tr, pl)?;
+        let start = match self.ne_post_save_up_start_tick {
+            None => {
+                if self.pl_gold(tr, pl) < target {
+                    // 417
+                    return Ok(false);
+                }
+                let t = self.mg_ticks(tr); // 212
+                self.ne_post_save_up_start_tick = Some(t);
+                t
+            }
+            Some(x) => x,
+        };
+        let elapsed = self.mg_ticks(tr) - start; // 212
+        Ok(elapsed % 300.0 >= 150.0)
+    }
+
+    /// `getSaveUpTarget()` — gold as the i64 side.
+    fn ne_get_save_up_target(&mut self, tr: &mut Vec<f64>, pl: usize) -> Result<i64, String> {
+        if self.mg_is_unit_disabled(tr, UNIT_MISSILE_SILO) {
+            // 511
+            return Ok(self.ne_cost(tr, UNIT_SAM_LAUNCHER, pl)); // 512 -> 969
+        }
+        if self.mg_game_mode(tr) == GAME_MODE_TEAM {
+            // 520
+            return Ok(self.ne_cost(tr, UNIT_HYDROGEN_BOMB, pl));
+        }
+        let mirv_enabled = !self.mg_is_unit_disabled(tr, UNIT_MIRV); // 511
+        let hydro_enabled = !self.mg_is_unit_disabled(tr, UNIT_HYDROGEN_BOMB); // 511
+        let atom_enabled = !self.mg_is_unit_disabled(tr, UNIT_ATOM_BOMB); // 511
+        if mirv_enabled {
+            let mirv = self.ne_cost(tr, UNIT_MIRV, pl);
+            let hydro = self.ne_cost(tr, UNIT_HYDROGEN_BOMB, pl);
+            return Ok(mirv + hydro);
+        }
+        if hydro_enabled {
+            return Ok(self.ne_cost(tr, UNIT_HYDROGEN_BOMB, pl) * 5);
+        }
+        if atom_enabled {
+            return Ok(self.ne_cost(tr, UNIT_ATOM_BOMB, pl) * 20);
+        }
+        Ok(self.ne_cost(tr, UNIT_SAM_LAUNCHER, pl))
+    }
+
+    /// `doHandleStructures()`.
+    fn ne_do_handle_structures(
+        &mut self,
+        tr: &mut Vec<f64>,
+        pl: usize,
+    ) -> Result<bool, String> {
+        self.ne_reachable_stations_cache = None;
+        let cities_disabled = self.mg_is_unit_disabled(tr, UNIT_CITY); // 511
+        let city_count = if cities_disabled {
+            let n = self.pl_num_tiles_owned(tr, pl); // 532
+            (n / 2000.0).floor().max(1.0)
+        } else {
+            self.pl_units_owned(tr, pl, UNIT_CITY) // 983
+        };
+        let shared = self.mg_shared_water_components(tr, pl); // 977
+        self.ne_shared_water_components = shared.clone();
+        let has_coastal = shared.is_some();
+        let silo_enabled = !self.mg_is_unit_disabled(tr, UNIT_MISSILE_SILO); // 511
+        let diff = self.mg_difficulty(tr); // 402
+
+        if self.ne_placements_count == 0.0
+            && (diff == DIFFICULTY_HARD || diff == DIFFICULTY_IMPOSSIBLE)
+            && !self.mg_is_unit_disabled(tr, UNIT_ATOM_BOMB) // 511
+            && silo_enabled
+            && !self.mg_is_unit_disabled(tr, UNIT_SAM_LAUNCHER) // 511
+            && self.ne_has_high_starting_gold(tr, pl)?
+            && self.ne_maybe_spawn_structure(tr, pl, UNIT_SAM_LAUNCHER)?
+        {
+            return Ok(true);
+        }
+
+        if !cities_disabled && !self.ne_built_crowded && self.ne_is_high_nation_density(tr)? {
+            let preferred = if has_coastal && !self.mg_is_unit_disabled(tr, UNIT_PORT) {
+                // 511
+                UNIT_PORT
+            } else {
+                UNIT_FACTORY
+            };
+            if self.mg_is_unit_disabled(tr, preferred) {
+                // 511
+                self.ne_built_crowded = true;
+            } else if self.ne_maybe_spawn_structure(tr, pl, preferred)? {
+                self.ne_built_crowded = true;
+                return Ok(true);
+            }
+        }
+
+        let build_order = [UNIT_PORT, UNIT_FACTORY, UNIT_SAM_LAUNCHER, UNIT_MISSILE_SILO];
+        let nukes_enabled = !self.mg_is_unit_disabled(tr, UNIT_ATOM_BOMB)
+            || !self.mg_is_unit_disabled(tr, UNIT_HYDROGEN_BOMB)
+            || !self.mg_is_unit_disabled(tr, UNIT_MIRV);
+        // 511 chain
+        for st in build_order {
+            if self.mg_is_unit_disabled(tr, st) {
+                continue;
+            }
+            if st == UNIT_PORT && !has_coastal {
+                continue;
+            }
+            if !nukes_enabled && (st == UNIT_MISSILE_SILO || st == UNIT_SAM_LAUNCHER) {
+                continue;
+            }
+            if !silo_enabled && st == UNIT_SAM_LAUNCHER {
+                continue;
+            }
+            if self.ne_should_build_structure(tr, pl, st, city_count, has_coastal)?
+                && self.ne_maybe_spawn_structure(tr, pl, st)?
+            {
+                return Ok(true);
+            }
+        }
+
+        if !cities_disabled && self.ne_maybe_spawn_structure(tr, pl, UNIT_CITY)? {
+            return Ok(true);
+        }
+        Ok(false)
+    }
+
+    /// `isHighNationDensity()` — 501 then 971.
+    fn ne_is_high_nation_density(&mut self, tr: &mut Vec<f64>) -> Result<bool, String> {
+        let land = self.mg_num_land_tiles(tr); // 501
+        if land <= 0.0 {
+            return Ok(false);
+        }
+        let nations = self.mg_nations(tr); // 971
+        Ok(nations.len() as f64 / land > 1.0 / 7500.0)
+    }
+
+    /// `shouldBuildStructure(type, cityCount, hasCoastalTiles)`.
+    fn ne_should_build_structure(
+        &mut self,
+        tr: &mut Vec<f64>,
+        pl: usize,
+        ty: &str,
+        city_count: f64,
+        has_coastal: bool,
+    ) -> Result<bool, String> {
+        let diff = self.mg_difficulty(tr); // 402
+        let mut ratio = match (ty, diff.as_str()) {
+            (UNIT_PORT, _) => 0.75,
+            (UNIT_FACTORY, _) => 0.75,
+            (UNIT_SAM_LAUNCHER, DIFFICULTY_EASY) => 0.15,
+            (UNIT_SAM_LAUNCHER, DIFFICULTY_MEDIUM) => 0.2,
+            (UNIT_SAM_LAUNCHER, DIFFICULTY_HARD) => 0.25,
+            (UNIT_SAM_LAUNCHER, DIFFICULTY_IMPOSSIBLE) => 0.3,
+            (UNIT_MISSILE_SILO, _) => 0.2,
+            // `getStructureRatios` has no entry for City / DefensePost.
+            _ => return Ok(false),
+        };
+        if ty == UNIT_FACTORY
+            && has_coastal
+            && !self.mg_is_unit_disabled(tr, UNIT_PORT)
+        // 511
+        {
+            ratio *= 0.33;
+        }
+        let owned = self.pl_units_owned(tr, pl, ty); // 983
+        if ty == UNIT_MISSILE_SILO && owned >= 3.0 {
+            return Ok(false);
+        }
+        if ty == UNIT_MISSILE_SILO && owned == 0.0 {
+            ratio = 0.4;
+        }
+        Ok(owned < (city_count * ratio).floor())
+    }
+
+    /// `maybeSpawnStructure(type)`.
+    fn ne_maybe_spawn_structure(
+        &mut self,
+        tr: &mut Vec<f64>,
+        pl: usize,
+        ty: &str,
+    ) -> Result<bool, String> {
+        let perceived = self.ne_get_perceived_cost(tr, pl, ty)?;
+        if self.pl_gold(tr, pl) < perceived {
+            // 417
+            return Ok(false);
+        }
+        let structures = self.pl_units(tr, pl, &[ty.to_string()]); // 241
+        if self.ne_get_total_structure_density(tr, pl)? > 1.0 / 1500.0 {
+            let info = self.mg_config_unit_info(tr, ty); // 513
+            let upgradable = val_field(&info, "upgradable").map(as_bool).unwrap_or(false);
+            if upgradable {
+                if self.ne_maybe_upgrade_structure(tr, pl, &structures)? {
+                    return Ok(true);
+                }
+                if !structures.is_empty() {
+                    return Ok(false);
+                }
+            }
+        }
+        let tile = match self.ne_structure_spawn_tile(tr, pl, ty)? {
+            Some(t) => t,
+            None => return Ok(false),
+        };
+        let can = self.pl_can_build(tr, pl, ty, tile); // 534
+        if matches!(can, JsVal::Bool(false)) {
+            return Ok(false);
+        }
+        self.mg_add_construction_exec(tr, pl, ty, tile);
+        Ok(true)
+    }
+
+    /// `getPerceivedCost(type)`.
+    fn ne_get_perceived_cost(
+        &mut self,
+        tr: &mut Vec<f64>,
+        pl: usize,
+        ty: &str,
+    ) -> Result<i64, String> {
+        let real_cost = self.ne_cost(tr, ty, pl); // 512 -> 969
+        let save_up_target = self.ne_get_save_up_target(tr, pl)?;
+        if save_up_target == 0 || self.pl_gold(tr, pl) >= save_up_target {
+            // 417
+            return Ok(real_cost);
+        }
+        let owned = self.pl_units_owned(tr, pl, ty); // 983
+        let increase = if ty == UNIT_CITY {
+            1.0
+        } else {
+            let diff = self.mg_difficulty(tr); // 402
+            match (ty, diff.as_str()) {
+                (UNIT_PORT, _) => 1.0,
+                (UNIT_FACTORY, _) => 1.0,
+                (UNIT_SAM_LAUNCHER, _) => 0.3,
+                (UNIT_MISSILE_SILO, _) => 1.0,
+                _ => 0.1,
+            }
+        };
+        let multiplier = 1.0 + increase * owned;
+        Ok(((real_cost as f64) * multiplier).ceil() as i64)
+    }
+
+    /// `getTotalStructureDensity()` — 532 then 241 (all six structure types).
+    fn ne_get_total_structure_density(
+        &mut self,
+        tr: &mut Vec<f64>,
+        pl: usize,
+    ) -> Result<f64, String> {
+        let tiles = self.pl_num_tiles_owned(tr, pl); // 532
+        if tiles > 0.0 {
+            let types: Vec<String> =
+                STRUCTURES_TYPES.iter().map(|s| s.to_string()).collect();
+            let all = self.pl_units(tr, pl, &types); // 241
+            Ok(all.len() as f64 / tiles)
+        } else {
+            Ok(0.0)
+        }
+    }
+
+    /// `maybeUpgradeStructure(structures)`.
+    fn ne_maybe_upgrade_structure(
+        &mut self,
+        tr: &mut Vec<f64>,
+        pl: usize,
+        structures: &[usize],
+    ) -> Result<bool, String> {
+        if self.ne_get_total_structure_density(tr, pl)? <= 1.0 / 1500.0 {
+            return Ok(false);
+        }
+        if structures.is_empty() {
+            return Ok(false);
+        }
+        let best = self.ne_find_best_structure_to_upgrade(tr, pl, structures)?;
+        if let Some(u) = best {
+            let id = self.un_id(tr, u); // 340
+            self.mg_add_upgrade_structure_exec(tr, pl, id);
+            return Ok(true);
+        }
+        Ok(false)
+    }
+
+    /// `findBestStructureToUpgrade(structures)`.
+    fn ne_find_best_structure_to_upgrade(
+        &mut self,
+        tr: &mut Vec<f64>,
+        pl: usize,
+        structures: &[usize],
+    ) -> Result<Option<usize>, String> {
+        if structures.is_empty() {
+            return Ok(None);
+        }
+        let mut upgradable: Vec<usize> = Vec::new();
+        for &s in structures {
+            if self.pl_can_upgrade_unit(tr, pl, s) {
+                // 326
+                upgradable.push(s);
+            }
+        }
+        if upgradable.is_empty() {
+            return Ok(None);
+        }
+        let diff = self.mg_difficulty(tr); // 402
+        let random_chance = match diff.as_str() {
+            DIFFICULTY_EASY => 70.0,
+            DIFFICULTY_MEDIUM => 40.0,
+            DIFFICULTY_HARD => 25.0,
+            DIFFICULTY_IMPOSSIBLE => 10.0,
+            other => return Err(format!("Unexpected value: {other}")),
+        };
+        if (self.random.as_mut().unwrap().next_int(0.0, 100.0) as f64) < random_chance {
+            return Ok(self.random.as_mut().unwrap().rand_element(&upgradable).copied());
+        }
+        let sams = self.pl_units(tr, pl, &[UNIT_SAM_LAUNCHER.to_string()]); // 241
+        let mut scored: Vec<(usize, f64)> = Vec::new();
+        for &s in &upgradable {
+            let mut score = 0.0;
+            for &sam in &sams {
+                let lv = self.un_level(tr, sam); // 540
+                let r = self.mg_sam_range(tr, lv); // 974
+                let r_sq = r * r;
+                let st = self.un_tile(tr, s); // 344
+                let mt = self.un_tile(tr, sam); // 344
+                let d = self.mg_euclidean_dist_squared(tr, st, mt); // 710
+                if d <= r_sq {
+                    score += 10.0;
+                    let lv2 = self.un_level(tr, sam); // 540 (re-read)
+                    if lv2 > 1.0 {
+                        score += (lv2 - 1.0) * 7.5;
+                    }
+                }
+            }
+            score += self.random.as_mut().unwrap().next_int(0.0, 5.0) as f64;
+            scored.push((s, score));
+        }
+        if scored.is_empty() {
+            return Ok(None);
+        }
+        scored.sort_by(|a, b| b.1.total_cmp(&a.1));
+        if scored.len() >= 2 && self.random.as_mut().unwrap().chance(2.0) {
+            let pick = if scored.len() >= 3 {
+                self.random.as_mut().unwrap().next_int(1.0, 3.0) as usize
+            } else {
+                1
+            };
+            return Ok(Some(scored[pick].0));
+        }
+        Ok(Some(scored[0].0))
+    }
+
+    /// `structureSpawnTile(type)`.
+    fn ne_structure_spawn_tile(
+        &mut self,
+        tr: &mut Vec<f64>,
+        pl: usize,
+        ty: &str,
+    ) -> Result<Option<f64>, String> {
+        let tiles = if ty == UNIT_PORT {
+            self.ne_rand_coastal_tile_array(tr, pl, 25.0)?
+        } else {
+            self.ne_rand_territory_tile_array(tr, pl, 25.0)?
+        };
+        if tiles.is_empty() {
+            return Ok(None);
+        }
+        let ctx = match self.ne_structure_spawn_tile_value(tr, pl, ty)? {
+            Some(c) => c,
+            None => return Ok(None),
+        };
+        let mut best: Option<f64> = None;
+        let mut best_value = 0.0f64;
+        for &t in &tiles {
+            let v = self.ne_value_at(tr, &ctx, t);
+            if v <= best_value && best.is_some() {
+                continue;
+            }
+            let can = self.pl_can_build(tr, pl, ty, t); // 534
+            if !Self::js_truthy(&can) {
+                continue;
+            }
+            best = Some(t);
+            best_value = v;
+        }
+        Ok(best)
+    }
+
+    /// `structureSpawnTileValue(type)` — runs the closure's outer precomputation
+    /// traces and returns the captured context (None for value-less types).
+    fn ne_structure_spawn_tile_value(
+        &mut self,
+        tr: &mut Vec<f64>,
+        pl: usize,
+        ty: &str,
+    ) -> Result<Option<NeSpawnValueCtx>, String> {
+        match ty {
+            UNIT_MISSILE_SILO => {
+                let border = self.pl_border_tiles(tr, pl); // 635
+                let other = self.pl_units(tr, pl, &[UNIT_MISSILE_SILO.to_string()]); // 241
+                let (bs, ss) = self.ne_spacing_constants(tr); // 224
+                Ok(Some(NeSpawnValueCtx {
+                    kind: 1,
+                    border_set: Self::ne_tile_set(&border),
+                    border_tiles: border,
+                    border_spacing: bs,
+                    structure_spacing: ss,
+                    other_units: other,
+                    ..Default::default()
+                }))
+            }
+            UNIT_PORT => {
+                let other = self.pl_units(tr, pl, &[UNIT_PORT.to_string()]); // 241
+                Ok(Some(NeSpawnValueCtx {
+                    kind: 3,
+                    other_units: other,
+                    ..Default::default()
+                }))
+            }
+            UNIT_FACTORY => {
+                let border = self.pl_border_tiles(tr, pl); // 635
+                let other = self.pl_units(tr, pl, &[UNIT_FACTORY.to_string()]); // 241
+                let (bs, ss) = self.ne_spacing_constants(tr); // 224
+                let station_range = self.mg_train_station_max_range(tr); // 309
+                let d = self.mg_difficulty(tr); // 402
+                let use_conn = self.ne_should_use_connectivity_score(tr, &d)?;
+                let reachable = if use_conn {
+                    self.ne_get_or_build_reachable_stations(tr, pl)?
+                } else {
+                    Vec::new()
+                };
+                let min_r = self.mg_train_station_min_range(tr); // 973
+                let city_units = self.pl_units(tr, pl, &[UNIT_CITY.to_string()]); // 241
+                let cross_tiles = self.ne_unit_tiles_set(tr, &city_units); // 344 each
+                Ok(Some(NeSpawnValueCtx {
+                    kind: 2,
+                    border_set: Self::ne_tile_set(&border),
+                    border_tiles: border,
+                    border_spacing: bs,
+                    structure_spacing: ss,
+                    other_units: other,
+                    station_range,
+                    station_range_sq: station_range * station_range,
+                    use_conn,
+                    reachable,
+                    min_range_sq: min_r * min_r,
+                    cross_tiles,
+                    ..Default::default()
+                }))
+            }
+            UNIT_CITY => {
+                let border = self.pl_border_tiles(tr, pl); // 635
+                let other = self.pl_units(tr, pl, &[UNIT_CITY.to_string()]); // 241
+                let (bs, ss) = self.ne_spacing_constants(tr); // 224
+                let station_range = self.mg_train_station_max_range(tr); // 309
+                let d = self.mg_difficulty(tr); // 402
+                let use_conn = self.ne_should_use_connectivity_score(tr, &d)?;
+                let reachable = if use_conn {
+                    self.ne_get_or_build_reachable_stations(tr, pl)?
+                } else {
+                    Vec::new()
+                };
+                let min_r = self.mg_train_station_min_range(tr); // 973
+                let factory_units = self.pl_units(tr, pl, &[UNIT_FACTORY.to_string()]); // 241
+                let cross_tiles = self.ne_unit_tiles_set(tr, &factory_units); // 344 each
+                Ok(Some(NeSpawnValueCtx {
+                    kind: 0,
+                    border_set: Self::ne_tile_set(&border),
+                    border_tiles: border,
+                    border_spacing: bs,
+                    structure_spacing: ss,
+                    other_units: other,
+                    station_range,
+                    station_range_sq: station_range * station_range,
+                    use_conn,
+                    reachable,
+                    min_range_sq: min_r * min_r,
+                    cross_tiles,
+                    ..Default::default()
+                }))
+            }
+            UNIT_SAM_LAUNCHER => {
+                let border = self.pl_border_tiles(tr, pl); // 635
+                let other = self.pl_units(tr, pl, &[UNIT_SAM_LAUNCHER.to_string()]); // 241
+                let (bs, ss) = self.ne_spacing_constants(tr); // 224
+                let d = self.mg_difficulty(tr); // 402
+                let weight_by_level = d == DIFFICULTY_HARD || d == DIFFICULTY_IMPOSSIBLE;
+                let all = self.pl_units_all(tr, pl); // 241 no-arg
+                let mut protect: Vec<(f64, f64)> = Vec::new();
+                for u in all {
+                    let ut = self.un_type(tr, u); // 283
+                    if ut == UNIT_CITY
+                        || ut == UNIT_FACTORY
+                        || ut == UNIT_MISSILE_SILO
+                        || ut == UNIT_PORT
+                    {
+                        let t = self.un_tile(tr, u); // 344
+                        let w = if weight_by_level {
+                            self.un_level(tr, u) // 540
+                        } else {
+                            1.0
+                        };
+                        protect.push((t, w));
+                    }
+                }
+                let range = self.mg_default_sam_range(tr); // 975
+                let not_easy = d != DIFFICULTY_EASY;
+                let use_coverage =
+                    not_easy && (self.random.as_mut().unwrap().next_int(0.0, 100.0) as f64) < 25.0;
+                let coverage: Vec<(f64, f64)> = if use_coverage {
+                    let sams = self.pl_units(tr, pl, &[UNIT_SAM_LAUNCHER.to_string()]); // 241
+                    let mut cov: Vec<(f64, f64)> = Vec::new();
+                    for &(pt, _) in &protect {
+                        let mut score = 0.0;
+                        for &sam in &sams {
+                            let lv = self.un_level(tr, sam); // 540
+                            let r = self.mg_sam_range(tr, lv); // 974
+                            let st = self.un_tile(tr, sam); // 344
+                            let d2 = self.mg_euclidean_dist_squared(tr, pt, st); // 710
+                            if d2 <= r * r {
+                                score += self.un_level(tr, sam); // 540
+                            }
+                        }
+                        cov.push((pt, score));
+                    }
+                    cov
+                } else {
+                    Vec::new()
+                };
+                Ok(Some(NeSpawnValueCtx {
+                    kind: 4,
+                    border_set: Self::ne_tile_set(&border),
+                    border_tiles: border,
+                    border_spacing: bs,
+                    structure_spacing: ss,
+                    other_units: other,
+                    protect,
+                    range_sq: range * range,
+                    use_coverage,
+                    coverage,
+                    not_easy,
+                    ..Default::default()
+                }))
+            }
+            _ => Ok(None),
+        }
+    }
+
+    /// The per-tile body of the selected `structureSpawnTileValue` closure.
+    fn ne_value_at(&mut self, tr: &mut Vec<f64>, ctx: &NeSpawnValueCtx, tile: f64) -> f64 {
+        let mut w = 0.0f64;
+        match ctx.kind {
+            3 => {
+                // portValue
+                let others = self.ne_unit_tiles_set_minus(tr, &ctx.other_units, tile);
+                w += self.ne_nearest_tile_dist(tr, &others, tile);
+            }
+            1 => {
+                // missileSiloValue
+                w += self.mg_magnitude(tr, tile); // 980
+                let bd = self.ne_nearest_tile_dist_capped(
+                    tr,
+                    &ctx.border_set,
+                    ctx.border_tiles.len(),
+                    tile,
+                    ctx.border_spacing,
+                );
+                w += bd.min(ctx.border_spacing);
+                let others = self.ne_unit_tiles_set_minus(tr, &ctx.other_units, tile);
+                let d = self.ne_nearest_tile_dist(tr, &others, tile);
+                if d != f64::INFINITY {
+                    w += d.min(ctx.structure_spacing);
+                }
+            }
+            2 | 0 => {
+                // factoryValue / cityValue
+                w += self.mg_magnitude(tr, tile); // 980
+                let bd = self.ne_nearest_tile_dist_capped(
+                    tr,
+                    &ctx.border_set,
+                    ctx.border_tiles.len(),
+                    tile,
+                    ctx.border_spacing,
+                );
+                w += bd.min(ctx.border_spacing);
+                let others = self.ne_unit_tiles_set_minus(tr, &ctx.other_units, tile);
+                let d = self.ne_nearest_tile_dist(tr, &others, tile);
+                if d != f64::INFINITY {
+                    let cap = if ctx.kind == 2 {
+                        ctx.station_range
+                    } else {
+                        ctx.structure_spacing
+                    };
+                    w += d.min(cap);
+                }
+                let d2 = self.ne_nearest_tile_dist(tr, &ctx.cross_tiles, tile);
+                if d2 != f64::INFINITY {
+                    w += d2.min(ctx.structure_spacing);
+                }
+                if !ctx.use_conn {
+                    return w;
+                }
+                w += self.ne_compute_connectivity_score(
+                    tr,
+                    tile,
+                    &ctx.reachable,
+                    ctx.min_range_sq,
+                    ctx.station_range_sq,
+                ) * ctx.structure_spacing;
+            }
+            _ => {
+                // samLauncherValue
+                w += self.mg_magnitude(tr, tile); // 980
+                let bd = self.ne_nearest_tile_dist_capped(
+                    tr,
+                    &ctx.border_set,
+                    ctx.border_tiles.len(),
+                    tile,
+                    ctx.border_spacing,
+                );
+                if !ctx.border_tiles.is_empty() {
+                    w += bd.min(ctx.border_spacing);
+                }
+                let others = self.ne_unit_tiles_set_minus(tr, &ctx.other_units, tile);
+                let d = self.ne_nearest_tile_dist(tr, &others, tile);
+                if d != f64::INFINITY {
+                    w += d.min(ctx.structure_spacing);
+                }
+                if ctx.not_easy {
+                    for &(pt, pw) in &ctx.protect {
+                        let dsq = self.mg_euclidean_dist_squared(tr, tile, pt); // 710
+                        if dsq > ctx.range_sq {
+                            continue;
+                        }
+                        if ctx.use_coverage {
+                            let cov = ctx
+                                .coverage
+                                .iter()
+                                .find(|(t, _)| *t == pt)
+                                .map(|(_, c)| *c)
+                                .unwrap_or(0.0);
+                            w += ctx.structure_spacing * pw * (1.0 / (1.0 + cov));
+                        } else {
+                            w += ctx.structure_spacing * pw;
+                        }
+                    }
+                }
+            }
+        }
+        w
+    }
+
+    /// `shouldUseConnectivityScore(difficulty)` — always consumes one draw.
+    fn ne_should_use_connectivity_score(
+        &mut self,
+        _tr: &mut Vec<f64>,
+        diff: &str,
+    ) -> Result<bool, String> {
+        let random_chance = match diff {
+            DIFFICULTY_EASY => 0.0,
+            DIFFICULTY_MEDIUM => 60.0,
+            DIFFICULTY_HARD => 75.0,
+            DIFFICULTY_IMPOSSIBLE => 100.0,
+            other => return Err(format!("Unexpected value: {other}")),
+        };
+        Ok((self.random.as_mut().unwrap().next_int(0.0, 100.0) as f64) < random_chance)
+    }
+
+    /// `getOrBuildReachableStations()` — the instance-level cache.
+    fn ne_get_or_build_reachable_stations(
+        &mut self,
+        tr: &mut Vec<f64>,
+        pl: usize,
+    ) -> Result<Vec<(f64, Option<usize>, f64)>, String> {
+        if self.ne_reachable_stations_cache.is_none() {
+            let built = self.ne_build_reachable_stations(tr, pl)?;
+            self.ne_reachable_stations_cache = Some(built);
+        }
+        Ok(self.ne_reachable_stations_cache.clone().unwrap())
+    }
+
+    /// `buildReachableStations()`.
+    fn ne_build_reachable_stations(
+        &mut self,
+        tr: &mut Vec<f64>,
+        pl: usize,
+    ) -> Result<Vec<(f64, Option<usize>, f64)>, String> {
+        let stations = self.mg_station_manager_get_all(tr); // 979
+        let mut unit_to_cluster: Vec<(usize, Option<usize>)> = Vec::new();
+        for s in &stations {
+            let c = self.st_get_cluster(tr, *s); // 920
+            unit_to_cluster.push((*s, c));
+        }
+        let max_trade_gold = self.mg_train_gold(tr, "ally", 0.0, pl).max(1.0); // 976
+        let self_weight = self.mg_train_gold(tr, "self", 0.0, pl) / max_trade_gold; // 976
+        let mut result: Vec<(f64, Option<usize>, f64)> = Vec::new();
+
+        let own_types = [UNIT_CITY, UNIT_PORT, UNIT_FACTORY]
+            .iter()
+            .map(|s| s.to_string())
+            .collect::<Vec<_>>();
+        let own = self.pl_units(tr, pl, &own_types); // 241 (three args)
+        for u in own {
+            if let Some((_, c)) = unit_to_cluster.iter().find(|(k, _)| *k == u) {
+                let t = self.un_tile(tr, u); // 344
+                result.push((t, *c, self_weight));
+            }
+        }
+
+        let neighbors = self.pl_nearby(tr, pl); // 245
+        for nb in neighbors {
+            if !self.pl_is_player(tr, nb) {
+                // 259
+                continue;
+            }
+            if self.pl_type(tr, nb) == PLAYER_TYPE_BOT {
+                // 251
+                continue;
+            }
+            if !self.pl_can_trade(tr, pl, Some(nb)) {
+                // 533
+                continue;
+            }
+            let rel = if self.pl_is_on_same_team(tr, pl, Some(nb)) {
+                // 250
+                "team"
+            } else if self.pl_is_allied_with(tr, pl, nb) {
+                // 987
+                "ally"
+            } else {
+                "other"
+            };
+            let weight = self.mg_train_gold(tr, rel, 0.0, pl) / max_trade_gold; // 976
+            let units = self.pl_units(tr, nb, &own_types); // 241
+            for u in units {
+                if let Some((_, c)) = unit_to_cluster.iter().find(|(k, _)| *k == u) {
+                    let t = self.un_tile(tr, u); // 344
+                    result.push((t, *c, weight));
+                }
+            }
+        }
+        Ok(result)
+    }
+
+    /// `computeConnectivityScore(tile, reachableStations, min, max)`.
+    fn ne_compute_connectivity_score(
+        &mut self,
+        tr: &mut Vec<f64>,
+        tile: f64,
+        reachable: &[(f64, Option<usize>, f64)],
+        min_sq: f64,
+        max_sq: f64,
+    ) -> f64 {
+        let mut clusters: Vec<(usize, f64)> = Vec::new();
+        let mut isolated = 0.0f64;
+        for &(st_tile, cluster, weight) in reachable {
+            let d = self.mg_euclidean_dist_squared(tr, tile, st_tile); // 710
+            if d < min_sq || d > max_sq {
+                continue;
+            }
+            match cluster {
+                Some(c) => match clusters.iter_mut().find(|(k, _)| *k == c) {
+                    Some(e) => {
+                        if weight > e.1 {
+                            e.1 = weight;
+                        }
+                    }
+                    None => clusters.push((c, weight)),
+                },
+                None => isolated += weight,
+            }
+        }
+        let mut score = isolated;
+        for (_, cw) in &clusters {
+            score += cw;
+        }
+        score
+    }
+
+    /// `randCoastalTileArray(numTiles)` — shore filter over the border set
+    /// (635 -> 967 -> 507 -> 508 -> 981 -> 301 -> 402 -> 978) then sampling.
+    fn ne_rand_coastal_tile_array(
+        &mut self,
+        tr: &mut Vec<f64>,
+        pl: usize,
+        num_tiles: f64,
+    ) -> Result<Vec<f64>, String> {
+        let shared = self.ne_shared_water_components.clone();
+        let border = self.pl_border_tiles(tr, pl); // 635
+        let mut tiles: Vec<f64> = Vec::new();
+        for &t in &border {
+            if !self.mg_is_shore(tr, t) {
+                // 967
+                continue;
+            }
+            let shared = match &shared {
+                None => continue,
+                Some(s) => s,
+            };
+            let nbrs = self.mg_neighbors(tr, t); // 507
+            let mut ok = false;
+            for &n in &nbrs {
+                if !self.mg_is_water(tr, n) {
+                    // 508
+                    continue;
+                }
+                if self.mg_is_ocean(tr, n) {
+                    // 981
+                    ok = true;
+                    break;
+                }
+                let comp = self.mg_get_water_component(tr, n); // 301
+                let comp_num = match &comp {
+                    JsVal::Num(x) => *x,
+                    _ => continue,
+                };
+                if !shared.contains(&comp_num) {
+                    continue;
+                }
+                let diff = self.mg_difficulty(tr); // 402
+                if diff != DIFFICULTY_EASY {
+                    let size = self.mg_get_water_component_size(tr, n); // 978
+                    if let Some(s) = size {
+                        if s < 3000.0 {
+                            continue;
+                        }
+                    }
+                }
+                ok = true;
+                break;
+            }
+            if ok {
+                tiles.push(t);
+            }
+        }
+        Ok(self.ne_array_sampler(tr, tiles, num_tiles as usize))
+    }
+
+    /// `arraySampler(a, sampleSize)` — all elements in order when short, else
+    /// `randFromSet` draws (one `nextInt(0, size)` each) over a deduped
+    /// insertion-ordered pool with removals.
+    fn ne_array_sampler(&mut self, _tr: &mut Vec<f64>, a: Vec<f64>, sample_size: usize) -> Vec<f64> {
+        if a.len() <= sample_size {
+            return a;
+        }
+        let mut remaining: Vec<f64> = Vec::new();
+        for t in a {
+            if !remaining.contains(&t) {
+                remaining.push(t);
+            }
+        }
+        let mut out: Vec<f64> = Vec::new();
+        for _ in 0..sample_size {
+            let idx = self
+                .random
+                .as_mut()
+                .unwrap()
+                .next_int(0.0, remaining.len() as f64) as usize;
+            let t = remaining.remove(idx);
+            out.push(t);
+        }
+        out
+    }
+
+    /// `randTerritoryTileArray(random, mg, player, numTiles)`.
+    fn ne_rand_territory_tile_array(
+        &mut self,
+        tr: &mut Vec<f64>,
+        pl: usize,
+        num_tiles: f64,
+    ) -> Result<Vec<f64>, String> {
+        let border = self.pl_border_tiles(tr, pl); // 635
+        let (mut min_x, mut max_x) = (f64::INFINITY, f64::NEG_INFINITY);
+        let (mut min_y, mut max_y) = (f64::INFINITY, f64::NEG_INFINITY);
+        for &t in &border {
+            let x = self.mg_x(tr, t); // 603
+            let y = self.mg_y(tr, t); // 604
+            if x < min_x {
+                min_x = x;
+            }
+            if y < min_y {
+                min_y = y;
+            }
+            if x > max_x {
+                max_x = x;
+            }
+            if y > max_y {
+                max_y = y;
+            }
+        }
+        let mut out: Vec<f64> = Vec::new();
+        for _ in 0..num_tiles as i64 {
+            if let Some(t) = self.ne_rand_territory_tile(tr, pl, min_x, min_y, max_x, max_y)? {
+                out.push(t);
+            }
+        }
+        Ok(out)
+    }
+
+    /// `randTerritoryTile(random, mg, p, boundingBox)`.
+    fn ne_rand_territory_tile(
+        &mut self,
+        tr: &mut Vec<f64>,
+        pl: usize,
+        min_x: f64,
+        min_y: f64,
+        max_x: f64,
+        max_y: f64,
+    ) -> Result<Option<f64>, String> {
+        for _ in 0..100 {
+            let rx = self
+                .random
+                .as_mut()
+                .unwrap()
+                .next_int(min_x, max_x) as f64;
+            let ry = self
+                .random
+                .as_mut()
+                .unwrap()
+                .next_int(min_y, max_y) as f64;
+            if !self.mg_is_on_map(tr, rx, ry) {
+                // 972
+                continue;
+            }
+            let t = self.mg_ref(tr, rx, ry); // 609
+            if self.mg_owner(tr, t) == Some(pl) {
+                // 222
+                return Ok(Some(t));
+            }
+        }
+        let n1 = self.pl_num_tiles_owned(tr, pl); // 532
+        if n1 > 0.0 {
+            let n2 = self.pl_num_tiles_owned(tr, pl); // 532
+            if n2 <= 100.0 {
+                let tiles = self.pl_tiles(tr, pl); // 634
+                if tiles.is_empty() {
+                    return Ok(None);
+                }
+                let idx = self
+                    .random
+                    .as_mut()
+                    .unwrap()
+                    .next_int(0.0, tiles.len() as f64) as usize;
+                return Ok(Some(tiles[idx]));
+            }
+        }
+        Ok(None)
     }
 
     // ---- NationWarshipBehavior (ported inline) ------------------------------

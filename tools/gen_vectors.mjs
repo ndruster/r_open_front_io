@@ -26749,10 +26749,16 @@ function elPlayerObj(tok, slots) {
       const t = elRet(m, 10, 240, [tok, ...elEvTok(o)]);
       return t == null ? null : elC.requests[t];
     },
-    units: (types) => {
+    units: (...types) => {
       // `units()` (no arg) and `units(type)` (single) are the G5b shapes; the
-      // existing scenarios pass an array. Normalise to a string list.
-      const arr = types === undefined ? [] : Array.isArray(types) ? types : [types];
+      // existing scenarios pass an array. G5l: `units(type, type2, type3)`
+      // (rail connectivity) is variadic. Normalise to a flat string list.
+      const arr = [];
+      for (const t of types) {
+        if (t === undefined) continue;
+        if (Array.isArray(t)) arr.push(...t);
+        else arr.push(t);
+      }
       const ts = elRet(m, 11, 241, [tok, ...elEvStrs(arr)]);
       return (ts || []).map((t) => elC.units[t]);
     },
@@ -27743,8 +27749,12 @@ function elMgObj(slots) {
       const ts = elRet(m, 123, 971, []);
       return (ts || []).map((t) => elC.players[t]);
     },
-    // G5k Step 2 (`NationStructureBehavior.refreshSharedWater`).
-    sharedWaterComponents: (p) => elRet(m, 129, 977, elEvTok(p)),
+    // G5k Step 2 (`NationStructureBehavior.refreshSharedWater`). G5l: TS
+    // returns a `Set<number>`; the trace encodes the scripted array as-is.
+    sharedWaterComponents: (p) => {
+      const v = elRet(m, 129, 977, elEvTok(p));
+      return v == null ? null : new Set(v);
+    },
     getWaterComponentSize: (t) => elRet(m, 130, 978, elEv1(t)),
     // G5k Step 2: grid-delegated when `elC.mapGrid` exists (like `ownerID`).
     magnitude: (tile) => {
@@ -32024,6 +32034,152 @@ elDef(
     ],
   },
   [[0], [1, 0], [2, 100], [2, 200], [3], [4]],
+);
+
+// -- G5l Step 1: `NationStructureBehavior.handleStructures` scenarios --------
+// n1 Easy rate 66 tick 42 -> structure gates at offset 64 / 20 (130 / 152 hit
+// them; 116 % 66 = 50 misses). n3 Hard rate 59 tick 18 -> gates 37 / 57
+// (116 / 155 hit them). All structure types enabled unless a slot-45 script
+// says otherwise; costs are uniform so the slot FIFOs repeat.
+
+// S1: Easy nation builds its first City on a structure gate tick.
+elDef(
+  "el_struct_city_spawn",
+  44,
+  elNationExecC,
+  ["g1", { playerInfo: { id: "n1", name: "N1" }, spawnCell: { x: 5, y: 5 } }],
+  {
+    a: ["g1", { playerInfo: { id: "n1", name: "N1" }, spawnCell: { x: 5, y: 5 } }],
+    mg: {
+      0: [true], 1: [0], 2: [130], 6: [false], 33: ["Easy"], 45: [false],
+      46: [{ cost: 100, upgradable: false }], 54: ["FFA"], 121: [100],
+      123: [[]], 129: [null], 35: [100000], 14: [{ outer: 30, inner: 10 }],
+      28: [15], 125: [10], 63: [5], 64: [5], 69: [55], 12: [0], 124: [true],
+      132: [5],
+    },
+    players: [
+      {
+        0: [0], 3: [true], 11: [[]], 40: [500], 41: [1000], 45: [10000],
+        47: [true], 50: [[55]], 72: [0],
+      },
+    ],
+  },
+  [[0], [1, 0], [2, 100], [2, 130], [3], [4]],
+);
+
+// S4: Team mode, gold below the Hydro save-up target -> perceived cost inflated
+// above gold -> no structure built (returns false, no execution).
+elDef(
+  "el_struct_saveup_blocked",
+  44,
+  elNationExecC,
+  ["g1", { playerInfo: { id: "n3", name: "N3" }, spawnCell: { x: 5, y: 5 } }],
+  {
+    a: ["g1", { playerInfo: { id: "n3", name: "N3" }, spawnCell: { x: 5, y: 5 } }],
+    mg: {
+      0: [true], 1: [0], 2: [116], 6: [false], 33: ["Hard"], 45: [false],
+      46: [{ cost: 100, upgradable: false }], 54: ["Team"], 121: [100],
+      122: [1000], 123: [[]], 129: [null], 35: [100000], 14: [{ outer: 30, inner: 10 }],
+      28: [15], 125: [10],
+    },
+    players: [
+      {
+        0: [0], 3: [true], 11: [[]], 40: [50], 41: [1000], 45: [10000],
+        47: [true], 50: [[55]], 72: [0], 71: [0], 73: [{}],
+      },
+    ],
+  },
+  [[0], [1, 0], [2, 100], [2, 116], [3], [4]],
+);
+
+// S5: coastal nation (shared water component) builds a Port; port value is
+// Infinity (no other ports) so the first border tile wins.
+elDef(
+  "el_struct_coastal_port",
+  44,
+  elNationExecC,
+  ["g1", { playerInfo: { id: "n1", name: "N1" }, spawnCell: { x: 5, y: 5 } }],
+  {
+    a: ["g1", { playerInfo: { id: "n1", name: "N1" }, spawnCell: { x: 5, y: 5 } }],
+    mg: {
+      0: [true], 1: [0], 2: [130], 6: [false], 33: ["Easy"], 45: [false],
+      46: [{ cost: 100, upgradable: false }], 54: ["FFA"], 121: [100],
+      123: [[]], 129: [[7]], 35: [100000], 118: [true], 41: [[52]], 42: [true],
+      133: [true],
+    },
+    players: [
+      {
+        0: [0], 3: [true], 11: [[]], 40: [500], 41: [1000], 45: [10000],
+        47: [true], 50: [[53, 54, 55]], 72: [2, 0],
+      },
+    ],
+  },
+  [[0], [1, 0], [2, 100], [2, 130], [3], [4]],
+);
+
+// S6: missile silos disabled -> save-up target is a SAM; silos/SAM skipped in
+// the build order; a City is built.
+elDef(
+  "el_struct_silo_disabled",
+  44,
+  elNationExecC,
+  ["g1", { playerInfo: { id: "n3", name: "N3" }, spawnCell: { x: 5, y: 5 } }],
+  {
+    a: ["g1", { playerInfo: { id: "n3", name: "N3" }, spawnCell: { x: 5, y: 5 } }],
+    mg: {
+      0: [true], 1: [0], 2: [116], 6: [false], 33: ["Hard"],
+      45: [
+        true, false, true, false, false, false, false,
+        false, true, true,
+      ],
+      46: [{ cost: 100, upgradable: false }], 121: [100], 123: [[]],
+      129: [null], 131: [[]], 35: [100000], 14: [{ outer: 30, inner: 10 }], 28: [15],
+      125: [10], 63: [5], 64: [5], 69: [55], 12: [0], 124: [true], 132: [5],
+      // Factory connectivity scoring (Hard -> useConnectionScore): trainGold
+      // ("ally" maxTradeGold, "self" selfWeight) and the empty neighbor list.
+      128: [35000, 10000],
+    },
+    players: [
+      {
+        0: [0], 3: [true], 11: [[]], 15: [[]], 40: [5000], 41: [1000],
+        45: [10000], 47: [true], 50: [[55]], 72: [0], 71: [0],
+      },
+    ],
+  },
+  [[0], [1, 0], [2, 100], [2, 116], [3], [4]],
+);
+
+// S9: all nuke types disabled -> nukesEnabled false skips SAM/Silo; save-up
+// target is a SAM; a City is built.
+elDef(
+  "el_struct_nukes_disabled",
+  44,
+  elNationExecC,
+  ["g1", { playerInfo: { id: "n3", name: "N3" }, spawnCell: { x: 5, y: 5 } }],
+  {
+    a: ["g1", { playerInfo: { id: "n3", name: "N3" }, spawnCell: { x: 5, y: 5 } }],
+    mg: {
+      0: [true], 1: [0], 2: [116], 6: [false], 33: ["Hard"],
+      45: [
+        false, false, true, true, true, false, false, true,
+        true, true, true, false, false, false, false, false, true, true, true,
+      ],
+      46: [{ cost: 100, upgradable: false }], 54: ["FFA"], 121: [100],
+      123: [[]], 129: [null], 131: [[]], 35: [100000], 14: [{ outer: 30, inner: 10 }],
+      28: [15], 125: [10], 63: [5], 64: [5], 69: [55], 12: [0], 124: [true],
+      132: [5],
+      // City connectivity scoring (Hard -> useConnectionScore): trainGold
+      // ("ally" maxTradeGold, "self" selfWeight) and the empty neighbor list.
+      128: [35000, 10000],
+    },
+    players: [
+      {
+        0: [0], 3: [true], 11: [[]], 15: [[]], 40: [5000], 41: [1000],
+        45: [10000], 47: [true], 50: [[55]], 72: [0], 71: [0],
+      },
+    ],
+  },
+  [[0], [1, 0], [2, 100], [2, 116], [3], [4]],
 );
 
 const structures = {

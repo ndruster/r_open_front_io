@@ -32939,6 +32939,142 @@ elDef(
   [[0], [1, 0], [2, 100], [2, 109], [2, 126], [3], [4]],
 );
 
+// G5p-B (B4): the defense-post BLOCK branch. Identical to B3 except the
+// gold FIFO drops to 50 on the fourth gold() read, so tick 126's
+// tryBuildDefensePost fails the player.gold() < cost check (100 > 50) after
+// the full front/range/cost pipeline, and defensePostNeeded (a second
+// incomingAttacks pass: sourceTile null, attacker unresolved this time,
+// troops 400/1000 >= 0.35) returns true -> handleStructures returns false
+// and doHandleStructures never runs: no City re-attempt, no second 307.
+// The tick is a pure facade-read record of the deny path.
+elDef(
+  "el_struct_dp_blocked",
+  44,
+  elNationExecC,
+  ["g2", { playerInfo: { id: "n1", name: "N1" }, spawnCell: { x: 5, y: 5 } }],
+  {
+    a: ["g2", { playerInfo: { id: "n1", name: "N1" }, spawnCell: { x: 5, y: 5 } }],
+    mg: {
+      0: [true], 1: [0], 2: [109], 6: [false],
+      12: [...Array(25).fill(0)],
+      14: [{ outer: 30, inner: 10 }],
+      28: [15], 33: ["Hard"], 35: [100000],
+      39: [[56]],
+      45: [false],
+      46: [{ cost: 100, upgradable: true }],
+      54: ["FFA"], 121: [100], 122: [1000],
+      63: [55, 555, 78], 64: [0, 551, 0],
+      69: [78], 70: [1000], 71: [1000],
+      76: [true],
+      123: [[0]], 124: [true], 125: [10],
+      128: [10], 129: [null], 131: [[]], 132: [5],
+    },
+    players: [
+      {
+        0: [0], 3: [true], 11: [[]], 15: [[]], 40: [500, 500, 500, 50],
+        41: [1000], 45: [1000], 47: [true], 50: [[55, 551555]], 58: [[0]],
+        71: [0], 72: [0], 73: [{}],
+      },
+      {},
+    ],
+    attacks: [{ 0: [400], 11: [null], 12: [1] }],
+  },
+  [[0], [1, 0], [2, 100], [2, 109], [2, 126], [3], [4]],
+);
+
+// G5p-B (B5): the multi-post defense path. Attack troops 800/1000 -> ratio
+// 0.8 -> allowed = ceil(0.8/0.4) = 2. units(DefensePost) now returns one
+// scripted Defense Post (unit table: type slot 3, id slot 7, tile slot 11 ->
+// 56), so countDefensePostsNearFront consumes dp.tile() + euclideanDistSquared
+// (mg 89, sticky dist 1 <= 45^2) -> count 1 < cap 2 and the build proceeds.
+// sampleTilesNearFront's spread filter runs euclideanDistSquared(55, 56) and
+// (551555, 56) — both sticky-1 < spread^2, so anchors empties and falls back
+// to the full front; the sticky (78, 0) candidates still land all 25 tiles in
+// the depth ring, and the second post lands on tile 78. mg 12 keeps the B3
+// shape: 25 owned reads per structure tick, two attacker-owned front reads.
+elDef(
+  "el_struct_dp_multi",
+  44,
+  elNationExecC,
+  ["g2", { playerInfo: { id: "n1", name: "N1" }, spawnCell: { x: 5, y: 5 } }],
+  {
+    a: ["g2", { playerInfo: { id: "n1", name: "N1" }, spawnCell: { x: 5, y: 5 } }],
+    mg: {
+      0: [true], 1: [0], 2: [109], 6: [false],
+      12: [...Array(25).fill(0), 1, 1, 0],
+      14: [{ outer: 30, inner: 10 }],
+      28: [15], 33: ["Hard"], 35: [100000],
+      39: [[56]],
+      45: [false],
+      46: [{ cost: 100, upgradable: true }],
+      54: ["FFA"], 121: [100], 122: [1000],
+      63: [55, 555, 78], 64: [0, 551, 0],
+      69: [78], 70: [1000], 71: [1000],
+      76: [true], 89: [1],
+      123: [[0]], 124: [true], 125: [10],
+      128: [10], 129: [null], 131: [[]], 132: [5],
+    },
+    players: [
+      {
+        0: [0], 3: [true], 11: [[], [], [], [], [], [0]], 15: [[]],
+        40: [500], 41: [1000], 45: [1000], 47: [true],
+        50: [[55, 551555]], 58: [[0]], 71: [0], 72: [0], 73: [{}],
+      },
+      {},
+    ],
+    attacks: [{ 0: [800], 11: [null], 12: [1] }],
+    units: [{ 3: ["Defense Post"], 7: [9], 11: [56] }],
+  },
+  [[0], [1, 0], [2, 100], [2, 109], [2, 126], [3], [4]],
+);
+
+// G5p-B (B6): high-starting-gold pacing. mg 122 -> 5000000 >= 3M flips
+// hasHighStartingGold (cached after the info() + startingGold read on tick
+// 109), so the SAM-first branch fires before the build order: tick 109 builds
+// a SAMLauncher through structureSpawnTile with samLauncherValue (borderTiles
+// + units(SAMLauncher) + units() no-arg all empty, defaultSamRange mg 127,
+// coverage roll taken and skipped at >= 25, empty protectEntries so the
+// per-tile closure is magnitude + border-dist only — same tie at 5 + 23 as
+// cityValue). Tick 126 (cooldown[1] = 0, no gap) builds City #2 through the
+// normal build order (SAM-first needs placementsCount === 0). Tick 160 (the
+// other offset, 160 % 51 = 7) hits the cooldown: placementsCount 2 ->
+// HIGH_GOLD_STRUCTURE_COOLDOWN_TICKS[2] = 250, ticks() 160 - lastStructureTick
+// 126 = 34 < 250 -> handleStructures returns false with no build. mg 2 (ticks)
+// is the only tick-distinguishing FIFO: [109, 109, 109] (post-save-up set +
+// elapsed + lastStructureTick), [126, 126] (elapsed + lastStructureTick),
+// [160] (cooldown), sticky thereafter.
+elDef(
+  "el_struct_sam_first_high_gold",
+  44,
+  elNationExecC,
+  ["g2", { playerInfo: { id: "n1", name: "N1" }, spawnCell: { x: 5, y: 5 } }],
+  {
+    a: ["g2", { playerInfo: { id: "n1", name: "N1" }, spawnCell: { x: 5, y: 5 } }],
+    mg: {
+      0: [true], 1: [0], 2: [109, 109, 109, 126, 126, 160], 6: [false],
+      12: [...Array(25).fill(0)],
+      14: [{ outer: 30, inner: 10 }],
+      28: [15], 33: ["Hard"], 35: [100000],
+      45: [false],
+      46: [{ cost: 100, upgradable: true }],
+      54: ["FFA"], 121: [100], 122: [5000000],
+      63: [55, 555, 78], 64: [0, 551, 0],
+      69: [78], 70: [1000], 71: [1000],
+      76: [true], 127: [100],
+      123: [[0]], 124: [true], 125: [10],
+      128: [10], 129: [null], 131: [[]], 132: [5],
+    },
+    players: [
+      {
+        0: [0], 3: [true], 11: [[]], 15: [[]], 40: [500], 41: [1000],
+        45: [1000],
+        47: [true], 50: [[55, 551555]], 58: [[]], 71: [0], 72: [0], 73: [{}],
+      },
+    ],
+  },
+  [[0], [1, 0], [2, 100], [2, 109], [2, 126], [2, 160], [3], [4]],
+);
+
 const structures = {
   votetally: vtScenarios,
   rankedcheckin: rgScenarios,

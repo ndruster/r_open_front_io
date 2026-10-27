@@ -204,6 +204,25 @@
 //! semantics (an exhausted slot repeats its last value) and the one long
 //! owner FIFO: 25 owned reads for the territory sampler, two attacker-owned
 //! front reads, then owned again for the post scan.
+//! `el_struct_dp_blocked` (B4) records the deny branch: the gold FIFO drops
+//! to 50 on the fourth gold() read so tryBuildDefensePost fails the
+//! gold < cost check and defensePostNeeded (a second incomingAttacks pass,
+//! attacker never resolved) blocks all other structures — a pure-read tick
+//! with no ConstructionExecution. `el_struct_dp_multi` (B5) raises the
+//! threat ratio to 0.8 (allowed = ceil(0.8/0.4) = 2) and scripts one Defense
+//! Post unit (tile slot 11), exercising countDefensePostsNearFront's
+//! dp.tile() + euclideanDistSquared (mg 89) cap-short-circuit loop,
+//! sampleTilesNearFront's anchor-spread filter (whose sticky dist empties
+//! the anchors into the full-front fallback), and 26 canBuild reads for the
+//! second post. `el_struct_sam_first_high_gold` (B6) flips startingGold to
+//! 5M: tick 109 takes the SAM-first branch (samLauncherValue with the
+//! no-arg units() protectEntries scan, defaultSamRange mg 127, and a
+//! coverage roll that re-reads units(SAMLauncher); all empty so the closure
+//! is magnitude + border-dist), tick 126 builds City #2 (cooldown[1] = 0),
+//! and tick 160 pins the cooldown block — placementsCount 2 indexes
+//! HIGH_GOLD_STRUCTURE_COOLDOWN_TICKS to 250, so 34 ticks after the last
+//! placement handleStructures returns false. mg 2 (ticks) is the only
+//! tick-distinguishing FIFO: [109 x3, 126 x2, 160].
 //!
 //! # G5b facade additions (codes ≥ 300)
 //!

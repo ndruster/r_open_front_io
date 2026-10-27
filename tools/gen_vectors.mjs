@@ -32536,6 +32536,123 @@ elDef(
   [[0], [1, 0], [2, 100], [2, 101], [3], [4]],
 );
 
+// G5o A: the maybeSendNuke tile scan with a non-empty bounding box and a
+// structure-valued nukeTileScore. Same Easy retaliation skeleton as
+// el_nuke_retaliation_hydro, but mg.isValidCoord mocks true so the two
+// boundingBoxTiles rings (outer 30 -> 180 tiles, floor(30/2)=15 -> 120 tiles)
+// each resolve to tile 55 (mg.x/y mock 5/5, mg.ref mocks 55) and pass
+// isValidNukeTile because every mg.owner read returns x3 (Easy only allows
+// target-owned tiles). canBuild still returns tile 55 and the enemy city
+// (unit 77, level 2, tile 77) joins the candidate set through
+// structures.map(u => u.tile()), so the Set holds {55, 77}. Candidate 55
+// scores via nukeTileScore: the euclDistFN filter passes the city
+// (mg.euclideanDistSquared 100 <= 900) at 25_000 * 2 = 50_000, and
+// closestTwoTiles collapses onto the actor's own silo tile 55 (distance 0),
+// leaving the full 50_000. Candidate 77 replays the same reads with the
+// exhausted FIFO tails (dist 0) and does not beat bestValue, so tile 55 wins
+// and sendNuke emits a 307/3 HydrogenBomb NukeExecution plus the EMOJI_NUKE
+// EmojiExecution. The mg.owner script keeps the single-value FIFO: 30
+// randTerritoryTileArray owner reads (all resolve to x3, collapsing the 10
+// Easy samples onto border tile 55) plus the 300 bounding-tile reads.
+elDef(
+  "el_nuke_tile_boxes",
+  44,
+  elNationExecC,
+  ["g1", { playerInfo: { id: "n1", name: "N1" }, spawnCell: { x: 5, y: 5 } }],
+  {
+    a: ["g1", { playerInfo: { id: "n1", name: "N1" }, spawnCell: { x: 5, y: 5 } }],
+    mg: {
+      0: [true], 1: [0], 2: [108], 6: [false], 11: [[0, 1]],
+      12: [1],
+      14: [{ outer: 30, inner: 10 }], 32: [10000], 33: ["Easy"], 35: [100000],
+      45: [true, true, true, true, true, true, true, true, true, true, true,
+        false, false, false, false],
+      46: [{ cost: 500, upgradable: false }], 54: ["FFA"], 60: [null],
+      63: [5], 64: [5], 69: [55], 70: [5], 76: [true], 89: [100, 0],
+      115: [true], 121: [500], 122: [1000], 123: [[]], 124: [true], 129: [null],
+    },
+    players: [
+      {
+        0: [0], 1: ["n1"], 3: [true], 8: [false], 11: [[0]], 12: [false],
+        15: [[]], 20: [false], 21: ["NATION"], 26: [true], 34: [true],
+        35: [2.0], 40: [50000000], 41: [100], 45: [10000], 47: [55],
+        50: [[]], 58: [[0]], 62: [false], 66: [[]], 68: [[]], 69: [[]],
+        70: [[]], 71: [0], 72: [0],
+      },
+      {
+        0: [1], 1: ["x3"], 3: [true], 8: [false], 11: [[0]], 20: [false],
+        21: ["NATION"], 26: [true], 43: [true], 45: [100], 50: [[55]],
+      },
+    ],
+    units: [
+      { 3: ["Missile Silo"], 7: [1], 11: [55], 20: [1] },
+      { 3: ["City"], 6: [1], 7: [77], 11: [77], 20: [2] },
+    ],
+    attacks: [{ 0: [100], 12: [1] }],
+  },
+  [[0], [1, 0], [2, 100], [2, 108], [3], [4]],
+);
+
+// G5o C: the Impossible hydrogen-bomb outrange bonus inside nukeTileScore,
+// reached through the full tile scan. Same Impossible skeleton as
+// el_nuke_sam_outing but canBuild mocks tile 200 (not false) and
+// isTrajectoryInterceptableBySam's Parabola findPath mocks an empty
+// trajectory (the `trajectory.length === 0 -> false` short-circuit), so the
+// scan reaches the scoring for the single candidate {200} (30 Impossible
+// samples collapse onto the enemy SAM's own tile via mg.ref/owner). The
+// euclDistFN filter passes (dist 0) but a SAMLauncher scores 0 in the
+// structure switch; the Impossible+Hydro branch then reads the hydro
+// magnitude, probes nearbyUnits (mg 25 -> {u:1, d2:6400}) and outranges the
+// level-2 SAM: samRange mocks 60, Math.sqrt(mg.euclideanDistSquared 6400) =
+// 80 > 60, adding 100_000 * 2 = 200_000. closestTwoTiles and the final
+// distance-to-closest-silo read replay the exhausted mg 89 tail (6400), so
+// the 2400 distance penalty keeps bestValue at max(40_000, 197_600) = 197_600
+// > 0, satisfying the Impossible bestValue > 0 gate. sendNuke emits a 307/3
+// HydrogenBomb NukeExecution at tile 200 plus the EMOJI_NUKE record, and
+// maybeDestroyEnemySam is never reached (its AtomBomb gate, units(AtomBomb)
+// probe and ourSilos read still replay through the slot 11 FIFO).
+elDef(
+  "el_nuke_sam_outrange_score",
+  44,
+  elNationExecC,
+  ["g1", { playerInfo: { id: "n7", name: "N7" }, spawnCell: { x: 5, y: 5 } }],
+  {
+    a: ["g1", { playerInfo: { id: "n7", name: "N7" }, spawnCell: { x: 5, y: 5 } }],
+    mg: {
+      0: [true], 1: [0], 2: [101], 6: [false], 11: [[0, 1]],
+      12: [1], 14: [{ outer: 30, inner: 10 }], 25: [[{ u: 1, d2: 6400 }], []],
+      32: [10000], 33: ["Impossible"], 35: [100000], 40: [0],
+      45: [true, true, true, true, true, true, true, true, true, true, true,
+        true, true, false, false, false, false],
+      46: [{ cost: 500, upgradable: false }], 54: ["FFA"], 60: [null],
+      63: [5], 64: [5], 69: [200], 70: [5], 76: [true], 79: [5], 81: [30],
+      86: [300], 87: [100], 89: [0, 6400], 99: [[]], 115: [true],
+      121: [500], 122: [1000], 123: [[]], 124: [true], 126: [60],
+      129: [null],
+    },
+    players: [
+      {
+        0: [0], 1: ["n7"], 3: [true], 8: [false], 11: [[0], [], [0]],
+        12: [false], 15: [[]], 20: [false], 21: ["NATION"], 26: [true],
+        34: [true], 35: [2.0], 40: [50000000], 41: [100], 45: [10000],
+        47: [200], 50: [[]], 58: [[0]], 62: [false], 66: [[]], 68: [[]],
+        69: [[]], 70: [[]], 71: [0], 72: [0],
+      },
+      {
+        0: [1], 1: ["x3"], 3: [true], 8: [false], 11: [[1]], 20: [false],
+        21: ["NATION"], 26: [true], 43: [true], 45: [100], 50: [[200]],
+      },
+    ],
+    units: [
+      { 3: ["Missile Silo"], 6: [0], 7: [100], 11: [100], 12: [false],
+        13: [[]], 20: [4] },
+      { 3: ["SAM Launcher"], 6: [1], 7: [200], 11: [200], 20: [2] },
+    ],
+    attacks: [{ 0: [100], 12: [1] }],
+  },
+  [[0], [1, 0], [2, 100], [2, 101], [3], [4]],
+);
+
 const structures = {
   votetally: vtScenarios,
   rankedcheckin: rgScenarios,

@@ -148,6 +148,16 @@
 //! selection through numLandTiles / numTilesWithFallout) and
 //! `el_nuke_team_strongest` (strongest-team target selection — it caught the
 //! cached `players()` reuse where the TS loop re-reads the facade).
+//! G5o opens the maybeSendNuke tile scan itself: `el_nuke_tile_boxes` (Easy,
+//! non-empty boundingBoxTiles rings with 300 target-owned tile reads, a
+//! level-2 enemy City entering nukeTileScore's structure switch and the
+//! closestTwoTiles distance penalty) and `el_nuke_sam_outrange_score`
+//! (Impossible Hydrogen Bomb: empty-trajectory isTrajectoryInterceptableBySam
+//! short-circuit and the +100k×level SAM-outrange bonus). Scenario C caught a
+//! real parity bug: the post-closestTwoTiles distance read was recorded as
+//! `(closest_x, closest_y)` while TS 729 reads
+//! `euclideanDistSquared(tile, closestSilo)` — args swapped whenever the
+//! silo and scored tiles differ.
 //!
 //! # G5b facade additions (codes ≥ 300)
 //!
@@ -17069,11 +17079,15 @@ impl ExecHarness {
         for &silo in silos {
             silo_tiles.push(self.un_tile(tr, silo)); // 978
         }
-        let (closest_x, closest_y) = match self.nn_closest_two_tiles(tr, &silo_tiles, &[tile]) {
+        let (closest_x, _closest_y) = match self.nn_closest_two_tiles(tr, &silo_tiles, &[tile]) {
             Some(p) => p,
             None => return -1.0,
         };
-        let distance_squared = self.mg_euclidean_dist_squared(tr, closest_x, closest_y); // 710
+        // TS reads euclideanDistSquared(tile, closestSilo) (NationNukeBehavior
+        // 729): the scored tile first, then the silo-side tile from
+        // closestTwoTiles. Passing (closest_x, closest_y) instead recorded the
+        // args swapped on tiles that differ (caught by G5o scenario C).
+        let distance_squared = self.mg_euclidean_dist_squared(tr, tile, closest_x); // 710
         let distance_penalty = distance_squared.sqrt() * 30.0;
         let base = tile_value;
         tile_value = (base * 0.2).max(base - distance_penalty);

@@ -33205,6 +33205,146 @@ elDef(
   [[0], [1, 0], [2, 100], [2, 109], [2, 160], [2, 211], [2, 262], [3], [4]],
 );
 
+// G5p-D (B10): the port coastal pipeline. mg 129 returns the shared water
+// component set {7} so hasCoastalTiles opens; the SAM-first branch dies on
+// startingGold (mg 122 = 1000 < 3M) and the build order reaches Port first
+// (cityCount 2 -> target floor(2 x 0.75) = 1 > owned 0). maybeSpawnStructure
+// (Port) runs randCoastalTileArray over the border set {55, 551555}: tile 55
+// is shore with a water neighbor 100 that is not ocean, sits in component 7
+// (in the shared set) and — Hard difficulty — passes the water-body size gate
+// (getWaterComponentSize 3000 >= MIN_PORT_WATER_COMPONENT_SIZE); tile 551555
+// fails isShore. portValue scores the single candidate tile Infinity (no
+// other ports -> nearestTileDist stays Infinity with zero manhattanDist
+// reads), canBuild passes twice (tile scan + maybeSpawnStructure re-check)
+// and the Port lands on tile 55 as 307/24. No randTerritoryTileArray / owner
+// reads on the whole tick.
+elDef(
+  "el_struct_port_coastal_pipeline",
+  44,
+  elNationExecC,
+  ["g2", { playerInfo: { id: "n1", name: "N1" }, spawnCell: { x: 5, y: 5 } }],
+  {
+    a: ["g2", { playerInfo: { id: "n1", name: "N1" }, spawnCell: { x: 5, y: 5 } }],
+    mg: {
+      0: [true], 1: [0], 2: [109], 6: [false],
+      12: [0],
+      14: [{ outer: 30, inner: 10 }],
+      20: [7], // getWaterComponent(100) -> component 7
+      28: [15], 33: ["Hard"], 35: [100000],
+      41: [[100]], // neighbors(55) -> water tile 100
+      42: [true], // isWater(100)
+      45: [false],
+      46: [{ cost: 100, upgradable: true }],
+      54: ["FFA"], 121: [100], 122: [1000],
+      118: [true, false], // isShore(55) then isShore(551555)
+      123: [[0]], 124: [true], 125: [10],
+      128: [10], 129: [[7]], 130: [3000], 131: [[]], 132: [5],
+      133: [false], // isOcean(100)
+    },
+    players: [
+      {
+        0: [0], 3: [true], 11: [[]], 15: [[]], 40: [500], 41: [1000],
+        45: [1000], 47: [true], 50: [[55, 551555]], 58: [[]], 71: [0],
+        72: [2, 0], 73: [{}],
+      },
+    ],
+  },
+  [[0], [1, 0], [2, 100], [2, 109], [3], [4]],
+);
+
+// G5p-D (B11): the Factory coastal ratio multiplier with all nukes disabled.
+// mg 45 scripts the full isUnitDisabled FIFO in true consumption order —
+// isInPostSaveUpBlockedPhase runs BEFORE doHandleStructures and consumes
+// MissileSilo twice (phase gate + save-up ladder) plus the ladder triple
+// (MIRV/Hydro/Atom all disabled -> saveUp = cost(SAMLauncher), which the 500
+// gold clears, stamping _postSaveUpStartTick invisibly on this single tick);
+// then City, MissileSilo, Atom (SAM-first gate), Atom/Hydro/MIRV
+// (nukesEnabled triple), Port, Factory, Port (the coastal multiplier check),
+// SAM, MissileSilo (both skipped by the nukesEnabled branch WITHOUT an
+// unitsOwned read), and the City-fallback save-up ladder. The multiplier
+// itself is pinned by the outcome: cityCount 4 x (0.75 x 0.33) = 0.99 floors
+// to target 0, so Factory is suppressed (any weaker multiplier, e.g. 0.25 or
+// no multiplier, would floor to >= 1 and build it) and the tick falls through
+// the nuke-skip branch to the City fallback, whose full cityValue pipeline
+// lands City #5 on tile 78 as 307/24.
+elDef(
+  "el_struct_factory_coastal_ratio",
+  44,
+  elNationExecC,
+  ["g2", { playerInfo: { id: "n1", name: "N1" }, spawnCell: { x: 5, y: 5 } }],
+  {
+    a: ["g2", { playerInfo: { id: "n1", name: "N1" }, spawnCell: { x: 5, y: 5 } }],
+    mg: {
+      0: [true], 1: [0], 2: [109], 6: [false],
+      12: [...Array(25).fill(0)],
+      14: [{ outer: 30, inner: 10 }],
+      28: [15], 33: ["Hard"], 35: [100000],
+      // isInPostSaveUpBlockedPhase (MS gate, MS ladder, MIRV/Hydro/Atom
+      // ladder), then doHandleStructures: City, MissileSilo, Atom(SAM-first),
+      // Atom/Hydro/MIRV (nukesEnabled), Port, Factory, Port (multiplier),
+      // SAM, MissileSilo (nukesEnabled skips), then the City-fallback ladder.
+      45: [false, false, true, true, true, false, false, true, true, true,
+        true, false, false, false, false, false, false, true, true, true],
+      46: [{ cost: 100, upgradable: true }],
+      54: ["FFA"], 121: [100], 122: [1000],
+      63: [55, 555, 78], 64: [0, 551, 0],
+      69: [78], 70: [1000], 71: [1000],
+      76: [true],
+      123: [[0]], 124: [true], 125: [10],
+      128: [10], 129: [[7]], 131: [[]], 132: [5],
+    },
+    players: [
+      {
+        0: [0], 3: [true], 11: [[]], 15: [[]], 40: [500], 41: [1000],
+        45: [1000], 47: [true], 50: [[55, 551555]], 58: [[]], 71: [0],
+        72: [4, 3, 0], 73: [{}],
+      },
+    ],
+  },
+  [[0], [1, 0], [2, 100], [2, 109], [3], [4]],
+);
+
+// G5p-D (B12): the MAX_MISSILE_SILOS cap. No coastal tiles (mg 129 null) so
+// Port is skipped without an owned read; Factory (owned 2 >= target
+// floor(3 x 0.75) = 2) and SAM (target floor(3 x 0.25) = 0) skip on ratio;
+// MissileSilo hits the hard cap — unitsOwned 3 >= MAX_MISSILE_SILOS 3 returns
+// false before the FIRST_MISSILE_SILO_RATIO override can apply — and the tick
+// falls through to the City fallback (line 539), whose full cityValue pipeline
+// (randTerritoryTileArray, connectivity roll, border-dist ring walk) lands
+// City #4 on tile 78 as 307/10. mg 45 stays single-value false (nukes enabled,
+// SAM-first dead on startingGold).
+elDef(
+  "el_struct_silo_cap_skip",
+  44,
+  elNationExecC,
+  ["g2", { playerInfo: { id: "n1", name: "N1" }, spawnCell: { x: 5, y: 5 } }],
+  {
+    a: ["g2", { playerInfo: { id: "n1", name: "N1" }, spawnCell: { x: 5, y: 5 } }],
+    mg: {
+      0: [true], 1: [0], 2: [109], 6: [false],
+      12: [...Array(25).fill(0)],
+      14: [{ outer: 30, inner: 10 }],
+      28: [15], 33: ["Hard"], 35: [100000],
+      45: [false],
+      46: [{ cost: 100, upgradable: true }],
+      54: ["FFA"], 121: [100], 122: [1000],
+      63: [55, 555, 78], 64: [0, 551, 0],
+      69: [78], 70: [1000], 71: [1000],
+      76: [true],
+      123: [[0]], 124: [true], 125: [10],
+      128: [10], 129: [null], 131: [[]], 132: [5],
+    },
+    players: [
+      {
+        0: [0], 3: [true], 11: [[]], 15: [[]], 40: [500], 41: [1000],
+        45: [1000], 47: [true], 50: [[55, 551555]], 58: [[]], 71: [0],
+        72: [3, 2, 0, 3], 73: [{}],
+      },
+    ],
+  },
+  [[0], [1, 0], [2, 100], [2, 109], [3], [4]],
+);
+
 const structures = {
   votetally: vtScenarios,
   rankedcheckin: rgScenarios,

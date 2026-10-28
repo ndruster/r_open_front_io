@@ -251,6 +251,32 @@
 //! the deny chain (dp branch with empty incomingAttacks, cooldown[3] = 150
 //! against 51 ticks since the last placement, phase check) is pure reads
 //! with no gold read and no ConstructionExecution.
+//! `el_struct_port_coastal_pipeline` (B10) opens the port coastal path:
+//! mg 129 returns the shared water component set {7} so hasCoastalTiles
+//! holds, and maybeSpawnStructure(Port) (cityCount 2 -> target 1 > owned 0)
+//! runs randCoastalTileArray over the border set {55, 551555}: tile 55 is
+//! shore with water neighbor 100 that is not ocean, sits in component 7
+//! (shared) and passes the Hard-difficulty size gate (getWaterComponentSize
+//! 3000 >= MIN_PORT_WATER_COMPONENT_SIZE), while 551555 fails isShore;
+//! portValue scores the single candidate Infinity (no other ports, zero
+//! manhattanDist reads) and the Port lands on tile 55 as 307/24 — no owner
+//! reads anywhere on the tick.
+//! `el_struct_factory_coastal_ratio` (B11) pins the coastal multiplier by
+//! outcome: all nukes disabled (mg 45 MIRV/Hydro/Atom = true) route the
+//! save-up ladder to cost(SAMLauncher) and skip SAMLauncher/MissileSilo in
+//! buildOrder without an unitsOwned read, and cityCount 4 x (0.75 x 0.33) =
+//! 0.99 floors to target 0 so Factory is suppressed — any weaker multiplier
+//! would build it — falling through to the City fallback (307/24 "City").
+//! Its mg 45 FIFO is the first non-uniform script and fixed the read-order
+//! model: isInPostSaveUpBlockedPhase runs BEFORE doHandleStructures and
+//! consumes MissileSilo twice plus the ladder triple, stamping
+//! _postSaveUpStartTick when gold >= saveUpTarget even in FFA.
+//! `el_struct_silo_cap_skip` (B12) pins the MAX_MISSILE_SILOS cap: with no
+//! coastal tiles (mg 129 null) Port is skipped without an owned read,
+//! Factory (owned 2 >= target 2) and SAM (target floor(3 x 0.25) = 0) skip
+//! on ratio, MissileSilo returns false on unitsOwned 3 >= 3 before the
+//! FIRST_MISSILE_SILO_RATIO override can apply, and the City fallback
+//! builds City #4 through the full cityValue pipeline.
 //!
 //! # G5b facade additions (codes ≥ 300)
 //!

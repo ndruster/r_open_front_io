@@ -34459,6 +34459,189 @@ elDef(
   [[0], [1, 0], [2, 100], [2, 73], [3], [4]],
 );
 
+// ---- G5q-C: NationMIRVBehavior ---------------------------------------------
+//
+// Easy-difficulty attack ticks exercising considerMIRV's hesitation gate and
+// its three target selectors. The casual-emoji block stays all-miss
+// (chance(16/8/300/250/40/250) all miss; findRat is tick-gated out), seeds
+// were hunted offline so the hesitation chance(2), the attack-emoji
+// chance(2) and respondToMIRV's chance(8) land as designed. On a hit,
+// maybeSendMIRV emits the AGGRESSIVE_ATTACK emoji to the Human target
+// (shouldSendEmoji requires PlayerType.Human), then the MirvExecution at
+// the target's territory center (border tile 55 -> ref(5,5) -> tile 9,
+// owned by the target), then the EMOJI_NUKE broadcast to AllPlayers.
+//
+// p0's units FIFO [[0],[],[]] keeps the three MissileSilo readers apart:
+// considerMIRV's silo gate sees the silo (so the MIRV-disabled gate mocks
+// false and the gold check passes), while handleStructures and
+// maybeSendNuke see empty lists and bail. The shared
+// NationMIRVBehavior.recentMirvTargets map is keyed by target id, so each
+// scenario uses a distinct Human id (x1/x2/x3) to stay cooldown-clean.
+
+// Counter-MIRV: n04/gh (rate 75 tick 73). x1 has an inbound MIRV whose
+// target tile 55 is owned by n04, so selectCounterMirvTarget returns x1
+// and maybeSendMIRV fires the full trio: AGGRESSIVE_ATTACK emoji to x1
+// (Neutral relation, chance(2) hit), MirvExecution at tile 9, EMOJI_NUKE
+// broadcast to AllPlayers, with respondToMIRV's chance(8) missing.
+elDef(
+  "el_mirv_counter",
+  44,
+  elNationExecC,
+  ["gh", { playerInfo: { id: "n04", name: "N04" }, spawnCell: { x: 5, y: 5 } }],
+  {
+    a: ["gh", { playerInfo: { id: "n04", name: "N04" }, spawnCell: { x: 5, y: 5 } }],
+    mg: {
+      0: [true], 1: [0], 2: [73], 5: [8], 6: [false], 11: [[0, 1]],
+      12: [0, 1], 14: [{ outer: 30, inner: 10 }], 28: [15], 32: [10000],
+      33: ["Easy"], 35: [100000], 40: [0],
+      45: [false, true, true, true, true, true, true, true],
+      46: [{ cost: 100, upgradable: false }], 54: ["FFA"], 60: [null],
+      63: [5], 64: [5], 67: [true], 69: [9], 89: [0], 115: [false],
+      121: [100], 122: [1000], 123: [[]], 124: [true], 125: [10],
+      129: [null], 132: [5],
+    },
+    players: [
+      {
+        0: [0], 1: ["n04"], 3: [true], 5: [true], 8: [false],
+        11: [[0], [], []], 12: [false], 15: [[]], 20: [false],
+        21: ["NATION"], 26: [true], 34: [true], 35: [2.0], 40: [5000],
+        41: [100], 45: [10000], 47: [true], 50: [[]], 53: [[]], 58: [[]],
+        62: [false], 65: [[]], 66: [[]], 68: [[]], 69: [[]], 70: [[]],
+        71: [0], 72: [0],
+      },
+      {
+        0: [0], 1: ["x1"], 3: [true], 8: [false], 11: [[1]], 18: [null],
+        20: [false], 21: ["HUMAN"], 26: [true], 45: [100], 50: [[55]],
+        62: [false],
+      },
+    ],
+    units: [{ 3: ["Missile Silo"] }, { 2: [55], 3: ["MIRV"] }],
+  },
+  [[0], [1, 0], [2, 100], [2, 73], [3], [4]],
+);
+
+// Hesitation: n04/gc (rate 78 tick 13). The hesitation chance(2) hits, so
+// considerMIRV returns false before any target selector runs — no events;
+// the rest of the pipeline denies exactly as in G5q-B.
+elDef(
+  "el_mirv_hesitation",
+  44,
+  elNationExecC,
+  ["gc", { playerInfo: { id: "n04", name: "N04" }, spawnCell: { x: 5, y: 5 } }],
+  {
+    a: ["gc", { playerInfo: { id: "n04", name: "N04" }, spawnCell: { x: 5, y: 5 } }],
+    mg: {
+      0: [true], 1: [0], 2: [13], 5: [8], 6: [false], 11: [[0, 1]],
+      12: [0], 14: [{ outer: 30, inner: 10 }], 28: [15], 32: [10000],
+      33: ["Easy"], 35: [100000], 40: [0],
+      45: [false, true, true, true, true, true, true, true],
+      46: [{ cost: 100, upgradable: false }], 54: ["FFA"], 60: [null],
+      63: [5], 64: [5], 67: [true], 69: [9], 89: [0], 115: [false],
+      121: [100], 122: [1000], 123: [[]], 124: [true], 125: [10],
+      129: [null], 132: [5],
+    },
+    players: [
+      {
+        0: [0], 1: ["n04"], 3: [true], 5: [true], 8: [false],
+        11: [[0], [], []], 12: [false], 15: [[]], 20: [false],
+        21: ["NATION"], 26: [true], 34: [true], 35: [2.0], 40: [5000],
+        41: [100], 45: [10000], 47: [true], 50: [[]], 53: [[]], 58: [[]],
+        62: [false], 65: [[]], 66: [[]], 68: [[]], 69: [[]], 70: [[]],
+        71: [0], 72: [0],
+      },
+      {
+        0: [0], 1: ["x1"], 3: [true], 8: [false], 11: [[]], 18: [null],
+        20: [false], 21: ["HUMAN"], 26: [true], 45: [100], 50: [[]],
+        62: [false],
+      },
+    ],
+    units: [{ 3: ["Missile Silo"] }],
+  },
+  [[0], [1, 0], [2, 100], [2, 13], [3], [4]],
+);
+
+// Victory denial: n04/gk (rate 94 tick 52). No inbound MIRV (x2's unit
+// list is empty), but x2 owns 400000 tiles >= 75% of the 100000-land mock
+// (scaled threshold 7.5M), so selectVictoryDenialTarget returns x2 and
+// maybeSendMIRV fires the trio (x2's border tile 55 -> center tile 9).
+elDef(
+  "el_mirv_victory",
+  44,
+  elNationExecC,
+  ["gk", { playerInfo: { id: "n04", name: "N04" }, spawnCell: { x: 5, y: 5 } }],
+  {
+    a: ["gk", { playerInfo: { id: "n04", name: "N04" }, spawnCell: { x: 5, y: 5 } }],
+    mg: {
+      0: [true], 1: [0], 2: [52], 5: [8], 6: [false], 11: [[0, 1]],
+      12: [1], 14: [{ outer: 30, inner: 10 }], 28: [15], 32: [10000],
+      33: ["Easy"], 35: [100000], 40: [0],
+      45: [false, true, true, true, true, true, true, true],
+      46: [{ cost: 100, upgradable: false }], 54: ["FFA"], 60: [null],
+      63: [5], 64: [5], 67: [true], 69: [9], 89: [0], 115: [false],
+      121: [100], 122: [1000], 123: [[]], 124: [true], 125: [10],
+      129: [null], 132: [5],
+    },
+    players: [
+      {
+        0: [0], 1: ["n04"], 3: [true], 5: [true], 8: [false],
+        11: [[0], [], []], 12: [false], 15: [[]], 20: [false],
+        21: ["NATION"], 26: [true], 34: [true], 35: [2.0], 40: [5000],
+        41: [100], 45: [10000], 47: [true], 50: [[]], 53: [[]], 58: [[]],
+        62: [false], 65: [[]], 66: [[]], 68: [[]], 69: [[]], 70: [[]],
+        71: [0], 72: [0],
+      },
+      {
+        0: [0], 1: ["x2"], 3: [true], 8: [false], 11: [[]], 18: [null],
+        20: [false], 21: ["HUMAN"], 26: [true], 45: [400000], 50: [[55]],
+        62: [false],
+      },
+    ],
+    units: [{ 3: ["Missile Silo"] }],
+  },
+  [[0], [1, 0], [2, 100], [2, 52], [3], [4]],
+);
+
+// Steamroll stop: n04/gs (rate 94 tick 2). x3 owns too little land for
+// victory denial (100 tiles << 7.5M), but leads with 21 cities against
+// p0's 0 — Easy needs > 20 leader cities and a 2x gap over the runner-up —
+// so selectSteamrollStopTarget returns x3 and maybeSendMIRV fires the trio.
+elDef(
+  "el_mirv_steamroll",
+  44,
+  elNationExecC,
+  ["gs", { playerInfo: { id: "n04", name: "N04" }, spawnCell: { x: 5, y: 5 } }],
+  {
+    a: ["gs", { playerInfo: { id: "n04", name: "N04" }, spawnCell: { x: 5, y: 5 } }],
+    mg: {
+      0: [true], 1: [0], 2: [2], 5: [8], 6: [false], 11: [[0, 1]],
+      12: [1], 14: [{ outer: 30, inner: 10 }], 28: [15], 32: [10000],
+      33: ["Easy"], 35: [100000], 40: [0],
+      45: [false, true, true, true, true, true, true, true],
+      46: [{ cost: 100, upgradable: false }], 54: ["FFA"], 60: [null],
+      63: [5], 64: [5], 67: [true], 69: [9], 89: [0], 115: [false],
+      121: [100], 122: [1000], 123: [[]], 124: [true], 125: [10],
+      129: [null], 132: [5],
+    },
+    players: [
+      {
+        0: [0], 1: ["n04"], 3: [true], 5: [true], 8: [false],
+        11: [[0], [], []], 12: [false], 15: [[]], 20: [false],
+        21: ["NATION"], 26: [true], 34: [true], 35: [2.0], 40: [5000],
+        41: [100], 45: [10000], 47: [true], 50: [[]], 53: [[]], 58: [[]],
+        59: [0], 62: [false], 65: [[]], 66: [[]], 68: [[]], 69: [[]],
+        70: [[]], 71: [0], 72: [0],
+      },
+      {
+        0: [0], 1: ["x3"], 3: [true], 8: [false], 11: [[]], 18: [null],
+        20: [false], 21: ["HUMAN"], 26: [true], 45: [100], 50: [[55]],
+        59: [21], 62: [false],
+      },
+    ],
+    units: [{ 3: ["Missile Silo"] }],
+  },
+  [[0], [1, 0], [2, 100], [2, 2], [3], [4]],
+);
+
 const structures = {
   votetally: vtScenarios,
   rankedcheckin: rgScenarios,

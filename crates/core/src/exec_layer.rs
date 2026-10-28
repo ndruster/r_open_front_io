@@ -420,6 +420,37 @@
 //! `alliances: [{0:[onlyOneAgreed], 5:[otherTok]}]` (slot 0
 //! onlyOneAgreedToExtend, slot 5 other -> players[tok]).
 //!
+//! # G5q-C: NationMIRVBehavior
+//!
+//! Four Easy scenarios exercise `considerMIRV`'s hesitation gate and its
+//! three target selectors. `p0`'s units FIFO `[[0],[],[]]` keeps the three
+//! MissileSilo readers apart: considerMIRV's silo gate sees the silo (with
+//! the MIRV-disabled gate mocked false and 5000 gold over the 100 cost),
+//! while handleStructures and maybeSendNuke see empty lists and bail. The
+//! shared `NationMIRVBehavior.recentMirvTargets` map is keyed by target id,
+//! so each scenario uses a distinct Human id (x1/x2/x3) to stay
+//! cooldown-clean. On a hit, maybeSendMIRV emits the AGGRESSIVE_ATTACK
+//! emoji to the target (shouldSendEmoji requires PlayerType.Human; the
+//! Neutral relation makes the chance(2) roll decide, and chance(n) is
+//! nextInt(0, n) === 0 with an early return on miss), the MirvExecution at
+//! the target's territory center (border tile 55; mg x/y mock 5/5 and ref
+//! returns tile 9, whose owner read resolves to the target), then the
+//! EMOJI_NUKE broadcast to AllPlayers. Seeds were hunted offline so the
+//! emoji block misses everything (chance(16)/8/300/250/40 + greet
+//! chance(250), findRat tick-gated) and the hesitation, attack-emoji and
+//! respondToMIRV chance(8) rolls land as designed.
+//! `el_mirv_counter` (n04/gh, T=73) counters an inbound MIRV aimed at
+//! n04's tile 55 (hasOwner true, owner n04): AGGRESSIVE_ATTACK emoji 10 to
+//! x1, MirvExecution (307/4, tile 9), EMOJI_NUKE broadcast (id 33).
+//! `el_mirv_hesitation` (n04/gc, T=13) hits the hesitation chance(2) and
+//! returns before any selector runs, so no events fire. `el_mirv_victory`
+//! (n04/gk, T=52) denies victory: x2 owns 400000 tiles, at or over the 75%
+//! scaled threshold (7.5M against the 100000-land mock), so MirvExecution
+//! fires. `el_mirv_steamroll` (n04/gs, T=2) stops a steamroll: x3 leads
+//! with 21 cities against p0's 0 (Easy needs more than 20 leader cities
+//! and a 2x gap over the runner-up), so MirvExecution fires. unitCount is
+//! player slot 59 (not 33; slot 33 is unused on players).
+//!
 //! # G5b facade additions (codes ≥ 300)
 //!
 //! `mg`: `300` isValidRef, `301` getWaterComponent, `302` hasWaterComponent,
@@ -14337,9 +14368,12 @@ impl ExecHarness {
         if silos.is_empty() {
             return Ok(());
         }
+        // TS: `this.player.gold() < this.cost(UnitType.MIRV)` — `<` evaluates
+        // its left operand first, so the gold read (417) precedes the
+        // unitInfo/cost pair (512 -> 969).
+        let gold = self.pl_gold(tr, pl); // 417
         let cost = self.ne_cost(tr, UNIT_MIRV, pl); // 512 -> 969
-        if self.pl_gold(tr, pl) < cost {
-            // 417 (read after the cost pair, mirroring the TS `<` operand order)
+        if gold < cost {
             return Ok(());
         }
         let odds = self.ne_mirv_hesitation_odds(tr)?; // 402
@@ -14569,13 +14603,16 @@ impl ExecHarness {
         if valid.is_empty() {
             return Ok(None);
         }
+        // TS chains `.filter((p) => p.isPlayer()).map(...)` — the filter pass
+        // consumes every isPlayer read (259) before the map pass reads any
+        // unitCount (823), so collect first, then score.
+        let scored_players: Vec<usize> = self
+            .mg_players(tr) // 221
+            .into_iter()
+            .filter(|p| self.pl_is_player(tr, *p)) // 259
+            .collect();
         let mut scored: Vec<(usize, f64)> = Vec::new();
-        for p in self.mg_players(tr) {
-            // 221
-            if !self.pl_is_player(tr, p) {
-                // 259
-                continue;
-            }
+        for p in scored_players {
             let cc = self.pl_unit_count(tr, p, UNIT_CITY); // 823
             scored.push((p, cc));
         }

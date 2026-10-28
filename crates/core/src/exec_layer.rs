@@ -223,6 +223,34 @@
 //! HIGH_GOLD_STRUCTURE_COOLDOWN_TICKS to 250, so 34 ticks after the last
 //! placement handleStructures returns false. mg 2 (ticks) is the only
 //! tick-distinguishing FIFO: [109 x3, 126 x2, 160].
+//! `el_struct_ratio_factory_silo` (B7) walks the ratio-driven build order
+//! with a real city count: pl 72 (unitsOwned) is the tick-distinguishing
+//! FIFO and exactly six values cover both ticks because the density/upgrade
+//! checks read units(Structures.types) (pl 11, empty) rather than
+//! unitsOwned — tick 109 reads City=3 (cityCount) then Factory=0 (target
+//! floor(3 x 0.75) = 2) into the full factoryValue pipeline (perceived cost
+//! via the FFA MIRV+Hydro save-up pair, connectivity roll + empty station
+//! mocks, the 25-tile magnitude+border-dist tie landing tile 78), and tick
+//! 126 re-reads City=3, skips Factory (owned 2, 2 < 2 false) and SAM
+//! (target floor(3 x 0.25) = 0), then MissileSilo=0 takes
+//! FIRST_MISSILE_SILO_RATIO 0.4 -> target 1 -> missileSiloValue
+//! (borderTiles + units(MissileSilo) empty: magnitude + border dist only,
+//! no connectivity). Both placements emit 307/24; mg 2 covers the
+//! post-save-up set [109] and tick 126's sticky [126, 126] elapsed +
+//! lastStructureTick reads. `el_struct_crowded_factory_first` (B8) drops
+//! mg 35 to 50 land tiles so isHighNationDensity (1/50 > 1/7500) fires
+//! after the SAM-first branch dies on startingGold: the crowded branch
+//! picks Factory (sharedWater null short-circuits the Port preference) and
+//! returns straight from the branch — no buildOrder entry evaluated —
+//! pinning builtCrowdedMapFirstStructure on a single-structure tick.
+//! `el_struct_team_saveup_block` (B9) switches mg 54 to "Team" so
+//! getSaveUpTarget reads a single cost(HydrogenBomb) (no MIRV pair): tick
+//! 109 builds City #1 and stamps _postSaveUpStartTick = 109, ticks 160/211
+//! (elapsed 51/102) stay under the 150-tick off-phase and build Cities
+//! #2/#3, and tick 262 (elapsed 153, 153 % 300 >= 150) hits the on-phase —
+//! the deny chain (dp branch with empty incomingAttacks, cooldown[3] = 150
+//! against 51 ticks since the last placement, phase check) is pure reads
+//! with no gold read and no ConstructionExecution.
 //!
 //! # G5b facade additions (codes ≥ 300)
 //!

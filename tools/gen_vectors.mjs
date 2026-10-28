@@ -33075,6 +33075,136 @@ elDef(
   [[0], [1, 0], [2, 100], [2, 109], [2, 126], [2, 160], [3], [4]],
 );
 
+// G5p-C (B7): the ratio-driven build order with a real city count. pl 72
+// (unitsOwned) is the tick-distinguishing FIFO, and exactly 6 values cover
+// both ticks because density/upgrade checks read units(Structures.types)
+// (pl 11, empty) rather than unitsOwned: tick 109 reads City=3 (cityCount),
+// then Factory=0 — target floor(3 x 0.75) = 2 — so maybeSpawnStructure(Factory)
+// runs the full pipeline (getPerceivedCost via the FFA MIRV+Hydro save-up
+// pair, empty units(Factory) + density reads, structureSpawnTile with
+// randTerritoryTileArray then factoryValue: border tiles, units(Factory) for
+// cross-spacing, connectivity roll + empty station mocks, trainStationMinRange,
+// and a units(City) cityTiles scan; the 25-tile closure ties at magnitude 5 +
+// border dist 23) and the Factory lands on tile 78 as 307/24. Tick 126
+// re-reads City=3, then Factory=2 skips (2 < 2 is false), SAM=0 skips
+// (target floor(3 x 0.25) = 0), MissileSilo=0 uses FIRST_MISSILE_SILO_RATIO
+// 0.4 -> target 1 -> maybeSpawnStructure(MissileSilo) -> missileSiloValue
+// (borderTiles + units(MissileSilo) empty: magnitude + border dist only, no
+// connectivity) -> 307/24. mg 2 (ticks): post-save-up set [109], tick 126
+// elapsed + lastStructureTick [126, 126] sticky.
+elDef(
+  "el_struct_ratio_factory_silo",
+  44,
+  elNationExecC,
+  ["g2", { playerInfo: { id: "n1", name: "N1" }, spawnCell: { x: 5, y: 5 } }],
+  {
+    a: ["g2", { playerInfo: { id: "n1", name: "N1" }, spawnCell: { x: 5, y: 5 } }],
+    mg: {
+      0: [true], 1: [0], 2: [109, 126], 6: [false],
+      12: [...Array(25).fill(0)],
+      14: [{ outer: 30, inner: 10 }],
+      28: [15], 33: ["Hard"], 35: [100000],
+      45: [false],
+      46: [{ cost: 100, upgradable: true }],
+      54: ["FFA"], 121: [100], 122: [1000],
+      63: [55, 555, 78], 64: [0, 551, 0],
+      69: [78], 70: [1000], 71: [1000],
+      76: [true],
+      123: [[0]], 124: [true], 125: [10],
+      128: [10], 129: [null], 131: [[]], 132: [5],
+    },
+    players: [
+      {
+        0: [0], 3: [true], 11: [[]], 15: [[]], 40: [500], 41: [1000],
+        45: [1000], 47: [true], 50: [[55, 551555]], 58: [[]], 71: [0],
+        72: [3, 0, 3, 2, 0, 0], 73: [{}],
+      },
+    ],
+  },
+  [[0], [1, 0], [2, 100], [2, 109], [2, 126], [3], [4]],
+);
+
+// G5p-C (B8): the crowded-map first structure. mg 35 drops to 50 land tiles,
+// so isHighNationDensity (1 nation / 50 > 1/7500) fires after the SAM-first
+// branch dies on startingGold: the crowded branch picks Factory (sharedWater
+// null short-circuits the Port preference) and maybeSpawnStructure(Factory)
+// runs the same factoryValue pipeline as B7 — but returns straight from the
+// branch, so no buildOrder entry is evaluated and unitsOwned is read once.
+// Single structure tick; builtCrowdedMapFirstStructure is set on success.
+elDef(
+  "el_struct_crowded_factory_first",
+  44,
+  elNationExecC,
+  ["g2", { playerInfo: { id: "n1", name: "N1" }, spawnCell: { x: 5, y: 5 } }],
+  {
+    a: ["g2", { playerInfo: { id: "n1", name: "N1" }, spawnCell: { x: 5, y: 5 } }],
+    mg: {
+      0: [true], 1: [0], 2: [109], 6: [false],
+      12: [...Array(25).fill(0)],
+      14: [{ outer: 30, inner: 10 }],
+      28: [15], 33: ["Hard"], 35: [50],
+      45: [false],
+      46: [{ cost: 100, upgradable: true }],
+      54: ["FFA"], 121: [100], 122: [1000],
+      63: [55, 555, 78], 64: [0, 551, 0],
+      69: [78], 70: [1000], 71: [1000],
+      76: [true],
+      123: [[0]], 124: [true], 125: [10],
+      128: [10], 129: [null], 131: [[]], 132: [5],
+    },
+    players: [
+      {
+        0: [0], 3: [true], 11: [[]], 15: [[]], 40: [500], 41: [1000],
+        45: [1000], 47: [true], 50: [[55, 551555]], 58: [[]], 71: [0],
+        72: [0], 73: [{}],
+      },
+    ],
+  },
+  [[0], [1, 0], [2, 100], [2, 109], [3], [4]],
+);
+
+// G5p-C (B9): the team-mode save-up phase. mg 54 -> "Team" switches
+// getSaveUpTarget to the single cost(HydrogenBomb) read (no MIRV pair). Tick
+// 109 builds City #1 and stamps _postSaveUpStartTick = 109; ticks 160 and 211
+// (both offset 7) have elapsed 51 / 102 < 150 so the phase is off and Cities
+// #2/#3 build; tick 262 (offset 7) hits elapsed 153 % 300 >= 150 — the on
+// phase — and handleStructures returns false after the pure-read deny chain
+// (dp branch with empty incomingAttacks, cooldown[3] table miss, phase
+// check): no gold read, no build. mg 2 (ticks) is the tick-distinguishing
+// FIFO: [109 x2 (set + lastStructureTick), 160 x2, 211 x2, 262 (elapsed
+// only)].
+elDef(
+  "el_struct_team_saveup_block",
+  44,
+  elNationExecC,
+  ["g2", { playerInfo: { id: "n1", name: "N1" }, spawnCell: { x: 5, y: 5 } }],
+  {
+    a: ["g2", { playerInfo: { id: "n1", name: "N1" }, spawnCell: { x: 5, y: 5 } }],
+    mg: {
+      0: [true], 1: [0], 2: [109, 109, 160, 160, 211, 211, 262], 6: [false],
+      12: [...Array(25).fill(0)],
+      14: [{ outer: 30, inner: 10 }],
+      28: [15], 33: ["Hard"], 35: [100000],
+      45: [false],
+      46: [{ cost: 100, upgradable: true }],
+      54: ["Team"], 121: [100], 122: [1000],
+      63: [55, 555, 78], 64: [0, 551, 0],
+      69: [78], 70: [1000], 71: [1000],
+      76: [true],
+      123: [[0]], 124: [true], 125: [10],
+      128: [10], 129: [null], 131: [[]], 132: [5],
+    },
+    players: [
+      {
+        0: [0], 3: [true], 11: [[]], 15: [[]], 40: [500], 41: [1000],
+        45: [1000], 47: [true], 50: [[55, 551555]], 58: [[]], 71: [0],
+        72: [0], 73: [{}],
+      },
+    ],
+  },
+  [[0], [1, 0], [2, 100], [2, 109], [2, 160], [2, 211], [2, 262], [3], [4]],
+);
+
 const structures = {
   votetally: vtScenarios,
   rankedcheckin: rgScenarios,

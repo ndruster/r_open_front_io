@@ -34259,6 +34259,206 @@ elDef(
   [[0], [1, 0], [2, 100], [2, 6052], [3], [4]],
 );
 
+// ---- G5q-B: NationAllianceBehavior ----------------------------------------
+//
+// Same Easy attack-tick all-deny shape as G5q-A but with mg 115
+// disableAlliances=false so the ladder's handleAllianceRequests /
+// handleAllianceExtensionRequests stages actually run, plus mg 5
+// numSpawnPhaseTurns=8 for the spawn-phase rejection rule. Seeds were
+// hunted offline: the emoji block stays all-miss and the decision-ladder
+// rolls land as designed (confused chance(10) miss, then the earlygame
+// nextInt(0,100) >= 10 accept, or the traitor chance(3) emoji hit, or the
+// maybeAttack chance(10) miss + chance(30) send hit).
+
+// handleAllianceRequests accept: n01/g1 (rate 80 tick 71). op#3 tick(71) is
+// the first post-init pipeline tick (71 % 80 == 71). Incoming request
+// createdAt 50 > numSpawnPhaseTurns 8 + 1, requestor is the Human x1; the
+// decision ladder rolls confusion miss, the Neutral relation skips the
+// relation-bad branch, and falls through to isEarlygame (tick 71 < 3008,
+// roll >= 10) and accepts (request 271).
+elDef(
+  "el_alli_req_accept",
+  44,
+  elNationExecC,
+  ["g1", { playerInfo: { id: "n01", name: "N0" }, spawnCell: { x: 5, y: 5 } }],
+  {
+    a: ["g1", { playerInfo: { id: "n01", name: "N0" }, spawnCell: { x: 5, y: 5 } }],
+    mg: {
+      0: [true], 1: [0], 2: [71], 5: [8], 6: [false], 11: [[0, 1]], 12: [0],
+      14: [{ outer: 30, inner: 10 }], 28: [15], 32: [10000], 33: ["Easy"],
+      35: [100000], 40: [0], 45: [true],
+      46: [{ cost: 100, upgradable: false }], 54: ["FFA"], 60: [null],
+      63: [5], 64: [5], 69: [55], 115: [false], 121: [100], 122: [1000],
+      123: [[]], 124: [true], 125: [10], 129: [null], 132: [5],
+    },
+    players: [
+      {
+        0: [0], 1: ["n01"], 3: [true], 5: [true], 8: [false], 11: [[]],
+        12: [false], 15: [[]], 20: [false], 21: ["NATION"], 26: [true],
+        34: [true], 35: [2.0], 40: [5000], 41: [100], 45: [10000],
+        47: [true], 50: [[]], 53: [[0]], 58: [[]], 62: [false], 65: [[]],
+        66: [[]], 68: [[]], 69: [[]], 70: [[]], 71: [0], 72: [0],
+      },
+      {
+        0: [0], 1: ["x1"], 3: [true], 8: [false], 11: [[]], 20: [false],
+        21: ["HUMAN"], 26: [true], 45: [100], 50: [[]], 62: [false],
+      },
+    ],
+    requests: [{ 4: [50], 5: [1] }],
+  },
+  [[0], [1, 0], [2, 100], [2, 71], [3], [4]],
+);
+
+// handleAllianceRequests spawn-phase rejection: n1/g5 (rate 91 tick 50;
+// 141 % 91 == 50) with every emoji roll missing. The request was created
+// at tick 5 <= numSpawnPhaseTurns 8 + 1, so it is rejected (272) before
+// any decision RNG is consumed.
+elDef(
+  "el_alli_req_spawn_reject",
+  44,
+  elNationExecC,
+  ["g5", { playerInfo: { id: "n1", name: "N1" }, spawnCell: { x: 5, y: 5 } }],
+  {
+    a: ["g5", { playerInfo: { id: "n1", name: "N1" }, spawnCell: { x: 5, y: 5 } }],
+    mg: {
+      0: [true], 1: [0], 2: [141], 5: [8], 6: [false], 11: [[0]], 12: [0],
+      14: [{ outer: 30, inner: 10 }], 28: [15], 32: [10000], 33: ["Easy"],
+      35: [100000], 40: [0], 45: [true],
+      46: [{ cost: 100, upgradable: false }], 54: ["FFA"], 60: [null],
+      63: [5], 64: [5], 69: [55], 115: [false], 121: [100], 122: [1000],
+      123: [[]], 124: [true], 125: [10], 129: [null], 132: [5],
+    },
+    players: [
+      {
+        0: [0], 1: ["n1"], 3: [true], 8: [false], 11: [[]], 12: [false],
+        15: [[]], 20: [false], 21: ["NATION"], 26: [true], 34: [true],
+        35: [0.0], 40: [5000], 41: [100], 45: [10000], 47: [true], 50: [[]],
+        53: [[0]], 58: [[]], 62: [false], 65: [[]], 66: [[]], 68: [[]],
+        69: [[]], 70: [[]], 71: [0], 72: [0],
+      },
+    ],
+    requests: [{ 4: [5] }],
+  },
+  [[0], [1, 0], [2, 100], [2, 141], [3], [4]],
+);
+
+// handleAllianceRequests traitor rejection with emoji: n01/ga (rate 98 tick
+// 28). The requestor x1 is a traitor; the decision rolls confusion miss,
+// nextInt(0,100)=57 >= 10, then the isResponse chance(3) hits so
+// EMOJI_CONFUSED goes to x1 before the request is rejected (272).
+elDef(
+  "el_alli_req_traitor_confused",
+  44,
+  elNationExecC,
+  ["ga", { playerInfo: { id: "n01", name: "N0" }, spawnCell: { x: 5, y: 5 } }],
+  {
+    a: ["ga", { playerInfo: { id: "n01", name: "N0" }, spawnCell: { x: 5, y: 5 } }],
+    mg: {
+      0: [true], 1: [0], 2: [28], 5: [8], 6: [false], 11: [[0, 1]], 12: [0],
+      14: [{ outer: 30, inner: 10 }], 28: [15], 32: [10000], 33: ["Easy"],
+      35: [100000], 40: [0], 45: [true],
+      46: [{ cost: 100, upgradable: false }], 54: ["FFA"], 60: [null],
+      63: [5], 64: [5], 69: [55], 115: [false], 121: [100], 122: [1000],
+      123: [[]], 124: [true], 125: [10], 129: [null], 132: [5],
+    },
+    players: [
+      {
+        0: [0], 1: ["n0"], 3: [true], 5: [true], 8: [false], 11: [[]],
+        12: [false], 15: [[]], 20: [false], 21: ["NATION"], 26: [true],
+        34: [true], 35: [0.0], 40: [5000], 41: [100], 45: [10000],
+        47: [true], 50: [[]], 53: [[0]], 58: [[]], 62: [false], 65: [[]],
+        66: [[]], 68: [[]], 69: [[]], 70: [[]], 71: [0], 72: [0],
+      },
+      {
+        0: [0], 1: ["x1"], 3: [true], 8: [false], 11: [[]], 20: [false],
+        21: ["HUMAN"], 26: [true], 45: [100], 50: [[]], 62: [true],
+      },
+    ],
+    requests: [{ 4: [50], 5: [1] }],
+  },
+  [[0], [1, 0], [2, 100], [2, 28], [3], [4]],
+);
+
+// handleAllianceExtensionRequests accept: n03/g3 (rate 95 tick 14). op#3
+// tick(14) is the first post-init pipeline tick. The single alliance has
+// onlyOneAgreedToExtend true and its other member is the Human x1; the
+// decision ladder rolls confusion miss, the Neutral relation skips the
+// relation-bad branch, and reaches the earlygame accept (roll 20 >= 10) —
+// AllianceExtensionExecution (307/20) is queued for x1.
+elDef(
+  "el_alli_ext_accept",
+  44,
+  elNationExecC,
+  ["g3", { playerInfo: { id: "n03", name: "N0" }, spawnCell: { x: 5, y: 5 } }],
+  {
+    a: ["g3", { playerInfo: { id: "n03", name: "N0" }, spawnCell: { x: 5, y: 5 } }],
+    mg: {
+      0: [true], 1: [0], 2: [14], 5: [8], 6: [false], 11: [[0, 1]], 12: [0],
+      14: [{ outer: 30, inner: 10 }], 28: [15], 32: [10000], 33: ["Easy"],
+      35: [100000], 40: [0], 45: [true],
+      46: [{ cost: 100, upgradable: false }], 54: ["FFA"], 60: [null],
+      63: [5], 64: [5], 69: [55], 115: [false], 121: [100], 122: [1000],
+      123: [[]], 124: [true], 125: [10], 129: [null], 132: [5],
+    },
+    players: [
+      {
+        0: [0], 1: ["n03"], 3: [true], 8: [false], 11: [[]], 12: [false],
+        15: [[]], 20: [false], 21: ["NATION"], 26: [true], 34: [true],
+        35: [2.0], 40: [5000], 41: [100], 45: [10000], 47: [true], 50: [[]],
+        53: [[]], 58: [[]], 62: [false], 65: [[0]], 66: [[]], 68: [[]],
+        69: [[]], 70: [[]], 71: [0], 72: [0],
+      },
+      {
+        0: [0], 1: ["x1"], 3: [true], 8: [false], 11: [[]], 20: [false],
+        21: ["HUMAN"], 26: [true], 45: [100], 50: [[]], 62: [false],
+      },
+    ],
+    alliances: [{ 0: [true], 5: [1] }],
+  },
+  [[0], [1, 0], [2, 100], [2, 14], [3], [4]],
+);
+
+// maybeSendAllianceRequests accept via maybeAttack: n02/g9 (rate 84 tick
+// 73). nearby() yields neighbor token 1 (delegating to players[1], a Nation
+// that isFriendly reports false), so borderingEnemies = [x1] and the
+// chance(10) boat roll misses; maybeSendAllianceRequests then hits
+// chance(30), passes the acceptable-type and canSendAllianceRequest gates,
+// and the decision ladder rolls confusion miss, Neutral relation, and the
+// earlygame accept (roll >= 10) — AllianceRequestExecution (307/23) goes
+// to x1.
+elDef(
+  "el_alli_send_accept",
+  44,
+  elNationExecC,
+  ["g9", { playerInfo: { id: "n02", name: "N00" }, spawnCell: { x: 5, y: 5 } }],
+  {
+    a: ["g9", { playerInfo: { id: "n02", name: "N00" }, spawnCell: { x: 5, y: 5 } }],
+    mg: {
+      0: [true], 1: [0], 2: [73], 5: [8], 6: [false], 11: [[0, 1]], 12: [0],
+      14: [{ outer: 30, inner: 10 }], 28: [15], 32: [10000], 33: ["Easy"],
+      35: [100000], 40: [0], 45: [true],
+      46: [{ cost: 100, upgradable: false }], 54: ["FFA"], 60: [null],
+      63: [5], 64: [5], 69: [55], 115: [false], 121: [100], 122: [1000],
+      123: [[]], 124: [true], 125: [10], 129: [null], 132: [5],
+    },
+    players: [
+      {
+        0: [0], 1: ["n02"], 3: [true], 5: [true], 8: [false], 11: [[]],
+        12: [false], 15: [[1]], 20: [false], 21: ["NATION"], 26: [true],
+        34: [true], 35: [2.0], 40: [5000], 41: [100], 45: [10000],
+        47: [true], 50: [[]], 53: [[]], 58: [[]], 62: [false], 65: [[]],
+        66: [[]], 68: [[]], 69: [[]], 70: [[]], 71: [0], 72: [0],
+      },
+      {
+        0: [0], 1: ["x1"], 3: [true], 8: [false], 11: [[]], 20: [false],
+        21: ["NATION"], 26: [true], 45: [100], 50: [[]], 62: [false],
+      },
+    ],
+    neighbors: [{}, { 0: [true] }],
+  },
+  [[0], [1, 0], [2, 100], [2, 73], [3], [4]],
+);
+
 const structures = {
   votetally: vtScenarios,
   rankedcheckin: rgScenarios,

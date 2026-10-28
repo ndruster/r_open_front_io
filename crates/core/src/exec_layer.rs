@@ -360,8 +360,8 @@
 //! were picked so exactly the wanted branch hits; every other roll misses
 //! or hits only an empty mock list (a no-op). `el_emoji_overwhelmed` (n1/ga,
 //! T=196) sends EMOJI_OVERWHELMED to AllPlayers when 3000 incoming troops
-//! >= 3 * 100 own. `el_emoji_small_bored` (n1/g2, T=143) sends EMOJI_BORED
-//! to a Human attacker carrying 5 troops < 10% of 100 own via
+//! are at least 3 * 100 own. `el_emoji_small_bored` (n1/g2, T=143) sends
+//! EMOJI_BORED to a Human attacker carrying 5 troops < 10% of 100 own via
 //! maybeSendEmoji's limited-time shouldSendEmoji (lastEmojiSent empty ->
 //! ticks - (-300) > 300). `el_emoji_congrat_ffa` (n1/g5, T=141) sends
 //! EMOJI_CONGRATULATE to a Human winner after the nation filter +
@@ -383,6 +383,42 @@
 //! EmojiExecution records. The unused alternate arms (chance(2) hit ->
 //! EMOJI_CONFUSED, chance(3) miss -> EMOJI_CHARM_ALLIES) send through the
 //! identical randElement path with static lists.
+//!
+//! # G5q-B: NationAllianceBehavior request/extension ladder
+//!
+//! Five scenarios drive the alliance-facing half of `NationExecution.tick`:
+//! `handleAllianceRequests`, `handleAllianceExtensionRequests`, and the
+//! `maybeSendAllianceRequests` hook inside `AiAttackBehavior.maybeAttack`.
+//! The seed hunt replays the full roll stream: ctor trigger/reserve/expand,
+//! Easy rate + attackTick, the nuke ctor's chance(3), then at the first
+//! attack tick the emoji block (chance(16)/8/300/250/40 + greet chance(250))
+//! before the decision ladder. `el_alli_req_spawn_reject` (n1/g5, T=141)
+//! rejects an incoming request whose createdAt (5) is at most
+//! numSpawnPhaseTurns + 1 (9) before any decision RNG runs (request 272).
+//! `el_alli_req_accept` (n01/g1, T=71) accepts a Human requestor via the
+//! decision ladder: confusion chance(10) miss, traitor check short-circuits
+//! on isTraitor false, the relation read (2.0 Neutral) skips the bad-relation
+//! arm, and isEarlygame (tick 71 < 3008) rolls nextInt(0,100) >= 10 to
+//! accept (request 271). `el_alli_req_traitor_confused` (n01/ga, T=28)
+//! nearly rejects a traitor Human: nextInt(0,100) = 57 >= 10, then the
+//! isResponse chance(3) hits so EMOJI_CONFUSED (randElement over the static
+//! list, flattened id 57) goes to x1 before the reject (272).
+//! `el_alli_ext_accept` (n03/g3, T=14) walks
+//! `handleAllianceExtensionRequests`: the single alliance reports
+//! onlyOneAgreedToExtend true and `other()` resolves to Human x1; the same
+//! decision ladder reaches the earlygame accept (roll 20 >= 10) and queues
+//! AllianceExtensionExecution (307/20, from nation, toID "x1").
+//! `el_alli_send_accept` (n02/g9, T=73) drives the outgoing path:
+//! nearby() returns neighbor token 1 whose accessors delegate to
+//! players[1] (a Nation, isFriendly false), so borderingEnemies = [x1];
+//! the chance(10) boat roll misses, maybeSendAllianceRequests hits
+//! chance(30), the acceptable-type and canSendAllianceRequest gates pass,
+//! and the decision ladder (confusion miss, Neutral relation, earlygame
+//! roll >= 10) sends AllianceRequestExecution (307/23, requestor nation,
+//! toID "x1"). Alliance requests are mocked as `requests: [{4:[createdAt],
+//! 5:[requestorTok]}]` (slot 4 createdAt, slot 5 requestor); alliances as
+//! `alliances: [{0:[onlyOneAgreed], 5:[otherTok]}]` (slot 0
+//! onlyOneAgreedToExtend, slot 5 other -> players[tok]).
 //!
 //! # G5b facade additions (codes ≥ 300)
 //!

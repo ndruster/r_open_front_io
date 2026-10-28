@@ -209,33 +209,31 @@ pub fn unpack_motion_plans(packed: &[u32]) -> Vec<MotionPlanRecord> {
                     }
                 }
             }
-            PACKED_TRAIN_RAIL_PATH_SET => {
-                if word_count >= 2 + 7 {
-                    let engine_unit_id = packed[offset + 2];
-                    let plan_id = packed[offset + 3];
-                    let start_tick = packed[offset + 4];
-                    let speed = packed[offset + 5];
-                    let spacing = packed[offset + 6];
-                    let car_count = packed[offset + 7];
-                    let path_len = packed[offset + 8];
-                    let expected = 2u64 + 7 + car_count as u64 + path_len as u64;
-                    if expected == word_count as u64 {
-                        let car_start = offset + 9;
-                        let car_end = car_start + car_count as usize;
-                        let path_start = car_end;
-                        let path_end = path_start + path_len as usize;
-                        let car_unit_ids = packed[car_start..car_end].to_vec();
-                        let path = packed[path_start..path_end].to_vec();
-                        records.push(MotionPlanRecord::Train {
-                            engine_unit_id,
-                            car_unit_ids,
-                            plan_id,
-                            start_tick,
-                            speed,
-                            spacing,
-                            path,
-                        });
-                    }
+            PACKED_TRAIN_RAIL_PATH_SET if word_count >= 2 + 7 => {
+                let engine_unit_id = packed[offset + 2];
+                let plan_id = packed[offset + 3];
+                let start_tick = packed[offset + 4];
+                let speed = packed[offset + 5];
+                let spacing = packed[offset + 6];
+                let car_count = packed[offset + 7];
+                let path_len = packed[offset + 8];
+                let expected = 2u64 + 7 + car_count as u64 + path_len as u64;
+                if expected == word_count as u64 {
+                    let car_start = offset + 9;
+                    let car_end = car_start + car_count as usize;
+                    let path_start = car_end;
+                    let path_end = path_start + path_len as usize;
+                    let car_unit_ids = packed[car_start..car_end].to_vec();
+                    let path = packed[path_start..path_end].to_vec();
+                    records.push(MotionPlanRecord::Train {
+                        engine_unit_id,
+                        car_unit_ids,
+                        plan_id,
+                        start_tick,
+                        speed,
+                        spacing,
+                        path,
+                    });
                 }
             }
             _ => {}

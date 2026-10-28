@@ -193,8 +193,8 @@ impl<A: AStarAdapter> AStar<A> {
             let prev_raw = get_i32(came_from, current);
             let count = adapter.neighbors(current, buffer);
 
-            for i in 0..count {
-                let neighbor = buffer[i] as f64;
+            for &raw_neighbor in buffer.iter().take(count) {
+                let neighbor = raw_neighbor as f64;
 
                 if get_u32(closed_stamp, neighbor) == Some(stamp as f64) {
                     continue;

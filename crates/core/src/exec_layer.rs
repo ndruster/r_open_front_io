@@ -346,6 +346,44 @@
 //! that the build order continues — MissileSilo builds 307/24 — rather than
 //! the tick aborting.
 //!
+//! # G5q-A: NationEmojiBehavior casual-emoji branches
+//!
+//! Every scenario rides the full Easy attack-tick ladder on the
+//! el_nuke_no_silo all-deny mock shape (single sticky mg 45 `true`, mg 115
+//! disableAlliances, empty players/units/allies/nearby lists) with a seed
+//! tuned offline by replaying the fixed roll stream: ctor trigger/reserve/
+//! expand, Easy rate + attackTick, the nuke ctor's chance(3) isHydroNation
+//! roll at tick 100, then at the first attack tick chance(16) overwhelmed,
+//! chance(8) very-small, chance(300) brag, chance(250) charm, chance(40)
+//! traitor, and finally findRat's chance(10000) (ticks >= 6000) or
+//! greetNearbyPlayers' chance(250) (ticks <= 600). All scenario ids/gids
+//! were picked so exactly the wanted branch hits; every other roll misses
+//! or hits only an empty mock list (a no-op). `el_emoji_overwhelmed` (n1/ga,
+//! T=196) sends EMOJI_OVERWHELMED to AllPlayers when 3000 incoming troops
+//! >= 3 * 100 own. `el_emoji_small_bored` (n1/g2, T=143) sends EMOJI_BORED
+//! to a Human attacker carrying 5 troops < 10% of 100 own via
+//! maybeSendEmoji's limited-time shouldSendEmoji (lastEmojiSent empty ->
+//! ticks - (-300) > 300). `el_emoji_congrat_ffa` (n1/g5, T=141) sends
+//! EMOJI_CONGRATULATE to a Human winner after the nation filter +
+//! numTilesOwned sort crown n1 largest, and `el_emoji_congrat_team` (same
+//! seed) exercises the team-string winner path: the getWinner mock now
+//! passes strings through so mg 60 can script team "Red" != player team
+//! "Blue", sending EMOJI_CONGRATULATE to AllPlayers. `el_emoji_brag`
+//! (pa/gt, T=200) sends EMOJI_BRAG to AllPlayers as the largest player.
+//! `el_emoji_charm` (na0/gj, T=172) sends EMOJI_LOVE to its single Human
+//! ally (chance(3) hit). `el_emoji_traitor` (m1/g8, T=142) sends
+//! EMOJI_CLOWN to a non-friendly Human traitor. `el_emoji_greet` (m1/gx,
+//! T=155) sends EMOJI_GREET to a nearby Human — nearby() returns neighbor
+//! tokens resolved through the spec's neighbors table (neighbor accessors
+//! delegate to players[token], so `{}` + `{0: [true]}` makes token 1 a
+//! Human neighbor). `el_emoji_rat` (nfi/gz, T=6052) fires congratulate
+//! first (one randElement shifts the stream) so the rat chance(10000) roll
+//! lands on its 0 at ticks >= 6000, sending EMOJI_RAT to the single small
+//! Human (500 tiles < 1% of 100000 land). All nine send through 307/2
+//! EmojiExecution records. The unused alternate arms (chance(2) hit ->
+//! EMOJI_CONFUSED, chance(3) miss -> EMOJI_CHARM_ALLIES) send through the
+//! identical randElement path with static lists.
+//!
 //! # G5b facade additions (codes ≥ 300)
 //!
 //! `mg`: `300` isValidRef, `301` getWaterComponent, `302` hasWaterComponent,

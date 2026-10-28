@@ -27685,10 +27685,14 @@ function elMgObj(slots) {
       }
       return v;
     },
-    // G5e.
+    // G5e. A string winner is a Team name (`game.getWinner()` returns the
+    // winning Team in team games); pass it through so the emoji behavior's
+    // team-congratulate branch can be recorded (G5q-A).
     getWinner: () => {
       const t = elRet(m, 60, 600, []);
-      return t == null || typeof t !== "number" ? null : elC.players[t];
+      if (t == null) return null;
+      if (typeof t === "string") return t;
+      return elC.players[t];
     },
     setFallout: (tile, flag) => elVoid(602, [...elEv1(tile), ...elEvb(flag)]),
     x: (tile) => elRet(m, 63, 603, elEv1(tile)),
@@ -33916,6 +33920,343 @@ elDef(
     ],
   },
   [[0], [1, 0], [2, 100], [2, 109], [3], [4]],
+);
+
+// ---- G5q-A: NationEmojiBehavior (maybeSendCasualEmoji branches) -----------
+//
+// Every scenario runs the full Easy attack-tick ladder with the same
+// all-deny mock shape as el_nuke_no_silo, but on a NationEmojiBehavior-tuned
+// seed so that exactly one `maybeSendCasualEmoji` branch fires. The seed
+// stream for the FIRST attack tick (ops [2,100],[2,T]) is fixed: ctor
+// trigger/reserve/expand, Easy attack rate + attackTick, the nuke ctor's
+// chance(3) isHydroNation roll, then at the attack tick chance(16)
+// (checkOverwhelmedByAttacks), chance(8) (checkVerySmallAttack), chance(300)
+// (brag), chance(250) (charmAllies), chance(40) (annoyTraitors), the
+// findRat chance(10000) (ticks >= 6000) or greetNearbyPlayers chance(250)
+// (ticks <= 600). All scenario ids/gids were chosen offline by replaying
+// that stream, so the wanted branch hits and every other roll misses (or
+// hits only on an empty mock list, which is a no-op).
+
+// checkOverwhelmedByAttacks: n1/ga (rate 75 tick 46; 196 % 75 == 46) rolls
+// chance(16)=0 at the attack tick. The single incoming attack carries 3000
+// troops >= 3 * 100 own troops, so EMOJI_OVERWHELMED is sent to AllPlayers
+// (randElement picks index 2 -> "😱" / emoji id 8).
+elDef(
+  "el_emoji_overwhelmed",
+  44,
+  elNationExecC,
+  ["ga", { playerInfo: { id: "n1", name: "N1" }, spawnCell: { x: 5, y: 5 } }],
+  {
+    a: ["ga", { playerInfo: { id: "n1", name: "N1" }, spawnCell: { x: 5, y: 5 } }],
+    mg: {
+      0: [true], 1: [0], 2: [196], 6: [false], 11: [[0]], 12: [0],
+      14: [{ outer: 30, inner: 10 }], 28: [15], 32: [10000], 33: ["Easy"],
+      35: [100000], 40: [0], 45: [true],
+      46: [{ cost: 100, upgradable: false }], 54: ["FFA"], 60: [null],
+      63: [5], 64: [5], 69: [55], 115: [true], 121: [100], 122: [1000],
+      123: [[]], 124: [true], 125: [10], 129: [null], 132: [5],
+    },
+    players: [
+      {
+        0: [0], 1: ["n1"], 3: [true], 8: [false], 11: [[]], 12: [false],
+        15: [[]], 20: [false], 21: ["NATION"], 26: [true], 34: [true],
+        35: [0.0], 40: [5000], 41: [100], 45: [10000], 47: [true], 50: [[]],
+        58: [[0]], 62: [false], 66: [[]], 68: [[]], 69: [[]], 70: [[]],
+        71: [0], 72: [0],
+      },
+    ],
+    attacks: [{ 0: [3000] }],
+  },
+  [[0], [1, 0], [2, 100], [2, 196], [3], [4]],
+);
+
+// checkVerySmallAttack: n1/g2 (rate 79 tick 64; 143 % 79 == 64) rolls
+// chance(8)=0 with chance(16) missing. The attacker is a Human whose attack
+// carries 5 troops < 10% of 100 own troops; chance(2) misses so
+// EMOJI_BORED ("🥱" / 12) goes to the attacker via maybeSendEmoji
+// (lastEmojiSent empty -> ticks - (-300) > 300, canSendEmoji true).
+elDef(
+  "el_emoji_small_bored",
+  44,
+  elNationExecC,
+  ["g2", { playerInfo: { id: "n1", name: "N1" }, spawnCell: { x: 5, y: 5 } }],
+  {
+    a: ["g2", { playerInfo: { id: "n1", name: "N1" }, spawnCell: { x: 5, y: 5 } }],
+    mg: {
+      0: [true], 1: [0], 2: [143], 6: [false], 11: [[0, 1]], 12: [0],
+      14: [{ outer: 30, inner: 10 }], 28: [15], 32: [10000], 33: ["Easy"],
+      35: [100000], 40: [0], 45: [true],
+      46: [{ cost: 100, upgradable: false }], 54: ["FFA"], 60: [null],
+      63: [5], 64: [5], 69: [55], 115: [true], 121: [100], 122: [1000],
+      123: [[]], 124: [true], 125: [10], 129: [null], 132: [5],
+    },
+    players: [
+      {
+        0: [0], 1: ["n1"], 3: [true], 8: [false], 11: [[]], 12: [false],
+        15: [[]], 20: [false], 21: ["NATION"], 26: [true], 34: [true],
+        35: [0.0], 40: [5000], 41: [100], 45: [10000], 47: [true], 50: [[]],
+        58: [[0]], 62: [false], 66: [[]], 68: [[]], 69: [[]], 70: [[]],
+        71: [0], 72: [0],
+      },
+      {
+        0: [0], 1: ["x1"], 3: [true], 8: [false], 11: [[]], 20: [false],
+        21: ["HUMAN"], 26: [true], 45: [100], 50: [[]],
+      },
+    ],
+    attacks: [{ 0: [5], 12: [1] }],
+  },
+  [[0], [1, 0], [2, 100], [2, 143], [3], [4]],
+);
+
+// congratulateWinner (FFA): n1/g5 (rate 91 tick 50; 141 % 91 == 50) leaves
+// every casual-emoji chance roll missing. getWinner returns the Human
+// player token 1, gameMode is FFA, and the nation filter + numTilesOwned
+// sort crown n1 as the largest nation, so EMOJI_CONGRATULATE ("👏" / 16)
+// goes to the winner and gameOver latches true.
+elDef(
+  "el_emoji_congrat_ffa",
+  44,
+  elNationExecC,
+  ["g5", { playerInfo: { id: "n1", name: "N1" }, spawnCell: { x: 5, y: 5 } }],
+  {
+    a: ["g5", { playerInfo: { id: "n1", name: "N1" }, spawnCell: { x: 5, y: 5 } }],
+    mg: {
+      0: [true], 1: [0], 2: [141], 6: [false], 11: [[0, 1]], 12: [0],
+      14: [{ outer: 30, inner: 10 }], 28: [15], 32: [10000], 33: ["Easy"],
+      35: [100000], 40: [0], 45: [true],
+      46: [{ cost: 100, upgradable: false }], 54: ["FFA"], 60: [1],
+      63: [5], 64: [5], 69: [55], 115: [true], 121: [100], 122: [1000],
+      123: [[]], 124: [true], 125: [10], 129: [null], 132: [5],
+    },
+    players: [
+      {
+        0: [0], 1: ["n1"], 3: [true], 8: [false], 11: [[]], 12: [false],
+        15: [[]], 20: [false], 21: ["NATION"], 26: [true], 34: [true],
+        35: [0.0], 40: [5000], 41: [100], 45: [10000], 47: [true], 50: [[]],
+        58: [[]], 62: [false], 66: [[]], 68: [[]], 69: [[]], 70: [[]],
+        71: [0], 72: [0],
+      },
+      {
+        0: [0], 1: ["x1"], 3: [true], 8: [false], 11: [[]], 20: [false],
+        21: ["HUMAN"], 26: [true], 45: [500], 50: [[]],
+      },
+    ],
+  },
+  [[0], [1, 0], [2, 100], [2, 141], [3], [4]],
+);
+
+// congratulateWinner (Team): same seed as el_emoji_congrat_ffa but gameMode
+// is Team and getWinner returns the team string "Red" while n1's team is
+// "Blue" — `winner === this.player.team()` fails, so EMOJI_CONGRATULATE
+// goes to AllPlayers. The string pass-through in the getWinner mock is the
+// only harness change this scenario needs; the rest of the ladder is the
+// all-deny shape (alliance/MIRV/structures/warship all gated off).
+elDef(
+  "el_emoji_congrat_team",
+  44,
+  elNationExecC,
+  ["g5", { playerInfo: { id: "n1", name: "N1" }, spawnCell: { x: 5, y: 5 } }],
+  {
+    a: ["g5", { playerInfo: { id: "n1", name: "N1" }, spawnCell: { x: 5, y: 5 } }],
+    mg: {
+      0: [true], 1: [0], 2: [141], 6: [false], 11: [[0]], 12: [0],
+      14: [{ outer: 30, inner: 10 }], 28: [15], 32: [10000], 33: ["Easy"],
+      35: [100000], 40: [0], 45: [true],
+      46: [{ cost: 100, upgradable: false }], 54: ["Team"], 60: ["Red"],
+      63: [5], 64: [5], 69: [55], 115: [true], 121: [100], 122: [1000],
+      123: [[]], 124: [true], 125: [10], 129: [null], 132: [5],
+    },
+    players: [
+      {
+        0: [0], 1: ["n1"], 3: [true], 8: [false], 11: [[]], 12: [false],
+        15: [[]], 18: ["Blue"], 20: [false], 21: ["NATION"], 26: [true],
+        34: [true], 35: [0.0], 40: [5000], 41: [100], 45: [10000],
+        47: [true], 50: [[]], 58: [[]], 62: [false], 66: [[]], 68: [[]],
+        69: [[]], 70: [[]], 71: [0], 72: [0],
+      },
+    ],
+  },
+  [[0], [1, 0], [2, 100], [2, 141], [3], [4]],
+);
+
+// brag: pa/gt (rate 79 tick 42; 200 % 79 == 42) rolls chance(300)=0 with
+// every other casual-emoji roll missing. numTilesOwned sort crowns pa the
+// largest player, so EMOJI_BRAG goes to AllPlayers (randElement picks
+// index 1 -> "🥇" / 39).
+elDef(
+  "el_emoji_brag",
+  44,
+  elNationExecC,
+  ["gt", { playerInfo: { id: "pa", name: "PA" }, spawnCell: { x: 5, y: 5 } }],
+  {
+    a: ["gt", { playerInfo: { id: "pa", name: "PA" }, spawnCell: { x: 5, y: 5 } }],
+    mg: {
+      0: [true], 1: [0], 2: [200], 6: [false], 11: [[0]], 12: [0],
+      14: [{ outer: 30, inner: 10 }], 28: [15], 32: [10000], 33: ["Easy"],
+      35: [100000], 40: [0], 45: [true],
+      46: [{ cost: 100, upgradable: false }], 54: ["FFA"], 60: [null],
+      63: [5], 64: [5], 69: [55], 115: [true], 121: [100], 122: [1000],
+      123: [[]], 124: [true], 125: [10], 129: [null], 132: [5],
+    },
+    players: [
+      {
+        0: [0], 1: ["pa"], 3: [true], 8: [false], 11: [[]], 12: [false],
+        15: [[]], 20: [false], 21: ["NATION"], 26: [true], 34: [true],
+        35: [0.0], 40: [5000], 41: [100], 45: [10000], 47: [true], 50: [[]],
+        58: [[]], 62: [false], 66: [[]], 68: [[]], 69: [[]], 70: [[]],
+        71: [0], 72: [0],
+      },
+    ],
+  },
+  [[0], [1, 0], [2, 100], [2, 200], [3], [4]],
+);
+
+// charmAllies: na0/gj (rate 99 tick 73; 172 % 99 == 73) rolls
+// chance(250)=0 with every other casual-emoji roll missing. The single ally
+// is Human; randElement picks it, chance(3) hits so EMOJI_LOVE is sent and
+// randElement picks index 0 -> "❤️" / 48.
+elDef(
+  "el_emoji_charm",
+  44,
+  elNationExecC,
+  ["gj", { playerInfo: { id: "na0", name: "NA0" }, spawnCell: { x: 5, y: 5 } }],
+  {
+    a: ["gj", { playerInfo: { id: "na0", name: "NA0" }, spawnCell: { x: 5, y: 5 } }],
+    mg: {
+      0: [true], 1: [0], 2: [172], 6: [false], 11: [[0, 1]], 12: [0],
+      14: [{ outer: 30, inner: 10 }], 28: [15], 32: [10000], 33: ["Easy"],
+      35: [100000], 40: [0], 45: [true],
+      46: [{ cost: 100, upgradable: false }], 54: ["FFA"], 60: [null],
+      63: [5], 64: [5], 69: [55], 115: [true], 121: [100], 122: [1000],
+      123: [[]], 124: [true], 125: [10], 129: [null], 132: [5],
+    },
+    players: [
+      {
+        0: [0], 1: ["na0"], 3: [true], 8: [false], 11: [[]], 12: [false],
+        15: [[]], 20: [false], 21: ["NATION"], 26: [true], 34: [true],
+        35: [0.0], 40: [5000], 41: [100], 45: [10000], 47: [true], 50: [[]],
+        58: [[]], 62: [false], 66: [[]], 68: [[]], 69: [[1]], 70: [[]],
+        71: [0], 72: [0],
+      },
+      {
+        0: [0], 1: ["x1"], 3: [true], 8: [false], 11: [[]], 20: [false],
+        21: ["HUMAN"], 26: [true], 45: [100], 50: [[]],
+      },
+    ],
+  },
+  [[0], [1, 0], [2, 100], [2, 172], [3], [4]],
+);
+
+// annoyTraitors: m1/g8 (rate 98 tick 44; 142 % 98 == 44) rolls chance(40)=0
+// with every other casual-emoji roll missing. x1 is a Human traitor that is
+// not friendly, so randElement picks it and EMOJI_CLOWN goes out (randElement
+// picks index 1 -> "🤦‍♂️" / 24).
+elDef(
+  "el_emoji_traitor",
+  44,
+  elNationExecC,
+  ["g8", { playerInfo: { id: "m1", name: "M1" }, spawnCell: { x: 5, y: 5 } }],
+  {
+    a: ["g8", { playerInfo: { id: "m1", name: "M1" }, spawnCell: { x: 5, y: 5 } }],
+    mg: {
+      0: [true], 1: [0], 2: [142], 6: [false], 11: [[0, 1]], 12: [0],
+      14: [{ outer: 30, inner: 10 }], 28: [15], 32: [10000], 33: ["Easy"],
+      35: [100000], 40: [0], 45: [true],
+      46: [{ cost: 100, upgradable: false }], 54: ["FFA"], 60: [null],
+      63: [5], 64: [5], 69: [55], 115: [true], 121: [100], 122: [1000],
+      123: [[]], 124: [true], 125: [10], 129: [null], 132: [5],
+    },
+    players: [
+      {
+        0: [0], 1: ["m1"], 3: [true], 8: [false], 11: [[]], 12: [false],
+        15: [[]], 20: [false], 21: ["NATION"], 26: [true], 34: [true],
+        35: [0.0], 40: [5000], 41: [100], 45: [10000], 47: [true], 50: [[]],
+        58: [[]], 62: [false], 66: [[]], 68: [[]], 69: [[]], 70: [[]],
+        71: [0], 72: [0],
+      },
+      {
+        0: [0], 1: ["x1"], 3: [true], 8: [false], 11: [[]], 12: [false],
+        20: [false], 21: ["HUMAN"], 26: [true], 45: [100], 50: [[]],
+        62: [true],
+      },
+    ],
+  },
+  [[0], [1, 0], [2, 100], [2, 142], [3], [4]],
+);
+
+// greetNearbyPlayers: m1/gx (rate 89 tick 66; 155 % 89 == 66) rolls
+// chance(8)=0 with the small-attack list empty (no-op) and then the greet
+// chance(250)=0. nearby() returns neighbor token 1 (its accessors delegate
+// to players[1], a Human), so EMOJI_GREET ("👋" / 15) goes to x1 through
+// the limited-time shouldSendEmoji path.
+elDef(
+  "el_emoji_greet",
+  44,
+  elNationExecC,
+  ["gx", { playerInfo: { id: "m1", name: "M1" }, spawnCell: { x: 5, y: 5 } }],
+  {
+    a: ["gx", { playerInfo: { id: "m1", name: "M1" }, spawnCell: { x: 5, y: 5 } }],
+    mg: {
+      0: [true], 1: [0], 2: [155], 6: [false], 11: [[0]], 12: [0],
+      14: [{ outer: 30, inner: 10 }], 28: [15], 32: [10000], 33: ["Easy"],
+      35: [100000], 40: [0], 45: [true],
+      46: [{ cost: 100, upgradable: false }], 54: ["FFA"], 60: [null],
+      63: [5], 64: [5], 69: [55], 115: [true], 121: [100], 122: [1000],
+      123: [[]], 124: [true], 125: [10], 129: [null], 132: [5],
+    },
+    players: [
+      {
+        0: [0], 1: ["m1"], 3: [true], 8: [false], 11: [[]], 12: [false],
+        15: [[1]], 20: [false], 21: ["NATION"], 26: [true], 34: [true],
+        35: [0.0], 40: [5000], 41: [100], 45: [10000], 47: [true], 50: [[]],
+        58: [[]], 62: [false], 66: [[]], 68: [[]], 69: [[]], 70: [[]],
+        71: [0], 72: [0],
+      },
+      {
+        0: [0], 1: ["x1"], 3: [true], 8: [false], 11: [[]], 20: [false],
+        21: ["HUMAN"], 26: [true], 45: [100], 50: [[]],
+      },
+    ],
+    neighbors: [{}, { 0: [true] }],
+  },
+  [[0], [1, 0], [2, 100], [2, 155], [3], [4]],
+);
+
+// findRat: nfi/gz (rate 89 tick 0; 6052 % 89 == 0) with a non-null winner
+// so congratulateWinner fires first (consuming one randElement) and shifts
+// the stream so the rat chance(10000) roll at ticks 6052 >= 6000 lands on
+// its 0. x1 is a Human with 500 tiles < 1% of 100000 land, so
+// EMOJI_RAT ("🐀" / 59) goes to x1 after the EMOJI_CONGRATULATE send.
+elDef(
+  "el_emoji_rat",
+  44,
+  elNationExecC,
+  ["gz", { playerInfo: { id: "nfi", name: "NFI" }, spawnCell: { x: 5, y: 5 } }],
+  {
+    a: ["gz", { playerInfo: { id: "nfi", name: "NFI" }, spawnCell: { x: 5, y: 5 } }],
+    mg: {
+      0: [true], 1: [0], 2: [6052], 6: [false], 11: [[0, 1]], 12: [0],
+      14: [{ outer: 30, inner: 10 }], 28: [15], 32: [10000], 33: ["Easy"],
+      35: [100000], 40: [0], 45: [true],
+      46: [{ cost: 100, upgradable: false }], 54: ["FFA"], 60: [1],
+      63: [5], 64: [5], 69: [55], 115: [true], 121: [100], 122: [1000],
+      123: [[]], 124: [true], 125: [10], 129: [null], 132: [5],
+    },
+    players: [
+      {
+        0: [0], 1: ["nfi"], 3: [true], 8: [false], 11: [[]], 12: [false],
+        15: [[]], 20: [false], 21: ["NATION"], 26: [true], 34: [true],
+        35: [0.0], 40: [5000], 41: [100], 45: [10000], 47: [true], 50: [[]],
+        58: [[]], 62: [false], 66: [[]], 68: [[]], 69: [[]], 70: [[]],
+        71: [0], 72: [0],
+      },
+      {
+        0: [0], 1: ["x1"], 3: [true], 8: [false], 11: [[]], 20: [false],
+        21: ["HUMAN"], 26: [true], 45: [500], 50: [[]],
+      },
+    ],
+  },
+  [[0], [1, 0], [2, 100], [2, 6052], [3], [4]],
 );
 
 const structures = {

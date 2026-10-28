@@ -33700,6 +33700,224 @@ elDef(
   [[0], [1, 0], [2, 100], [2, 109], [3], [4]],
 );
 
+// G5p-G (B21): the cities-disabled ratio path. mg 45 scripts the full
+// isUnitDisabled FIFO in true consumption order with City disabled at
+// position 6 (phase-gate MS, save-up MS/MIRV/Hydro/Atom, City, MissileSilo,
+// SAM-first Atom+SAM, nukesEnabled Atom/Hydro/MIRV, buildOrder Port+Factory,
+// then the maybeSpawnStructure save-up ladder): citiesDisabled switches the
+// cityCount source to max(1, floor(numTilesOwned / TILES_PER_CITY_EQUIVALENT))
+// = max(1, floor(4000 / 2000)) = 2, so Factory (owned 0) sees target
+// floor(2 x 0.75) = 1 and builds as 307/24. The outcome pins the formula: a
+// unitsOwned(City) read (0) would floor every target to 0 and — with the
+// City fallback gated on !citiesDisabled (line 539) — end in a pure deny
+// tick. The crowded branch is unreachable (citiesDisabled short-circuits it)
+// and the tick returns straight from the build order.
+elDef(
+  "el_struct_cities_disabled_ratio",
+  44,
+  elNationExecC,
+  ["g2", { playerInfo: { id: "n1", name: "N1" }, spawnCell: { x: 5, y: 5 } }],
+  {
+    a: ["g2", { playerInfo: { id: "n1", name: "N1" }, spawnCell: { x: 5, y: 5 } }],
+    mg: {
+      0: [true], 1: [0], 2: [109], 6: [false],
+      12: [...Array(25).fill(0)],
+      14: [{ outer: 30, inner: 10 }],
+      28: [15], 33: ["Hard"], 35: [100000],
+      // phase MS, saveUp MS/MIRV/Hydro/Atom, City(t), MissileSilo,
+      // SAM-first Atom+SAM, nukes Atom/Hydro/MIRV, Port, Factory,
+      // maybeSpawn saveUp MS/MIRV/Hydro/Atom.
+      45: [false, false, false, false, false, true, false, false, false,
+        false, false, false, false, false, false, false, false, false],
+      46: [{ cost: 100, upgradable: true }],
+      54: ["FFA"], 121: [100], 122: [1000],
+      63: [55, 555, 78], 64: [0, 551, 0],
+      69: [78], 70: [1000], 71: [1000],
+      76: [true],
+      123: [[0]], 124: [true], 125: [10],
+      128: [10], 129: [null], 131: [[]], 132: [5],
+    },
+    players: [
+      {
+        0: [0], 3: [true], 11: [[]], 15: [[]], 40: [500], 41: [1000],
+        45: [4000], 47: [true], 50: [[55, 551555]], 58: [[]], 71: [0],
+        72: [0], 73: [{}],
+      },
+    ],
+  },
+  [[0], [1, 0], [2, 100], [2, 109], [3], [4]],
+);
+
+// G5p-G (B22): the crowded-map Port preference. Same crowded trigger as B8
+// (mg 35 = 50 land tiles, 1 nation / 50 > 1/7500) but mg 129 returns the
+// shared water set {7}, so the crowded branch's preferredFirst resolves to
+// Port (hasCoastalTiles && Port enabled) instead of falling to Factory, and
+// the Port builds straight out of the branch: the isUnitDisabled(preferredFirst)
+// re-check passes, the save-up ladder clears, density 0 short-circuits the
+// upgrade branch, and randCoastalTileArray walks the border set {55, 551555}
+// (55 shore with non-ocean water neighbor 100 in component 7, size 3000
+// passing the Hard MIN_PORT gate; 551555 fails isShore) — portValue scores
+// Infinity with zero manhattanDist reads and the Port lands on tile 55 as
+// 307/24. buildOrder is never evaluated and unitsOwned is read once
+// (cityCount); mg 45 stays all-false sticky.
+elDef(
+  "el_struct_crowded_port_first",
+  44,
+  elNationExecC,
+  ["g2", { playerInfo: { id: "n1", name: "N1" }, spawnCell: { x: 5, y: 5 } }],
+  {
+    a: ["g2", { playerInfo: { id: "n1", name: "N1" }, spawnCell: { x: 5, y: 5 } }],
+    mg: {
+      0: [true], 1: [0], 2: [109], 6: [false],
+      12: [0],
+      14: [{ outer: 30, inner: 10 }],
+      20: [7],
+      28: [15], 33: ["Hard"], 35: [50],
+      41: [[100]],
+      42: [true],
+      45: [false],
+      46: [{ cost: 100, upgradable: true }],
+      54: ["FFA"], 121: [100], 122: [1000],
+      118: [true, false],
+      123: [[0]], 124: [true], 125: [10],
+      128: [10], 129: [[7]], 130: [3000], 131: [[]], 132: [5],
+      133: [false],
+    },
+    players: [
+      {
+        0: [0], 3: [true], 11: [[]], 15: [[]], 40: [500], 41: [1000],
+        45: [1000], 47: [true], 50: [[55, 551555]], 58: [[]], 71: [0],
+        72: [0], 73: [{}],
+      },
+    ],
+  },
+  [[0], [1, 0], [2, 100], [2, 109], [3], [4]],
+);
+
+// G5p-G (B23): the defense-post threat threshold as a negative path. Tick 109
+// builds Factory #1 (B7's pl 72 shape); tick 126 carries a real land attack
+// (sourceTile null) whose troop count 100 against our 1000 gives ratio 0.1 <
+// UNDER_ATTACK_THREAT_RATIO 0.35 — tryBuildDefensePost returns false at the
+// ratio check and defensePostNeeded's final comparison also reads false, so
+// the dp gate neither builds nor blocks and the tick proceeds to the normal
+// build order (MissileSilo via FIRST_MISSILE_SILO_RATIO, 307/24). The attack
+// table slots (troops/sourceTile) are consumed twice (tryBuild + needed);
+// the attacker slot stays unread (getAttackFrontTiles is never reached) —
+// the same filter branches B7 exercised only through an empty incomingAttacks.
+elDef(
+  "el_struct_dp_threat_below_ratio",
+  44,
+  elNationExecC,
+  ["g2", { playerInfo: { id: "n1", name: "N1" }, spawnCell: { x: 5, y: 5 } }],
+  {
+    a: ["g2", { playerInfo: { id: "n1", name: "N1" }, spawnCell: { x: 5, y: 5 } }],
+    mg: {
+      0: [true], 1: [0], 2: [109, 126], 6: [false],
+      12: [...Array(25).fill(0)],
+      14: [{ outer: 30, inner: 10 }],
+      28: [15], 33: ["Hard"], 35: [100000],
+      45: [false],
+      46: [{ cost: 100, upgradable: true }],
+      54: ["FFA"], 121: [100], 122: [1000],
+      63: [55, 555, 78], 64: [0, 551, 0],
+      69: [78], 70: [1000], 71: [1000],
+      76: [true],
+      123: [[0]], 124: [true], 125: [10],
+      128: [10], 129: [null], 131: [[]], 132: [5],
+    },
+    players: [
+      {
+        0: [0], 3: [true], 11: [[]], 15: [[]], 40: [500], 41: [1000],
+        45: [1000], 47: [true], 50: [[55, 551555]], 58: [[0]], 71: [0],
+        72: [3, 0, 3, 2, 0, 0], 73: [{}],
+      },
+    ],
+    attacks: [{ 0: [100], 11: [null], 12: [1] }],
+  },
+  [[0], [1, 0], [2, 100], [2, 109], [2, 126], [3], [4]],
+);
+
+// G5p-G (B24): the boat-attack filter. Same shape as B23 but the attack's
+// sourceTile is tile 55 — a boat attack — so both tryBuildDefensePost and
+// defensePostNeeded filter it out (a.sourceTile() === null) before any troop
+// arithmetic: landAttacks is empty, the dp gate passes through without
+// reading our troops or the attack table's troops slot, and the tick builds
+// MissileSilo #1 as 307/24. Pins the sourceTile filter against the
+// land-attack scenarios (B3/B5/B13 keep sourceTile null).
+elDef(
+  "el_struct_dp_boat_attack_ignored",
+  44,
+  elNationExecC,
+  ["g2", { playerInfo: { id: "n1", name: "N1" }, spawnCell: { x: 5, y: 5 } }],
+  {
+    a: ["g2", { playerInfo: { id: "n1", name: "N1" }, spawnCell: { x: 5, y: 5 } }],
+    mg: {
+      0: [true], 1: [0], 2: [109, 126], 6: [false],
+      12: [...Array(25).fill(0)],
+      14: [{ outer: 30, inner: 10 }],
+      28: [15], 33: ["Hard"], 35: [100000],
+      45: [false],
+      46: [{ cost: 100, upgradable: true }],
+      54: ["FFA"], 121: [100], 122: [1000],
+      63: [55, 555, 78], 64: [0, 551, 0],
+      69: [78], 70: [1000], 71: [1000],
+      76: [true],
+      123: [[0]], 124: [true], 125: [10],
+      128: [10], 129: [null], 131: [[]], 132: [5],
+    },
+    players: [
+      {
+        0: [0], 3: [true], 11: [[]], 15: [[]], 40: [500], 41: [1000],
+        45: [1000], 47: [true], 50: [[55, 551555]], 58: [[0]], 71: [0],
+        72: [3, 0, 3, 2, 0, 0], 73: [{}],
+      },
+    ],
+    attacks: [{ 0: [500], 11: [55], 12: [1] }],
+  },
+  [[0], [1, 0], [2, 100], [2, 109], [2, 126], [3], [4]],
+);
+
+// G5p-G (B25): the canBuild re-check failure. Factory (cityCount 3, owned 0,
+// target 2) passes the tile scan — the 25-tile closure's first canBuild
+// (player 47 value 1) selects tile 78 — but maybeSpawnStructure's re-check
+// reads player 47 value 2 (false) and returns false, so the build order
+// continues instead of aborting: SAM skips on ratio (target 0), MissileSilo
+// takes FIRST_MISSILE_SILO_RATIO (target 1 > owned 0) and its own canBuild
+// pair (values 3 and 4, both true) lands the silo as 307/24. Pins that a
+// failed placement falls through to the next build-order entry rather than
+// blocking the tick.
+elDef(
+  "el_struct_canbuild_recheck_fail",
+  44,
+  elNationExecC,
+  ["g2", { playerInfo: { id: "n1", name: "N1" }, spawnCell: { x: 5, y: 5 } }],
+  {
+    a: ["g2", { playerInfo: { id: "n1", name: "N1" }, spawnCell: { x: 5, y: 5 } }],
+    mg: {
+      0: [true], 1: [0], 2: [109], 6: [false],
+      12: [...Array(25).fill(0)],
+      14: [{ outer: 30, inner: 10 }],
+      28: [15], 33: ["Hard"], 35: [100000],
+      45: [false],
+      46: [{ cost: 100, upgradable: true }],
+      54: ["FFA"], 121: [100], 122: [1000],
+      63: [55, 555, 78], 64: [0, 551, 0],
+      69: [78], 70: [1000], 71: [1000],
+      76: [true],
+      123: [[0]], 124: [true], 125: [10],
+      128: [10], 129: [null], 131: [[]], 132: [5],
+    },
+    players: [
+      {
+        0: [0], 3: [true], 11: [[]], 15: [[]], 40: [500], 41: [1000],
+        45: [1000], 47: [true, false, true, true], 50: [[55, 551555]],
+        58: [[]], 71: [0], 72: [3, 0, 0, 0], 73: [{}],
+      },
+    ],
+  },
+  [[0], [1, 0], [2, 100], [2, 109], [3], [4]],
+);
+
 const structures = {
   votetally: vtScenarios,
   rankedcheckin: rgScenarios,

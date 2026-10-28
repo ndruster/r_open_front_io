@@ -321,6 +321,30 @@
 //! cross the 1/1500 threshold with a lone structure, read mg 47 upgradable,
 //! and upgrade their unit as 307/25 — every structure type in
 //! getStructureRatios now has the upgrade branch recorded.
+//! G5p-G sweeps the remaining NationStructureBehavior branches.
+//! `el_struct_cities_disabled_ratio` (B21) pins the cities-disabled
+//! cityCount source: mg 45 scripts the full isUnitDisabled FIFO with City
+//! disabled at position 6 (phase-gate MS, save-up MS/MIRV/Hydro/Atom, City,
+//! MissileSilo, SAM-first Atom+SAM, nukesEnabled triple, buildOrder
+//! Port+Factory, then the maybeSpawnStructure ladder), numTilesOwned 4000
+//! floors to cityCount 2 via TILES_PER_CITY_EQUIVALENT, and Factory builds
+//! as 307/24 — a unitsOwned(City) read would have floored every target to 0
+//! and, with the City fallback gated on !citiesDisabled, ended in a deny.
+//! `el_struct_crowded_port_first` (B22) resolves the crowded branch's
+//! preferredFirst to Port (coastal set + Port enabled) so the first
+//! structure is a Port built straight from the branch via
+//! randCoastalTileArray — 307/24 without evaluating the build order.
+//! `el_struct_dp_threat_below_ratio` (B23) and
+//! `el_struct_dp_boat_attack_ignored` (B24) are the defense-post negative
+//! paths with attacks present: a land attack at ratio 0.1 < 0.35 fails both
+//! the tryBuildDefensePost and defensePostNeeded comparisons without
+//! blocking, and a sourceTile != null boat attack is filtered out before any
+//! troop arithmetic — both ticks proceed to the normal build order
+//! (MissileSilo 307/24) exactly as an empty incomingAttacks would.
+//! `el_struct_canbuild_recheck_fail` (B25) fails maybeSpawnStructure's
+//! canBuild re-check for Factory (player 47 [true, false, ...]) and pins
+//! that the build order continues — MissileSilo builds 307/24 — rather than
+//! the tick aborting.
 //!
 //! # G5b facade additions (codes ≥ 300)
 //!

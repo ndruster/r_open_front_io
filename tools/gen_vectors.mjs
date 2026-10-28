@@ -34642,6 +34642,193 @@ elDef(
   [[0], [1, 0], [2, 100], [2, 2], [3], [4]],
 );
 
+// ---- G5q-D: NationWarshipBehavior ------------------------------------------
+//
+// Three scenarios cover the warship decision layer's three entry points.
+// NationExecution.tick consults trackShipsAndRetaliate at the very head of
+// the tick (before the emoji block) but only when difficulty is not Easy,
+// unitsConstructed(Port) (slot 71) is true and Warship is enabled; the
+// pipeline proper then runs maybeSpawnWarship between handleStructures and
+// maybeAttack, and counterWarshipInfestation between maybeAttack and
+// maybeSendNuke. mg45 FIFOs follow the real isUnitDisabled consumption
+// order on the attack tick: considerMIRV's MIRV gate, the
+// isInPostSaveUpBlockedPhase MissileSilo gate (disabled short-circuits
+// handleStructures before doHandleStructures), doHandleStructures' own
+// City/MissileSilo gates plus the nukesEnabled Atom/HydrogenBomb/MIRV trio
+// and the Port/Factory/SAM/MissileSilo buildOrder skips, then the target
+// gate (maybeSpawnWarship's Warship gate for W1; for W3 all of those are
+// disabled including maybeSpawnWarship itself, and the second enabled
+// entry lands on counterWarshipInfestation's Warship gate — maybeAttack
+// itself consumes no isUnitDisabled reads).
+
+// Spawn: s10/gi (Easy, rate 94 tick 21). The emoji block misses everything,
+// maybeSpawnWarship's chance(50) hits, so the empty Warship list plus a
+// Port (tile 55) and 5000 gold over the 100 cost reach randElement(port)
+// and warshipSpawnTile: x/y mock 5/5, randX/randY draw from
+// [5-250, 5+250), isValidCoord true, ref(-> tile 9) is water, canBuild
+// true -> ConstructionExecution (307/24 "Warship" at tile 9). mg45 keeps
+// every earlier gate disabled (MIRV, MissileSilo x2, City, nuke trio,
+// buildOrder x4) and turns Warship on exactly at position 12.
+elDef(
+  "el_warship_spawn",
+  44,
+  elNationExecC,
+  ["gi", { playerInfo: { id: "s10", name: "S10" }, spawnCell: { x: 5, y: 5 } }],
+  {
+    a: ["gi", { playerInfo: { id: "s10", name: "S10" }, spawnCell: { x: 5, y: 5 } }],
+    mg: {
+      0: [true], 1: [0], 2: [21], 5: [8], 6: [false], 11: [[0, 1]],
+      12: [0], 14: [{ outer: 30, inner: 10 }], 28: [15], 32: [10000],
+      33: ["Easy"], 35: [100000], 40: [0], 42: [true],
+      45: [true, true, true, true, true, true, true, true, true, true, true,
+        false, true, true, true, true, true, true, true, true],
+      46: [{ cost: 100, upgradable: false }], 54: ["FFA"], 60: [null],
+      63: [5], 64: [5], 69: [9], 76: [true], 89: [0], 115: [false],
+      121: [100], 122: [1000], 123: [[]], 124: [true], 125: [10],
+      129: [null], 132: [5],
+    },
+    players: [
+      {
+        0: [0], 1: ["n05"], 3: [true], 5: [true], 8: [false],
+        11: [[0], [], [], []], 12: [false], 15: [[]], 20: [false],
+        21: ["NATION"], 26: [true], 34: [true], 35: [2.0], 40: [5000],
+        41: [100], 45: [10000], 47: [true], 50: [[]], 53: [[]], 58: [[]],
+        62: [false], 65: [[]], 66: [[]], 68: [[]], 69: [[]], 70: [[]],
+        71: [0], 72: [0],
+      },
+      {
+        0: [0], 1: ["x1"], 3: [true], 8: [false], 11: [[]], 18: [null],
+        20: [false], 21: ["HUMAN"], 26: [true], 45: [100], 50: [[]],
+        62: [false],
+      },
+    ],
+    units: [{ 3: ["Port"], 11: [55] }],
+  },
+  [[0], [1, 0], [2, 100], [2, 21], [3], [4]],
+);
+
+// Transport retaliation: n05/gb (Hard, rate 45 tick 34). The tick-head
+// track gate passes (unitsConstructed(Port) slot 71 true, Warship
+// enabled), TransportShip is enabled, and p0's tracked transport (unit 1)
+// is inactive, was destroyed by the enemy, and has destroyer token 2
+// (Human "x9"). Hard's nextInt(0,100) roll lands under 50, so
+// maybeRetaliateWithWarship builds a warship at the ship's tile 77
+// (307/24), sends EMOJI_WARSHIP_RETALIATION to x9 (307/2) and records
+// updateRelation(-15) (elVoid 237). The trade and incoming-transport
+// trackers see empty lists; maybeSpawnWarship's own Warship gate is
+// disabled so its chance(50) never runs.
+elDef(
+  "el_warship_track_retaliate",
+  44,
+  elNationExecC,
+  ["gb", { playerInfo: { id: "n05", name: "N05" }, spawnCell: { x: 5, y: 5 } }],
+  {
+    a: ["gb", { playerInfo: { id: "n05", name: "N05" }, spawnCell: { x: 5, y: 5 } }],
+    mg: {
+      0: [true], 1: [0], 2: [34], 5: [8], 6: [false], 11: [[0, 1]],
+      12: [0], 14: [{ outer: 30, inner: 10 }], 28: [15], 32: [10000],
+      33: ["Hard"], 35: [100000], 40: [0],
+      45: [false, false, true, true, true],
+      46: [{ cost: 100, upgradable: false }], 54: ["FFA"], 60: [null],
+      63: [5], 64: [5], 69: [9], 76: [true], 89: [0], 115: [false],
+      120: [[]], 121: [100], 122: [1000], 123: [[]], 124: [true],
+      125: [10], 129: [null], 132: [5],
+    },
+    players: [
+      {
+        0: [0], 1: ["n05"], 3: [true], 5: [true], 8: [false],
+        11: [[1], [], [], []], 12: [false], 15: [[]], 20: [false],
+        21: ["NATION"], 26: [true], 34: [true], 35: [2.0], 40: [5000],
+        41: [100], 45: [10000], 47: [true], 50: [[]], 53: [[]], 58: [[]],
+        62: [false], 65: [[]], 66: [[]], 68: [[]], 69: [[]], 70: [[]],
+        71: [true], 72: [0],
+      },
+      {
+        0: [0], 1: ["x1"], 3: [true], 8: [false], 11: [[]], 18: [null],
+        20: [false], 21: ["HUMAN"], 26: [true], 45: [100], 50: [[]],
+        62: [false],
+      },
+      {
+        0: [0], 1: ["x9"], 3: [true], 8: [false], 11: [[]], 18: [null],
+        20: [false], 21: ["HUMAN"], 26: [true], 45: [100], 50: [[]],
+        62: [false],
+      },
+    ],
+    units: [
+      {},
+      { 0: [false], 3: ["Transport"], 11: [77], 52: [true], 53: [2] },
+    ],
+  },
+  [[0], [1, 0], [2, 100], [2, 34], [3], [4]],
+);
+
+// Infestation counter: s0/ge (Hard, rate 56 tick 48). The tick-head track
+// gate passes but trackTransport's TransportShip gate is disabled (mg45
+// position 2), so trade/incoming trackers see empty lists and no
+// retaliation roll fires. Every pipeline gate up to and including
+// maybeSpawnWarship's own Warship gate stays disabled (positions 3-15,
+// game.unitCount(Warship) mg40=11 is only read later by the counter;
+// maybeAttack consumes no isUnitDisabled reads) and position 16 turns
+// counterWarshipInfestation's Warship gate on: shouldCounter passes (Hard,
+// 11 > 10 warships in the game, 100 cost under 5000 gold, Port present,
+// own Warships under 10), team() is null (FFA), isRichPlayer filters
+// nations only (x1 is Human) and FFA targeting finds x1's eleven warships
+// (11 > 10); randElement picks one of the tile-66 warships and canBuild
+// passes -> ConstructionExecution (307/24 "Warship" at tile 66) plus the
+// EMOJI_WARSHIP_RETALIATION broadcast (307/2 AllPlayers).
+elDef(
+  "el_warship_counter",
+  44,
+  elNationExecC,
+  ["ge", { playerInfo: { id: "s0", name: "S0" }, spawnCell: { x: 5, y: 5 } }],
+  {
+    a: ["ge", { playerInfo: { id: "s0", name: "S0" }, spawnCell: { x: 5, y: 5 } }],
+    mg: {
+      0: [true], 1: [0], 2: [48], 5: [8], 6: [false], 11: [[0, 1]],
+      12: [0], 14: [{ outer: 30, inner: 10 }], 28: [15], 32: [10000],
+      33: ["Hard"], 35: [100000], 40: [11],
+      45: [false, true, true, true, true, true, true, true, true, true, true,
+        true, true, true, true, false, true, true, true, true, true, true],
+      46: [{ cost: 100, upgradable: false }], 54: ["FFA"], 60: [null],
+      63: [5], 64: [5], 69: [9], 76: [true], 89: [11], 115: [false],
+      120: [[]], 121: [100], 122: [1000], 123: [[]], 124: [true],
+      125: [10], 129: [null], 132: [5],
+    },
+    players: [
+      {
+        0: [0], 1: ["n05"], 3: [true], 5: [true], 8: [false],
+        11: [[], [1], [], []], 12: [false], 15: [[]], 18: [null],
+        20: [false], 21: ["NATION"], 26: [true], 34: [true], 35: [2.0],
+        40: [5000], 41: [100], 45: [10000], 47: [true], 50: [[]], 53: [[]],
+        58: [[]], 62: [false], 65: [[]], 66: [[]], 68: [[]], 69: [[]],
+        70: [[]], 71: [true], 72: [0],
+      },
+      {
+        0: [0], 1: ["x1"], 3: [true], 8: [false],
+        11: [[2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]], 18: [null],
+        20: [false], 21: ["HUMAN"], 26: [true], 45: [100], 50: [[]],
+        62: [false],
+      },
+    ],
+    units: [
+      {},
+      { 3: ["Port"], 11: [77] },
+      { 3: ["Warship"], 11: [66] },
+      { 3: ["Warship"], 11: [66] },
+      { 3: ["Warship"], 11: [66] },
+      { 3: ["Warship"], 11: [66] },
+      { 3: ["Warship"], 11: [66] },
+      { 3: ["Warship"], 11: [66] },
+      { 3: ["Warship"], 11: [66] },
+      { 3: ["Warship"], 11: [66] },
+      { 3: ["Warship"], 11: [66] },
+      { 3: ["Warship"], 11: [66] },
+      { 3: ["Warship"], 11: [66] },
+    ],
+  },
+  [[0], [1, 0], [2, 100], [2, 48], [3], [4]],
+);
+
 const structures = {
   votetally: vtScenarios,
   rankedcheckin: rgScenarios,

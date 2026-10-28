@@ -451,6 +451,55 @@
 //! and a 2x gap over the runner-up), so MirvExecution fires. unitCount is
 //! player slot 59 (not 33; slot 33 is unused on players).
 //!
+//! # G5q-D: NationWarshipBehavior
+//!
+//! Three scenarios cover the warship layer's three entry points: the
+//! tick-head `trackShipsAndRetaliate` gate (behaviorsInitialized, alive,
+//! difficulty not Easy, unitsConstructed(Port) truthy, Warship enabled),
+//! `maybeSpawnWarship` between handleStructures and maybeAttack, and
+//! `counterWarshipInfestation` between maybeAttack and maybeSendNuke. The
+//! mg45 FIFOs follow the real isUnitDisabled consumption order on the
+//! target tick: considerMIRV's MIRV gate, the isInPostSaveUpBlockedPhase
+//! MissileSilo gate (disabled short-circuits handleStructures before
+//! doHandleStructures' City/MissileSilo gates, nukesEnabled Atom/Hydrogen/
+//! MIRV trio and Port/Factory/SAM/MissileSilo buildOrder skips), then the
+//! target gate; maybeAttack itself consumes no isUnitDisabled reads, and
+//! counterWarshipInfestation's Warship gate is read before its difficulty
+//! read (the early return hides the difficulty). `game.unitCount` is mg
+//! slot 40 (record 506), not 89; `unitsConstructed` (982) scripts a plain
+//! boolean and the tick gate now tests it with JS truthiness — the port
+//! previously coerced Bool(true) through as_num to NaN and short-circuited
+//! the gate before the Warship read, which this batch caught.
+//! `el_warship_spawn` (s10/gi, Easy, rate 94 tick 21): the emoji block
+//! misses and maybeSpawnWarship's chance(50) hits, so the empty Warship
+//! list plus Port tok 0 (tile 55) and 5000 gold over the 100 cost reach
+//! randElement(port) and warshipSpawnTile — x/y mock 5/5, randX/randY from
+//! [5-250, 5+250), isValidCoord true, ref returns water tile 9, canBuild
+//! true — ConstructionExecution (307/24 "Warship" tile 9).
+//! `el_warship_track_retaliate` (n05/gb, Hard, tick 34): the replay tick is
+//! an ordinary (non-attack) tick — the seed's attack offset differs — but
+//! trackShipsAndRetaliate runs at the head of every tick, so the whole
+//! flow comes from the tick-head gate. trackTransport's TransportShip gate
+//! is enabled, and the tracked transport (tok 1, inactive,
+//! wasDestroyedByEnemy with destroyer x9) retaliates from its tile 77: the
+//! Hard nextInt(0,100) roll lands under 50, canBuild passes, and the tick
+//! emits ConstructionExecution (307/24 tile 77), EMOJI_WARSHIP_RETALIATION
+//! (emoji 52) to x9 via maybeSendEmoji and updateRelation -15 (237), before
+//! trackTrade and trackIncoming see empty lists and the tick returns at the
+//! attack-rate modulo check.
+//! `el_warship_counter` (s0/ge, Hard, rate 56 tick 48): every pipeline
+//! gate through maybeSpawnWarship's own Warship gate stays disabled (mg45
+//! positions 3-15; maybeSpawnWarship is denied at its gate without
+//! consuming chance(50)) and position 16 enables
+//! counterWarshipInfestation: shouldCounter passes (Hard, game unitCount
+//! 11 over 10, 100 cost under 5000 gold, Port tok 1 present, own Warships
+//! empty), team() is null for FFA, isRichPlayer filters to nations only
+//! (x1 is Human) and findFreeForAllWarshipTarget picks x1 whose
+//! units(Warship) lists eleven tile-66 warships (11 over 10); randElement
+//! selects one, canBuild passes, and the tick emits ConstructionExecution
+//! (307/24 "Warship" tile 66) plus the EMOJI_WARSHIP_RETALIATION broadcast
+//! to AllPlayers before maybeSendNuke's MissileSilo gate closes the tick.
+//!
 //! # G5b facade additions (codes ≥ 300)
 //!
 //! `mg`: `300` isValidRef, `301` getWaterComponent, `302` hasWaterComponent,
@@ -11038,9 +11087,8 @@ impl ExecHarness {
         as_bool(&v)
     }
     /// `player.unitsConstructed(ty)` (982) — a truthy number in TS.
-    fn pl_units_constructed(&mut self, tr: &mut Vec<f64>, tok: usize, ty: &str) -> f64 {
-        let v = self.pl(tok, PL_UNITS_CONSTRUCTED, tr, 982.0, &evs(ty));
-        as_num(&v)
+    fn pl_units_constructed(&mut self, tr: &mut Vec<f64>, tok: usize, ty: &str) -> JsVal {
+        self.pl(tok, PL_UNITS_CONSTRUCTED, tr, 982.0, &evs(ty))
     }
     /// `player.unitsOwned(ty)` (983).
     fn pl_units_owned(&mut self, tr: &mut Vec<f64>, tok: usize, ty: &str) -> f64 {
@@ -13204,7 +13252,7 @@ impl ExecHarness {
                     && self.mg_difficulty(tr) != DIFFICULTY_EASY // 402
                     && {
                         let c = self.pl_units_constructed(tr, pl, UNIT_PORT); // 982
-                        c != 0.0 && !c.is_nan()
+                        Self::js_truthy(&c)
                     }
                     && !self.mg_is_unit_disabled(tr, UNIT_WARSHIP)
                 // 511

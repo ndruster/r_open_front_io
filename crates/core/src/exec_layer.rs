@@ -305,6 +305,22 @@
 //! structures.length > 0 guard refuses the new build, and the chain repeats
 //! through the City fallback (density 3/1000, canUpgradeUnit per structure) —
 //! a pure deny tick with no 307 event at all.
+//! G5p-F closes the SAM_RATIO_BY_DIFFICULTY matrix and the upgrade-type
+//! coverage. `el_struct_sam_ratio_easy` (B17) and
+//! `el_struct_sam_ratio_medium` (B18) pin Easy 0.15 and Medium 0.2 by
+//! outcome — cityCount 8/9 with SAM owned 1 floors to a target of 1 on both
+//! difficulties, so owned 1 < 1 is false and the SAM is skipped where Hard
+//! would build (Easy ticks at 116 = 37 mod rate 79, Medium at 150 = 28 mod
+//! 61) — completing the matrix against the recorded Hard skips (B7/B12) and
+//! the Impossible build (B14); both fall through to the City fallback as
+//! 307/24. `el_struct_port_upgrade_density` (B19) and
+//! `el_struct_silo_upgrade_density` (B20) take the remaining structure types
+//! through the density-triggered upgrade branch: Port (coastal mocks open,
+//! target 3 > owned 1) and MissileSilo (owned 1, so the
+//! FIRST_MISSILE_SILO_RATIO override does not apply, target 2 > 1) each
+//! cross the 1/1500 threshold with a lone structure, read mg 47 upgradable,
+//! and upgrade their unit as 307/25 — every structure type in
+//! getStructureRatios now has the upgrade branch recorded.
 //!
 //! # G5b facade additions (codes ≥ 300)
 //!

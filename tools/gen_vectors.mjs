@@ -33528,6 +33528,178 @@ elDef(
   [[0], [1, 0], [2, 100], [2, 109], [3], [4]],
 );
 
+// G5p-F (B17): the Easy SAM ratio. cityCount 8, SAM owned 1: Hard floors
+// (8 x 0.25) = 2 -> would build, but Easy's SAM_RATIO 0.15 floors to
+// floor(1.2) = 1, so owned 1 < 1 is false and the SAM is skipped — the
+// outcome pins 0.15 against the already-recorded Hard/Impossible builds
+// (B14). Factory (owned 6 >= floor(8 x 0.75) = 6) and MissileSilo (owned 3
+// >= MAX_MISSILE_SILOS 3) skip on ratio/cap, and the tick falls through to
+// the City fallback whose full cityValue pipeline lands City on tile 78 as
+// 307/24. Easy's gate schedule re-derives from getAttackRate nextInt(65,100):
+// seed 6702 -> rate 79, attackTick 64, offsets 11/37, so tick 116 (116%79=37)
+// is the structure tick. Easy arms nothing special: SAM-first is
+// Hard/Impossible only, the connectivity roll is 0% (always false), and the
+// warship preamble short-circuits on unitsConstructed(Port) = 0.
+elDef(
+  "el_struct_sam_ratio_easy",
+  44,
+  elNationExecC,
+  ["g2", { playerInfo: { id: "n1", name: "N1" }, spawnCell: { x: 5, y: 5 } }],
+  {
+    a: ["g2", { playerInfo: { id: "n1", name: "N1" }, spawnCell: { x: 5, y: 5 } }],
+    mg: {
+      0: [true], 1: [0], 2: [116], 6: [false],
+      12: [...Array(25).fill(0)],
+      14: [{ outer: 30, inner: 10 }],
+      28: [15], 33: ["Easy"], 35: [100000],
+      45: [false],
+      46: [{ cost: 100, upgradable: true }],
+      54: ["FFA"], 121: [100], 122: [1000],
+      63: [55, 555, 78], 64: [0, 551, 0],
+      69: [78], 70: [1000], 71: [1000],
+      76: [true],
+      123: [[0]], 124: [true], 125: [10],
+      128: [10], 129: [null], 131: [[]], 132: [5],
+    },
+    players: [
+      {
+        0: [0], 3: [true], 11: [[]], 15: [[]], 40: [500], 41: [1000],
+        45: [1000], 47: [true], 50: [[55, 551555]], 58: [[]], 71: [0],
+        72: [8, 6, 1, 3], 73: [{}],
+      },
+    ],
+  },
+  [[0], [1, 0], [2, 100], [2, 116], [3], [4]],
+);
+
+// G5p-F (B18): the Medium SAM ratio. Same shape as B17 under Medium: rate 61
+// (attackTick 49, offsets 8/28) puts the structure tick at 150 (150%61=28).
+// cityCount 9, SAM owned 1: Hard's 0.25 would floor to 2 and build, Medium's
+// 0.2 floors floor(1.8) = 1 so owned 1 < 1 is false — skip — pinning 0.2 by
+// outcome between the recorded Easy skip (B17), Hard skips (B7/B12), and the
+// Impossible build (B14). Factory owned 6 >= floor(9 x 0.75) = 6 and the
+// MissileSilo cap both skip; the City fallback builds through cityValue as
+// 307/24. Medium's 60% connectivity roll may hit — the empty station and
+// nearby mocks absorb either branch.
+elDef(
+  "el_struct_sam_ratio_medium",
+  44,
+  elNationExecC,
+  ["g2", { playerInfo: { id: "n1", name: "N1" }, spawnCell: { x: 5, y: 5 } }],
+  {
+    a: ["g2", { playerInfo: { id: "n1", name: "N1" }, spawnCell: { x: 5, y: 5 } }],
+    mg: {
+      0: [true], 1: [0], 2: [150], 6: [false],
+      12: [...Array(25).fill(0)],
+      14: [{ outer: 30, inner: 10 }],
+      28: [15], 33: ["Medium"], 35: [100000],
+      45: [false],
+      46: [{ cost: 100, upgradable: true }],
+      54: ["FFA"], 121: [100], 122: [1000],
+      63: [55, 555, 78], 64: [0, 551, 0],
+      69: [78], 70: [1000], 71: [1000],
+      76: [true],
+      123: [[0]], 124: [true], 125: [10],
+      128: [10], 129: [null], 131: [[]], 132: [5],
+    },
+    players: [
+      {
+        0: [0], 3: [true], 11: [[]], 15: [[]], 40: [500], 41: [1000],
+        45: [1000], 47: [true], 50: [[55, 551555]], 58: [[]], 71: [0],
+        72: [9, 6, 1, 3], 73: [{}],
+      },
+    ],
+  },
+  [[0], [1, 0], [2, 100], [2, 150], [3], [4]],
+);
+
+// G5p-F (B19): the Port through the density-triggered upgrade branch. The
+// coastal mocks (mg 129 set {7}) open hasCoastalTiles, cityCount 4 gives
+// Port target floor(4 x 0.75) = 3 > owned 1, and the single Port (unit 11)
+// against numTilesOwned 1000 crosses the 1/1500 density threshold, so
+// maybeSpawnStructure(Port) upgrades instead of running randCoastalTileArray:
+// mg 47 upgradable read, density re-check, canUpgradeUnit filter, and — with
+// no SAMs — the Hard 25% random-pick roll and the tie-break scoring fallback
+// both return unit 11 as 307/25. No tile-scan or shore-mock consumption.
+elDef(
+  "el_struct_port_upgrade_density",
+  44,
+  elNationExecC,
+  ["g2", { playerInfo: { id: "n1", name: "N1" }, spawnCell: { x: 5, y: 5 } }],
+  {
+    a: ["g2", { playerInfo: { id: "n1", name: "N1" }, spawnCell: { x: 5, y: 5 } }],
+    mg: {
+      0: [true], 1: [0], 2: [109], 6: [false],
+      12: [...Array(25).fill(0)],
+      14: [{ outer: 30, inner: 10 }],
+      20: [7],
+      28: [15], 33: ["Hard"], 35: [100000],
+      41: [[100]],
+      42: [true],
+      45: [false],
+      46: [{ cost: 100, upgradable: true }], 47: [{ cost: 100, upgradable: true }],
+      54: ["FFA"], 121: [100], 122: [1000],
+      63: [55, 555, 78], 64: [0, 551, 0],
+      69: [78], 70: [1000], 71: [1000],
+      76: [true], 89: [100], 126: [60],
+      118: [true, false],
+      123: [[0]], 124: [true], 125: [10],
+      128: [10], 129: [[7]], 130: [3000], 131: [[]], 132: [5],
+      133: [false],
+    },
+    players: [
+      {
+        0: [0], 3: [true], 11: [[0], [0], [0], []], 15: [[]], 33: [true],
+        40: [500], 41: [1000], 45: [1000], 47: [true],
+        50: [[55, 551555]], 58: [[]], 71: [0], 72: [4, 1], 73: [{}],
+      },
+    ],
+    units: [{ 3: ["Port"], 7: [11], 11: [55, 55], 20: [1] }],
+  },
+  [[0], [1, 0], [2, 100], [2, 109], [3], [4]],
+);
+
+// G5p-F (B20): the MissileSilo through the density-triggered upgrade branch.
+// No coastal tiles, cityCount 10: Factory (owned 7 >= floor(7.5) = 7) and SAM
+// (owned 2 >= floor(10 x 0.25) = 2) skip on ratio, and MissileSilo — owned 1,
+// so the FIRST_MISSILE_SILO_RATIO override does not apply — sees target
+// floor(10 x 0.2) = 2 > 1 and enters maybeSpawnStructure: the lone silo
+// (unit 12) crosses the density threshold, mg 47 upgradable is read, and the
+// upgrade path returns unit 12 as 307/25 without touching missileSiloValue
+// or the tile scan.
+elDef(
+  "el_struct_silo_upgrade_density",
+  44,
+  elNationExecC,
+  ["g2", { playerInfo: { id: "n1", name: "N1" }, spawnCell: { x: 5, y: 5 } }],
+  {
+    a: ["g2", { playerInfo: { id: "n1", name: "N1" }, spawnCell: { x: 5, y: 5 } }],
+    mg: {
+      0: [true], 1: [0], 2: [109], 6: [false],
+      12: [...Array(25).fill(0)],
+      14: [{ outer: 30, inner: 10 }],
+      28: [15], 33: ["Hard"], 35: [100000],
+      45: [false],
+      46: [{ cost: 100, upgradable: true }], 47: [{ cost: 100, upgradable: true }],
+      54: ["FFA"], 121: [100], 122: [1000],
+      63: [55, 555, 78], 64: [0, 551, 0],
+      69: [78], 70: [1000], 71: [1000],
+      76: [true], 89: [100], 126: [60],
+      123: [[0]], 124: [true], 125: [10],
+      128: [10], 129: [null], 131: [[]], 132: [5],
+    },
+    players: [
+      {
+        0: [0], 3: [true], 11: [[0], [0], [0], []], 15: [[]], 33: [true],
+        40: [500], 41: [1000], 45: [1000], 47: [true],
+        50: [[55, 551555]], 58: [[]], 71: [0], 72: [10, 7, 2, 1], 73: [{}],
+      },
+    ],
+    units: [{ 3: ["Missile Silo"], 7: [12], 11: [78], 20: [1] }],
+  },
+  [[0], [1, 0], [2, 100], [2, 109], [3], [4]],
+);
+
 const structures = {
   votetally: vtScenarios,
   rankedcheckin: rgScenarios,

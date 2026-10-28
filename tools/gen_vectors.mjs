@@ -33345,6 +33345,189 @@ elDef(
   [[0], [1, 0], [2, 100], [2, 109], [3], [4]],
 );
 
+// G5p-E (B13): the Medium defense-post gate. Same shape as B3 but difficulty
+// is Medium: the tryBuildDefensePost entry roll `!this.random.chance(2)`
+// (nextInt(0,2) === 0) is the only Medium-specific consumption, and allowed
+// is the flat 1 instead of ceil(ratio/0.4). The gate schedule re-derives from
+// getAttackRate's Medium range nextInt(55,70): seed 6702 -> rate 61,
+// attackTick 49, offsets 8/28, so tick 150 (150%61=28) builds City #1 and
+// tick 211 (211%61=28) takes the defense-post branch. Medium also drops the
+// SAM-first branch entirely (Hard/Impossible only — mg 122 stays unread
+// there) and lowers the connectivity roll chance, both invisible with the
+// sticky mocks. mg 2 (ticks) [150] sticky: tick 150 stamps
+// _postSaveUpStartTick=150, tick 211 reads elapsed 0. Whether chance(2) hits
+// (307 for DefensePost) or misses (pure deny via defensePostNeeded) is
+// decided by the recorded PRNG stream; the vector pins whichever occurred.
+elDef(
+  "el_struct_dp_medium_chance",
+  44,
+  elNationExecC,
+  ["g2", { playerInfo: { id: "n1", name: "N1" }, spawnCell: { x: 5, y: 5 } }],
+  {
+    a: ["g2", { playerInfo: { id: "n1", name: "N1" }, spawnCell: { x: 5, y: 5 } }],
+    mg: {
+      0: [true], 1: [0], 2: [150], 6: [false],
+      12: [...Array(25).fill(0), 1, 1, 0],
+      14: [{ outer: 30, inner: 10 }],
+      28: [15], 33: ["Medium"], 35: [100000],
+      39: [[56]],
+      45: [false],
+      46: [{ cost: 100, upgradable: true }],
+      54: ["FFA"], 121: [100], 122: [1000],
+      63: [55, 555, 78], 64: [0, 551, 0],
+      69: [78], 70: [1000], 71: [1000],
+      76: [true],
+      123: [[0]], 124: [true], 125: [10],
+      128: [10], 129: [null], 131: [[]], 132: [5],
+    },
+    players: [
+      {
+        0: [0], 3: [true], 11: [[]], 15: [[]], 40: [500], 41: [1000],
+        45: [1000], 47: [true], 50: [[55, 551555]], 58: [[0]], 71: [0],
+        72: [0], 73: [{}],
+      },
+      {},
+    ],
+    attacks: [{ 0: [400], 11: [null], 12: [1] }],
+  },
+  [[0], [1, 0], [2, 100], [2, 150], [2, 211], [3], [4]],
+);
+
+// G5p-E (B14): the Impossible SAM ratio. cityCount 7 with SAM owned 1: Hard
+// would floor(7 x 0.25) = 1 -> skip, but Impossible's SAM_RATIO 0.3 floors to
+// 2, so shouldBuildStructure(SAM) passes and the SAM Launcher builds through
+// the normal build order. The gate schedule re-derives from getAttackRate's
+// Impossible range nextInt(30,50): seed 6702 -> rate 38, attackTick 30,
+// offsets 4/17, so tick 118 (118%38=4) is the single structure tick. The
+// SAM-first branch still dies on startingGold (mg 122 = 1000 < 3M, now via
+// the Impossible qualification), Factory is suppressed by ratio (owned 5 >=
+// floor(7 x 0.75) = 5), Port dies on mg 129 null. samLauncherValue on
+// Impossible arms weightByLevel (protectEntries empty -> invisible) and takes
+// the coverage roll; empty units FIFO keeps density 0 so the upgrade branch
+// short-circuits before mg 47.
+elDef(
+  "el_struct_sam_ratio_impossible",
+  44,
+  elNationExecC,
+  ["g2", { playerInfo: { id: "n1", name: "N1" }, spawnCell: { x: 5, y: 5 } }],
+  {
+    a: ["g2", { playerInfo: { id: "n1", name: "N1" }, spawnCell: { x: 5, y: 5 } }],
+    mg: {
+      0: [true], 1: [0], 2: [118], 6: [false],
+      12: [...Array(25).fill(0)],
+      14: [{ outer: 30, inner: 10 }],
+      28: [15], 33: ["Impossible"], 35: [100000],
+      45: [false],
+      46: [{ cost: 100, upgradable: true }],
+      54: ["FFA"], 121: [100], 122: [1000],
+      63: [55, 555, 78], 64: [0, 551, 0],
+      69: [78], 70: [1000], 71: [1000],
+      76: [true], 127: [100],
+      123: [[0]], 124: [true], 125: [10],
+      128: [10], 129: [null], 131: [[]], 132: [5],
+    },
+    players: [
+      {
+        0: [0], 3: [true], 11: [[]], 15: [[]], 40: [500], 41: [1000],
+        45: [1000], 47: [true], 50: [[55, 551555]], 58: [[]], 71: [0],
+        72: [7, 5, 1], 73: [{}],
+      },
+    ],
+  },
+  [[0], [1, 0], [2, 100], [2, 118], [3], [4]],
+);
+
+// G5p-E (B15): the density-triggered upgrade branch for a Factory. cityCount
+// 2 -> Factory target floor(2 x 0.75) = 1 > owned 0, and the single owned
+// Factory (unit 9) against numTilesOwned 1000 gives density 1/1000 >
+// 1/1500, so maybeSpawnStructure(Factory) enters the upgrade branch instead
+// of the tile scan: mg 47 (config.unitInfo upgradable) is read, then
+// maybeUpgradeStructure re-runs the density check and findBestStructureToUpgrade
+// filters through canUpgradeUnit (player 33 true). Hard's 25% random-pick roll
+// and the empty SAM pool both converge on unit 9 — either the randElement
+// draw or the tie-break-scored fallback returns the only upgradable
+// structure — and a 307/25 UpgradeStructureExecution is emitted with no
+// ConstructionExecution and no tile-scan consumption.
+elDef(
+  "el_struct_factory_upgrade_density",
+  44,
+  elNationExecC,
+  ["g2", { playerInfo: { id: "n1", name: "N1" }, spawnCell: { x: 5, y: 5 } }],
+  {
+    a: ["g2", { playerInfo: { id: "n1", name: "N1" }, spawnCell: { x: 5, y: 5 } }],
+    mg: {
+      0: [true], 1: [0], 2: [109], 6: [false],
+      12: [...Array(25).fill(0)],
+      14: [{ outer: 30, inner: 10 }],
+      28: [15], 33: ["Hard"], 35: [100000],
+      45: [false],
+      46: [{ cost: 100, upgradable: true }], 47: [{ cost: 100, upgradable: true }],
+      54: ["FFA"], 121: [100], 122: [1000],
+      63: [55, 555, 78], 64: [0, 551, 0],
+      69: [78], 70: [1000], 71: [1000],
+      76: [true], 89: [100], 126: [60],
+      123: [[0]], 124: [true], 125: [10],
+      128: [10], 129: [null], 131: [[]], 132: [5],
+    },
+    players: [
+      {
+        0: [0], 3: [true], 11: [[0], [0], [0], []], 15: [[]], 33: [true],
+        40: [500], 41: [1000], 45: [1000], 47: [true],
+        50: [[55, 551555]], 58: [[]], 71: [0], 72: [2, 0], 73: [{}],
+      },
+    ],
+    units: [{ 3: ["Factory"], 7: [9], 11: [78, 78], 20: [1] }],
+  },
+  [[0], [1, 0], [2, 100], [2, 109], [3], [4]],
+);
+
+// G5p-E (B16): the upgrade-blocked deny chain. Same density setup as B15 but
+// canUpgradeUnit (player 33) returns false: findBestStructureToUpgrade's
+// upgradable filter empties, the Factory upgrade fails, and
+// maybeSpawnStructure's "density too high but couldn't upgrade" guard
+// (structures.length > 0 -> return false) blocks the new Factory build. The
+// build order continues to SAM/MissileSilo (both ratio-suppressed at
+// cityCount 2) and the City fallback, where the same chain repeats: density
+// 3/1000, upgradable read, canUpgradeUnit false, structures.length 2 > 0 ->
+// return false. doHandleStructures returns false and the tick is a pure
+// facade-read record: no ConstructionExecution, no UpgradeStructureExecution.
+elDef(
+  "el_struct_upgrade_blocked_chain",
+  44,
+  elNationExecC,
+  ["g2", { playerInfo: { id: "n1", name: "N1" }, spawnCell: { x: 5, y: 5 } }],
+  {
+    a: ["g2", { playerInfo: { id: "n1", name: "N1" }, spawnCell: { x: 5, y: 5 } }],
+    mg: {
+      0: [true], 1: [0], 2: [109], 6: [false],
+      12: [...Array(25).fill(0)],
+      14: [{ outer: 30, inner: 10 }],
+      28: [15], 33: ["Hard"], 35: [100000],
+      45: [false],
+      46: [{ cost: 100, upgradable: true }], 47: [{ cost: 100, upgradable: true }],
+      54: ["FFA"], 121: [100], 122: [1000],
+      63: [55, 555, 78], 64: [0, 551, 0],
+      69: [78], 70: [1000], 71: [1000],
+      76: [true],
+      123: [[0]], 124: [true], 125: [10],
+      128: [10], 129: [null], 131: [[]], 132: [5],
+    },
+    players: [
+      {
+        0: [0], 3: [true], 11: [[0], [0], [0], [1, 2], [0, 1, 2], [0, 1, 2]],
+        15: [[]], 33: [false], 40: [500], 41: [1000], 45: [1000], 47: [true],
+        50: [[55, 551555]], 58: [[]], 71: [0], 72: [2, 0, 0, 0], 73: [{}],
+      },
+    ],
+    units: [
+      { 3: ["Factory"], 7: [9], 11: [78] },
+      { 3: ["City"], 7: [5], 11: [55] },
+      { 3: ["City"], 7: [6], 11: [66] },
+    ],
+  },
+  [[0], [1, 0], [2, 100], [2, 109], [3], [4]],
+);
+
 const structures = {
   votetally: vtScenarios,
   rankedcheckin: rgScenarios,

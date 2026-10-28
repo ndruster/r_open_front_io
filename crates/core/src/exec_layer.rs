@@ -277,6 +277,34 @@
 //! on ratio, MissileSilo returns false on unitsOwned 3 >= 3 before the
 //! FIRST_MISSILE_SILO_RATIO override can apply, and the City fallback
 //! builds City #4 through the full cityValue pipeline.
+//! G5p-E completes the difficulty matrix and the upgrade family. Changing
+//! difficulty re-derives the whole gate schedule because getAttackRate draws
+//! from a difficulty-specific range — Medium nextInt(55,70) and Impossible
+//! nextInt(30,50) on the seed-6702 stream yield rate 61 / attackTick 49 /
+//! offsets 8+28 and rate 38 / attackTick 30 / offsets 4+17 respectively
+//! (verified offline against the recorded Hard 51/41/7+24), so the scenario
+//! ticks move with the matrix. `el_struct_dp_medium_chance` (B13) replays the
+//! B3 defense-post shape under Medium: the `!random.chance(2)` entry roll
+//! (nextInt(0,2) === 0) is the only new consumption, `allowed` is the flat 1
+//! instead of ceil(ratio/0.4), the SAM-first branch is unreachable
+//! (Hard/Impossible only), and the recorded stream hits the roll — tick 150
+//! builds City #1, tick 211 builds the Defense Post as 307/24.
+//! `el_struct_sam_ratio_impossible` (B14) pins SAM_RATIO_BY_DIFFICULTY by
+//! outcome: cityCount 7 with SAM owned 1 would skip under Hard
+//! (floor(7 x 0.25) = 1) but Impossible's 0.3 floors to 2, so the SAM builds
+//! through the normal build order at tick 118; samLauncherValue arms
+//! weightByLevel on Impossible and the coverage roll hits, adding the extra
+//! units(SAMLauncher) existingSams pass. `el_struct_factory_upgrade_density`
+//! (B15) takes a Factory through the density-triggered upgrade branch
+//! (density 1/1000 > 1/1500): mg 47 upgradable is read, maybeUpgradeStructure
+//! re-runs the density check, and with no SAMs the Hard 25% random-pick roll
+//! misses into the tie-break scoring fallback — both converge on unit 9 and
+//! emit 307/25 with no tile-scan consumption. `el_struct_upgrade_blocked_chain`
+//! (B16) blocks the same branch via canUpgradeUnit false: the upgradable
+//! filter empties before the samLaunchers read, the
+//! structures.length > 0 guard refuses the new build, and the chain repeats
+//! through the City fallback (density 3/1000, canUpgradeUnit per structure) —
+//! a pure deny tick with no 307 event at all.
 //!
 //! # G5b facade additions (codes ≥ 300)
 //!

@@ -27112,6 +27112,9 @@ function elNeighborObj(tok, slots) {
     id: () => elC.players[tok].id(),
     units: (types) => elC.players[tok].units(types),
     numTilesOwned: () => elC.players[tok].numTilesOwned(),
+    // G5q-E (`AiAttackBehavior.isSafeToBetray`): the threat loop reads each
+    // neighbor's outgoing attacks, delegated like the other accessors.
+    outgoingAttacks: () => elC.players[tok].outgoingAttacks(),
   };
 }
 function elMgObj(slots) {
@@ -34827,6 +34830,154 @@ elDef(
     ],
   },
   [[0], [1, 0], [2, 100], [2, 48], [3], [4]],
+);
+
+// ---- G5q-E: NationAllianceBehavior betray arms ------------------------------
+//
+// Three scenarios cover maybeBetray's betrayal arms inside the attack-tick
+// strategy ladder (AiAttackBehavior.getAttackStrategies: betray is strategy
+// 5 on Easy, 4 on Hard, 5 on Medium — every earlier strategy must fail with
+// empty lists: nuked short-circuits on the disabled-MissileSilo mg45 gate,
+// bots finds no unfriendly Bot neighbors, retaliate sees no incoming
+// attacks, assist sees no allies). One friendly Nation neighbor via
+// nearby() (slot 15) makes borderingFriends=[x1] and borderingEnemies=[],
+// so the only pre-ladder RNG is maybeAttack's chance(5) boat roll (idx12,
+// must miss); with MIRV disabled and empty requests/alliances there are no
+// other post-emoji rolls. The betray arms themselves consume no RNG, and
+// sendAttack(force) lands a land attack via sharesBorderWith (slot 67).
+//
+// p0 troops 700 / mg32 maxTroops 1000 -> ratio 0.7 clears both the reserve
+// (0.30-0.40) and trigger (0.50-0.60) ctor rolls regardless of seed, and
+// the betray() call resolves allianceWith (slot 13) to alliance token 0 and
+// records breakAlliance (elVoid 244) before the AttackExecution (tag 16).
+
+// Weak-bot betrayal (Easy arm 2): n0/g1 (rate 90 tick 138). x1 is a Bot
+// with 20 troops; Easy skips the don't-betray-humans guard for Bots and
+// 700 >= 20*10 fires the arm (troop reads: findJuiciestTarget then the arm
+// comparison). The forced attack is a Bot attack: calculateBotAttackTroops
+// on Easy returns the passed headroom p0.troops - maxTroops*reserve(38%) -
+// 0 = 700-380 = 320.
+elDef(
+  "el_betray_weak_bot",
+  44,
+  elNationExecC,
+  ["g1", { playerInfo: { id: "n0", name: "N0" }, spawnCell: { x: 5, y: 5 } }],
+  {
+    a: ["g1", { playerInfo: { id: "n0", name: "N0" }, spawnCell: { x: 5, y: 5 } }],
+    mg: {
+      0: [true], 1: [0], 2: [138], 5: [8], 6: [false], 11: [[0, 1]],
+      12: [0], 14: [{ outer: 30, inner: 10 }], 28: [15], 32: [1000],
+      33: ["Easy"], 35: [100000], 40: [0], 45: [true],
+      46: [{ cost: 100, upgradable: false }], 54: ["FFA"], 60: [null],
+      63: [5], 64: [5], 69: [55], 115: [false], 121: [100], 122: [1000],
+      123: [[]], 124: [true], 125: [10], 129: [null], 132: [5],
+    },
+    players: [
+      {
+        0: [0], 1: ["n0"], 3: [true], 5: [true], 8: [false], 11: [[]],
+        12: [true], 13: [[0]], 15: [[1]], 20: [false], 21: ["NATION"],
+        26: [true], 34: [true], 35: [2.0], 40: [5000], 41: [700],
+        45: [10000], 47: [true], 50: [[]], 53: [[]], 58: [[]], 62: [false],
+        65: [[]], 66: [[]], 67: [true], 68: [[]], 69: [[]], 70: [[]],
+        71: [0], 72: [0], 74: [true],
+      },
+      {
+        0: [0], 1: ["x1"], 3: [true], 8: [false], 11: [[]], 20: [false],
+        21: ["BOT"], 26: [true], 41: [20], 45: [100], 50: [[]], 62: [false],
+      },
+    ],
+    neighbors: [{}, { 0: [true] }],
+    alliances: [{}],
+  },
+  [[0], [1, 0], [2, 100], [2, 138], [3], [4]],
+);
+
+// Juiciest-ally betrayal (Hard arm 1): n0/gx (rate 55 tick 103). x1 is the
+// single allied bordering friend, so findJuiciestAlly returns it
+// (isAlliedWith slot 74 read twice: candidate filter then the maybeBetray
+// gate) and the Hard difficulty gate admits arm 1. isSafeToBetray: x1 is
+// not a traitor so otherAllies is empty (single friend), the threat list
+// is just x1 with no outgoing attacks, and 20 < 700*0.33 is safe. The
+// forced attack is a normal (non-bot) land attack: p0.troops -
+// maxTroops*reserve(33%) = 700-330 = 370, uncapped (friendly neighbor ->
+// no troopSendCap reduction; 370 >= 20*0.2 passes isAttackTooWeak).
+elDef(
+  "el_betray_juiciest",
+  44,
+  elNationExecC,
+  ["gx", { playerInfo: { id: "n0", name: "N0" }, spawnCell: { x: 5, y: 5 } }],
+  {
+    a: ["gx", { playerInfo: { id: "n0", name: "N0" }, spawnCell: { x: 5, y: 5 } }],
+    mg: {
+      0: [true], 1: [0], 2: [103], 5: [8], 6: [false], 11: [[0, 1]],
+      12: [0], 14: [{ outer: 30, inner: 10 }], 28: [15], 32: [1000],
+      33: ["Hard"], 35: [100000], 40: [0], 45: [true],
+      46: [{ cost: 100, upgradable: false }], 54: ["FFA"], 60: [null],
+      63: [5], 64: [5], 69: [55], 115: [false], 121: [100], 122: [1000],
+      123: [[]], 124: [true], 125: [10], 129: [null], 132: [5],
+    },
+    players: [
+      {
+        0: [0], 1: ["n0"], 3: [true], 5: [true], 8: [false], 11: [[]],
+        12: [true], 13: [[0]], 15: [[1]], 20: [false], 21: ["NATION"],
+        26: [true], 34: [true], 35: [2.0], 40: [5000], 41: [700],
+        45: [10000], 47: [true], 50: [[]], 53: [[]], 58: [[]], 62: [false],
+        65: [[]], 66: [[]], 67: [true], 68: [[]], 69: [[]], 70: [[]],
+        71: [0], 72: [0], 74: [true],
+      },
+      {
+        0: [0], 1: ["x1"], 3: [true], 8: [false], 11: [[]], 20: [false],
+        21: ["NATION"], 26: [true], 41: [20], 45: [100], 50: [[]],
+        54: [[]], 62: [false],
+      },
+    ],
+    neighbors: [{}, { 0: [true] }],
+    alliances: [{}],
+  },
+  [[0], [1, 0], [2, 100], [2, 103], [3], [4]],
+);
+
+// Traitor betrayal (Medium arm 3): n0/g3 (rate 61 tick 110). Arm 2's
+// 10x-strength check fails on purpose (x1 has 100 troops, 700 < 100*10 is
+// false -> 700 >= 1000 fails), so the ladder reaches arm 3: Medium allows
+// traitor betrayal, x1.isTraitor() (slot 62) is true and 100 < 700*1.2
+// holds. The forced attack: p0.troops - maxTroops*reserve(32%) = 700-320 =
+// 380 (Medium troopSendCap returns Infinity before the neighbor loop, so
+// p0's isFriendly FIFO only sees the partition and attackBots reads).
+elDef(
+  "el_betray_traitor",
+  44,
+  elNationExecC,
+  ["g3", { playerInfo: { id: "n0", name: "N0" }, spawnCell: { x: 5, y: 5 } }],
+  {
+    a: ["g3", { playerInfo: { id: "n0", name: "N0" }, spawnCell: { x: 5, y: 5 } }],
+    mg: {
+      0: [true], 1: [0], 2: [110], 5: [8], 6: [false], 11: [[0, 1]],
+      12: [0], 14: [{ outer: 30, inner: 10 }], 28: [15], 32: [1000],
+      33: ["Medium"], 35: [100000], 40: [0], 45: [true],
+      46: [{ cost: 100, upgradable: false }], 54: ["FFA"], 60: [null],
+      63: [5], 64: [5], 69: [55], 115: [false], 121: [100], 122: [1000],
+      123: [[]], 124: [true], 125: [10], 129: [null], 132: [5],
+    },
+    players: [
+      {
+        0: [0], 1: ["n0"], 3: [true], 5: [true], 8: [false], 11: [[]],
+        12: [true], 13: [[0]], 15: [[1]], 20: [false], 21: ["NATION"],
+        26: [true], 34: [true], 35: [2.0], 40: [5000], 41: [700],
+        45: [10000], 47: [true], 50: [[]], 53: [[]], 58: [[]], 62: [false],
+        65: [[]], 66: [[]], 67: [true], 68: [[]], 69: [[]], 70: [[]],
+        71: [0], 72: [0], 74: [true],
+      },
+      {
+        0: [0], 1: ["x1"], 3: [true], 8: [false], 11: [[]], 20: [false],
+        21: ["NATION"], 26: [true], 41: [100], 45: [100], 50: [[]],
+        62: [true],
+      },
+    ],
+    neighbors: [{}, { 0: [true] }],
+    alliances: [{}],
+  },
+  [[0], [1, 0], [2, 100], [2, 110], [3], [4]],
 );
 
 const structures = {

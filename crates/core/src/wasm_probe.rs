@@ -1257,8 +1257,8 @@ impl<'a> Cur<'a> {
     }
     fn team_index(&mut self) -> Option<f64> {
         match self.f() {
-            flag if flag == 0.0 => None,
-            flag if flag == 1.0 => Some(self.f()),
+            0.0 => None,
+            1.0 => Some(self.f()),
             _ => Some(f64::NAN),
         }
     }

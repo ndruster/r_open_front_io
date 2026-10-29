@@ -500,6 +500,41 @@
 //! (307/24 "Warship" tile 66) plus the EMOJI_WARSHIP_RETALIATION broadcast
 //! to AllPlayers before maybeSendNuke's MissileSilo gate closes the tick.
 //!
+//! # G5q-E: AiAttackBehavior betray ladder
+//!
+//! Three scenarios cover maybeBetrayAndAttack's weak-player arm (Easy/
+//! Medium, #2), the juiciest-ally arm (Hard/Impossible, #1) with
+//! isSafeToBetray, and the traitor arm (Medium+, #3), each ending in
+//! betray (allianceWith 243 -> breakAlliance 244) plus a forced sendAttack
+//! (307/16). Seed hunting must branch on difficulty: getAttackRate draws
+//! from different nextInt windows (Easy 65-100, Medium 55-70, Hard 45-60),
+//! and the seed hash keys on the scenario args' playerInfo.id string, not
+//! the spec.players slot name. nearby() resolves through elC.neighbors
+//! (not elC.players), so the scenarios carry a neighbors array; the
+//! elNeighborObj delegates type/troops/isTraitor/id/units/numTilesOwned to
+//! the player slots while its own isPlayer is nb code 257 — a target that
+//! reaches sendAttack from borderingFriends therefore dispatches isPlayer
+//! via Nb (257), not the pl facade (259). Easy's strategy order is
+//! [nuked, bots, retaliate, assist, betray, hated, weakest], and
+//! getAttackStrategies records the difficulty read (402) itself.
+//! `el_betray_weak_bot` (n0/g1, Easy, rate 90 tick 48, T=138): the allied
+//! Bot neighbor x1 (troops 20) fails bots/retaliate/assist, the 10x troop
+//! ratio holds (700 vs 20), and the forced land attack computes
+//! 320 = 700 - 1000*38% reserve; the tick emits breakAlliance (244, al
+//! tok 0) then AttackExecution 307/16[320, 0, "x1"], after op#2's
+//! forceSendAttack TN volley (350 = 700/2). The port dropped the 244
+//! because as_opt_tok rejected the array-encoded alliance token (`[[0]]`),
+//! discarded getAttackStrategies' 402 into a scratch vec, and read the
+//! target's isPlayer through the pl facade — all three caught here.
+//! `el_betray_juiciest` (n0/gx, Hard, rate 55 tick 48, T=103): the
+//! juiciest-ally arm requires isSafeToBetray, whose threat loop reads x1's
+//! outgoingAttacks (721, empty) and keeps the 33% reserve attack
+//! (370 = 700 - 330), uncapped (friendly neighbor skips troopSendCap) and
+//! above the Hard 0.2x isAttackTooWeak floor. `el_betray_traitor` (n0/g3,
+//! Medium, rate 61 tick 49, T=110): x1 is a traitor (isTraitor 826) with
+//! troops 100 under the 1.2x cap, after the 10x weak-player check fails
+//! (700 < 1000), and the 32% reserve attack lands at 380.
+//!
 //! # G5b facade additions (codes ≥ 300)
 //!
 //! `mg`: `300` isValidRef, `301` getWaterComponent, `302` hasWaterComponent,
@@ -1262,10 +1297,14 @@ fn as_str_opt(v: &JsVal) -> Option<String> {
 }
 
 fn as_opt_tok(v: &JsVal) -> Option<usize> {
-    if let JsVal::Num(n) = v {
-        Some(*n as usize)
-    } else {
-        None
+    match v {
+        JsVal::Num(n) => Some(*n as usize),
+        // G5q-E: `allianceWith` scripts the alliance reference as a
+        // one-element array (`[[0]]`); TS then indexes `elC.alliances[t]`
+        // with that array, whose string coercion resolves to the alliance
+        // at that index — so the alliance `_tok` is the single element.
+        JsVal::Arr(a) if a.len() == 1 => as_opt_tok(&a[0]),
+        _ => None,
     }
 }
 
@@ -18656,8 +18695,10 @@ impl ExecHarness {
                 return Ok(());
             }
         }
-        // Get attack strategies in priority order.
-        let strategies = self.ai_get_attack_strategies(bordering_friends, bordering_enemies);
+        // Get attack strategies in priority order. The difficulty read
+        // (`gameConfig().difficulty`) is recorded, not discarded.
+        let strategies =
+            self.ai_get_attack_strategies(tr, bordering_friends, bordering_enemies);
         for s in strategies {
             if self.ai_run_strategy(tr, &s, bordering_friends, bordering_enemies)? {
                 return Ok(());
@@ -18669,11 +18710,11 @@ impl ExecHarness {
     /// `getAttackStrategies(borderingFriends, borderingEnemies)`.
     fn ai_get_attack_strategies(
         &mut self,
+        tr: &mut Vec<f64>,
         _friends: &[usize],
         _enemies: &[usize],
     ) -> Vec<AiStrategy> {
-        let mut scratch = Vec::new();
-        let diff = self.mg_difficulty(&mut scratch); // 402
+        let diff = self.mg_difficulty(tr); // 402
         match diff.as_str() {
             "Easy" => vec![
                 AiStrategy::Nuked,
@@ -19019,7 +19060,10 @@ impl ExecHarness {
             let juiciest_ally = self.ne_find_juiciest_ally(tr, friends)?;
             for &friend in friends {
                 if self.ne_maybe_betray(tr, friend, juiciest_ally, friends, enemies)? {
-                    return self.ai_send_attack(tr, friend, TargetVia::Pl, true);
+                    // The friend comes from `nearby()`, so TS's `sendAttack`
+                    // dispatches on the neighbor facade (257), not the
+                    // player facade (259).
+                    return self.ai_send_attack(tr, friend, TargetVia::Nb, true);
                 }
             }
         }

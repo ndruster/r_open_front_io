@@ -34855,6 +34855,199 @@ elDef(
   [[0], [1, 0], [2, 100], [2, 2], [3], [4]],
 );
 
+// ---- G5q-G: NationMIRVBehavior backup arms ---------------------------------
+//
+// Four seeds finishing the G5q-C backup-arm list, all Easy attack ticks on
+// the same base. The RNG stream facts below were measured by temporarily
+// instrumenting PseudoRandom during a recording run:
+//  - randElement logs its internal nextInt(0, arr.length), so each emoji
+//    pick consumes exactly one stream draw;
+//  - the pipeline after considerMIRV consumes exactly one nextInt(0, 5)
+//    whether or not the MIRV fired (identical in counter and hesitation
+//    flows);
+//  - every attack tick reads isUnitDisabled exactly 13 times (the MIRV
+//    gate first, then the structures/warship ladder);
+//  - a hesitation-hit tick reads game.ticks() twice (findRat and greet
+//    gates); a firing tick reads it five times (those two plus
+//    shouldSendEmoji's compare+set and recordMirvHit);
+//  - each attack tick consumes two self units(MissileSilo) reads:
+//    considerMIRV's silo gate, maybeSendNuke (a firing tick additionally
+//    reads the counter target's MIRV units from the target's own FIFO).
+
+// respondToMIRV hit: n07/gg (rate 93, tick 68). The counter trio fires and
+// respondToMIRV's chance(8) hits, so x4 broadcasts a random EMOJI_OVERWHELMED
+// entry to AllPlayers right after the MirvExecution (x4.canSendEmoji mocked
+// true; the FFA trio then records four events).
+elDef(
+  "el_mirv_respond_hit",
+  44,
+  elNationExecC,
+  ["gg", { playerInfo: { id: "n07", name: "N07" }, spawnCell: { x: 5, y: 5 } }],
+  {
+    a: ["gg", { playerInfo: { id: "n07", name: "N07" }, spawnCell: { x: 5, y: 5 } }],
+    mg: {
+      0: [true], 1: [0], 2: [68, 68, 68, 68, 68], 5: [8], 6: [false],
+      11: [[0, 1]], 12: [0, 1], 14: [{ outer: 30, inner: 10 }], 28: [15],
+      32: [10000], 33: ["Easy"], 35: [100000], 40: [0],
+      45: [false, true, true, true, true, true, true, true, true, true, true, true, true],
+      46: [{ cost: 100, upgradable: false }], 54: ["FFA"], 60: [null],
+      63: [5], 64: [5], 67: [true], 69: [9], 89: [0], 115: [false],
+      121: [100], 122: [1000], 123: [[]], 124: [true], 125: [10],
+      129: [null], 132: [5],
+    },
+    players: [
+      {
+        0: [0], 1: ["n07"], 3: [true], 5: [true], 8: [false],
+        11: [[0], [], []], 12: [false], 15: [[]], 20: [false],
+        21: ["NATION"], 26: [true], 34: [true], 35: [2.0], 40: [5000],
+        41: [100], 45: [10000], 47: [true], 50: [[]], 53: [[]], 58: [[]],
+        62: [false], 65: [[]], 66: [[]], 68: [[]], 69: [[]], 70: [[]],
+        71: [0], 72: [0],
+      },
+      {
+        0: [0], 1: ["x4"], 3: [true], 8: [false], 11: [[1]], 18: [null],
+        20: [false], 21: ["HUMAN"], 26: [true], 34: [true], 45: [100],
+        50: [[55]], 62: [false],
+      },
+    ],
+    units: [{ 3: ["Missile Silo"] }, { 2: [55], 3: ["MIRV"] }],
+  },
+  [[0], [1, 0], [2, 100], [2, 68], [3], [4]],
+);
+
+// counter + hesitation combo: n0b/g6 (rate 69, attack ticks 22 and 91).
+// Tick 22's hesitation chance(2) hits so considerMIRV returns false with
+// zero events; tick 91 (the next attack tick) misses the hesitation roll
+// and fires the counter trio against x5's inbound MIRV. Each attack tick
+// consumes two self units(MissileSilo) reads (considerMIRV's silo gate,
+// maybeSendNuke); a firing tick additionally reads the counter target's
+// MIRV units from the target's own FIFO. mg45's
+// 26 entries split as 13 reads per tick with the MIRV gate first in each
+// half, and mg2 splits 2 reads for tick 22 / 5 reads for tick 91.
+elDef(
+  "el_mirv_hes_counter",
+  44,
+  elNationExecC,
+  ["g6", { playerInfo: { id: "n0b", name: "N0B" }, spawnCell: { x: 5, y: 5 } }],
+  {
+    a: ["g6", { playerInfo: { id: "n0b", name: "N0B" }, spawnCell: { x: 5, y: 5 } }],
+    mg: {
+      0: [true], 1: [0], 2: [22, 22, 91, 91, 91, 91, 91], 5: [8], 6: [false],
+      11: [[0, 1]], 12: [0, 1], 14: [{ outer: 30, inner: 10 }], 28: [15],
+      32: [10000], 33: ["Easy"], 35: [100000], 40: [0],
+      45: [
+        false, true, true, true, true, true, true, true, true, true, true, true, true,
+        false, true, true, true, true, true, true, true, true, true, true, true, true,
+      ],
+      46: [{ cost: 100, upgradable: false }], 54: ["FFA"], 60: [null],
+      63: [5], 64: [5], 67: [true], 69: [9], 89: [0], 115: [false],
+      121: [100], 122: [1000], 123: [[]], 124: [true], 125: [10],
+      129: [null], 132: [5],
+    },
+    players: [
+      {
+        0: [0], 1: ["n0b"], 3: [true], 5: [true], 8: [false],
+        11: [[0], [], [0], []], 12: [false], 15: [[]], 20: [false],
+        21: ["NATION"], 26: [true], 34: [true], 35: [2.0], 40: [5000],
+        41: [100], 45: [10000], 47: [true], 50: [[]], 53: [[]], 58: [[]],
+        62: [false], 65: [[]], 66: [[]], 68: [[]], 69: [[]], 70: [[]],
+        71: [0], 72: [0],
+      },
+      {
+        0: [0], 1: ["x5"], 3: [true], 8: [false], 11: [[1]], 18: [null],
+        20: [false], 21: ["HUMAN"], 26: [true], 45: [100], 50: [[55]],
+        62: [false],
+      },
+    ],
+    units: [{ 3: ["Missile Silo"] }, { 2: [55], 3: ["MIRV"] }],
+  },
+  [[0], [1, 0], [2, 100], [2, 22], [2, 91], [3], [4]],
+);
+
+// victory team branch: n06/gq (rate 94, tick 2). mg54 is "Team" and x6's
+// team() reads "Blue" (self "Red"), so selectVictoryDenialTarget takes the
+// team path: teamTerritory sums x6's 400000 tiles (40M >= the 7.5M scaled
+// threshold over the 100000-land mock), x6 is the largest (only) member,
+// and the FFA trio fires against it.
+elDef(
+  "el_mirv_victory_team",
+  44,
+  elNationExecC,
+  ["gq", { playerInfo: { id: "n06", name: "N06" }, spawnCell: { x: 5, y: 5 } }],
+  {
+    a: ["gq", { playerInfo: { id: "n06", name: "N06" }, spawnCell: { x: 5, y: 5 } }],
+    mg: {
+      0: [true], 1: [0], 2: [2, 2, 2, 2, 2], 5: [8], 6: [false],
+      11: [[0, 1]], 12: [1], 14: [{ outer: 30, inner: 10 }], 28: [15],
+      32: [10000], 33: ["Easy"], 35: [100000], 40: [0],
+      45: [false, true, true, true, true, true, true, true, true, true, true, true, true],
+      46: [{ cost: 100, upgradable: false }], 54: ["Team"], 60: [null],
+      63: [5], 64: [5], 67: [true], 69: [9], 89: [0], 115: [false],
+      121: [100], 122: [1000], 123: [[]], 124: [true], 125: [10],
+      129: [null], 132: [5],
+    },
+    players: [
+      {
+        0: [0], 1: ["n06"], 3: [true], 5: [true], 8: [false],
+        11: [[0], [], []], 12: [false], 15: [[]], 18: ["Red"], 20: [false],
+        21: ["NATION"], 26: [true], 34: [true], 35: [2.0], 40: [5000],
+        41: [100], 45: [10000], 47: [true], 50: [[]], 53: [[]], 58: [[]],
+        62: [false], 65: [[]], 66: [[]], 68: [[]], 69: [[]], 70: [[]],
+        71: [0], 72: [0],
+      },
+      {
+        0: [0], 1: ["x6"], 3: [true], 8: [false], 11: [[]], 18: ["Blue"],
+        20: [false], 21: ["HUMAN"], 26: [true], 45: [400000], 50: [[55]],
+        62: [false],
+      },
+    ],
+    units: [{ 3: ["Missile Silo"] }],
+  },
+  [[0], [1, 0], [2, 100], [2, 2], [3], [4]],
+);
+
+// steamroll stop skipped: n06/g4 (rate 98, tick 75). The city leader is the
+// nation itself (21 cities vs x7's 0), so topPlayer.p fails the
+// validTargets containment check and selectSteamrollStopTarget returns
+// null — a pure-read attack tick with zero events, pinning the negative
+// arm where the steamroll fallback is correctly suppressed.
+elDef(
+  "el_mirv_steamroll_skip",
+  44,
+  elNationExecC,
+  ["g4", { playerInfo: { id: "n06", name: "N06" }, spawnCell: { x: 5, y: 5 } }],
+  {
+    a: ["g4", { playerInfo: { id: "n06", name: "N06" }, spawnCell: { x: 5, y: 5 } }],
+    mg: {
+      0: [true], 1: [0], 2: [75, 75], 5: [8], 6: [false],
+      11: [[0, 1]], 12: [1], 14: [{ outer: 30, inner: 10 }], 28: [15],
+      32: [10000], 33: ["Easy"], 35: [100000], 40: [0],
+      45: [false, true, true, true, true, true, true, true, true, true, true, true, true],
+      46: [{ cost: 100, upgradable: false }], 54: ["FFA"], 60: [null],
+      63: [5], 64: [5], 67: [true], 69: [9], 89: [0], 115: [false],
+      121: [100], 122: [1000], 123: [[]], 124: [true], 125: [10],
+      129: [null], 132: [5],
+    },
+    players: [
+      {
+        0: [0], 1: ["n06"], 3: [true], 5: [true], 8: [false],
+        11: [[0], [], []], 12: [false], 15: [[]], 20: [false],
+        21: ["NATION"], 26: [true], 34: [true], 35: [2.0], 40: [5000],
+        41: [100], 45: [10000], 47: [true], 50: [[]], 53: [[]], 58: [[]],
+        59: [21], 62: [false], 65: [[]], 66: [[]], 68: [[]], 69: [[]],
+        70: [[]], 71: [0], 72: [0],
+      },
+      {
+        0: [0], 1: ["x7"], 3: [true], 8: [false], 11: [[]], 18: [null],
+        20: [false], 21: ["HUMAN"], 26: [true], 45: [100], 50: [[55]],
+        59: [0], 62: [false],
+      },
+    ],
+    units: [{ 3: ["Missile Silo"] }],
+  },
+  [[0], [1, 0], [2, 100], [2, 75], [3], [4]],
+);
+
 // ---- G5q-D: NationWarshipBehavior ------------------------------------------
 //
 // Three scenarios cover the warship decision layer's three entry points.

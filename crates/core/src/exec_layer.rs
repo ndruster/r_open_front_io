@@ -569,6 +569,38 @@
 //! two rolls pass against troops 200 + outgoingAttacks 1 (54:[[]] keeps
 //! outgoingAttacks() truthy via length) — accept 271.
 //!
+//! # G5q-G: NationMIRVBehavior backup arms
+//!
+//! Four seeds finish the G5q-C backup-arm list. Stream facts measured by
+//! temporarily instrumenting PseudoRandom during recording: randElement
+//! draws its internal nextInt(0, len); the pipeline after considerMIRV
+//! consumes exactly one nextInt(0, 5) whether or not the MIRV fired; every
+//! attack tick reads isUnitDisabled 13 times (MIRV gate first); a
+//! hesitation-hit tick reads game.ticks() twice (findRat + greet gates)
+//! while a firing tick reads it five times (plus shouldSendEmoji's
+//! compare+set and recordMirvHit); each tick consumes two self
+//! units(MissileSilo) reads (silo gate, maybeSendNuke) and a firing tick
+//! additionally reads the counter target's MIRV units from the target's own
+//! FIFO — so a dual-tick scenario must script self units as
+//! [[0],[],[0],[]] and split mg45 as 13 reads per tick, mg2 as 2 + 5.
+//! `el_mirv_respond_hit` (n07/gg, Easy, rate 93 tick 68): after the
+//! counter trio, respondToMIRV's chance(8) hits, x4.canSendEmoji(AllPlayers)
+//! passes, and a second EmojiExecution broadcasts a random
+//! EMOJI_OVERWHELMED entry (emoji 13) from x4 to AllPlayers.
+//! `el_mirv_hes_counter` (n0b/g6, Easy, rate 69, ticks 22 and 91): tick 22's
+//! hesitation chance(2) hits so considerMIRV returns false with zero
+//! events; tick 91 misses the hesitation roll and fires the counter trio
+//! (x5's inbound MIRV at tile 55). `el_mirv_victory_team` (n06/gq, Easy,
+//! rate 94 tick 2): mg54 is Team, x6's team() reads "Blue" against self
+//! "Red" (both via slot 18), so the victory denial takes the team branch —
+//! teamTerritory sums x6's 400000 tiles (40M over the 7.5M threshold on the
+//! 100000-land mock) and x6 is the largest member. `el_mirv_steamroll_skip`
+//! (n06/g4, Easy, rate 98 tick 75): the city leader is the nation itself
+//! (21 cities vs x7's 0), so topPlayer.p fails the validTargets containment
+//! check and selectSteamrollStopTarget returns null — a zero-event tick
+//! pinning the negative steamroll arm. All targets use fresh Human ids
+//! because the static recentMirvTargets map persists across scenarios.
+//!
 //! # G5b facade additions (codes ≥ 300)
 //!
 //! `mg`: `300` isValidRef, `301` getWaterComponent, `302` hasWaterComponent,

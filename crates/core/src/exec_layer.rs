@@ -535,6 +535,40 @@
 //! troops 100 under the 1.2x cap, after the 10x weak-player check fails
 //! (700 < 1000), and the 32% reserve attack lands at 380.
 //!
+//! # G5q-F: NationAllianceBehavior decision-ladder tail
+//!
+//! Four response-path arms plus one send-path arm close out the
+//! getAllianceDecision ladder. Response scenarios drive
+//! handleAllianceRequests with an incoming request from x1 (720), which
+//! reads requestor/spawnTurns and enters the ladder at the difficulty-keyed
+//! confusion roll (Easy c10 / Medium c20); the send scenario drives
+//! maybeAttack's maybeSendAllianceRequests instead, whose chance(10) boat
+//! roll and chance(30) gate sit before the same ladder. Hunter note: the
+//! arm() wrapper consumes an extra confusion roll before its check, which
+//! shifts every subsequent position by one — for the send path c10/c30 are
+//! adjacent to the emoji block, so its seed must be claimed by the direct
+//! four-roll check, never by the wrapper.
+//! `el_alli_req_threat_love` (n00/gv, Medium, rate 64 tick 73): x1 is a
+//! Human with 1000 troops over the 2.5x threat floor (100), so the
+//! isResponse chance(6) hits and EMOJI_LOVE (emoji 48) precedes the 271
+//! accept. `el_alli_send_threat_scared` (n6o/gy, Medium, rate 65 tick 75):
+//! same threat read from the send path — after chance(10) misses and
+//! chance(30) hits, confusion misses and the !isResponse chance(6) hits,
+//! so EMOJI_SCARED_OF_THREAT (emoji 6) precedes the 307/23 outgoing
+//! request; canSendAllianceRequest passes on the fresh state and the
+//! boundary troops (1000 vs 100) keep isAlliancePartnerThreat true.
+//! `el_alli_req_team_reject` (n00/gl, Medium, rate 59 tick 117): FFA is
+//! Team, so shouldRejectInTeamGame's nextInt(0,100) under 50 rejects with
+//! 272. `el_alli_req_relation_bad` (n00/gm, Medium, rate 62 tick 74):
+//! relation Hostile (slot 35 = 0.0) fails the Neutral floor, the isResponse
+//! chance(3) hits, EMOJI_CONFUSED (emoji 11) goes out, and the ladder
+//! returns false for a 272 reject. `el_alli_req_similarly_strong`
+//! (n00/gu, Medium, rate 67 tick 130): the request survives the
+//! already-enough roll (0 alliances under nextInt(4,6)), earlygame misses
+//! (tick 130 past the >=30 gate), and isAlliancePartnerSimilarlyStrong's
+//! two rolls pass against troops 200 + outgoingAttacks 1 (54:[[]] keeps
+//! outgoingAttacks() truthy via length) — accept 271.
+//!
 //! # G5b facade additions (codes ≥ 300)
 //!
 //! `mg`: `300` isValidRef, `301` getWaterComponent, `302` hasWaterComponent,

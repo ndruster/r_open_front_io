@@ -34462,6 +34462,216 @@ elDef(
   [[0], [1, 0], [2, 100], [2, 73], [3], [4]],
 );
 
+// ---- G5q-F: NationAllianceBehavior leftover arms ---------------------------
+//
+// Medium-difficulty attack ticks closing the G5q-B arm list. Medium shifts
+// the attack-rate range to nextInt(55,70) and the decision-ladder chances
+// (confusion chance(20), team reject nextInt(0,100) < 50, enough-alliances
+// nextInt(4,6), earlygame nextInt(0,100) >= 30, similarly-strong
+// nextInt(70,80) / nextInt(80,90) thresholds). checkAlreadyEnoughAlliances
+// consumes its roll on Medium even with zero alliances (Easy short-circuits
+// without a roll), and the threat check reads the requestor's troops
+// (player slot 41) — the Easy templates never touched it.
+
+// handleAllianceRequests threat accept with LOVE emoji: n00/gv (rate 64,
+// tick 73 = 9 + 64). The requestor x1 holds 1000 troops vs our 100
+// (> 2.5x, the Medium threat rule); the ladder rolls confusion miss, then
+// the isResponse chance(6) hits so EMOJI_LOVE goes to x1 before the request
+// is accepted (271).
+elDef(
+  "el_alli_req_threat_love",
+  44,
+  elNationExecC,
+  ["gv", { playerInfo: { id: "n00", name: "N0" }, spawnCell: { x: 5, y: 5 } }],
+  {
+    a: ["gv", { playerInfo: { id: "n00", name: "N0" }, spawnCell: { x: 5, y: 5 } }],
+    mg: {
+      0: [true], 1: [0], 2: [73], 5: [8], 6: [false], 11: [[0, 1]], 12: [0],
+      14: [{ outer: 30, inner: 10 }], 28: [15], 32: [10000], 33: ["Medium"],
+      35: [100000], 40: [0], 45: [true],
+      46: [{ cost: 100, upgradable: false }], 54: ["FFA"], 60: [null],
+      63: [5], 64: [5], 69: [55], 115: [false], 121: [100], 122: [1000],
+      123: [[]], 124: [true], 125: [10], 129: [null], 132: [5],
+    },
+    players: [
+      {
+        0: [0], 1: ["n00"], 3: [true], 5: [true], 8: [false], 11: [[]],
+        12: [false], 15: [[]], 20: [false], 21: ["NATION"], 26: [true],
+        34: [true], 35: [2.0], 40: [5000], 41: [100], 45: [10000],
+        47: [true], 50: [[]], 53: [[0]], 58: [[]], 62: [false], 65: [[]],
+        66: [[]], 68: [[]], 69: [[]], 70: [[]], 71: [0], 72: [0],
+      },
+      {
+        0: [0], 1: ["x1"], 3: [true], 8: [false], 11: [[]], 20: [false],
+        21: ["HUMAN"], 26: [true], 41: [1000], 45: [100], 50: [[]],
+        62: [false],
+      },
+    ],
+    requests: [{ 4: [50], 5: [1] }],
+  },
+  [[0], [1, 0], [2, 100], [2, 73], [3], [4]],
+);
+
+// maybeSendAllianceRequests threat accept with SCARED emoji: n6o/gy (rate
+// 65, tick 75 = 10 + 65). nearby() yields neighbor token 1 (delegating to
+// players[1], a Human with 1000 troops vs our 100), so borderingEnemies =
+// [x1]; the chance(10) boat roll misses, chance(30) hits, the ladder rolls
+// confusion miss and the !isResponse chance(6) hits so
+// EMOJI_SCARED_OF_THREAT goes to x1 before the AllianceRequestExecution
+// (307/23) is queued.
+elDef(
+  "el_alli_send_threat_scared",
+  44,
+  elNationExecC,
+  ["gy", { playerInfo: { id: "n6o", name: "N0" }, spawnCell: { x: 5, y: 5 } }],
+  {
+    a: ["gy", { playerInfo: { id: "n6o", name: "N0" }, spawnCell: { x: 5, y: 5 } }],
+    mg: {
+      0: [true], 1: [0], 2: [75], 5: [8], 6: [false], 11: [[0, 1]], 12: [0],
+      14: [{ outer: 30, inner: 10 }], 28: [15], 32: [10000], 33: ["Medium"],
+      35: [100000], 40: [0], 45: [true],
+      46: [{ cost: 100, upgradable: false }], 54: ["FFA"], 60: [null],
+      63: [5], 64: [5], 69: [55], 115: [false], 121: [100], 122: [1000],
+      123: [[]], 124: [true], 125: [10], 129: [null], 132: [5],
+    },
+    players: [
+      {
+        0: [0], 1: ["n6o"], 3: [true], 5: [true], 8: [false], 11: [[]],
+        12: [false], 15: [[1]], 20: [false], 21: ["NATION"], 26: [true],
+        34: [true], 35: [2.0], 40: [5000], 41: [100], 45: [10000],
+        47: [true], 50: [[]], 53: [[]], 58: [[]], 62: [false], 65: [[]],
+        66: [[]], 68: [[]], 69: [[]], 70: [[]], 71: [0], 72: [0],
+      },
+      {
+        0: [0], 1: ["x1"], 3: [true], 8: [false], 11: [[]], 20: [false],
+        21: ["HUMAN"], 26: [true], 41: [1000], 45: [100], 50: [[]],
+        62: [false],
+      },
+    ],
+    neighbors: [{}, { 0: [true] }],
+  },
+  [[0], [1, 0], [2, 100], [2, 75], [3], [4]],
+);
+
+// handleAllianceRequests team-game rejection: n00/gl (rate 59, tick 117 =
+// 58 + 59). gameMode is Team and the requestor x1 (100 troops) is no
+// threat, so the ladder rolls confusion miss and then the Medium
+// nextInt(0,100) < 50 team reject — the request is rejected (272) before
+// the relation stage is ever reached.
+elDef(
+  "el_alli_req_team_reject",
+  44,
+  elNationExecC,
+  ["gl", { playerInfo: { id: "n00", name: "N0" }, spawnCell: { x: 5, y: 5 } }],
+  {
+    a: ["gl", { playerInfo: { id: "n00", name: "N0" }, spawnCell: { x: 5, y: 5 } }],
+    mg: {
+      0: [true], 1: [0], 2: [117], 5: [8], 6: [false], 11: [[0, 1]], 12: [0],
+      14: [{ outer: 30, inner: 10 }], 28: [15], 32: [10000], 33: ["Medium"],
+      35: [100000], 40: [0], 45: [true],
+      46: [{ cost: 100, upgradable: false }], 54: ["Team"], 60: [null],
+      63: [5], 64: [5], 69: [55], 115: [false], 121: [100], 122: [1000],
+      123: [[]], 124: [true], 125: [10], 129: [null], 132: [5],
+    },
+    players: [
+      {
+        0: [0], 1: ["n00"], 3: [true], 5: [true], 8: [false], 11: [[]],
+        12: [false], 15: [[]], 20: [false], 21: ["NATION"], 26: [true],
+        34: [true], 35: [2.0], 40: [5000], 41: [100], 45: [10000],
+        47: [true], 50: [[]], 53: [[0]], 58: [[]], 62: [false], 65: [[]],
+        66: [[]], 68: [[]], 69: [[]], 70: [[]], 71: [0], 72: [0],
+      },
+      {
+        0: [0], 1: ["x1"], 3: [true], 8: [false], 11: [[]], 20: [false],
+        21: ["HUMAN"], 26: [true], 41: [100], 45: [100], 50: [[]],
+        62: [false],
+      },
+    ],
+    requests: [{ 4: [50], 5: [1] }],
+  },
+  [[0], [1, 0], [2, 100], [2, 117], [3], [4]],
+);
+
+// handleAllianceRequests relation-bad rejection with emoji: n00/gm (rate
+// 62, tick 74 = 12 + 62). The relation to x1 is Hostile (0.0 < Neutral),
+// x1 is no threat and the game is FFA, so the ladder rolls confusion miss
+// and then the isResponse chance(3) hits — EMOJI_CONFUSED goes to x1 before
+// the request is rejected (272).
+elDef(
+  "el_alli_req_relation_bad",
+  44,
+  elNationExecC,
+  ["gm", { playerInfo: { id: "n00", name: "N0" }, spawnCell: { x: 5, y: 5 } }],
+  {
+    a: ["gm", { playerInfo: { id: "n00", name: "N0" }, spawnCell: { x: 5, y: 5 } }],
+    mg: {
+      0: [true], 1: [0], 2: [74], 5: [8], 6: [false], 11: [[0, 1]], 12: [0],
+      14: [{ outer: 30, inner: 10 }], 28: [15], 32: [10000], 33: ["Medium"],
+      35: [100000], 40: [0], 45: [true],
+      46: [{ cost: 100, upgradable: false }], 54: ["FFA"], 60: [null],
+      63: [5], 64: [5], 69: [55], 115: [false], 121: [100], 122: [1000],
+      123: [[]], 124: [true], 125: [10], 129: [null], 132: [5],
+    },
+    players: [
+      {
+        0: [0], 1: ["n00"], 3: [true], 5: [true], 8: [false], 11: [[]],
+        12: [false], 15: [[]], 20: [false], 21: ["NATION"], 26: [true],
+        34: [true], 35: [0.0], 40: [5000], 41: [100], 45: [10000],
+        47: [true], 50: [[]], 53: [[0]], 58: [[]], 62: [false], 65: [[]],
+        66: [[]], 68: [[]], 69: [[]], 70: [[]], 71: [0], 72: [0],
+      },
+      {
+        0: [0], 1: ["x1"], 3: [true], 8: [false], 11: [[]], 20: [false],
+        21: ["HUMAN"], 26: [true], 41: [100], 45: [100], 50: [[]],
+        62: [false],
+      },
+    ],
+    requests: [{ 4: [50], 5: [1] }],
+  },
+  [[0], [1, 0], [2, 100], [2, 74], [3], [4]],
+);
+
+// handleAllianceRequests similarly-strong accept: n00/gu (rate 67, tick
+// 130 = 63 + 67). x1 (200 troops, no threat, Neutral relation) passes every
+// earlier gate: the Medium enough-alliances roll is consumed (zero
+// alliances never satisfy it), the earlygame roll (14 < 30) misses, and the
+// final isAlliancePartnerSimilarlyStrong accepts — 200 outruns every
+// troopThreshold our 100 troops can produce (nextInt(70,80)/100), so
+// hasComparableTroops short-circuits the tile comparison (request 271).
+elDef(
+  "el_alli_req_similarly_strong",
+  44,
+  elNationExecC,
+  ["gu", { playerInfo: { id: "n00", name: "N0" }, spawnCell: { x: 5, y: 5 } }],
+  {
+    a: ["gu", { playerInfo: { id: "n00", name: "N0" }, spawnCell: { x: 5, y: 5 } }],
+    mg: {
+      0: [true], 1: [0], 2: [130], 5: [8], 6: [false], 11: [[0, 1]], 12: [0],
+      14: [{ outer: 30, inner: 10 }], 28: [15], 32: [10000], 33: ["Medium"],
+      35: [100000], 40: [0], 45: [true],
+      46: [{ cost: 100, upgradable: false }], 54: ["FFA"], 60: [null],
+      63: [5], 64: [5], 69: [55], 115: [false], 121: [100], 122: [1000],
+      123: [[]], 124: [true], 125: [10], 129: [null], 132: [5],
+    },
+    players: [
+      {
+        0: [0], 1: ["n00"], 3: [true], 5: [true], 8: [false], 11: [[]],
+        12: [false], 15: [[]], 20: [false], 21: ["NATION"], 26: [true],
+        34: [true], 35: [2.0], 40: [5000], 41: [100], 45: [10000],
+        47: [true], 50: [[]], 53: [[0]], 54: [[]], 58: [[]], 62: [false],
+        65: [[]], 66: [[]], 68: [[]], 69: [[]], 70: [[]], 71: [0], 72: [0],
+      },
+      {
+        0: [0], 1: ["x1"], 3: [true], 8: [false], 11: [[]], 20: [false],
+        21: ["HUMAN"], 26: [true], 41: [200], 45: [100], 50: [[]],
+        54: [[]], 62: [false],
+      },
+    ],
+    requests: [{ 4: [50], 5: [1] }],
+  },
+  [[0], [1, 0], [2, 100], [2, 130], [3], [4]],
+);
+
 // ---- G5q-C: NationMIRVBehavior ---------------------------------------------
 //
 // Easy-difficulty attack ticks exercising considerMIRV's hesitation gate and

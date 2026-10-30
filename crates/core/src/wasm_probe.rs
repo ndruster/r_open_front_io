@@ -5634,6 +5634,39 @@ pub extern "C" fn probe_gimp_out_at(i: usize) -> f64 {
     GIMP_OUT.with(|o| o.borrow()[i])
 }
 
+// ============ G6-0: M1 integration harness (game_loop) =======================
+
+thread_local! {
+    static GL_HARNESS: std::cell::RefCell<crate::game_loop::GameLoopHarness> =
+        std::cell::RefCell::new(crate::game_loop::GameLoopHarness::default());
+    static GL_ARGS: std::cell::RefCell<Vec<f64>> = const { std::cell::RefCell::new(Vec::new()) };
+    static GL_OUT: std::cell::RefCell<Vec<f64>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
+#[no_mangle]
+pub extern "C" fn probe_gl_reset() {
+    GL_HARNESS.with(|h| h.borrow_mut().reset());
+}
+
+#[no_mangle]
+pub extern "C" fn probe_gl_arg(v: f64) {
+    GL_ARGS.with(|t| t.borrow_mut().push(v));
+}
+
+#[no_mangle]
+pub extern "C" fn probe_gl_op(kind: u32) -> usize {
+    let a = GL_ARGS.with(|t| std::mem::take(&mut *t.borrow_mut()));
+    let out = GL_HARNESS.with(|h| h.borrow_mut().run_op(kind as u8, &a));
+    let len = out.len();
+    GL_OUT.with(|o| *o.borrow_mut() = out);
+    len
+}
+
+#[no_mangle]
+pub extern "C" fn probe_gl_out_at(i: usize) -> f64 {
+    GL_OUT.with(|o| o.borrow()[i])
+}
+
 // ============ G5a: execution layer part 1 (execution) ========================
 
 thread_local! {

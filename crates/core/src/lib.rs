@@ -339,6 +339,19 @@
 //!   `unitGrid`, `_railNetwork`, `_stats`, `_config`, `_sharedWaterCache`,
 //!   executions and the `updates` sink are scripted facades whose call trace
 //!   rides in the res stream, same pattern as `player_impl`)
+//! * [`game_loop`] — G6-0 (M1-0) integration harness: the REAL-assembly layer
+//!   the M1 milestone grows into the tick-loop rig. Assembles the real
+//!   ported [`game_map`] / [`water_manager`] (the map lives inside the water
+//!   manager, G4a `debug_map` convention) and compares aggregate output
+//!   streams — state digests and packed tile-update drains — against the
+//!   recorder `tools/gen_m1_vectors.mjs` driving the identical real TS
+//!   `GameMapImpl` / `WaterManager` over synthetic terrain bytes. Replayed by
+//!   `tests/parity_m1.rs` (native) and `tools/m1_scan.mjs` (wasm probe
+//!   `probe_gl_*`). M1-0 pins: no `Config` (queueWaterConversion runs with
+//!   `waterNukes()` pinned `true`), no players (the `hasOwner` throw arms are
+//!   structurally unreachable). M1a adds the real Config + players; M1b adds
+//!   the real `executeNextTick` body (the G4b mid-300 script-facade version
+//!   stays frozen)
 //! * [`config_patch`] — `src/server/ConfigPatch.ts` (`applyGameConfigPatch`'s
 //!   `COPIED_KEYS` copy-if-`!== undefined` loop, the `NULLABLE_KEYS`
 //!   `value ?? undefined` clear-to-undefined loop and the unconditional
@@ -531,6 +544,7 @@ pub mod game_api_cors;
 pub mod game_config_helpers;
 pub mod game_impl;
 pub mod game_info_ranking;
+pub mod game_loop;
 pub mod game_map;
 pub mod game_mode_gate;
 pub mod game_ts;

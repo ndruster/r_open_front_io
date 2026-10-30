@@ -3827,12 +3827,54 @@ function prepare(rel) {
     if (!prepared.has(taRel)) prepare(taRel);
     const gicUtilRel = "src/core/Util.ts";
     if (!prepared.has(gicUtilRel)) prepare(gicUtilRel);
+    // M1a (G6-0 real-assembly mode): with M1A_REAL_PLAYERS=1 the recorder
+    // drives the REAL `createGame` factory + ctor + populateTeams /
+    // addPlayers / addPlayer / maybeAssignTeam chain, so `new PlayerImpl` and
+    // every collaborator the ctor constructs must be the REAL ported classes
+    // (prepared copies), not the G4a facade stubs. Without the env var the
+    // G4a/G4b/G4c captures keep the scripted stubs unchanged (the cache file
+    // names hash the rewritten content, so the two modes never collide).
+    let playerDef;
+    let m1aImports = "";
+    if (process.env.M1A_REAL_PLAYERS === "1") {
+      const piRel = "src/core/game/PlayerImpl.ts";
+      if (!prepared.has(piRel)) prepare(piRel);
+      const tnRel = "src/core/game/TerraNulliusImpl.ts";
+      if (!prepared.has(tnRel)) prepare(tnRel);
+      const ugRel = "src/core/game/UnitGrid.ts";
+      if (!prepared.has(ugRel)) prepare(ugRel);
+      const wmRel = "src/core/game/WaterManager.ts";
+      if (!prepared.has(wmRel)) prepare(wmRel);
+      const swRel = "src/core/execution/nation/SharedWaterCache.ts";
+      if (!prepared.has(swRel)) prepare(swRel);
+      const rnRel = "src/core/game/RailNetworkImpl.ts";
+      if (!prepared.has(rnRel)) prepare(rnRel);
+      const stRel = "src/core/game/StatsImpl.ts";
+      if (!prepared.has(stRel)) prepare(stRel);
+      m1aImports =
+        `import { PlayerImpl } from "./${prepared.get(piRel)}";\n` +
+        `import { TerraNulliusImpl } from "./${prepared.get(tnRel)}";\n` +
+        `import { UnitGrid } from "./${prepared.get(ugRel)}";\n` +
+        `import { WaterManager } from "./${prepared.get(wmRel)}";\n` +
+        `import { SharedWaterCache } from "./${prepared.get(swRel)}";\n` +
+        `import { createRailNetwork } from "./${prepared.get(rnRel)}";\n` +
+        `import { StatsImpl } from "./${prepared.get(stRel)}";\n`;
+      playerDef = "";
+    } else {
+      playerDef =
+        "class PlayerImpl {\n" +
+        "  constructor(game, smallID, playerInfo, troops, team) {\n" +
+        "    return globalThis.__GFA.newPlayer(smallID, playerInfo, troops, team);\n" +
+        "  }\n" +
+        "}\n";
+    }
     const giHead = out.indexOf("export function createGame(");
     if (giHead === -1) {
       throw new Error("ts_load: GameImpl createGame anchor not found");
     }
     out =
       'const GameMode = { FFA: "Free For All", Team: "Team" };\n' +
+      m1aImports +
       `import { GameUpdateType } from "./${prepared.get(guRel)}";\n` +
       `import { packMotionPlans } from "./${prepared.get(mpRel)}";\n` +
       `import { MessageType, PlayerType, UnitType } from "./${prepared.get(gbGameRel)}";\n` +
@@ -3847,11 +3889,7 @@ function prepare(rel) {
       'const Trios = "Trios";\n' +
       'const Quads = "Quads";\n' +
       'const HumansVsNations = "Humans Vs Nations";\n' +
-      "class PlayerImpl {\n" +
-      "  constructor(game, smallID, playerInfo, troops, team) {\n" +
-      "    return globalThis.__GFA.newPlayer(smallID, playerInfo, troops, team);\n" +
-      "  }\n" +
-      "}\n" +
+      playerDef +
       "class AllianceRequestImpl {\n" +
       "  constructor(requestor, recipient, tickCreated, game) {\n" +
       "    return globalThis.__GFA.newRequest(requestor, recipient, tickCreated);\n" +

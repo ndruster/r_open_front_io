@@ -1,8 +1,8 @@
-// G6-0 (M1-0) — integration-vector recorder for the `game_loop` harness.
+// G6-0 (M1a) — integration-vector recorder for the `game_loop` harness.
 //
-// Drives the REAL TS `GameMapImpl` + `WaterManager` (loaded through
-// ts_load.mjs, same channel as gen_vectors.mjs) over synthetic terrain bytes
-// and pins the whole per-op result stream, bit for bit:
+// Drives the REAL TS classes (loaded through ts_load.mjs, same channel as
+// gen_vectors.mjs) over synthetic terrain bytes and pins the whole per-op
+// result stream, bit for bit:
 //
 //   node tools/gen_m1_vectors.mjs
 //
@@ -11,9 +11,16 @@
 //   crates/core/tests/data/m1_vectors.rs     — #[path]-embedded for
 //                                              crates/core/tests/parity_m1.rs
 //
-// Scenario ops mirror `crates/core/src/game_loop.rs`'s op table (kinds 0-6).
-// The M1-0 pins documented there apply here too: no Config (waterNukes
-// pinned true), no players (owner-throw arms unreachable).
+// Scenario ops mirror `crates/core/src/game_loop.rs`'s op table (kinds 0-8).
+// M1-0 kept two pins: no Config (waterNukes pinned true) and no players.
+// M1a lifts both for the construct_game flow (kind 7): with
+// M1A_REAL_PLAYERS=1, ts_load redirects `new PlayerImpl` and the ctor's
+// collaborators to the REAL ported classes, so the recorder drives the real
+// `createGame` factory + ctor + populateTeams / addPlayers / addPlayer /
+// maybeAssignTeam chain over the same synthetic terrain. The op-0 construct
+// (kind 0) keeps the M1-0 pin behaviour for the pre-M1a scenarios unchanged.
+process.env.M1A_REAL_PLAYERS = "1";
+
 import { writeFileSync, mkdirSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -24,6 +31,7 @@ const root = join(here, "..");
 
 const { GameMapImpl } = await loadTs("src/core/game/GameMap.ts");
 const { WaterManager } = await loadTs("src/core/game/WaterManager.ts");
+const GI = await loadTs("src/core/game/GameImpl.ts");
 
 // ------------------------------------------------------------- encS mirror
 // Bit-exact mirror of js_json.rs push_str: [len, ..utf16 units].
@@ -131,6 +139,85 @@ function pickTiles(t, w) {
   };
 }
 
+// ------------------------------------------------------------ Config mirror
+// The exact Config.ts surface GameImpl's construction chain reads, mirrored
+// line-for-line (the real Config class is not headlessly loadable):
+//   gameConfig 344 / playerTeams 386 / disableNavMesh 404 / waterNukes 415 /
+//   infiniteTroops 421 / hasInfiniteTroopsForInfo 715-721 /
+//   startingGold 436-441 + startingGoldFor 743-750 / startManpower 1000-1019.
+
+class StubConfig {
+  constructor(gameConfig) {
+    this._gameConfig = gameConfig;
+  }
+  gameConfig() {
+    return this._gameConfig;
+  }
+  playerTeams() {
+    return this._gameConfig.playerTeams ?? 0;
+  }
+  disableNavMesh() {
+    return this._gameConfig.disableNavMesh ?? false;
+  }
+  waterNukes() {
+    return this._gameConfig.waterNukes ?? false;
+  }
+  infiniteTroops() {
+    return this._gameConfig.infiniteTroops ?? false;
+  }
+  hasInfiniteTroopsForInfo(pi) {
+    if (this.infiniteTroops()) return true;
+    return (
+      (this._gameConfig.hostCheats?.infiniteTroops ?? false) &&
+      pi.isLobbyCreator
+    );
+  }
+  startManpower(pi) {
+    if (pi.playerType === "BOT") return 10_000;
+    if (pi.playerType === "NATION") {
+      switch (this._gameConfig.difficulty) {
+        case "Easy":
+          return 12_500;
+        case "Medium":
+          return 18_750;
+        case "Hard":
+          return 25_000;
+        case "Impossible":
+          return 31_250;
+      }
+    }
+    return this.hasInfiniteTroopsForInfo(pi) ? 1_000_000 : 25_000;
+  }
+  startingGold(pi) {
+    if (pi.playerType === "BOT") return 0n;
+    const base = BigInt(this._gameConfig.startingGold ?? 0);
+    const hc = this._gameConfig.hostCheats;
+    if (hc?.startingGold && pi.isLobbyCreator) {
+      return base + BigInt(hc.startingGold);
+    }
+    return base;
+  }
+}
+
+// Plain-object PlayerInfo mirror: PlayerInfo.ts's ctor only assigns readonly
+// fields (+ displayName formatting, not part of the M1a observable surface),
+// and every consumer (PlayerImpl ctor field reads, assignTeams) reads the
+// same property names off the object.
+let nextInfoNum = 1;
+function makeInfo(name, type, extra = {}) {
+  return {
+    name,
+    playerType: type,
+    clientID: extra.clientID ?? null,
+    id: extra.id ?? `P${nextInfoNum++}`,
+    isLobbyCreator: extra.isLobbyCreator ?? false,
+    clanTag: extra.clanTag ?? null,
+    friends: extra.friends ?? [],
+    teamIndex: extra.teamIndex ?? null,
+    nationFlag: extra.nationFlag ?? null,
+  };
+}
+
 // ------------------------------------------------------------ scenario rig
 // Mirrors GameLoopHarness (game_loop.rs) op-for-op over the real TS classes.
 
@@ -201,7 +288,9 @@ class Rig {
     out.push(0);
   }
 
-  // GameImpl.queueWaterConversion (TS 256-266) — waterNukes() pinned true.
+  // GameImpl.queueWaterConversion (TS 256-266) — the waterNukes() gate is
+  // real once a game is constructed (M1a); the water-only M1-0 ops have no
+  // Config installed, pinning waterNukes() true.
   queueWaterConversion(tile, out) {
     if (!this.map.isLand(tile)) {
       out.push(0);
@@ -210,6 +299,10 @@ class Rig {
     if (this.map.hasOwner(tile)) {
       out.push(1);
       pushStr(out, `cannot queue water conversion, tile ${tile} has owner`);
+      return;
+    }
+    if (this.game && !this.game._config.waterNukes()) {
+      this.setFallout(tile, true, out);
       return;
     }
     this.water.queueTile(tile);
@@ -244,6 +337,67 @@ class Rig {
       out.push((m.tileState(t) & 0xffff) + (m.terrainByte(t) << 16));
     }
   }
+
+  // The REAL createGame factory + GameImpl ctor + populateTeams /
+  // addPlayers / addPlayer / maybeAssignTeam chain (GameImpl.ts 55-74,
+  // 118-151, 155-198, 680-703). The ctor logs timing (and addPlayers warns
+  // on kicked clans) — silenced so the recorder stdout stays parseable.
+  constructGame(cfgObj, humans, nations, out) {
+    const log = console.log;
+    const warn = console.warn;
+    console.log = () => {};
+    console.warn = () => {};
+    try {
+      this.game = GI.createGame(
+        humans,
+        nations,
+        this.map,
+        this.mini,
+        new StubConfig(cfgObj),
+        undefined,
+      );
+      out.push(0);
+    } catch (e) {
+      // stderr only — stdout must stay parseable for the vector emitter.
+      process.stderr.write(`[m1a] construct_game error: ${e.stack}\n`);
+      out.push(1);
+      pushStr(out, String(e.message));
+    } finally {
+      console.log = log;
+      console.warn = warn;
+    }
+  }
+
+  // Post-construction internal state snapshot: nextPlayerID, botTeam, the
+  // resolved team list, then every player in smallID order (identity, team,
+  // troops/gold as the ctor computed them, and one PseudoRandom draw to pin
+  // the per-player seed state). Mirrors game_loop.rs op 8 token-for-token.
+  snapshot(out) {
+    const g = this.game;
+    out.push(0);
+    out.push(g.nextPlayerID);
+    pushStr(out, g.botTeam);
+    out.push(g.playerTeams.length);
+    for (const t of g.playerTeams) pushStr(out, t);
+    const players = g._playersBySmallID;
+    out.push(players.length);
+    for (const p of players) {
+      out.push(p.smallID());
+      pushStr(out, p.id());
+      pushStr(out, p.name());
+      out.push(p.type() === "HUMAN" ? 0 : p.type() === "BOT" ? 1 : 2);
+      const t = p.team();
+      if (t === null) {
+        out.push(-1);
+      } else {
+        out.push(-2);
+        pushStr(out, t);
+      }
+      out.push(Number(p.troops()));
+      out.push(Number(p.gold()));
+      out.push(p._pseudo_random.next());
+    }
+  }
 }
 
 // Construct op args: [w, h, numLand, miniW, miniH, miniNumLand, len, ..bytes, len, ..mini]
@@ -268,8 +422,119 @@ const mini = { w: MW, h: MH, bytes: miniT, numLand: numLandOf(miniT) };
 const P = pickTiles(mainT, W);
 
 // op(kind, args) helpers
-const op = (kind, args = []) => ({ kind, args });
-const K = { CONSTRUCT: 0, SET_FALLOUT: 1, SET_WATER: 2, QUEUE_WATER: 3, TICK: 4, DRAIN: 5, DIGEST: 6 };
+const op = (kind, args = [], extra = {}) => ({ kind, args, ...extra });
+const K = {
+  CONSTRUCT: 0,
+  SET_FALLOUT: 1,
+  SET_WATER: 2,
+  QUEUE_WATER: 3,
+  TICK: 4,
+  DRAIN: 5,
+  DIGEST: 6,
+  CONSTRUCT_GAME: 7,
+  SNAPSHOT: 8,
+};
+
+// --------------------------------------------------- construct_game encoding
+// Wire codes mirrored by game_loop.rs (op 7 parse + op 8 snapshot).
+
+const MODE = { FFA: 0, TEAM: 1 };
+const PT_TAG = { NUM: 0, DUOS: 1, TRIOS: 2, QUADS: 3, HVN: 4, OTHER: 5 };
+const PTYPE = { HUMAN: 0, BOT: 1, NATION: 2 };
+const DIFF = { EASY: 0, MEDIUM: 1, HARD: 2, IMPOSSIBLE: 3 };
+
+function encPlayer(p, out) {
+  pushStr(out, p.id);
+  pushStr(out, p.name);
+  out.push(PTYPE[p.playerType]);
+  if (p.clientID === null) out.push(-1);
+  else {
+    out.push(-2);
+    pushStr(out, p.clientID);
+  }
+  out.push(p.isLobbyCreator ? 1 : 0);
+  if (p.clanTag === null) out.push(-1);
+  else {
+    out.push(-2);
+    pushStr(out, p.clanTag);
+  }
+  out.push(p.friends.length);
+  for (const f of p.friends) pushStr(out, f);
+  if (p.teamIndex === null) out.push(-1);
+  else out.push(p.teamIndex);
+}
+
+// construct_game args (op 7): the op-0 terrain prefix, then the Config
+// surface (gameMode, playerTeams, disableNavMesh, waterNukes, difficulty,
+// startingGold, hostCheats), then humans/nations as PlayerInfo runs.
+function constructGameArgs({
+  mode,
+  pt,
+  disableNavMesh = 0,
+  waterNukes = 0,
+  difficulty = DIFF.HARD,
+  startingGold = -1,
+  hcStartingGold = -1,
+  hcInfiniteTroops = 0,
+  infiniteTroops = 0,
+  humans = [],
+  nations = [],
+}) {
+  const a = [...constructArgs(main, mini)];
+  a.push(mode);
+  a.push(pt.tag);
+  if (pt.tag === PT_TAG.NUM) a.push(pt.v);
+  else if (pt.tag === PT_TAG.OTHER) pushStr(a, pt.v);
+  a.push(disableNavMesh, waterNukes, difficulty);
+  a.push(startingGold, hcStartingGold, hcInfiniteTroops, infiniteTroops);
+  a.push(humans.length);
+  for (const p of humans) encPlayer(p, a);
+  a.push(nations.length);
+  for (const p of nations) encPlayer(p, a);
+  return a;
+}
+
+// The op-7 record carries both the flat wire args (Rust replay) and the live
+// descriptor objects the real TS ctor consumes (recorder execution).
+const PT_VAL = {
+  [PT_TAG.NUM]: (v) => v,
+  [PT_TAG.DUOS]: () => "Duos",
+  [PT_TAG.TRIOS]: () => "Trios",
+  [PT_TAG.QUADS]: () => "Quads",
+  [PT_TAG.HVN]: () => "Humans Vs Nations",
+  [PT_TAG.OTHER]: (v) => v,
+};
+const DIFF_VAL = ["Easy", "Medium", "Hard", "Impossible"];
+function gameOp(desc) {
+  return op(K.CONSTRUCT_GAME, constructGameArgs(desc), {
+    cfg: {
+      gameMode: desc.mode === MODE.TEAM ? "Team" : "Free For All",
+      playerTeams: PT_VAL[desc.pt.tag](desc.pt.v),
+      disableNavMesh: desc.disableNavMesh === 1,
+      waterNukes: desc.waterNukes === 1,
+      difficulty: DIFF_VAL[desc.difficulty],
+      startingGold: desc.startingGold === -1 ? undefined : desc.startingGold,
+      hostCheats:
+        desc.hcStartingGold === -1 && desc.hcInfiniteTroops !== 1
+          ? undefined
+          : {
+              startingGold:
+                desc.hcStartingGold === -1 ? undefined : desc.hcStartingGold,
+              infiniteTroops: desc.hcInfiniteTroops === 1 || undefined,
+            },
+      infiniteTroops: desc.infiniteTroops === 1,
+    },
+    humans: desc.humans ?? [],
+    // Live ctor call: GameImpl reads `n.playerInfo` on nation entries —
+    // Game.ts `Nation` is a `{spawnCell, playerInfo}` holder (spawnCell
+    // stays undefined until the spawn phase, M1c). The wire side keeps
+    // encoding the bare PlayerInfos.
+    nations: (desc.nations ?? []).map((pi) => ({
+      spawnCell: undefined,
+      playerInfo: pi,
+    })),
+  });
+}
 
 const scenarios = [];
 
@@ -360,6 +625,209 @@ const scenarios = [];
   scenarios.push({ name: "m1_drain_reset", ops });
 }
 
+// ---- M1a: createGame factory + ctor assembly (real Config + players) -----
+
+// 6. FFA, single human: the FFA addPlayer path (maybeAssignTeam -> null
+//    team), Human startManpower 25000 / startingGold 0, plus the
+//    waterNukes=false fallback arm of queueWaterConversion (setFallout).
+{
+  const ops = [
+    gameOp({
+      mode: MODE.FFA,
+      pt: { tag: PT_TAG.NUM, v: 0 },
+      waterNukes: 0,
+      humans: [makeInfo("Alice", "HUMAN", { clientID: "c1" })],
+    }),
+    op(K.SNAPSHOT),
+    op(K.QUEUE_WATER, [P.landA]),
+    op(K.DIGEST),
+    op(K.DRAIN),
+  ];
+  scenarios.push({ name: "m1a_ffa_single_human", ops });
+}
+
+// 7. FFA, humans + bots + nations: humans-then-nations addPlayer order,
+//    Nation startManpower under Medium difficulty, absent startingGold.
+{
+  const ops = [
+    gameOp({
+      mode: MODE.FFA,
+      pt: { tag: PT_TAG.NUM, v: 0 },
+      difficulty: DIFF.MEDIUM,
+      humans: [
+        makeInfo("Alice", "HUMAN", {
+          clientID: "c1",
+          isLobbyCreator: true,
+          clanTag: "AAA",
+        }),
+        makeInfo("Bob", "HUMAN", { clientID: "c2", friends: ["c9"] }),
+        makeInfo("Bot 1", "BOT"),
+      ],
+      nations: [
+        makeInfo("Nation A", "NATION", { id: "nation-a" }),
+        makeInfo("Nation B", "NATION", { id: "nation-b" }),
+      ],
+    }),
+    op(K.SNAPSHOT),
+    op(K.DIGEST),
+  ];
+  scenarios.push({ name: "m1a_ffa_humans_nations", ops });
+}
+
+// 8. Team mode, numeric 2 teams, 8 mixed players: clan grouping, a friend
+//    edge, a teamIndex pin, bots through assignTeams's otherPlayers pass.
+{
+  const ops = [
+    gameOp({
+      mode: MODE.TEAM,
+      pt: { tag: PT_TAG.NUM, v: 2 },
+      humans: [
+        makeInfo("P1", "HUMAN", { clientID: "c1", clanTag: "AAA" }),
+        makeInfo("P2", "HUMAN", { clientID: "c2", clanTag: "AAA" }),
+        makeInfo("P3", "HUMAN", { clientID: "c3", friends: ["c4"] }),
+        makeInfo("P4", "HUMAN", { clientID: "c4", friends: ["c3"] }),
+        makeInfo("P5", "HUMAN", { clientID: "c5", teamIndex: 1 }),
+        makeInfo("P6", "HUMAN", { clientID: "c6" }),
+        makeInfo("Bot 1", "BOT"),
+        makeInfo("Bot 2", "BOT"),
+      ],
+    }),
+    op(K.SNAPSHOT),
+  ];
+  scenarios.push({ name: "m1a_team_numeric8", ops });
+}
+
+// 9. Team mode Duos: clan overflow kicks (a 3-member clan over
+//    maxTeamSize=2 leaves one player un-added; nextPlayerID counts only the
+//    added ones).
+{
+  const ops = [
+    gameOp({
+      mode: MODE.TEAM,
+      pt: { tag: PT_TAG.DUOS },
+      humans: [
+        makeInfo("C1", "HUMAN", { clientID: "c1", clanTag: "BIG" }),
+        makeInfo("C2", "HUMAN", { clientID: "c2", clanTag: "BIG" }),
+        makeInfo("C3", "HUMAN", { clientID: "c3", clanTag: "BIG" }),
+        makeInfo("Solo", "HUMAN", { clientID: "c4" }),
+      ],
+    }),
+    op(K.SNAPSHOT),
+    op(K.DIGEST),
+  ];
+  scenarios.push({ name: "m1a_team_duos_kick", ops });
+}
+
+// 10. HumansVsNations: fixed Humans/Nations teams over both populations.
+{
+  const ops = [
+    gameOp({
+      mode: MODE.TEAM,
+      pt: { tag: PT_TAG.HVN },
+      humans: [
+        makeInfo("H1", "HUMAN", { clientID: "c1" }),
+        makeInfo("H2", "HUMAN", { clientID: "c2" }),
+      ],
+      nations: [
+        makeInfo("Nation A", "NATION", { id: "nation-a" }),
+        makeInfo("Nation B", "NATION", { id: "nation-b" }),
+      ],
+    }),
+    op(K.SNAPSHOT),
+  ];
+  scenarios.push({ name: "m1a_team_hvn", ops });
+}
+
+// 11. Server-pinned team slots honored unconditionally (before clan /
+//     friend grouping, seeding the counts the balancing sees).
+{
+  const ops = [
+    gameOp({
+      mode: MODE.TEAM,
+      pt: { tag: PT_TAG.NUM, v: 3 },
+      humans: [
+        makeInfo("P1", "HUMAN", { clientID: "c1", teamIndex: 0 }),
+        makeInfo("P2", "HUMAN", { clientID: "c2", teamIndex: 1 }),
+        makeInfo("P3", "HUMAN", { clientID: "c3", teamIndex: 1 }),
+        makeInfo("P4", "HUMAN", { clientID: "c4", teamIndex: 2 }),
+        makeInfo("P5", "HUMAN", { clientID: "c5" }),
+      ],
+    }),
+    op(K.SNAPSHOT),
+  ];
+  scenarios.push({ name: "m1a_team_pinned", ops });
+}
+
+// 12. resolveTeamsList throw: numeric 1 team is below the 2-team minimum.
+{
+  const ops = [
+    gameOp({
+      mode: MODE.TEAM,
+      pt: { tag: PT_TAG.NUM, v: 1 },
+      humans: [makeInfo("Alice", "HUMAN", { clientID: "c1" })],
+    }),
+  ];
+  scenarios.push({ name: "m1a_too_few_teams", ops });
+}
+
+// 13. resolveTeamsList throw: unknown TeamCountConfig string.
+{
+  const ops = [
+    gameOp({
+      mode: MODE.TEAM,
+      pt: { tag: PT_TAG.OTHER, v: "Bogus" },
+      humans: [makeInfo("Alice", "HUMAN", { clientID: "c1" })],
+    }),
+  ];
+  scenarios.push({ name: "m1a_unknown_team_config", ops });
+}
+
+// 14. Host cheats: the lobby creator gets the bonus gold, the other human
+//     does not; nations ride the base startingGold.
+{
+  const ops = [
+    gameOp({
+      mode: MODE.TEAM,
+      pt: { tag: PT_TAG.NUM, v: 2 },
+      startingGold: 100,
+      hcStartingGold: 1000,
+      humans: [
+        makeInfo("Host", "HUMAN", { clientID: "c1", isLobbyCreator: true }),
+        makeInfo("Guest", "HUMAN", { clientID: "c2" }),
+      ],
+      nations: [makeInfo("Nation A", "NATION", { id: "nation-a" })],
+    }),
+    op(K.SNAPSHOT),
+  ];
+  scenarios.push({ name: "m1a_host_cheats", ops });
+}
+
+// 15. Game + water pipeline coexistence: real queueWaterConversion with
+//     waterNukes=true flows into the real WaterManager flush across ticks,
+//     with players present (the hasOwner throw arms stay unreachable —
+//     nobody owns tiles until the spawn phase, M1c).
+{
+  const ops = [
+    gameOp({
+      mode: MODE.TEAM,
+      pt: { tag: PT_TAG.NUM, v: 2 },
+      waterNukes: 1,
+      humans: [
+        makeInfo("H1", "HUMAN", { clientID: "c1" }),
+        makeInfo("H2", "HUMAN", { clientID: "c2" }),
+      ],
+    }),
+    op(K.QUEUE_WATER, [P.landA]),
+    op(K.QUEUE_WATER, [P.landB]),
+    op(K.TICK, [5]),
+    op(K.TICK, [26]),
+    op(K.SNAPSHOT),
+    op(K.DIGEST),
+    op(K.DRAIN),
+  ];
+  scenarios.push({ name: "m1a_game_water_interleave", ops });
+}
+
 // -------------------------------------------------------------- TS runner
 
 function runScenario(sc) {
@@ -379,6 +847,12 @@ function runScenario(sc) {
         break;
       case K.QUEUE_WATER:
         rig.queueWaterConversion(step.args[0], out);
+        break;
+      case K.CONSTRUCT_GAME:
+        rig.constructGame(step.cfg, step.humans, step.nations, out);
+        break;
+      case K.SNAPSHOT:
+        rig.snapshot(out);
         break;
       case K.TICK:
         rig.waterTick(step.args[0], out);

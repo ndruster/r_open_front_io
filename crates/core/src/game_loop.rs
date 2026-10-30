@@ -30,6 +30,13 @@
 //! | 6 | map digest | — | `territoryVersion, ticks, numLand, waterVersion, falloutCount, waterGraphVersion, ..perTilePacked` |
 //! | 7 | `construct_game` (M1a: `createGame` TS 55-74 + ctor 118-151 + `populateTeams` 155 / `addPlayers` 163 / `addPlayer` 680 / `maybeAssignTeam` 694) | op-0 terrain prefix, then config codes, then humans/nations `PlayerInfo` runs | `[]` or throw |
 //! | 8 | game snapshot (M1a) | — | `nextPlayerID, ..botTeam(encS), teamCount, ..teams(encS), playerCount, ..perPlayer` |
+//! | 9 | `executeNextTick` (M1b: TS 488-546) | — | `ticksAfter, gameHash, updatesJSON(encS)` |
+//! | 10 | stats snapshot (M1b: `StatsImpl.data`) | — | `entryCount, ..perEntry(cid encS, tiles opt, peakTroops opt, alliances opt)` |
+//! | 11 | `PlayerImpl.setSpawnTile` (TS 726-728) | `pidx, tile` | `[]` |
+//! | 12 | `PlayerImpl.addTroops` (TS 1345-1359) | `pidx, amount` | `[]` |
+//! | 13 | `GameImpl.conquer` (TS 761-783) | `pidx, tile` | `[]` or throw |
+//! | 14 | `drainPackedPlayerUpdates` (TS 567-573) | — | `-1` when null, else `len, ..quads` (after the `[0]` ok tag) |
+//! | 15 | `drainPackedAttackUpdates` (TS 575-581) | — | same shape as 14 |
 //!
 //! Result convention: `[0, ..payload]` for a return / `undefined`, or
 //! `[1, ..encS(message)]` for a throw — same tag pair as `game_impl`. Error
@@ -63,8 +70,10 @@
 //! `null` before the hash branch) — the later-join callers arrive with M1c+.
 
 use crate::game_map::GameMap;
-use crate::js_json::{push_str, read_str};
+use crate::game_ts::format_player_display_name;
+use crate::js_json::{push_str, read_str, JsonValue, json_stringify};
 use crate::pseudo_random::PseudoRandom;
+use crate::stats_impl::{MP, StatsImpl, Val};
 use crate::team_assignment::{
     assign_teams, resolve_teams_list, Assignment, PlayerType, ResolveTeamsError, TeamCountConfig,
 };
@@ -108,6 +117,8 @@ pub struct LoopPlayerInfo {
     pub clan_tag: Option<String>,
     pub friends: Vec<String>,
     pub team_index: Option<f64>,
+    /// `nationFlag` (M1b: rides the full PlayerUpdate JSON).
+    pub nation_flag: Option<String>,
 }
 
 impl LoopPlayerInfo {
@@ -131,15 +142,47 @@ impl LoopPlayerInfo {
 /// One real constructed player: the `PlayerImpl` ctor (TS 191-201) semantics
 /// — `_troops = toInt(startTroops)`, `_gold = mg.config().startingGold(...)`,
 /// `_pseudo_random = new PseudoRandom(simpleHash(id))` — plus the identity
-/// and team `addPlayer` (TS 680-692) assigns.
+/// and team `addPlayer` (TS 680-692) assigns, and the M1b live state the
+/// tick loop reads (`_tiles` / `_borderTiles` / `_spawnTile` /
+/// `_lastTileChange` / `_tileChangeVersion` / `lastSentUpdate`).
 pub struct LoopPlayer {
     pub info: LoopPlayerInfo,
     pub small_id: f64,
     pub team: Option<String>,
+    /// `playerInfo.displayName` — the ctor's bracketed-clan-tag formatting.
+    pub display_name: String,
     pub troops: f64,
     pub gold: f64,
     pub rng: PseudoRandom,
     pub rng_draws: u32,
+    /// `_tiles` — owned tile refs (insertion order, like the TileSet).
+    pub tiles: Vec<f64>,
+    /// `_borderTiles`.
+    pub border_tiles: Vec<f64>,
+    /// `_spawnTile` — `None` is JS `undefined` (`hasSpawned()` false).
+    pub spawn_tile: Option<f64>,
+    pub tile_change_version: f64,
+    pub last_tile_change: f64,
+    /// `lastSentUpdate` — the diffable core of the previous full update
+    /// (`None` until the first `toUpdate`).
+    last_sent: Option<PuCore>,
+}
+
+/// The slice of a full `PlayerUpdate` that can change in the M1b domain.
+/// Everything else `toFullUpdate` emits is constant per player (identity /
+/// config-driven fields) or an always-empty collection, so `diffPlayerUpdate`
+/// can only ever surface these fields — the diff compares exactly these, in
+/// the `setIfDifferent` order (isAlive 100 / hasSpawned 123 / spawnTile 124),
+/// and the quint compare uses the four stat fields (TS 230-247).
+#[derive(Clone, Copy, PartialEq)]
+struct PuCore {
+    is_alive: bool,
+    has_spawned: bool,
+    spawn_tile: Option<f64>,
+    tiles_owned: f64,
+    gold: f64,
+    troops: f64,
+    gold_earned: f64,
 }
 
 pub struct GameLoopHarness {
@@ -151,6 +194,14 @@ pub struct GameLoopHarness {
     players: Vec<LoopPlayer>,
     next_player_id: f64,
     player_teams: Vec<String>,
+    /// The game's own `StatsImpl` (`_stats`); real `recordTickSample` path.
+    stats: StatsImpl,
+    /// `MP` facades parallel to `players` (the stats methods' player table).
+    mp: Vec<MP>,
+    /// `playerStatsQuads` — `[smallID, tilesOwned, gold, troops, goldEarned]`.
+    player_quads: Vec<f64>,
+    /// `attackTroopsQuads` — always empty in the M1b domain (no attacks).
+    attack_quads: Vec<f64>,
 }
 
 impl Default for GameLoopHarness {
@@ -164,6 +215,10 @@ impl Default for GameLoopHarness {
             players: Vec::new(),
             next_player_id: 1.0,
             player_teams: Vec::new(),
+            stats: StatsImpl::default(),
+            mp: Vec::new(),
+            player_quads: Vec::new(),
+            attack_quads: Vec::new(),
         }
     }
 }
@@ -350,6 +405,10 @@ impl GameLoopHarness {
         self.players.clear();
         self.next_player_id = 1.0;
         self.player_teams.clear();
+        self.stats = StatsImpl::default();
+        self.mp.clear();
+        self.player_quads.clear();
+        self.attack_quads.clear();
         o.push(0.0);
     }
 
@@ -409,30 +468,53 @@ impl GameLoopHarness {
 
         // addPlayers (TS 163-198), one loop per path.
         let mut players: Vec<LoopPlayer> = Vec::new();
+        let mut mp: Vec<MP> = Vec::new();
         let mut next_id = 1.0;
         if !cfg.game_mode_team {
             // FFA (TS 164-168): humans then nations, maybeAssignTeam team.
             for info in &humans {
                 add_loop_player(
-                    &mut players, &mut next_id, &cfg, &player_teams, info.clone(), None,
+                    &mut players,
+                    &mut mp,
+                    &mut next_id,
+                    &cfg,
+                    &player_teams,
+                    info.clone(),
+                    None,
                 );
             }
             for info in &nations {
                 add_loop_player(
-                    &mut players, &mut next_id, &cfg, &player_teams, info.clone(), None,
+                    &mut players,
+                    &mut mp,
+                    &mut next_id,
+                    &cfg,
+                    &player_teams,
+                    info.clone(),
+                    None,
                 );
             }
         } else if matches!(cfg.player_teams, TeamCountConfig::HumansVsNations) {
             // HumansVsNations (TS 169-178): fixed colored teams.
             for info in &humans {
                 add_loop_player(
-                    &mut players, &mut next_id, &cfg, &player_teams, info.clone(),
+                    &mut players,
+                    &mut mp,
+                    &mut next_id,
+                    &cfg,
+                    &player_teams,
+                    info.clone(),
                     Some("Humans".to_string()),
                 );
             }
             for info in &nations {
                 add_loop_player(
-                    &mut players, &mut next_id, &cfg, &player_teams, info.clone(),
+                    &mut players,
+                    &mut mp,
+                    &mut next_id,
+                    &cfg,
+                    &player_teams,
+                    info.clone(),
                     Some("Nations".to_string()),
                 );
             }
@@ -448,7 +530,12 @@ impl GameLoopHarness {
             for (idx, assignment) in assign_teams(&ta_infos, &player_teams, is_duos_trios_quads) {
                 match assignment {
                     Assignment::Team(team) => add_loop_player(
-                        &mut players, &mut next_id, &cfg, &player_teams, all[idx].clone(),
+                        &mut players,
+                        &mut mp,
+                        &mut next_id,
+                        &cfg,
+                        &player_teams,
+                        all[idx].clone(),
                         Some(team),
                     ),
                     // `console.warn("Player X was kicked from team")` — the
@@ -462,11 +549,15 @@ impl GameLoopHarness {
         self.water = Some(water);
         self.config = Some(cfg);
         self.players = players;
+        self.mp = mp;
         self.next_player_id = next_id;
         self.player_teams = player_teams;
         self.territory_version = 0.0;
         self.ticks = 0.0;
         self.tile_updates.clear();
+        self.stats = StatsImpl::default();
+        self.player_quads.clear();
+        self.attack_quads.clear();
         o.push(0.0);
     }
 
@@ -504,6 +595,398 @@ impl GameLoopHarness {
         }
     }
 
+    // ------------------------------- M1b: the real executeNextTick loop ----
+
+    /// `PlayerImpl.hash` (TS 1828-1833): `simpleHash(id) * (troops +
+    /// numTilesOwned)` — `_units` is always empty in the M1b domain (no unit
+    /// ops), so the unit-hash reduce is 0.
+    fn player_hash(p: &LoopPlayer) -> f64 {
+        simple_hash(&p.info.id) * (p.troops + p.tiles.len() as f64)
+    }
+
+    /// `PlayerImpl.toFullUpdate` (TS 267-401) as a `JsonValue` tree — the 40
+    /// keys in TS declaration order, with `team` / `spawnTile` as `Undef`
+    /// (JSON-stringify omits them) exactly when TS holds `undefined`. Every
+    /// collection is empty in the M1b domain (no alliances / attacks /
+    /// embargoes / units / execs); `embargoes` is the Set → `"{}"` shape.
+    fn pu_full_value(p: &LoopPlayer) -> JsonValue {
+        let opt_str_v = |s: &Option<String>| match s {
+            Some(v) => JsonValue::Str(v.clone()),
+            None => JsonValue::Null,
+        };
+        JsonValue::Obj(vec![
+            ("type".to_string(), JsonValue::Num(2.0)),
+            ("clientID".to_string(), opt_str_v(&p.info.client_id)),
+            ("name".to_string(), JsonValue::Str(p.info.name.clone())),
+            (
+                "displayName".to_string(),
+                JsonValue::Str(p.display_name.clone()),
+            ),
+            ("clanTag".to_string(), opt_str_v(&p.info.clan_tag)),
+            ("nationFlag".to_string(), opt_str_v(&p.info.nation_flag)),
+            ("id".to_string(), JsonValue::Str(p.info.id.clone())),
+            (
+                "team".to_string(),
+                match &p.team {
+                    Some(t) => JsonValue::Str(t.clone()),
+                    // `this.team() ?? undefined` — omitted from the JSON.
+                    None => JsonValue::Undef,
+                },
+            ),
+            ("smallID".to_string(), JsonValue::Num(p.small_id)),
+            (
+                "playerType".to_string(),
+                JsonValue::Str(
+                    match p.info.player_type {
+                        PlayerType::Human => "HUMAN",
+                        PlayerType::Bot => "BOT",
+                        PlayerType::Nation => "NATION",
+                    }
+                    .to_string(),
+                ),
+            ),
+            ("isAlive".to_string(), JsonValue::Bool(!p.tiles.is_empty())),
+            ("isDisconnected".to_string(), JsonValue::Bool(false)),
+            // deathStats?.killedBy ?? null — the stats entries M1b creates
+            // never carry killedBy/deathPosition.
+            ("killedBy".to_string(), JsonValue::Null),
+            ("deathPosition".to_string(), JsonValue::Null),
+            (
+                "tilesOwned".to_string(),
+                JsonValue::Num(p.tiles.len() as f64),
+            ),
+            ("gold".to_string(), JsonValue::Num(p.gold)),
+            ("tradeGold".to_string(), JsonValue::Num(0.0)),
+            ("trainGold".to_string(), JsonValue::Num(0.0)),
+            ("piracyGold".to_string(), JsonValue::Num(0.0)),
+            ("goldEarned".to_string(), JsonValue::Num(0.0)),
+            ("troops".to_string(), JsonValue::Num(p.troops)),
+            ("allies".to_string(), JsonValue::Arr(Vec::new())),
+            // `embargoes` is a `Set` → JSON.stringify writes `"{}"`.
+            ("embargoes".to_string(), JsonValue::Obj(Vec::new())),
+            ("isTraitor".to_string(), JsonValue::Bool(false)),
+            ("traitorRemainingTicks".to_string(), JsonValue::Num(0.0)),
+            ("inDoomsdayClock".to_string(), JsonValue::Bool(false)),
+            ("isDecaying".to_string(), JsonValue::Bool(false)),
+            (
+                "markedDoomsdayClockTick".to_string(),
+                JsonValue::Num(-1.0),
+            ),
+            ("targets".to_string(), JsonValue::Arr(Vec::new())),
+            ("outgoingEmojis".to_string(), JsonValue::Arr(Vec::new())),
+            ("outgoingAttacks".to_string(), JsonValue::Arr(Vec::new())),
+            ("incomingAttacks".to_string(), JsonValue::Arr(Vec::new())),
+            (
+                "outgoingAllianceRequests".to_string(),
+                JsonValue::Arr(Vec::new()),
+            ),
+            ("alliances".to_string(), JsonValue::Arr(Vec::new())),
+            (
+                "hasSpawned".to_string(),
+                JsonValue::Bool(p.spawn_tile.is_some()),
+            ),
+            (
+                "spawnTile".to_string(),
+                match p.spawn_tile {
+                    Some(t) => JsonValue::Num(t),
+                    None => JsonValue::Undef,
+                },
+            ),
+            ("betrayals".to_string(), JsonValue::Num(0.0)),
+            ("lastDeleteUnitTick".to_string(), JsonValue::Num(-1.0)),
+            (
+                "isLobbyCreator".to_string(),
+                JsonValue::Bool(p.info.is_lobby_creator),
+            ),
+        ])
+    }
+
+    /// `diffPlayerUpdate` (GameUpdateUtils.ts 79-162) restricted to the
+    /// M1b-reachable mutable fields, in `setIfDifferent` order: `{"type":2,
+    /// "id":..}` plus the changed ones (spawnTile always numeric when it
+    /// changes — the None→Some transition; Some→None never happens).
+    fn pu_diff_value(p: &LoopPlayer, prev: &PuCore, next: &PuCore) -> Option<JsonValue> {
+        let mut changed: Vec<(String, JsonValue)> = Vec::new();
+        if prev.is_alive != next.is_alive {
+            changed.push(("isAlive".to_string(), JsonValue::Bool(next.is_alive)));
+        }
+        if prev.has_spawned != next.has_spawned {
+            changed.push((
+                "hasSpawned".to_string(),
+                JsonValue::Bool(next.has_spawned),
+            ));
+        }
+        if prev.spawn_tile != next.spawn_tile {
+            changed.push((
+                "spawnTile".to_string(),
+                match next.spawn_tile {
+                    Some(t) => JsonValue::Num(t),
+                    None => JsonValue::Undef,
+                },
+            ));
+        }
+        if changed.is_empty() {
+            return None;
+        }
+        let mut entries = vec![
+            ("type".to_string(), JsonValue::Num(2.0)),
+            ("id".to_string(), JsonValue::Str(p.info.id.clone())),
+        ];
+        entries.extend(changed);
+        Some(JsonValue::Obj(entries))
+    }
+
+    /// `GameImpl.executeNextTick` (TS 488-546) — the real loop over the
+    /// empty-exec game: fresh updates map, tileUpdatePairs reset, per-player
+    /// recordTickSample + toUpdate, the %10 Hash update, the real
+    /// waterManager tick flush, `_ticks++`. Emits
+    /// `[0, ticksAfter, gameHash, updatesJSON(encS)]`.
+    fn op_execute_next_tick(&mut self, o: &mut Vec<f64>) {
+        let tick = self.ticks;
+        // TS 489-490: fresh `createGameUpdatesMap()` + tileUpdatePairs reset
+        // (drops whatever conquer/ops accumulated between ticks).
+        self.tile_updates.clear();
+        let mut player_updates: Vec<JsonValue> = Vec::new();
+        let mut hash_update: Option<JsonValue> = None;
+        for i in 0..self.players.len() {
+            let (alive, spawned, tiles_owned, troops, gold, small_id) = {
+                let p = &self.players[i];
+                (
+                    !p.tiles.is_empty(),
+                    p.spawn_tile.is_some(),
+                    p.tiles.len() as f64,
+                    p.troops,
+                    p.gold,
+                    p.small_id,
+                )
+            };
+            // TS 518-525: sampled before toUpdate; dead and unspawned
+            // players are skipped. `alliances().length` is always 0 here.
+            if alive && spawned {
+                let mut trace: Vec<f64> = Vec::new(); // facade trace discarded
+                let _ = self.stats.record_tick_sample(
+                    &mut trace,
+                    &self.mp,
+                    i,
+                    &Val::Num(tiles_owned),
+                    &Val::Num(troops),
+                    0.0,
+                );
+            }
+            // TS 226-264 `toUpdate`: full on the first call, then quints +
+            // attack deltas + field diff.
+            let core = PuCore {
+                is_alive: alive,
+                has_spawned: spawned,
+                spawn_tile: self.players[i].spawn_tile,
+                tiles_owned,
+                gold,
+                troops,
+                gold_earned: 0.0,
+            };
+            let prev = self.players[i].last_sent.replace(core);
+            let pu = match prev {
+                None => Self::pu_full_value(&self.players[i]),
+                Some(prev) => {
+                    if prev.tiles_owned != core.tiles_owned
+                        || prev.gold != core.gold
+                        || prev.troops != core.troops
+                        || prev.gold_earned != core.gold_earned
+                    {
+                        self.player_quads.extend_from_slice(&[
+                            small_id,
+                            core.tiles_owned,
+                            core.gold,
+                            core.troops,
+                            core.gold_earned,
+                        ]);
+                    }
+                    // packAttackTroopDeltas: both sides are the shared empty
+                    // singleton every tick (no attack ops), so the refid
+                    // equality early-returns — no quads, no updates.
+                    match Self::pu_diff_value(&self.players[i], &prev, &core) {
+                        Some(v) => v,
+                        None => continue, // diffPlayerUpdate null → no addUpdate
+                    }
+                }
+            };
+            player_updates.push(pu);
+        }
+        // TS 532-538: the %10 hash update (`this.ticks() % 10 === 0`).
+        if tick % 10.0 == 0.0 {
+            let gh = self.game_hash();
+            hash_update = Some(JsonValue::Obj(vec![
+                ("type".to_string(), JsonValue::Num(13.0)),
+                ("tick".to_string(), JsonValue::Num(tick)),
+                ("hash".to_string(), JsonValue::Num(gh)),
+            ]));
+        }
+        // TS 540-543: flush pending water conversions + throttled graph
+        // rebuild; every changed tile is recorded through the game's packer.
+        let changed = self.water.as_mut().expect("map built").tick(tick);
+        for t in &changed {
+            self.record_tile_update(*t);
+        }
+        self.ticks += 1.0;
+        // The 24-bucket updates map → the JSON the worker channel carries.
+        let mut buckets: Vec<(String, JsonValue)> = (0..24)
+            .map(|i| (i.to_string(), JsonValue::Arr(Vec::new())))
+            .collect();
+        buckets[2].1 = JsonValue::Arr(player_updates);
+        if let Some(hv) = hash_update {
+            buckets[13].1 = JsonValue::Arr(vec![hv]);
+        }
+        let json = json_stringify(&JsonValue::Obj(buckets)).expect("updates serialize");
+        o.push(0.0);
+        o.push(self.ticks);
+        o.push(self.game_hash());
+        push_str(o, &json);
+    }
+
+    /// `GameImpl.hash` (TS 623-629): 1 + Σ player hashes over `_players`
+    /// insertion order (== `players` order here).
+    fn game_hash(&self) -> f64 {
+        let mut h = 1.0;
+        for p in &self.players {
+            h += Self::player_hash(p);
+        }
+        h
+    }
+
+    /// `StatsImpl.data` snapshot (op 10): clientID-keyed insertion order,
+    /// with optional tags for the three fields `recordTickSample` touches.
+    fn op_stats_snapshot(&self, o: &mut Vec<f64>) {
+        o.push(0.0);
+        o.push(self.stats.data.len() as f64);
+        for (cid, ps) in &self.stats.data {
+            push_str(o, cid);
+            match &ps.tiles {
+                None => o.push(-1.0),
+                Some(t) => {
+                    o.push(-2.0);
+                    o.push(t.len() as f64);
+                    for v in t {
+                        o.push(*v as f64);
+                    }
+                }
+            }
+            match ps.peak_troops {
+                None => o.push(-1.0),
+                Some(v) => {
+                    o.push(-2.0);
+                    o.push(v as f64);
+                }
+            }
+            match &ps.alliances {
+                None => o.push(-1.0),
+                Some(a) => {
+                    o.push(-2.0);
+                    o.push(a.len() as f64);
+                    for v in a {
+                        o.push(*v as f64);
+                    }
+                }
+            }
+        }
+    }
+
+    /// `PlayerImpl.setSpawnTile` (TS 726-728).
+    fn op_set_spawn_tile(&mut self, pidx: f64, tile: f64, o: &mut Vec<f64>) {
+        self.players[pidx as usize].spawn_tile = Some(tile);
+        o.push(0.0);
+    }
+
+    /// `PlayerImpl.addTroops` (TS 1345-1359): negative amounts delegate to
+    /// `removeTroops(-x)`; positive floor through `toInt` into the troops.
+    fn op_add_troops(&mut self, pidx: f64, amount: f64, o: &mut Vec<f64>) {
+        let p = &mut self.players[pidx as usize];
+        if amount < 0.0 {
+            let t = -amount; // removeTroops(-1 * troops)
+            if t > 0.0 {
+                let to_remove = to_int_clamped(t).min(p.troops); // minInt(_troops, toInt(t))
+                p.troops -= to_remove;
+            }
+        } else {
+            p.troops += to_int_clamped(amount);
+        }
+        o.push(0.0);
+    }
+
+    /// `GameImpl.conquer` (TS 761-783): water / impassable throw paths,
+    /// previous-owner bookkeeping, `_territoryVersion++`, `setOwnerID`,
+    /// tile + lastTileChange bookkeeping, `updateBorders`, fallout clear,
+    /// and the single `recordTileUpdate`.
+    fn op_conquer(&mut self, pidx: f64, tile: f64, o: &mut Vec<f64>) {
+        if !self.gm().is_land(tile) {
+            push_err(o, "cannot conquer water");
+            return;
+        }
+        if self.gm().is_impassable(tile) {
+            push_err(o, "cannot conquer impassable terrain");
+            return;
+        }
+        let prev_owner = self.gm().owner_id(tile);
+        if prev_owner != 0.0 {
+            // `previousOwner.isPlayer()` — smallID 0 is TerraNullius.
+            let p = &mut self.players[(prev_owner - 1.0) as usize];
+            p.last_tile_change = self.ticks;
+            p.tile_change_version += 1.0;
+            p.tiles.retain(|t| *t != tile);
+            p.border_tiles.retain(|t| *t != tile);
+        }
+        self.territory_version += 1.0;
+        let sid = self.players[pidx as usize].small_id;
+        self.gm_mut().set_owner_id(tile, sid);
+        let p = &mut self.players[pidx as usize];
+        p.tiles.push(tile);
+        p.last_tile_change = self.ticks;
+        p.tile_change_version += 1.0;
+        self.update_borders(tile);
+        self.gm_mut().set_fallout(tile, false);
+        self.record_tile_update(tile);
+        o.push(0.0);
+    }
+
+    /// `GameImpl.updateBorders` (TS 808-814): the tile plus its 4-neighbours.
+    fn update_borders(&mut self, tile: f64) {
+        self.update_border_status(tile);
+        let mut buf = [0.0f64; 4];
+        let n = self.gm().neighbors4(tile, &mut buf);
+        for &t in &buf[..n] {
+            self.update_border_status(t);
+        }
+    }
+
+    /// `GameImpl.updateBorderStatus` (TS 816-826).
+    fn update_border_status(&mut self, t: f64) {
+        if !self.gm().has_owner(t) {
+            return;
+        }
+        let owner = self.gm().owner_id(t);
+        let is_border = self.gm().is_border(t);
+        let p = &mut self.players[(owner - 1.0) as usize];
+        if is_border {
+            if !p.border_tiles.contains(&t) {
+                p.border_tiles.push(t);
+            }
+        } else {
+            p.border_tiles.retain(|x| *x != t);
+        }
+    }
+
+    /// `drainPackedPlayerUpdates` / `drainPackedAttackUpdates` (TS 567-581):
+    /// null (encoded -1) when nothing accumulated, else the packed quads.
+    fn op_drain_quads(quads: &mut Vec<f64>, o: &mut Vec<f64>) {
+        o.push(0.0);
+        if quads.is_empty() {
+            o.push(-1.0);
+            return;
+        }
+        let q = std::mem::take(quads);
+        o.push(q.len() as f64);
+        o.extend_from_slice(&q);
+    }
+
     pub fn run_op(&mut self, kind: u8, args: &[f64]) -> Vec<f64> {
         let mut o: Vec<f64> = Vec::new();
         match kind {
@@ -533,6 +1016,28 @@ impl GameLoopHarness {
             6 => self.op_digest(&mut o),
             7 => self.construct_game(args, &mut o),
             8 => self.op_snapshot(&mut o),
+            9 => self.op_execute_next_tick(&mut o),
+            10 => self.op_stats_snapshot(&mut o),
+            11 => {
+                let mut c = C { a: args, i: 0 };
+                let pidx = c.f();
+                let tile = c.f();
+                self.op_set_spawn_tile(pidx, tile, &mut o);
+            }
+            12 => {
+                let mut c = C { a: args, i: 0 };
+                let pidx = c.f();
+                let amount = c.f();
+                self.op_add_troops(pidx, amount, &mut o);
+            }
+            13 => {
+                let mut c = C { a: args, i: 0 };
+                let pidx = c.f();
+                let tile = c.f();
+                self.op_conquer(pidx, tile, &mut o);
+            }
+            14 => Self::op_drain_quads(&mut self.player_quads, &mut o),
+            15 => Self::op_drain_quads(&mut self.attack_quads, &mut o),
             _ => panic!("gl: unknown kind {kind}"),
         }
         o
@@ -552,6 +1057,7 @@ fn push_err(o: &mut Vec<f64>, m: &str) {
 /// `_pseudo_random = new PseudoRandom(simpleHash(id))`.
 fn add_loop_player(
     players: &mut Vec<LoopPlayer>,
+    mp: &mut Vec<MP>,
     next_id: &mut f64,
     cfg: &LoopConfig,
     player_teams: &[String],
@@ -567,14 +1073,36 @@ fn add_loop_player(
     let rng = PseudoRandom::new(simple_hash(&info.id));
     let small_id = *next_id;
     *next_id += 1.0;
+    // PlayerInfo ctor's displayName formatting (PlayerInfo.ts, mirrored by
+    // format_player_display_name): a truthy clanTag prepends the bracket.
+    let display_name = format_player_display_name(&info.name, info.clan_tag.as_deref());
+    // The stats facade table stays parallel to `players` (kicked players are
+    // never added on either side).
+    mp.push(MP {
+        cid: info.client_id.clone(),
+        ptype: match info.player_type {
+            PlayerType::Human => "HUMAN",
+            PlayerType::Bot => "BOT",
+            PlayerType::Nation => "NATION",
+        }
+        .to_string(),
+        is_player: true,
+    });
     players.push(LoopPlayer {
         info,
         small_id,
         team,
+        display_name,
         troops,
         gold,
         rng,
         rng_draws: 0,
+        tiles: Vec::new(),
+        border_tiles: Vec::new(),
+        spawn_tile: None,
+        tile_change_version: 0.0,
+        last_tile_change: 0.0,
+        last_sent: None,
     });
 }
 
@@ -730,6 +1258,7 @@ fn read_infos(c: &mut C) -> Vec<LoopPlayerInfo> {
             friends.push(read_str(c.a, &mut c.i));
         }
         let team_index = opt_f64(c);
+        let nation_flag = opt_str(c);
         infos.push(LoopPlayerInfo {
             id,
             name,
@@ -739,6 +1268,7 @@ fn read_infos(c: &mut C) -> Vec<LoopPlayerInfo> {
             clan_tag,
             friends,
             team_index,
+            nation_flag,
         });
     }
     infos

@@ -205,13 +205,18 @@ class StubConfig {
 // same property names off the object.
 let nextInfoNum = 1;
 function makeInfo(name, type, extra = {}) {
+  const clanTag = extra.clanTag ?? null;
   return {
     name,
     playerType: type,
+    // formatPlayerDisplayName (PlayerInfo.ts): a truthy clanTag prepends the
+    // bracketed tag. M1b's toFullUpdate reads displayName, so the plain
+    // object must carry the real ctor's computation.
+    displayName: clanTag ? `[${clanTag}] ${name}` : name,
     clientID: extra.clientID ?? null,
     id: extra.id ?? `P${nextInfoNum++}`,
     isLobbyCreator: extra.isLobbyCreator ?? false,
-    clanTag: extra.clanTag ?? null,
+    clanTag,
     friends: extra.friends ?? [],
     teamIndex: extra.teamIndex ?? null,
     nationFlag: extra.nationFlag ?? null,
@@ -251,8 +256,20 @@ class Rig {
     this.tileUpdates.push(tile, packed);
   }
 
-  // GameImpl.setFallout (TS 230-240).
+  // GameImpl.setFallout (TS 230-240). Once a game exists the REAL method
+  // runs (it owns _territoryVersion and tileUpdatePairs from here on); the
+  // pre-game scenarios keep the mirror with the M1-0 hasOwner pin.
   setFallout(tile, value, out) {
+    if (this.game) {
+      try {
+        this.game.setFallout(tile, value);
+        out.push(0);
+      } catch (e) {
+        out.push(1);
+        pushStr(out, String(e.message));
+      }
+      return;
+    }
     if (value && this.map.hasOwner(tile)) {
       out.push(1);
       pushStr(out, `cannot set fallout, tile ${tile} has owner`);
@@ -270,6 +287,16 @@ class Rig {
 
   // GameImpl.setWater (TS 242-254).
   setWater(tile, out) {
+    if (this.game) {
+      try {
+        this.game.setWater(tile);
+        out.push(0);
+      } catch (e) {
+        out.push(1);
+        pushStr(out, String(e.message));
+      }
+      return;
+    }
     if (!this.map.isLand(tile)) {
       out.push(0);
       return;
@@ -288,10 +315,21 @@ class Rig {
     out.push(0);
   }
 
-  // GameImpl.queueWaterConversion (TS 256-266) — the waterNukes() gate is
-  // real once a game is constructed (M1a); the water-only M1-0 ops have no
-  // Config installed, pinning waterNukes() true.
+  // GameImpl.queueWaterConversion (TS 256-266) — with a game the real
+  // method runs (real waterNukes gate into the game's own water manager);
+  // the water-only M1-0 ops have no Config installed, pinning
+  // waterNukes() true.
   queueWaterConversion(tile, out) {
+    if (this.game) {
+      try {
+        this.game.queueWaterConversion(tile);
+        out.push(0);
+      } catch (e) {
+        out.push(1);
+        pushStr(out, String(e.message));
+      }
+      return;
+    }
     if (!this.map.isLand(tile)) {
       out.push(0);
       return;
@@ -301,10 +339,6 @@ class Rig {
       pushStr(out, `cannot queue water conversion, tile ${tile} has owner`);
       return;
     }
-    if (this.game && !this.game._config.waterNukes()) {
-      this.setFallout(tile, true, out);
-      return;
-    }
     this.water.queueTile(tile);
     out.push(0);
   }
@@ -312,11 +346,24 @@ class Rig {
   waterTick(ticks, out) {
     this.ticks = ticks;
     const changed = this.water.tick(ticks);
-    for (const t of changed) this.recordTileUpdate(t);
+    for (const t of changed) {
+      if (this.game) {
+        // The game owns tileUpdatePairs once constructed (its private
+        // recordTileUpdate is the exact packer the tick loop uses).
+        this.game.recordTileUpdate(t);
+      } else {
+        this.recordTileUpdate(t);
+      }
+    }
     out.push(0, changed.length, ...changed);
   }
 
   drain(out) {
+    if (this.game) {
+      const r = this.game.drainPackedTileUpdates();
+      out.push(0, r.length, ...r);
+      return;
+    }
     out.push(0, this.tileUpdates.length, ...this.tileUpdates);
     this.tileUpdates = [];
   }
@@ -326,7 +373,7 @@ class Rig {
     const n = m.width() * m.height();
     out.push(
       0,
-      this.territoryVersion,
+      this.game ? this.game._territoryVersion : this.territoryVersion,
       this.ticks,
       m.numLandTiles(),
       m.waterVersion(),
@@ -356,6 +403,11 @@ class Rig {
         new StubConfig(cfgObj),
         undefined,
       );
+      // The ctor builds its own WaterManager; from here on every water op
+      // must flow through the game's instance (the pre-game one would keep
+      // its own queue/graph and diverge from executeNextTick's internal
+      // `this._waterManager.tick`).
+      this.water = this.game._waterManager;
       out.push(0);
     } catch (e) {
       // stderr only — stdout must stay parseable for the vector emitter.
@@ -398,6 +450,106 @@ class Rig {
       out.push(p._pseudo_random.next());
     }
   }
+
+  // ---- M1b: the real executeNextTick loop + its setup/observation ops -----
+
+  // GameImpl.executeNextTick (TS 488-546) — full real path: fresh
+  // createGameUpdatesMap, tileUpdatePairs reset, empty execs/unInitExecs,
+  // per-player recordTickSample + toUpdate, %10 Hash update, real
+  // waterManager.tick flush, _ticks++. The updates map is pinned as JSON —
+  // the same serialization the worker channel would carry (bigint fields
+  // replaced via Number(), because JSON.stringify throws on bigint; every
+  // other value is already plain JSON material). Payload:
+  // [0, ticksAfter, gameHash, updatesJSON(encS)] — gameHash recomputes
+  // 1 + Σ p.hash() post-tick as a cross-check of the Hash update inside the
+  // JSON (identical state: nothing mutates between the update and the recompute).
+  executeNextTick(out) {
+    const g = this.game;
+    const updates = g.executeNextTick();
+    this.ticks = g._ticks;
+    let h = 1;
+    for (const p of g._players.values()) h += p.hash();
+    out.push(0, g._ticks, h);
+    pushStr(
+      out,
+      JSON.stringify(updates, (k, v) =>
+        typeof v === "bigint" ? Number(v) : v,
+      ),
+    );
+  }
+
+  // StatsImpl.data snapshot (op 10): the clientID-keyed insertion-ordered
+  // object, with optional-tag encoding for the three fields recordTickSample
+  // touches (tiles triple, peakTroops, alliances array). recordTickSample
+  // skips clientID-less players (bots/nations) and unspawned/dead players,
+  // so entries exist only for sampled humans.
+  statsSnapshot(out) {
+    const data = this.game._stats.data;
+    out.push(0);
+    out.push(Object.keys(data).length);
+    for (const cid of Object.keys(data)) {
+      const ps = data[cid];
+      pushStr(out, cid);
+      if (ps.tiles === undefined) out.push(-1);
+      else {
+        out.push(-2, ps.tiles.length);
+        for (const t of ps.tiles) out.push(Number(t));
+      }
+      if (ps.peakTroops === undefined) out.push(-1);
+      else out.push(-2, Number(ps.peakTroops));
+      if (ps.alliances === undefined) out.push(-1);
+      else {
+        out.push(-2, ps.alliances.length);
+        for (const a of ps.alliances) out.push(Number(a));
+      }
+    }
+  }
+
+  // PlayerImpl.setSpawnTile (TS 726-728): flips hasSpawned and makes the
+  // next toUpdate diff carry spawnTile. pidx indexes _playersBySmallID.
+  setSpawnTile(pidx, tile, out) {
+    this.game._playersBySmallID[pidx].setSpawnTile(tile);
+    out.push(0);
+  }
+
+  // PlayerImpl.addTroops (TS 1345-1351): fractional amounts floor via
+  // toInt into the bigint troops.
+  addTroops(pidx, amount, out) {
+    this.game._playersBySmallID[pidx].addTroops(amount);
+    out.push(0);
+  }
+
+  // GameImpl.conquer (TS 761-783) — water / impassable throw paths included.
+  conquer(pidx, tile, out) {
+    try {
+      this.game.conquer(this.game._playersBySmallID[pidx], tile);
+      out.push(0);
+    } catch (e) {
+      out.push(1);
+      pushStr(out, String(e.message));
+    }
+  }
+
+  // GameImpl.drainPackedPlayerUpdates / drainPackedAttackUpdates
+  // (TS 567-581): null when nothing accumulated (encoded [0, -1]), else
+  // [0, len, ..values]. Successive drains must see null (the drain clears).
+  drainPQ(out) {
+    const r = this.game.drainPackedPlayerUpdates();
+    if (r === null) {
+      out.push(0, -1);
+    } else {
+      out.push(0, r.length, ...r);
+    }
+  }
+
+  drainAQ(out) {
+    const r = this.game.drainPackedAttackUpdates();
+    if (r === null) {
+      out.push(0, -1);
+    } else {
+      out.push(0, r.length, ...r);
+    }
+  }
 }
 
 // Construct op args: [w, h, numLand, miniW, miniH, miniNumLand, len, ..bytes, len, ..mini]
@@ -433,6 +585,14 @@ const K = {
   DIGEST: 6,
   CONSTRUCT_GAME: 7,
   SNAPSHOT: 8,
+  // M1b: the real executeNextTick loop + its setup/observation ops.
+  EXECUTE_NEXT_TICK: 9,
+  STATS_SNAPSHOT: 10,
+  SET_SPAWN_TILE: 11,
+  ADD_TROOPS: 12,
+  CONQUER: 13,
+  DRAIN_PQ: 14,
+  DRAIN_AQ: 15,
 };
 
 // --------------------------------------------------- construct_game encoding
@@ -462,6 +622,11 @@ function encPlayer(p, out) {
   for (const f of p.friends) pushStr(out, f);
   if (p.teamIndex === null) out.push(-1);
   else out.push(p.teamIndex);
+  if (p.nationFlag === null) out.push(-1);
+  else {
+    out.push(-2);
+    pushStr(out, p.nationFlag);
+  }
 }
 
 // construct_game args (op 7): the op-0 terrain prefix, then the Config
@@ -828,6 +993,188 @@ const scenarios = [];
   scenarios.push({ name: "m1a_game_water_interleave", ops });
 }
 
+// ---- M1b: the real executeNextTick loop + player updates + stats ---------
+
+// 16. Unspawned FFA solo over the %10 hash boundary: every tick emits a full
+//     PlayerUpdate on the first call and null diffs after (nothing changes
+//     for a troopless, tileless human), Hash updates at ticks 0 and 10, the
+//     recordTickSample gate stays closed (unspawned), and all three drains
+//     come back empty/null.
+{
+  const ops = [
+    gameOp({
+      mode: MODE.FFA,
+      pt: { tag: PT_TAG.NUM, v: 0 },
+      humans: [makeInfo("Alice", "HUMAN", { clientID: "c1" })],
+    }),
+    ...Array.from({ length: 11 }, () => op(K.EXECUTE_NEXT_TICK)),
+    op(K.DRAIN),
+    op(K.DRAIN_PQ),
+    op(K.DRAIN_AQ),
+    op(K.STATS_SNAPSHOT),
+    op(K.DIGEST),
+  ];
+  scenarios.push({ name: "m1b_single_unspawned_11t", ops });
+}
+
+// 17. FFA five-way (humans + bot + nations) over 35 ticks: per-player full
+//     → null-diff cadence across four hash boundaries (0/10/20/30), with
+//     startManpower differences (HUMAN 25000, BOT 10000, NATION 18750 under
+//     Medium) visible in the full updates and the game hash.
+{
+  const ops = [
+    gameOp({
+      mode: MODE.FFA,
+      pt: { tag: PT_TAG.NUM, v: 0 },
+      difficulty: DIFF.MEDIUM,
+      humans: [
+        makeInfo("Alice", "HUMAN", {
+          clientID: "c1",
+          isLobbyCreator: true,
+          clanTag: "AAA",
+        }),
+        makeInfo("Bob", "HUMAN", { clientID: "c2", friends: ["c9"] }),
+        makeInfo("Bot 1", "BOT"),
+      ],
+      nations: [
+        makeInfo("Nation A", "NATION", { id: "nation-a" }),
+        makeInfo("Nation B", "NATION", { id: "nation-b" }),
+      ],
+    }),
+    ...Array.from({ length: 35 }, () => op(K.EXECUTE_NEXT_TICK)),
+    op(K.DRAIN),
+    op(K.DRAIN_PQ),
+    op(K.DRAIN_AQ),
+    op(K.STATS_SNAPSHOT),
+    op(K.DIGEST),
+  ];
+  scenarios.push({ name: "m1b_mixed_ffa_35t", ops });
+}
+
+// 18. Spawn midstream: two pre-spawn ticks, then setSpawnTile + three
+//     conquers (two tiles for Alice, one for Bob), a mid-scenario tile
+//     drain (executeNextTick resets tileUpdatePairs at tick start, so the
+//     conquer pairs must be drained before the next tick), the tick that
+//     diffs isAlive/hasSpawned/spawnTile and flushes tiles quints, a
+//     fractional addTroops whose quint-only tick follows, then a null
+//     diff tick, the stats snapshot (peakTroops moved) and final drains.
+{
+  const ops = [
+    gameOp({
+      mode: MODE.FFA,
+      pt: { tag: PT_TAG.NUM, v: 0 },
+      humans: [
+        makeInfo("Alice", "HUMAN", { clientID: "c1" }),
+        makeInfo("Bob", "HUMAN", { clientID: "c2" }),
+        makeInfo("Bot 1", "BOT"),
+      ],
+    }),
+    op(K.EXECUTE_NEXT_TICK),
+    op(K.EXECUTE_NEXT_TICK),
+    op(K.SET_SPAWN_TILE, [0, P.landA]),
+    op(K.CONQUER, [0, P.landA]),
+    op(K.CONQUER, [0, P.landB]),
+    op(K.CONQUER, [1, P.landC]),
+    op(K.DRAIN),
+    op(K.EXECUTE_NEXT_TICK),
+    op(K.DRAIN_PQ),
+    op(K.DRAIN_PQ),
+    op(K.ADD_TROOPS, [0, 1234.7]),
+    op(K.EXECUTE_NEXT_TICK),
+    op(K.DRAIN_PQ),
+    op(K.EXECUTE_NEXT_TICK),
+    op(K.STATS_SNAPSHOT),
+    op(K.DRAIN),
+    op(K.DRAIN_AQ),
+    op(K.DIGEST),
+  ];
+  scenarios.push({ name: "m1b_spawn_midstream", ops });
+}
+
+// 19. Real water flush inside executeNextTick: queued conversions with
+//     waterNukes=true are flushed by the game's own waterManager.tick and
+//     land in the tick's tileUpdatePairs (recordTileUpdate at TS 541-543).
+//     Seven ticks straddle the queue-flush boundary; the drain after the
+//     last tick must be empty (tick-start reset + in-tick consumption).
+{
+  const ops = [
+    gameOp({
+      mode: MODE.FFA,
+      pt: { tag: PT_TAG.NUM, v: 0 },
+      waterNukes: 1,
+      humans: [
+        makeInfo("Alice", "HUMAN", { clientID: "c1" }),
+        makeInfo("Bob", "HUMAN", { clientID: "c2" }),
+      ],
+    }),
+    op(K.QUEUE_WATER, [P.landA]),
+    op(K.QUEUE_WATER, [P.landB]),
+    ...Array.from({ length: 7 }, () => op(K.EXECUTE_NEXT_TICK)),
+    op(K.DRAIN),
+    op(K.DRAIN_PQ),
+    op(K.DIGEST),
+  ];
+  scenarios.push({ name: "m1b_water_flush_game", ops });
+}
+
+// 20. conquer throw paths: water and impassable terrain reject with the
+//     exact error strings, the land conquest succeeds; the player is alive
+//     but hasSpawned stays false (no setSpawnTile), so recordTickSample
+//     never fires and the stats snapshot stays empty while the full update
+//     already carries tilesOwned=1.
+{
+  const ops = [
+    gameOp({
+      mode: MODE.FFA,
+      pt: { tag: PT_TAG.NUM, v: 0 },
+      humans: [makeInfo("Alice", "HUMAN", { clientID: "c1" })],
+    }),
+    op(K.CONQUER, [0, P.oceanA]),
+    op(K.CONQUER, [0, P.impassableA]),
+    op(K.CONQUER, [0, P.landA]),
+    op(K.DRAIN),
+    op(K.EXECUTE_NEXT_TICK),
+    op(K.EXECUTE_NEXT_TICK),
+    op(K.DRAIN_PQ),
+    op(K.STATS_SNAPSHOT),
+    op(K.DIGEST),
+  ];
+  scenarios.push({ name: "m1b_conquer_throws", ops });
+}
+
+// 21. Team-mode JSON shape: eight players across two numeric teams exercise
+//     non-null `team` in the full updates (declaration-order key set with
+//     team present, unlike the FFA scenarios), clan-tagged displayName,
+//     pinned/friend/clan team assignment riding into the player loop, plus
+//     spawn + conquer-driven diffs and the sampled-stats snapshot.
+{
+  const ops = [
+    gameOp({
+      mode: MODE.TEAM,
+      pt: { tag: PT_TAG.NUM, v: 2 },
+      humans: [
+        makeInfo("P1", "HUMAN", { clientID: "c1", clanTag: "AAA" }),
+        makeInfo("P2", "HUMAN", { clientID: "c2", clanTag: "AAA" }),
+        makeInfo("P3", "HUMAN", { clientID: "c3", friends: ["c4"] }),
+        makeInfo("P4", "HUMAN", { clientID: "c4", friends: ["c3"] }),
+        makeInfo("P5", "HUMAN", { clientID: "c5", teamIndex: 1 }),
+        makeInfo("P6", "HUMAN", { clientID: "c6" }),
+        makeInfo("Bot 1", "BOT"),
+        makeInfo("Bot 2", "BOT"),
+      ],
+    }),
+    op(K.SET_SPAWN_TILE, [0, P.landA]),
+    op(K.CONQUER, [0, P.landA]),
+    op(K.CONQUER, [1, P.landC]),
+    ...Array.from({ length: 3 }, () => op(K.EXECUTE_NEXT_TICK)),
+    op(K.DRAIN),
+    op(K.DRAIN_PQ),
+    op(K.STATS_SNAPSHOT),
+    op(K.DIGEST),
+  ];
+  scenarios.push({ name: "m1b_team_spawn_json", ops });
+}
+
 // -------------------------------------------------------------- TS runner
 
 function runScenario(sc) {
@@ -862,6 +1209,27 @@ function runScenario(sc) {
         break;
       case K.DIGEST:
         rig.digest(out);
+        break;
+      case K.EXECUTE_NEXT_TICK:
+        rig.executeNextTick(out);
+        break;
+      case K.STATS_SNAPSHOT:
+        rig.statsSnapshot(out);
+        break;
+      case K.SET_SPAWN_TILE:
+        rig.setSpawnTile(step.args[0], step.args[1], out);
+        break;
+      case K.ADD_TROOPS:
+        rig.addTroops(step.args[0], step.args[1], out);
+        break;
+      case K.CONQUER:
+        rig.conquer(step.args[0], step.args[1], out);
+        break;
+      case K.DRAIN_PQ:
+        rig.drainPQ(out);
+        break;
+      case K.DRAIN_AQ:
+        rig.drainAQ(out);
         break;
       default:
         throw new Error(`unknown kind ${step.kind}`);

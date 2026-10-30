@@ -182,9 +182,10 @@ pub struct PlayerStats {
     bombs: Option<ObjArrays>,
     gold: Option<Vec<i64>>,
     units: Option<ObjArrays>,
-    tiles: Option<Vec<i64>>,
-    alliances: Option<Vec<i64>>,
-    peak_troops: Option<i64>,
+    /// `pub(crate)` for the game_loop rig's `StatsImpl.data` snapshot (op 10).
+    pub(crate) tiles: Option<Vec<i64>>,
+    pub(crate) alliances: Option<Vec<i64>>,
+    pub(crate) peak_troops: Option<i64>,
 }
 
 impl PlayerStats {

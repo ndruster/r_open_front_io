@@ -305,6 +305,7 @@ use crate::game_update_utils::{
     ATTACK_DELTA_INCOMING, ATTACK_DELTA_OUTGOING,
 };
 use crate::game_map::GameMap;
+use crate::pseudo_random::PseudoRandom;
 use crate::js_json::{push_str, push_val, read_str, read_val, val_field, JsVal};
 use crate::spatial_query::SpatialQuery;
 use crate::tile_set::TileSet;
@@ -593,6 +594,19 @@ fn mid_property(mid: u8) -> &'static str {
         115 => "toUpdate",
         116 => "troops",
         117 => "retreating",
+        // G3c5: build / upgrade / spawn family.
+        118 => "buildUnit",
+        119 => "findUnitToUpgrade",
+        120 => "canUpgradeUnit",
+        121 => "upgradeUnit",
+        122 => "buildableUnits",
+        123 => "canBuild",
+        124 => "nukeSpawn",
+        125 => "portSpawn",
+        126 => "warshipSpawn",
+        127 => "landBasedUnitSpawn",
+        128 => "landBasedStructureSpawn",
+        129 => "tradeShipSpawn",
         // G3c6: the remaining PlayerImpl surface.
         130 => "sharesBorderWith",
         131 => "nearby",
@@ -601,6 +615,18 @@ fn mid_property(mid: u8) -> &'static str {
         134 => "captureUnit",
         135 => "canAttack",
         136 => "bestTransportShipSpawn",
+        // M1p: createAttack + the private helpers (the recorder reaches them
+        // via bracket access, so the property name is the method name).
+        137 => "createAttack",
+        138 => "canSpawnUnitType",
+        139 => "validStructureSpawnTiles",
+        140 => "canBuildUnitType",
+        141 => "canUpgradeUnitType",
+        142 => "isUnitValidToUpgrade",
+        143 => "findExistingUnitToUpgrade",
+        144 => "relationFromValue",
+        145 => "computeNearby",
+        146 => "shoreReachableNeighbors",
         _ => "unknown",
     }
 }
@@ -919,6 +945,11 @@ struct AttackMock {
     ret: bool,
 }
 
+/// M1p: the `tgt` slot for a TerraNullius target (op 137 `createAttack` with
+/// the `-1` token) — `TerraNulliusImpl.smallID()` is the constant 0 and no
+/// scripted token can ever reach `usize::MAX`.
+const TN_TOK: usize = usize::MAX;
+
 /// One `embargoes` entry (PlayerImpl.ts:1225-1229 key order); the map is
 /// keyed by `other.id()` (a JsVal — mock pids cross as `Num`) and keeps JS
 /// insertion order.
@@ -1202,6 +1233,10 @@ pub struct PlayerHarness {
     p: Player,
     players: Vec<PlPlayer>,
     self_tok: Option<usize>,
+    /// M1p: the ctor's `new PseudoRandom(simpleHash(playerInfo.id))` —
+    /// `None` until the ctor's Ok branch seeds it (op 137 `createAttack`
+    /// is the only reader).
+    prng: Option<PseudoRandom>,
     sg: Vec<f64>,
     sg_i: usize,
     ticks: Vec<f64>,
@@ -2686,14 +2721,11 @@ impl PlayerHarness {
         false
     }
 
-    /// `nearby()` (587-606) + `computeNearby()` (608-632) +
-    /// `shoreReachableNeighbors()` (637-677), recomputed each call — the
-    /// `(territoryVersion, waterVersion)` memo is observation-equivalent (a
-    /// hit returns `result.slice()`, the same contents and order a recompute
-    /// produces). Returns the neighbour tokens: `-1` for TerraNullius (and any
-    /// owner pid with no matching mock, mirroring `playerBySmallID` yielding
-    /// `undefined`), else the mock token.
-    fn nearby(&mut self) -> Vec<f64> {
+    /// `computeNearby()` (608-632) — the direct-neighbours loop over
+    /// `borderTiles()`, then `shoreReachableNeighbors()` merged into the same
+    /// set (a JS Set dedupes by identity, so first-encounter order wins).
+    /// Returns owner identities in encounter order.
+    fn compute_nearby(&mut self) -> Vec<OwnerRef> {
         let small_id = self.p.small_id;
         let mut ns: Vec<OwnerRef> = Vec::new();
         let push = |ns: &mut Vec<OwnerRef>, owner: f64| {
@@ -2707,7 +2739,7 @@ impl PlayerHarness {
             }
         };
 
-        // computeNearby: the direct neighbours loop (N/S/W/E per border tile).
+        // The direct neighbours loop (N/S/W/E per border tile).
         let borders = self.border_vec();
         {
             let map = self.map();
@@ -2726,8 +2758,31 @@ impl PlayerHarness {
             }
         }
 
-        // shoreReachableNeighbors: every 10th shore border tile, 5 tiles out
-        // in each cardinal direction that immediately enters water.
+        for r in self.shore_reachable_neighbors() {
+            if !ns.contains(&r) {
+                ns.push(r);
+            }
+        }
+        ns
+    }
+
+    /// `shoreReachableNeighbors()` (637-677): every 10th shore border tile,
+    /// 5 tiles out in each cardinal direction that immediately enters water.
+    /// Owner identities in first-encounter order.
+    fn shore_reachable_neighbors(&mut self) -> Vec<OwnerRef> {
+        let small_id = self.p.small_id;
+        let mut ns: Vec<OwnerRef> = Vec::new();
+        let push = |ns: &mut Vec<OwnerRef>, owner: f64| {
+            let r = if owner == 0.0 {
+                OwnerRef::TN
+            } else {
+                OwnerRef::Mock(owner)
+            };
+            if !ns.contains(&r) {
+                ns.push(r);
+            }
+        };
+
         let borders = self.border_vec();
         {
             let map = self.map();
@@ -2770,7 +2825,13 @@ impl PlayerHarness {
                 }
             }
         }
+        ns
+    }
 
+    /// Owner identities → neighbour tokens (`-1` for TerraNullius and any
+    /// owner pid with no matching mock, mirroring `playerBySmallID` yielding
+    /// `undefined`; else the mock token).
+    fn map_owner_tokens(&self, ns: &[OwnerRef]) -> Vec<f64> {
         ns.iter()
             .map(|r| match r {
                 OwnerRef::Mock(pid) => self.owner_tok(*pid).map_or(-1.0, |t| t as f64),
@@ -2778,6 +2839,14 @@ impl PlayerHarness {
                 OwnerRef::SelfP => self.self_tok.map_or(-1.0, |t| t as f64),
             })
             .collect()
+    }
+
+    /// `nearby()` (587-606): the `(territoryVersion, waterVersion)` memo is
+    /// observation-equivalent (a hit returns `result.slice()`, the same
+    /// contents and order a recompute produces) — recomputed each call.
+    fn nearby(&mut self) -> Vec<f64> {
+        let ns = self.compute_nearby();
+        self.map_owner_tokens(&ns)
     }
 
     /// `orderRetreat(id)` (688-695): the `_outgoingAttacks` lookup by `id()`
@@ -3667,7 +3736,12 @@ impl PlayerHarness {
         a: &AttackMock,
     ) -> Result<(JsVal, AttackUpdate), String> {
         let att = self.other_small_id(a.att)?;
-        let tgt = self.other_small_id(a.tgt)?;
+        // M1p: a TerraNullius target reads `TerraNulliusImpl.smallID()` — 0.
+        let tgt = if a.tgt == TN_TOK {
+            Ok(0.0)
+        } else {
+            self.other_small_id(a.tgt)
+        }?;
         Ok((
             JsVal::Obj(vec![
                 ("attackerID".to_string(), JsVal::Num(att)),
@@ -4479,6 +4553,15 @@ impl PlayerHarness {
                 });
                 match seeded {
                     Ok((b, g)) => {
+                        // `new PseudoRandom(simpleHash(this.playerInfo.id))`:
+                        // simpleHash walks `str.length` — only a string
+                        // iterates; any other non-null id value leaves the
+                        // loop at `i < undefined` and hashes to 0.
+                        let seed = match val_field(&pi, "id") {
+                            Some(JsVal::Str(s)) => crate::util::simple_hash(s),
+                            _ => 0.0,
+                        };
+                        self.prng = Some(PseudoRandom::new(seed));
                         self.p = Player {
                             small_id,
                             player_info: pi,
@@ -5617,6 +5700,162 @@ impl PlayerHarness {
                             Some(t) => push_ok_num(&mut out, t),
                             None => push_ok_bool(&mut out, false),
                         }
+                    }
+                    // ---- M1p: createAttack + the private helpers ----
+                    137 => {
+                        // createAttack(target, troops, sourceTile, border):
+                        // the id comes from `nextID()` (the ctor-seeded
+                        // PseudoRandom); the attack lands in _outgoingAttacks
+                        // and, for a player target, the target's
+                        // _incomingAttacks. The target crosses as a token
+                        // (-1 = TerraNullius). The push happens BEFORE the
+                        // `target.isPlayer()` read — an unknown token still
+                        // leaves the attack in _outgoingAttacks on the throw.
+                        let tgt_raw = c.f();
+                        let troops = c.f();
+                        let _source_tile = c.val();
+                        let _border: Vec<f64> = (0..c.u()).map(|_| c.f()).collect();
+                        let tn = tgt_raw < 0.0;
+                        let tgt_tok = if tn { TN_TOK } else { tgt_raw as usize };
+                        let att = self.self_tok.unwrap_or(0);
+                        let id = self
+                            .prng
+                            .as_mut()
+                            .expect("prng seeded at ctor")
+                            .next_id();
+                        self.p.out_attacks.push(AttackMock {
+                            att,
+                            tgt: tgt_tok,
+                            troops,
+                            id: id.clone(),
+                            ret: false,
+                        });
+                        // A mock target is a plain object: isPlayer()
+                        // succeeds, but its _incomingAttacks is undefined and
+                        // the .push throws. A token with no mock at all
+                        // throws on the isPlayer() read. Either way the
+                        // attack stays in _outgoingAttacks (pushed first)
+                        // and its id still consumed a nextID() draw.
+                        let thrown: Option<&'static str> = if tn {
+                            None
+                        } else if Some(tgt_tok) == self.self_tok {
+                            self.p.in_attacks.push(AttackMock {
+                                att,
+                                tgt: tgt_tok,
+                                troops,
+                                id: id.clone(),
+                                ret: false,
+                            });
+                            None
+                        } else if self.players.get(tgt_tok).is_some() {
+                            Some("Cannot read properties of undefined (reading 'push')")
+                        } else {
+                            Some("Cannot read properties of undefined (reading 'isPlayer')")
+                        };
+                        if let Some(m) = thrown {
+                            push_err(&mut out, m);
+                            let mut full =
+                                Vec::with_capacity(1 + tr.len() + out.len());
+                            full.push(tr.len() as f64);
+                            full.extend(tr.iter().copied());
+                            full.extend(out.iter().copied());
+                            return full;
+                        }
+                        push_ok(&mut out, &JsVal::Str(id));
+                    }
+                    138 => {
+                        // canSpawnUnitType(type, tile, validTiles|null).
+                        let typ = c.s();
+                        let tile = c.f();
+                        let valid = decode_valid_tiles(&c.val());
+                        match self.can_spawn_unit_type(&mut tr, &typ, tile, valid) {
+                            Ok(Some(t)) => push_ok_num(&mut out, t),
+                            Ok(None) => push_ok_bool(&mut out, false),
+                            Err(m) => push_err(&mut out, &m),
+                        }
+                    }
+                    139 => {
+                        // validStructureSpawnTiles(tile).
+                        let tile = c.f();
+                        match self.valid_structure_spawn_tiles(&mut tr, tile) {
+                            Ok(v) => push_ok(
+                                &mut out,
+                                &JsVal::Arr(v.into_iter().map(JsVal::Num).collect()),
+                            ),
+                            Err(m) => push_err(&mut out, &m),
+                        }
+                    }
+                    140 => {
+                        // canBuildUnitType(type, knownCost|null).
+                        let typ = c.s();
+                        let known = match c.val() {
+                            JsVal::Num(n) => Some(n as i64),
+                            _ => None,
+                        };
+                        match self.can_build_unit_type(&mut tr, &typ, known) {
+                            Ok(b) => push_ok_bool(&mut out, b),
+                            Err(m) => push_err(&mut out, &m),
+                        }
+                    }
+                    141 => {
+                        // canUpgradeUnitType(type).
+                        let typ = c.s();
+                        push_ok_bool(&mut out, self.ui_upgradable(&typ));
+                    }
+                    142 => {
+                        // isUnitValidToUpgrade(unit) — an out-of-range index
+                        // throws on the first `unit.isUnderConstruction()`
+                        // read.
+                        let idx = c.u();
+                        if self.p.units.get(idx).is_some() {
+                            push_ok_bool(&mut out, self.is_unit_valid_to_upgrade(idx));
+                        } else {
+                            push_err(
+                                &mut out,
+                                "Cannot read properties of undefined (reading 'isUnderConstruction')",
+                            );
+                        }
+                    }
+                    143 => {
+                        // findExistingUnitToUpgrade(type, tile) — Unit | false
+                        // crosses as `[0, 1, uid]` | `[0, 0]` (the mock's id).
+                        let typ = c.s();
+                        let tile = c.f();
+                        match self.find_existing_unit_to_upgrade(&mut tr, &typ, tile) {
+                            Ok(Some(idx)) => {
+                                out.push(0.0);
+                                out.push(1.0);
+                                out.push(self.p.units[idx].id);
+                            }
+                            Ok(None) => {
+                                out.push(0.0);
+                                out.push(0.0);
+                            }
+                            Err(m) => push_err(&mut out, &m),
+                        }
+                    }
+                    144 => {
+                        // relationFromValue(v).
+                        let v = c.f();
+                        push_ok_num(&mut out, relation_from_value(v));
+                    }
+                    145 => {
+                        // computeNearby().
+                        let ns = self.compute_nearby();
+                        let tokens = self.map_owner_tokens(&ns);
+                        push_ok(
+                            &mut out,
+                            &JsVal::Arr(tokens.into_iter().map(JsVal::Num).collect()),
+                        );
+                    }
+                    146 => {
+                        // shoreReachableNeighbors().
+                        let ns = self.shore_reachable_neighbors();
+                        let tokens = self.map_owner_tokens(&ns);
+                        push_ok(
+                            &mut out,
+                            &JsVal::Arr(tokens.into_iter().map(JsVal::Num).collect()),
+                        );
                     }
                     k => unreachable!("player harness: unknown method id {k}"),
                 }

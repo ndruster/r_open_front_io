@@ -22418,6 +22418,26 @@ function runPL(name, ops) {
         // sharesBorderWith(sid) / captureUnit(idx) / canAttack(tile) /
         // bestTransportShipSpawn(tile)
         args.push(uenc(rest[0]));
+      } else if (mid === 137) {
+        // createAttack(targetTok(-1=TN), troops, sourceTile|null, border[])
+        args.push(uenc(rest[0]), uenc(rest[1]), ...plEnc(rest[2]), uenc(rest[3].length));
+        for (const t of rest[3]) args.push(uenc(t));
+      } else if (mid === 138) {
+        // canSpawnUnitType(type, tile, validTiles|null)
+        args.push(...encS(rest[0]), uenc(rest[1]), ...plEnc(rest[2] ?? null));
+      } else if (mid === 139 || mid === 142 || mid === 144) {
+        // validStructureSpawnTiles(tile) / isUnitValidToUpgrade(idx) /
+        // relationFromValue(v)
+        args.push(uenc(rest[0]));
+      } else if (mid === 140) {
+        // canBuildUnitType(type, knownCost|null)
+        args.push(...encS(rest[0]), ...plEnc(rest.length > 1 ? rest[1] : null));
+      } else if (mid === 141) {
+        // canUpgradeUnitType(type)
+        args.push(...encS(rest[0]));
+      } else if (mid === 143) {
+        // findExistingUnitToUpgrade(type, tile)
+        args.push(...encS(rest[0]), uenc(rest[1]));
       } else {
         for (const x of rest) args.push(...plEnc(x));
       }
@@ -22603,11 +22623,33 @@ function runPL(name, ops) {
           case 134: pl.captureUnit(pl._units[rest[0]]); v = undefined; break;
           case 135: v = pl.canAttack(rest[0]); break;
           case 136: v = pl.bestTransportShipSpawn(rest[0]); break;
+          // ---- M1p: createAttack + the private helpers ----
+          case 137: {
+            // createAttack(target, troops, sourceTile, border) — the target
+            // is a player token (-1 = TerraNullius); the attack crosses via
+            // its id().
+            const tgt = rest[0] < 0 ? new TNI.TerraNulliusImpl() : mocks[rest[0]];
+            v = pl.createAttack(tgt, rest[1], rest[2], new Set(rest[3])).id();
+            break;
+          }
+          case 138: v = pl["canSpawnUnitType"](rest[0], rest[1], rest[2] ?? null); break;
+          case 139: v = pl["validStructureSpawnTiles"](rest[0]); break;
+          case 140: v = pl["canBuildUnitType"](rest[0], rest.length > 1 ? big(rest[1]) : null); break;
+          case 141: v = pl["canUpgradeUnitType"](rest[0]); break;
+          case 142: v = pl["isUnitValidToUpgrade"](pl._units[rest[0]]); break;
+          case 143: {
+            const u4 = pl["findExistingUnitToUpgrade"](rest[0], rest[1]);
+            v = u4 === false ? false : u4.id();
+            break;
+          }
+          case 144: v = pl["relationFromValue"](rest[0]); break;
+          case 145: v = pl["computeNearby"]().map((o) => (gTok.has(o) ? gTok.get(o) : -1)); break;
+          case 146: v = [...pl["shoreReachableNeighbors"]()].map((o) => (gTok.has(o) ? gTok.get(o) : -1)); break;
           default: throw new Error(`pl harness: unknown mid ${mid}`);
         }
         if (mid === 38) r = v === null ? [0, 2] : [0, 7, 2, 3, v.req, 3, v.rec];
         else if (mid === 118) r = [0, 1, v];
-        else if (mid === 119) r = v === false ? [0, 0] : [0, 1, v];
+        else if (mid === 119 || mid === 143) r = v === false ? [0, 0] : [0, 1, v];
         else if (mid === 122) r = [0, ...plEnc(normPU(v))];
         else if (mid === 115) {
           // [0, normPU(v), soLen, ...so, aoLen, ...ao] — the quint/quad
@@ -23489,6 +23531,163 @@ runPL("pl_best_spawn", [
   [1, 136, 5],
   [1, 136, 61],
   [1, 136, 21],
+]);
+
+// ---- M1p: createAttack + the private helpers ------------------------------
+
+// createAttack: the ctor-seeded PseudoRandom nextID ids, the outgoing push,
+// the TerraNullius / mock / self target matrix (only a player target gains an
+// incoming entry — self via the real field), the toUpdate serialization over
+// the created attacks (targetID 0 for TN), the setTroops mutation, and the
+// unknown-token throw AFTER the outgoing push (the attack survives on the
+// throw, then poisons the next toUpdate on `target().smallID()`).
+runPL("pl_create_attack", [
+  [0, plPI({ id: "pa1", name: "attacker", playerType: "HUMAN" }), 60, 100, null, [], [], [],
+    PL_MG({ sg: [0] }),
+    [plP({ pid: 61 })], 1],
+  [1, 137, -1, 100, 5, []],
+  [1, 137, 0, 25, 7, []],
+  [1, 137, 1, 50, null, [1, 2]],
+  [1, 113],
+  [1, 114],
+  [1, 115, 1, 1],
+  [1, 116, 0, 1, 77],
+  [1, 115, 1, 1],
+  [1, 137, 9, 10, null, []],
+  [1, 113],
+  [1, 115, 1, 1],
+]);
+
+// relationFromValue: the four threshold gates and their boundaries (-50 / 0 /
+// 50 exclusive) plus the NaN fall-through to Friendly; computeNearby /
+// shoreReachableNeighbors / nearby over the river map (the shore probe alone
+// reaches the far-bank pid 62, the direct loop only TerraNullius).
+runPL("pl_priv_nearby", [
+  [0, plPI({ id: "pn1", name: "nearbysplit", playerType: "HUMAN" }), 60, 100, null, [],
+    [0, 1, 8, 9, 16, 17, 18, 19, 20, 21, 22, 23], [16, 17, 18, 19, 20, 21, 22, 23],
+    PL_MG({
+      sg: [0],
+      map: {
+        w: 8, h: 8, numLand: 56,
+        terr: terr8([[24, 0x20], [25, 0x20], [26, 0x20], [27, 0x20], [28, 0x20], [29, 0x20], [30, 0x20], [31, 0x20]]),
+        mw: 8, mh: 8, mNumLand: 56,
+        mTerr: terr8([[24, 0x20], [25, 0x20], [26, 0x20], [27, 0x20], [28, 0x20], [29, 0x20], [30, 0x20], [31, 0x20]]),
+        owners: [
+          [0, 60], [1, 60], [2, 60], [3, 60], [4, 60], [5, 60], [6, 60], [7, 60],
+          [8, 60], [9, 60], [10, 60], [11, 60], [12, 60], [13, 60], [14, 60], [15, 60],
+          [32, 61], [33, 61],
+          [56, 62], [57, 62], [58, 62],
+        ],
+      },
+    }),
+    [plP({ pid: 61 }), plP({ pid: 62 })], -1],
+  [1, 146],
+  [1, 145],
+  [1, 131],
+  [1, 144, -51],
+  [1, 144, -50],
+  [1, 144, -0],
+  [1, 144, 0],
+  [1, 144, 50],
+  [1, 144, NaN],
+]);
+
+// canSpawnUnitType: the switch dispatch (the pass-through warhead/shell arms,
+// the land gate on the real map) and the assertNever default arm.
+runPL("pl_priv_spawn_switch", [
+  [0, plPI({ id: "ps1", name: "switch", playerType: "HUMAN" }), 60, 100, null, [], [10], [],
+    PL_MG({
+      sg: [0],
+      map: {
+        w: 8, h: 8, numLand: 63, terr: terr8([[9, 0x20]]),
+        mw: 8, mh: 8, mNumLand: 63, mTerr: terr8([[9, 0x20]]),
+        owners: [[10, 60], [11, 60]],
+      },
+    }),
+    [plP()], -1],
+  [1, 138, "MIRV Warhead", 30, null],
+  [1, 138, "Shell", 31, null],
+  [1, 138, "Train", 10, null],
+  [1, 138, "Train", 9, null],
+  [1, 138, "Attack Plane", 10, null],
+]);
+
+// validStructureSpawnTiles: the owner gate (unowned -> [] before any mg read),
+// the flood + euclidean block filter + stable distance sort over the owned
+// cluster, and the entry-less recompute.
+runPL("pl_priv_struct_tiles", [
+  [0, plPI({ id: "pt1", name: "structtiles", playerType: "HUMAN" }), 60, 100, null, [], [], [],
+    PL_MG({
+      sg: [0],
+      smd: [1, 1],
+      nu: [
+        { tile: 27, radius: 30, types: STRUCT6, entries: [[200, 28, 1]] },
+        { tile: 0, radius: 30, types: STRUCT6, entries: [] },
+      ],
+      map: {
+        w: 8, h: 8, numLand: 64, terr: terr8([]),
+        mw: 8, mh: 8, mNumLand: 64, mTerr: terr8([]),
+        owners: [[0, 60], [1, 60], [8, 60], [9, 60], [27, 60], [28, 60], [35, 60], [36, 60]],
+      },
+    }),
+    [plP()], -1, [],
+    [["City", 200, 60, 1, 0, 1, 0, 28, 0, 77]]],
+  [1, 139, 27],
+  [1, 139, 5],
+  [1, 139, 0],
+]);
+
+// canBuildUnitType (the 148 disabled gate, the 149 probe skipped by a known
+// cost, the gold gate, the MIRV-warhead isAlive exemption), canUpgradeUnitType
+// (the upg table), isUnitValidToUpgrade (the uc / mfd / owner reads and the
+// out-of-range throw) and findExistingUnitToUpgrade (the 145 + 141 probe with
+// the closest-first minimum and the empty miss).
+runPL("pl_priv_helpers", [
+  [0, plPI({ id: "ph1", name: "helpers", playerType: "HUMAN" }), 61, 100000, null, [], [], [],
+    PL_MG({
+      sg: [100000],
+      idis: [0, 0, 0, 1, 0],
+      uicost: [700, 700, 700, 700, 700, 700, 700],
+      upg: [["City", true], ["Warship", false]],
+      smd: [3],
+      nu: [
+        { tile: 20, radius: 3, types: ["City"], entries: [[300, 22, 4], [301, 24, 1], [999, 26, 9]] },
+        { tile: 21, radius: 3, types: ["City"], entries: [] },
+      ],
+    }),
+    [plP()], -1, [],
+    [["City", 300, 61, 1, 0, 1, 0, 22, 0, 50],
+     ["City", 301, 61, 1, 1, 1, 0, 24, 0, 51],
+     ["City", 302, 62, 2, 0, 1, 0, 26, 0, 52],
+     ["Warship", 303, 61, 1, 0, 1, 0, 28, 1, 53]]],
+  [1, 140, "City"],
+  [1, 140, "City", 5],
+  [1, 140, "City", 200000],
+  [1, 140, "Warship", 5],
+  [1, 140, "MIRV Warhead"],
+  [1, 141, "City"],
+  [1, 141, "Warship"],
+  [1, 141, "Battleship"],
+  [1, 142, 0],
+  [1, 142, 1],
+  [1, 142, 2],
+  [1, 142, 3],
+  [1, 142, 9],
+  [1, 143, "City", 20],
+  [1, 143, "City", 21],
+  [1, 143, "City", 20],
+]);
+
+// The MIRV-warhead isAlive exemption on a dead player (startTroops 0): the
+// warhead cost probe passes and the spawn pass-through fires, everything else
+// dies on the aliveness gate.
+runPL("pl_priv_dead", [
+  [0, plPI({ id: "pd1", name: "dead", playerType: "HUMAN" }), 60, 0, null, [], [], [],
+    PL_MG({ sg: [100000], idis: [0, 0], uicost: [700, 700] }),
+    [plP()], -1],
+  [1, 140, "MIRV Warhead"],
+  [1, 140, "City"],
+  [1, 138, "MIRV Warhead", 30, null],
 ]);
 
 // ---- pl_ scenarios end ------------------------------------------------------

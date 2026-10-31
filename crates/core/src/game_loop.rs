@@ -171,6 +171,33 @@ pub struct LoopPlayer {
     /// `lastSentUpdate` — the diffable core of the previous full update
     /// (`None` until the first `toUpdate`).
     last_sent: Option<PuCore>,
+    /// `_outgoingAttacks` — indices into the harness `attacks` table.
+    pub out_attacks: Vec<usize>,
+    /// `_incomingAttacks` — indices into the harness `attacks` table. The
+    /// `attacker().isAlive()` filter applies at emission time (TS
+    /// `incomingAttacks()`), so the raw list outlives its serialized form.
+    pub in_attacks: Vec<usize>,
+}
+
+/// `target.isPlayer()` discriminator for [`LoopAttack`] — TerraNullius is the
+/// shared singleton (`TerraNulliusImpl.ts`, `smallID()` 0).
+enum AttackTarget {
+    Player(usize),
+    TerraNullius,
+}
+
+/// One live `AttackImpl`. Entries are immutable in the M1 domain (no attack
+/// execution: no `setTroops` / `orderRetreat` / `delete`), so the same attack
+/// reachable from two players' lists is one table entry and index-sequence
+/// equality is exactly `attackArrayMembershipEqual`'s value equality
+/// (attackerID / targetID / id / retreating — troops excluded).
+struct LoopAttack {
+    attacker: usize,
+    target: AttackTarget,
+    troops: f64,
+    id: String,
+    /// `_retreating` — never flipped in this domain.
+    retreating: bool,
 }
 
 /// The recorder-side stub-exec spec (M1d): the orchestration is the test
@@ -210,7 +237,7 @@ impl StubExec {
 /// can only ever surface these fields — the diff compares exactly these, in
 /// the `setIfDifferent` order (isAlive 100 / hasSpawned 123 / spawnTile 124),
 /// and the quint compare uses the four stat fields (TS 230-247).
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, PartialEq)]
 struct PuCore {
     is_alive: bool,
     has_spawned: bool,
@@ -219,6 +246,11 @@ struct PuCore {
     gold: f64,
     troops: f64,
     gold_earned: f64,
+    /// The SERIALIZED attack memberships at emission time — outgoing unfiltered,
+    /// incoming already passed through the `attacker().isAlive()` filter (the
+    /// diff and the troop-delta packing both compare these post-filter arrays).
+    out_attacks: Vec<usize>,
+    in_attacks: Vec<usize>,
 }
 
 pub struct GameLoopHarness {
@@ -236,8 +268,14 @@ pub struct GameLoopHarness {
     mp: Vec<MP>,
     /// `playerStatsQuads` — `[smallID, tilesOwned, gold, troops, goldEarned]`.
     player_quads: Vec<f64>,
-    /// `attackTroopsQuads` — always empty in the M1b domain (no attacks).
+    /// `attackTroopsQuads` — `[smallID, direction, index, troops]`. Empty in
+    /// this domain even with live attacks: entries are immutable, so the
+    /// membership-equal delta loops never see a troop change.
     attack_quads: Vec<f64>,
+    /// The live `AttackImpl` table (`GameImpl` holds no such table; attacks
+    /// live on the players' out/in lists — the table is the identity-sharing
+    /// mirror of that).
+    attacks: Vec<LoopAttack>,
     /// `GameImpl.startTick` — `None` is the spawn phase (`inSpawnPhase()`
     /// true); `endSpawnPhase` stamps it with `_ticks` (M1c).
     start_tick: Option<f64>,
@@ -268,6 +306,7 @@ impl Default for GameLoopHarness {
             mp: Vec::new(),
             player_quads: Vec::new(),
             attack_quads: Vec::new(),
+            attacks: Vec::new(),
             start_tick: None,
             last_updates: empty_updates(),
             execs: Vec::new(),
@@ -618,6 +657,7 @@ impl GameLoopHarness {
         self.stats = StatsImpl::default();
         self.player_quads.clear();
         self.attack_quads.clear();
+        self.attacks.clear();
         self.start_tick = None;
         self.last_updates = empty_updates();
         self.execs.clear();
@@ -669,12 +709,56 @@ impl GameLoopHarness {
         simple_hash(&p.info.id) * (p.troops + p.tiles.len() as f64)
     }
 
+    /// One `AttackUpdate` JSON entry (PlayerImpl.ts 330-336 map order:
+    /// attackerID, targetID, troops, id, retreating). TerraNullius targets
+    /// carry `smallID()` 0.
+    fn attack_value(attacks: &[LoopAttack], players: &[LoopPlayer], ai: usize) -> JsonValue {
+        let a = &attacks[ai];
+        let target_id = match a.target {
+            AttackTarget::Player(t) => players[t].small_id,
+            AttackTarget::TerraNullius => 0.0,
+        };
+        JsonValue::Obj(vec![
+            (
+                "attackerID".to_string(),
+                JsonValue::Num(players[a.attacker].small_id),
+            ),
+            ("targetID".to_string(), JsonValue::Num(target_id)),
+            ("troops".to_string(), JsonValue::Num(a.troops)),
+            ("id".to_string(), JsonValue::Str(a.id.clone())),
+            ("retreating".to_string(), JsonValue::Bool(a.retreating)),
+        ])
+    }
+
+    /// The `outgoingAttacks` / `incomingAttacks` arrays of `toFullUpdate`
+    /// (PlayerImpl.ts 326-353): outgoing maps the raw list unfiltered,
+    /// incoming applies the `attacker().isAlive()` filter — a non-empty raw
+    /// list can serialize empty (the empty result equals the shared empty
+    /// singleton TS reuses).
+    fn attack_updates_value(
+        attacks: &[LoopAttack],
+        players: &[LoopPlayer],
+        idxs: &[usize],
+        filter_alive: bool,
+    ) -> JsonValue {
+        let mut arr = Vec::new();
+        for &ai in idxs {
+            if filter_alive && players[attacks[ai].attacker].tiles.is_empty() {
+                continue;
+            }
+            arr.push(Self::attack_value(attacks, players, ai));
+        }
+        JsonValue::Arr(arr)
+    }
+
     /// `PlayerImpl.toFullUpdate` (TS 267-401) as a `JsonValue` tree — the 40
     /// keys in TS declaration order, with `team` / `spawnTile` as `Undef`
     /// (JSON-stringify omits them) exactly when TS holds `undefined`. Every
-    /// collection is empty in the M1b domain (no alliances / attacks /
-    /// embargoes / units / execs); `embargoes` is the Set → `"{}"` shape.
-    fn pu_full_value(p: &LoopPlayer) -> JsonValue {
+    /// collection except the attack arrays is empty in the M1 domain (no
+    /// alliances / embargoes / units / execs); `embargoes` is the Set → `"{}"`
+    /// shape. Outgoing attacks serialize the raw list unfiltered; incoming
+    /// applies the `attacker().isAlive()` filter (PlayerImpl.ts 326-353).
+    fn pu_full_value(&self, p: &LoopPlayer) -> JsonValue {
         let opt_str_v = |s: &Option<String>| match s {
             Some(v) => JsonValue::Str(v.clone()),
             None => JsonValue::Null,
@@ -739,8 +823,14 @@ impl GameLoopHarness {
             ),
             ("targets".to_string(), JsonValue::Arr(Vec::new())),
             ("outgoingEmojis".to_string(), JsonValue::Arr(Vec::new())),
-            ("outgoingAttacks".to_string(), JsonValue::Arr(Vec::new())),
-            ("incomingAttacks".to_string(), JsonValue::Arr(Vec::new())),
+            (
+                "outgoingAttacks".to_string(),
+                Self::attack_updates_value(&self.attacks, &self.players, &p.out_attacks, false),
+            ),
+            (
+                "incomingAttacks".to_string(),
+                Self::attack_updates_value(&self.attacks, &self.players, &p.in_attacks, true),
+            ),
             (
                 "outgoingAllianceRequests".to_string(),
                 JsonValue::Arr(Vec::new()),
@@ -767,10 +857,14 @@ impl GameLoopHarness {
     }
 
     /// `diffPlayerUpdate` (GameUpdateUtils.ts 79-162) restricted to the
-    /// M1b-reachable mutable fields, in `setIfDifferent` order: `{"type":2,
+    /// M1-reachable mutable fields, in `setIfDifferent` order: `{"type":2,
     /// "id":..}` plus the changed ones (spawnTile always numeric when it
-    /// changes — the None→Some transition; Some→None never happens).
-    fn pu_diff_value(p: &LoopPlayer, prev: &PuCore, next: &PuCore) -> Option<JsonValue> {
+    /// changes — the None→Some transition; Some→None never happens; the
+    /// attack arrays follow spawnTile in that order). Attack arrays resent in
+    /// full when `attackArrayMembershipEqual` fails — the PuCore lists are
+    /// the serialized (post-filter) memberships, and entry immutability makes
+    /// index-sequence equality that value equality.
+    fn pu_diff_value(&self, p: &LoopPlayer, prev: &PuCore, next: &PuCore) -> Option<JsonValue> {
         let mut changed: Vec<(String, JsonValue)> = Vec::new();
         if prev.is_alive != next.is_alive {
             changed.push(("isAlive".to_string(), JsonValue::Bool(next.is_alive)));
@@ -788,6 +882,18 @@ impl GameLoopHarness {
                     Some(t) => JsonValue::Num(t),
                     None => JsonValue::Undef,
                 },
+            ));
+        }
+        if prev.out_attacks != next.out_attacks {
+            changed.push((
+                "outgoingAttacks".to_string(),
+                Self::attack_updates_value(&self.attacks, &self.players, &next.out_attacks, false),
+            ));
+        }
+        if prev.in_attacks != next.in_attacks {
+            changed.push((
+                "incomingAttacks".to_string(),
+                Self::attack_updates_value(&self.attacks, &self.players, &next.in_attacks, true),
             ));
         }
         if changed.is_empty() {
@@ -892,7 +998,10 @@ impl GameLoopHarness {
                 );
             }
             // TS 226-264 `toUpdate`: full on the first call, then quints +
-            // attack deltas + field diff.
+            // attack deltas + field diff. The PuCore memberships are the
+            // SERIALIZED arrays: outgoing raw, incoming passed through the
+            // `attacker().isAlive()` filter (GameUpdateUtils.ts 251-268
+            // compares those post-filter arrays).
             let core = PuCore {
                 is_alive: alive,
                 has_spawned: spawned,
@@ -901,10 +1010,17 @@ impl GameLoopHarness {
                 gold,
                 troops,
                 gold_earned: 0.0,
+                out_attacks: self.players[i].out_attacks.clone(),
+                in_attacks: self.players[i]
+                    .in_attacks
+                    .iter()
+                    .copied()
+                    .filter(|&ai| !self.players[self.attacks[ai].attacker].tiles.is_empty())
+                    .collect(),
             };
-            let prev = self.players[i].last_sent.replace(core);
+            let prev = self.players[i].last_sent.replace(core.clone());
             let pu = match prev {
-                None => Self::pu_full_value(&self.players[i]),
+                None => self.pu_full_value(&self.players[i]),
                 Some(prev) => {
                     if prev.tiles_owned != core.tiles_owned
                         || prev.gold != core.gold
@@ -919,10 +1035,32 @@ impl GameLoopHarness {
                             core.gold_earned,
                         ]);
                     }
-                    // packAttackTroopDeltas: both sides are the shared empty
-                    // singleton every tick (no attack ops), so the refid
-                    // equality early-returns — no quads, no updates.
-                    match Self::pu_diff_value(&self.players[i], &prev, &core) {
+                    // packAttackTroopDeltas (GameUpdateUtils.ts 289-303):
+                    // quads only when membership is equal — an unequal
+                    // membership resends the whole array through the diff
+                    // instead (and invalidates the indexes). The `prev ===
+                    // next` refid fast path (the shared empty singleton) is
+                    // subsumed by the zero-length loop. Direction lanes:
+                    // ATTACK_DELTA_OUTGOING 0 / INCOMING 1.
+                    if prev.out_attacks == core.out_attacks {
+                        for (k, &ai) in core.out_attacks.iter().enumerate() {
+                            let troops = self.attacks[ai].troops;
+                            if self.attacks[prev.out_attacks[k]].troops != troops {
+                                self.attack_quads
+                                    .extend_from_slice(&[small_id, 0.0, k as f64, troops]);
+                            }
+                        }
+                    }
+                    if prev.in_attacks == core.in_attacks {
+                        for (k, &ai) in core.in_attacks.iter().enumerate() {
+                            let troops = self.attacks[ai].troops;
+                            if self.attacks[prev.in_attacks[k]].troops != troops {
+                                self.attack_quads
+                                    .extend_from_slice(&[small_id, 1.0, k as f64, troops]);
+                            }
+                        }
+                    }
+                    match self.pu_diff_value(&self.players[i], &prev, &core) {
                         Some(v) => v,
                         None => continue, // diffPlayerUpdate null → no addUpdate
                     }
@@ -1207,6 +1345,42 @@ impl GameLoopHarness {
         }
     }
 
+    /// `PlayerImpl.createAttack` (TS 1855-1875) as op 20: the id is
+    /// `nextID()` off the ATTACKER's own pseudo-random (one draw), the attack
+    /// joins the attacker's outgoing list and — player targets only — the
+    /// target's incoming list. `target_idx < 0` is TerraNullius;
+    /// `sourceTile`/`border` are the inert M1 params (null / empty — nothing
+    /// in this domain reads either).
+    fn op_player_create_attack(
+        &mut self,
+        pidx: f64,
+        target_idx: f64,
+        troops: f64,
+        o: &mut Vec<f64>,
+    ) {
+        let attacker = pidx as usize;
+        let id = self.players[attacker].rng.next_id();
+        self.players[attacker].rng_draws += 1;
+        let target_player = (target_idx >= 0.0).then_some(target_idx as usize);
+        let target = match target_player {
+            Some(t) => AttackTarget::Player(t),
+            None => AttackTarget::TerraNullius,
+        };
+        let ai = self.attacks.len();
+        self.attacks.push(LoopAttack {
+            attacker,
+            target,
+            troops,
+            id,
+            retreating: false,
+        });
+        self.players[attacker].out_attacks.push(ai);
+        if let Some(t) = target_player {
+            self.players[t].in_attacks.push(ai);
+        }
+        o.push(0.0);
+    }
+
     pub fn run_op(&mut self, kind: u8, args: &[f64]) -> Vec<f64> {
         let mut o: Vec<f64> = Vec::new();
         match kind {
@@ -1262,6 +1436,13 @@ impl GameLoopHarness {
             17 => self.op_probe_spawn(&mut o),
             18 => self.op_add_exec(args, &mut o),
             19 => self.op_exec_info(&mut o),
+            20 => {
+                let mut c = C { a: args, i: 0 };
+                let pidx = c.f();
+                let tidx = c.f();
+                let troops = c.f();
+                self.op_player_create_attack(pidx, tidx, troops, &mut o);
+            }
             _ => panic!("gl: unknown kind {kind}"),
         }
         o
@@ -1338,6 +1519,8 @@ fn add_loop_player(
         tile_change_version: 0.0,
         last_tile_change: 0.0,
         last_sent: None,
+        out_attacks: Vec::new(),
+        in_attacks: Vec::new(),
     });
 }
 

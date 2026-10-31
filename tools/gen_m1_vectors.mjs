@@ -667,6 +667,24 @@ class Rig {
     for (const e of g.execs) out.push(e.id, e.dead ? 1 : 0);
     for (const e of g.unInitExecs) out.push(e.id, e.dead ? 1 : 0);
   }
+
+  // ---- M1p: PlayerImpl.createAttack on the live tick loop ------------------
+
+  // PlayerImpl.createAttack (TS 1855-1875): the id comes from the attacker's
+  // own pseudo-random nextID() (one next() draw), the attack joins the
+  // attacker's _outgoingAttacks and — player targets only — the target's
+  // _incomingAttacks. Minimal M1 params: sourceTile null, empty border
+  // (nothing in the M1 domain reads either). targetIdx -1 is TerraNullius
+  // (GameImpl.terraNullius()). Payload: [0].
+  playerCreateAttack(pidx, targetIdx, troops, out) {
+    const attacker = this.game._playersBySmallID[pidx];
+    const target =
+      targetIdx < 0
+        ? this.game.terraNullius()
+        : this.game._playersBySmallID[targetIdx];
+    attacker.createAttack(target, troops, null, new Set());
+    out.push(0);
+  }
 }
 
 // Construct op args: [w, h, numLand, miniW, miniH, miniNumLand, len, ..bytes, len, ..mini]
@@ -716,6 +734,10 @@ const K = {
   // M1d: Execution orchestration with deterministic stub execs.
   ADD_EXEC: 18,
   EXEC_INFO: 19,
+  // M1p: PlayerImpl.createAttack against the live tick loop — real AttackImpl
+  // ids through the attacker's pseudo-random, serialized into the tick's
+  // PlayerUpdate diffs and gated by the incoming isAlive filter.
+  PLAYER_CREATE_ATTACK: 20,
 };
 
 // --------------------------------------------------- construct_game encoding
@@ -1587,6 +1609,69 @@ const scenarios = [];
   scenarios.push({ name: "m1d_exec_multi_order", ops });
 }
 
+// 30. Attack serialization on the live tick loop: a pre-spawn attacker's
+//     outgoing attacks (TN + self-target — the self-attack lands in the
+//     attacker's own incoming list but is filtered out while the attacker is
+//     dead, so a non-empty raw list serializes empty), the post-spawn batch
+//     (player + TN targets) riding the partial diffs, the membership-equal
+//     tick (no resend, no troop quads — entries are immutable here), then the
+//     attacker's death via conquer flipping the victim's incoming membership
+//     to [] while the dead player's own outgoing attacks keep serializing
+//     (outgoingAttacks() has no filter).
+{
+  const ops = [
+    gameOp({
+      mode: MODE.FFA,
+      pt: { tag: PT_TAG.NUM, v: 0 },
+      humans: [
+        makeInfo("Alice", "HUMAN", { clientID: "c1" }),
+        makeInfo("Bob", "HUMAN", { clientID: "c2" }),
+        makeInfo("Bot 1", "BOT"),
+      ],
+    }),
+    // Pre-spawn: Bot attacks TN and itself (two nextID draws off Bot's rng).
+    op(K.PLAYER_CREATE_ATTACK, [2, -1, 300]),
+    op(K.PLAYER_CREATE_ATTACK, [2, 2, 300]),
+    // Bot's full update carries outgoingAttacks [TN, self] and incomingAttacks
+    // [] (the self-attack's attacker — Bot — isAlive false). No quads: first
+    // emission returns the full snapshot before any delta packing.
+    op(K.EXECUTE_NEXT_TICK),
+    op(K.DRAIN_AQ),
+    // Spawn Alice (2 tiles) and Bob (1 tile); Bot stays unspawned.
+    op(K.SET_SPAWN_TILE, [0, P.landA]),
+    op(K.CONQUER, [0, P.landA]),
+    op(K.CONQUER, [0, P.landB]),
+    op(K.SET_SPAWN_TILE, [1, P.landC]),
+    op(K.CONQUER, [1, P.landC]),
+    op(K.EXECUTE_NEXT_TICK),
+    // Alice→Bob, Alice→TN, Bob→Alice, Bob→TN: the next tick's diffs carry
+    // both attack arrays; membership changed so packAttackTroopDeltas
+    // returns without quads.
+    op(K.PLAYER_CREATE_ATTACK, [0, 1, 1000]),
+    op(K.PLAYER_CREATE_ATTACK, [0, -1, 500]),
+    op(K.PLAYER_CREATE_ATTACK, [1, 0, 800]),
+    op(K.PLAYER_CREATE_ATTACK, [1, -1, 250]),
+    op(K.EXECUTE_NEXT_TICK),
+    op(K.DRAIN_AQ),
+    // Membership-equal tick: the delta loops run but troops never change in
+    // this domain → quads stay empty; diffs are null.
+    op(K.EXECUTE_NEXT_TICK),
+    op(K.DRAIN_AQ),
+    // Alice takes Bob's last tile → Bob dies: isAlive flips, and Bob's
+    // attack drops out of Alice's SERIALIZED incoming (the filter reads
+    // attacker liveness at emission time) while Bob's own outgoing attacks
+    // keep flowing (no filter on outgoing).
+    op(K.CONQUER, [0, P.landC]),
+    op(K.EXECUTE_NEXT_TICK),
+    op(K.DRAIN_AQ),
+    op(K.EXECUTE_NEXT_TICK),
+    op(K.DRAIN_AQ),
+    op(K.STATS_SNAPSHOT),
+    op(K.DIGEST),
+  ];
+  scenarios.push({ name: "m1p_attack_flow", ops });
+}
+
 // -------------------------------------------------------------- TS runner
 
 function runScenario(sc) {
@@ -1660,6 +1745,9 @@ function runScenario(sc) {
         break;
       case K.EXEC_INFO:
         rig.execInfo(out);
+        break;
+      case K.PLAYER_CREATE_ATTACK:
+        rig.playerCreateAttack(step.args[0], step.args[1], step.args[2], out);
         break;
       default:
         throw new Error(`unknown kind ${step.kind}`);

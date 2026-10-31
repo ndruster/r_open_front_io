@@ -231,6 +231,53 @@ function makeInfo(name, type, extra = {}) {
   };
 }
 
+// ------------------------------------------------------ M1d stub executions
+
+// Deterministic stub Execution (M1d): the orchestration itself is the test
+// object. `tick()` emits its update FIRST and flips dead AFTER (so the dying
+// tick still emits); `init()` ignores isActive entirely — that gate lives in
+// executeNextTick's init loop. killAt=1e9 stands in for "never" (Infinity
+// would JSON-serialize to null in the vector stream). Update type 3 is
+// GameUpdateType.DisplayEvent with messageType 0 (ATTACK_FAILED) and a
+// message carrying the ticks argument — proving both sides pass the same
+// pre-increment clock into init/tick.
+class StubExec {
+  constructor(id, spec, game) {
+    this.id = id;
+    this.game = game;
+    this.spec = spec; // { adsp, bornDead, killAt, initUpdate, tickUpdate }
+    this.dead = spec.bornDead;
+  }
+  isActive() {
+    return !this.dead;
+  }
+  activeDuringSpawnPhase() {
+    return this.spec.adsp;
+  }
+  init(mg, ticks) {
+    if (this.spec.initUpdate) {
+      mg.addUpdate({
+        type: 3,
+        message: "init " + ticks,
+        messageType: 0,
+        playerID: null,
+      });
+    }
+  }
+  tick(ticks) {
+    if (this.dead) return;
+    if (this.spec.tickUpdate) {
+      this.game.addUpdate({
+        type: 3,
+        message: "tick " + ticks,
+        messageType: 0,
+        playerID: null,
+      });
+    }
+    if (ticks >= this.spec.killAt) this.dead = true;
+  }
+}
+
 // ------------------------------------------------------------ scenario rig
 // Mirrors GameLoopHarness (game_loop.rs) op-for-op over the real TS classes.
 
@@ -256,6 +303,7 @@ class Rig {
     this.territoryVersion = 0;
     this.ticks = 0;
     this.tileUpdates = [];
+    this.nextExecId = 0;
   }
 
   recordTileUpdate(tile) {
@@ -416,6 +464,7 @@ class Rig {
       // its own queue/graph and diverge from executeNextTick's internal
       // `this._waterManager.tick`).
       this.water = this.game._waterManager;
+      this.nextExecId = 0;
       out.push(0);
     } catch (e) {
       // stderr only — stdout must stay parseable for the vector emitter.
@@ -597,6 +646,27 @@ class Rig {
       g.isNationSpawnImmunityActive() ? 1 : 0,
     );
   }
+
+  // ---- M1d: Execution orchestration with deterministic stub execs ---------
+
+  // GameImpl.addExecution (TS 665-667): pushes into unInitExecs; init happens
+  // on the next executeNextTick whose spawn gate admits the exec. Payload: [0].
+  addExec(out, spec) {
+    const g = this.game;
+    g.addExecution(new StubExec(this.nextExecId++, spec, g));
+    out.push(0);
+  }
+
+  // executions() (TS 661-663) = [...execs, ...unInitExecs] — read through the
+  // private fields directly (the strip-loaded class allows it). Per entry:
+  // [id, dead?1:0], so the vectors pin membership, order, and the isActive
+  // flips/removals side by side.
+  execInfo(out) {
+    const g = this.game;
+    out.push(0, g.execs.length, g.unInitExecs.length);
+    for (const e of g.execs) out.push(e.id, e.dead ? 1 : 0);
+    for (const e of g.unInitExecs) out.push(e.id, e.dead ? 1 : 0);
+  }
 }
 
 // Construct op args: [w, h, numLand, miniW, miniH, miniNumLand, len, ..bytes, len, ..mini]
@@ -643,6 +713,9 @@ const K = {
   // M1c: spawn-phase flow + the spawn-immunity cluster on the real clock.
   END_SPAWN_PHASE: 16,
   PROBE_SPAWN: 17,
+  // M1d: Execution orchestration with deterministic stub execs.
+  ADD_EXEC: 18,
+  EXEC_INFO: 19,
 };
 
 // --------------------------------------------------- construct_game encoding
@@ -1378,6 +1451,142 @@ const scenarios = [];
   scenarios.push({ name: "m1c_spawn_zero_duration_team", ops });
 }
 
+// 26. Full lifecycle of a spawn-phase-active exec (adsp=true): init runs on
+//     the first tick REGARDLESS of isActive (the init loop never asks), and
+//     the one-tick exemption covers even born-dead execs —
+//     removeInactiveExecutions runs BEFORE the init'd batch is pushed, so B
+//     survives tick 0 (its init update still emits) and is compacted out at
+//     tick 1 without ever ticking. The live exec A ticks on pre-increment
+//     1/2/3 and dies INSIDE tick 3 (update fires first, then killAt) —
+//     removed by that same tick.
+{
+  const ops = [
+    gameOp({
+      mode: MODE.FFA,
+      pt: { tag: PT_TAG.NUM, v: 0 },
+      humans: [makeInfo("Alice", "HUMAN", { clientID: "c1" })],
+    }),
+    op(K.ADD_EXEC, [1, 0, 3, 1, 1]),
+    op(K.ADD_EXEC, [1, 1, 1e9, 1, 1]),
+    op(K.EXEC_INFO),
+    op(K.EXECUTE_NEXT_TICK),
+    op(K.EXEC_INFO),
+    op(K.EXECUTE_NEXT_TICK),
+    op(K.EXEC_INFO),
+    op(K.EXECUTE_NEXT_TICK),
+    op(K.EXEC_INFO),
+    op(K.EXECUTE_NEXT_TICK),
+    op(K.EXEC_INFO),
+    op(K.EXECUTE_NEXT_TICK),
+    op(K.EXEC_INFO),
+    op(K.DRAIN),
+    op(K.DRAIN_PQ),
+    op(K.STATS_SNAPSHOT),
+    op(K.DIGEST),
+  ];
+  scenarios.push({ name: "m1d_exec_lifecycle_spawn", ops });
+}
+
+// 27. The spawn gate defers init: an adsp=false exec added during the spawn
+//     phase stays in unInitExecs across two spawn-phase ticks, is init'd on
+//     the first post-endSpawnPhase tick, and — the one-tick exemption — does
+//     NOT tick on its init tick (the tick pass already ran above the init
+//     loop); its first tick() lands the next tick.
+{
+  const ops = [
+    gameOp({
+      mode: MODE.FFA,
+      pt: { tag: PT_TAG.NUM, v: 0 },
+      humans: [
+        makeInfo("Alice", "HUMAN", { clientID: "c1" }),
+        makeInfo("Bob", "HUMAN", { clientID: "c2" }),
+      ],
+    }),
+    op(K.ADD_EXEC, [0, 0, 1e9, 1, 1]),
+    op(K.EXEC_INFO),
+    op(K.EXECUTE_NEXT_TICK),
+    op(K.EXEC_INFO),
+    op(K.EXECUTE_NEXT_TICK),
+    op(K.EXEC_INFO),
+    op(K.END_SPAWN_PHASE),
+    op(K.EXECUTE_NEXT_TICK),
+    op(K.EXEC_INFO),
+    op(K.EXECUTE_NEXT_TICK),
+    op(K.EXEC_INFO),
+    op(K.DRAIN),
+    op(K.DIGEST),
+  ];
+  scenarios.push({ name: "m1d_exec_spawn_gate_defer", ops });
+}
+
+// 28. Non-spawn-phase born-dead + killAt exemption: the exec is init'd while
+//     inactive (init ignores isActive), never ticks, and is dropped by the
+//     NEXT tick's removeInactiveExecutions (non-spawn branch: keep =
+//     isActive). The second exec has killAt=1 but only ever ticks at pre-
+//     increment tick 3 (init tick skipped) — it emits "tick 3" then dies
+//     immediately, pinning the exemption window.
+{
+  const ops = [
+    gameOp({
+      mode: MODE.FFA,
+      pt: { tag: PT_TAG.NUM, v: 0 },
+      humans: [makeInfo("Alice", "HUMAN", { clientID: "c1" })],
+    }),
+    op(K.END_SPAWN_PHASE),
+    op(K.ADD_EXEC, [0, 1, 1e9, 1, 1]),
+    op(K.EXECUTE_NEXT_TICK),
+    op(K.EXEC_INFO),
+    op(K.EXECUTE_NEXT_TICK),
+    op(K.EXEC_INFO),
+    op(K.ADD_EXEC, [0, 0, 1, 1, 1]),
+    op(K.EXECUTE_NEXT_TICK),
+    op(K.EXEC_INFO),
+    op(K.EXECUTE_NEXT_TICK),
+    op(K.EXEC_INFO),
+    op(K.DRAIN),
+    op(K.DIGEST),
+  ];
+  scenarios.push({ name: "m1d_exec_born_dead_nonspawn", ops });
+}
+
+// 29. Three-exec mixed ordering with real players: display updates aggregate
+//     into bucket 3 in pass order — tick pass before init pass — so tick 2's
+//     JSON is [F.tick, G.tick, H.init] with H's init last; the dying F is
+//     compacted out by removeInactiveExecutions BEFORE H is pushed (init and
+//     remove never race); adsp=false H sits out the spawn-phase ticks. All
+//     of it shares the map with the players' full/diff PlayerUpdates.
+{
+  const ops = [
+    gameOp({
+      mode: MODE.FFA,
+      pt: { tag: PT_TAG.NUM, v: 0 },
+      humans: [
+        makeInfo("Alice", "HUMAN", { clientID: "c1" }),
+        makeInfo("Bob", "HUMAN", { clientID: "c2" }),
+      ],
+    }),
+    op(K.ADD_EXEC, [1, 0, 2, 1, 1]),
+    op(K.ADD_EXEC, [1, 0, 1e9, 0, 1]),
+    op(K.ADD_EXEC, [0, 0, 1e9, 1, 1]),
+    op(K.CONQUER, [0, P.landA]),
+    op(K.EXECUTE_NEXT_TICK),
+    op(K.EXEC_INFO),
+    op(K.CONQUER, [1, P.landB]),
+    op(K.EXECUTE_NEXT_TICK),
+    op(K.EXEC_INFO),
+    op(K.END_SPAWN_PHASE),
+    op(K.EXECUTE_NEXT_TICK),
+    op(K.EXEC_INFO),
+    op(K.EXECUTE_NEXT_TICK),
+    op(K.EXEC_INFO),
+    op(K.DRAIN),
+    op(K.DRAIN_PQ),
+    op(K.STATS_SNAPSHOT),
+    op(K.DIGEST),
+  ];
+  scenarios.push({ name: "m1d_exec_multi_order", ops });
+}
+
 // -------------------------------------------------------------- TS runner
 
 function runScenario(sc) {
@@ -1439,6 +1648,18 @@ function runScenario(sc) {
         break;
       case K.PROBE_SPAWN:
         rig.probeSpawn(out);
+        break;
+      case K.ADD_EXEC:
+        rig.addExec(out, {
+          adsp: step.args[0] !== 0,
+          bornDead: step.args[1] !== 0,
+          killAt: step.args[2],
+          initUpdate: step.args[3] !== 0,
+          tickUpdate: step.args[4] !== 0,
+        });
+        break;
+      case K.EXEC_INFO:
+        rig.execInfo(out);
         break;
       default:
         throw new Error(`unknown kind ${step.kind}`);

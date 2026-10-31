@@ -173,6 +173,37 @@ pub struct LoopPlayer {
     last_sent: Option<PuCore>,
 }
 
+/// The recorder-side stub-exec spec (M1d): the orchestration is the test
+/// object, so both sides replay the same parameterized behavior. `kill_at`
+/// flips `dead` inside `tick()` AFTER the update fires (the dying tick still
+/// emits); `init` ignores `dead` entirely — that gate lives in the tick loop.
+struct ExecSpec {
+    adsp: bool,
+    kill_at: f64,
+    init_update: bool,
+    tick_update: bool,
+}
+
+/// One deterministic stub `Execution`: `isActive()` is `!dead`, the update
+/// payload is a DisplayEvent whose message carries the ticks argument (the
+/// same pre-increment clock both sides pass into init/tick).
+struct StubExec {
+    id: f64,
+    spec: ExecSpec,
+    dead: bool,
+}
+
+impl StubExec {
+    fn emit_update(o: &mut Vec<JsonValue>, msg: String) {
+        o.push(JsonValue::Obj(vec![
+            ("type".to_string(), JsonValue::Num(3.0)),
+            ("message".to_string(), JsonValue::Str(msg)),
+            ("messageType".to_string(), JsonValue::Num(0.0)),
+            ("playerID".to_string(), JsonValue::Null),
+        ]));
+    }
+}
+
 /// The slice of a full `PlayerUpdate` that can change in the M1b domain.
 /// Everything else `toFullUpdate` emits is constant per player (identity /
 /// config-driven fields) or an always-empty collection, so `diffPlayerUpdate`
@@ -214,6 +245,12 @@ pub struct GameLoopHarness {
     /// every `executeNextTick`, and appended to in place by `endSpawnPhase`
     /// (the next tick's `createGameUpdatesMap` wipes it, M1c).
     last_updates: JsonValue,
+    /// `GameImpl.execs` — initialized executions (M1d).
+    execs: Vec<StubExec>,
+    /// `GameImpl.unInitExecs` — added but not yet init'd executions.
+    un_init_execs: Vec<StubExec>,
+    /// Stub-exec identity counter (mirrors the recorder's `nextExecId`).
+    next_exec_id: f64,
 }
 
 impl Default for GameLoopHarness {
@@ -233,6 +270,9 @@ impl Default for GameLoopHarness {
             attack_quads: Vec::new(),
             start_tick: None,
             last_updates: empty_updates(),
+            execs: Vec::new(),
+            un_init_execs: Vec::new(),
+            next_exec_id: 0.0,
         }
     }
 }
@@ -425,6 +465,9 @@ impl GameLoopHarness {
         self.attack_quads.clear();
         self.start_tick = None;
         self.last_updates = empty_updates();
+        self.execs.clear();
+        self.un_init_execs.clear();
+        self.next_exec_id = 0.0;
         o.push(0.0);
     }
 
@@ -577,6 +620,9 @@ impl GameLoopHarness {
         self.attack_quads.clear();
         self.start_tick = None;
         self.last_updates = empty_updates();
+        self.execs.clear();
+        self.un_init_execs.clear();
+        self.next_exec_id = 0.0;
         o.push(0.0);
     }
 
@@ -755,16 +801,69 @@ impl GameLoopHarness {
         Some(JsonValue::Obj(entries))
     }
 
-    /// `GameImpl.executeNextTick` (TS 488-546) — the real loop over the
-    /// empty-exec game: fresh updates map, tileUpdatePairs reset, per-player
-    /// recordTickSample + toUpdate, the %10 Hash update, the real
-    /// waterManager tick flush, `_ticks++`. Emits
+    /// `GameImpl.executeNextTick` (TS 488-546) — the real loop with the
+    /// M1d stub-exec orchestration: fresh updates map, tileUpdatePairs reset,
+    /// the exec tick pass (spawn gate + isActive), the init pass (spawn gate
+    /// only), removeInactiveExecutions (BEFORE the init'd batch is pushed —
+    /// the one-tick exemption), per-player recordTickSample + toUpdate, the
+    /// %10 Hash update, the real waterManager tick flush, `_ticks++`. Emits
     /// `[0, ticksAfter, gameHash, updatesJSON(encS)]`.
     fn op_execute_next_tick(&mut self, o: &mut Vec<f64>) {
         let tick = self.ticks;
         // TS 489-490: fresh `createGameUpdatesMap()` + tileUpdatePairs reset
         // (drops whatever conquer/ops accumulated between ticks).
         self.tile_updates.clear();
+        // TS 491-498: the tick pass over initialized execs — spawn gate AND
+        // isActive; tick() emits first, then killAt may flip dead. The gate
+        // is `!inSpawnPhase() || activeDuringSpawnPhase()` and
+        // inSpawnPhase() is startTick === null, so the non-spawn side is
+        // `is_some()`.
+        let mut display_updates: Vec<JsonValue> = Vec::new();
+        for e in self.execs.iter_mut() {
+            let adsp = e.spec.adsp;
+            if (self.start_tick.is_some() || adsp) && !e.dead {
+                if e.spec.tick_update {
+                    StubExec::emit_update(&mut display_updates, format!("tick {}", tick));
+                }
+                if tick >= e.spec.kill_at {
+                    e.dead = true;
+                }
+            }
+        }
+        // TS 499-508: the init pass over unInitExecs — spawn gate ONLY (a
+        // born-dead exec is still init'd); the deferred ones stay parked.
+        let mut inited: Vec<StubExec> = Vec::new();
+        let mut parked: Vec<StubExec> = Vec::new();
+        for e in self.un_init_execs.drain(..) {
+            if self.start_tick.is_some() || e.spec.adsp {
+                if e.spec.init_update {
+                    StubExec::emit_update(&mut display_updates, format!("init {}", tick));
+                }
+                inited.push(e);
+            } else {
+                parked.push(e);
+            }
+        }
+        // TS 510 + 635-651: compact execs in place — spawn branch keeps
+        // `!adsp || isActive`, otherwise `isActive`. Runs BEFORE the init'd
+        // batch is pushed, so a fresh exec never sees its own removal pass.
+        let in_spawn = self.start_tick.is_none();
+        let mut w = 0usize;
+        for i in 0..self.execs.len() {
+            let keep = if in_spawn {
+                !self.execs[i].spec.adsp || !self.execs[i].dead
+            } else {
+                !self.execs[i].dead
+            };
+            if keep {
+                self.execs.swap(w, i);
+                w += 1;
+            }
+        }
+        self.execs.truncate(w);
+        // TS 512-513: the init'd batch joins execs after the removal pass.
+        self.execs.extend(inited);
+        self.un_init_execs = parked;
         let mut player_updates: Vec<JsonValue> = Vec::new();
         let mut hash_update: Option<JsonValue> = None;
         for i in 0..self.players.len() {
@@ -854,6 +953,7 @@ impl GameLoopHarness {
             .map(|i| (i.to_string(), JsonValue::Arr(Vec::new())))
             .collect();
         buckets[2].1 = JsonValue::Arr(player_updates);
+        buckets[3].1 = JsonValue::Arr(display_updates);
         if let Some(hv) = hash_update {
             buckets[13].1 = JsonValue::Arr(vec![hv]);
         }
@@ -1063,6 +1163,50 @@ impl GameLoopHarness {
         o.push(if in_spawn || since < 50.0 { 1.0 } else { 0.0 });
     }
 
+    /// `GameImpl.addExecution` (op 18): decode the stub spec and park the
+    /// exec in `unInitExecs` (TS 665-667); init happens on the first tick
+    /// whose spawn gate admits it.
+    fn op_add_exec(&mut self, a: &[f64], o: &mut Vec<f64>) {
+        let mut c = C { a, i: 0 };
+        // Arg order matches the recorder: [adsp, bornDead, killAt,
+        // initUpdate, tickUpdate].
+        let adsp = c.f() != 0.0;
+        let born_dead = c.f() != 0.0;
+        let kill_at = c.f();
+        let init_update = c.f() != 0.0;
+        let tick_update = c.f() != 0.0;
+        let id = self.next_exec_id;
+        self.next_exec_id += 1.0;
+        self.un_init_execs.push(StubExec {
+            id,
+            spec: ExecSpec {
+                adsp,
+                kill_at,
+                init_update,
+                tick_update,
+            },
+            dead: born_dead,
+        });
+        o.push(0.0);
+    }
+
+    /// `executions()` (op 19) = `[...execs, ...unInitExecs]` (TS 661-663):
+    /// membership, order, and the isActive flips side by side. Per entry:
+    /// `[id, dead?1:0]`.
+    fn op_exec_info(&self, o: &mut Vec<f64>) {
+        o.push(0.0);
+        o.push(self.execs.len() as f64);
+        o.push(self.un_init_execs.len() as f64);
+        for e in &self.execs {
+            o.push(e.id);
+            o.push(if e.dead { 1.0 } else { 0.0 });
+        }
+        for e in &self.un_init_execs {
+            o.push(e.id);
+            o.push(if e.dead { 1.0 } else { 0.0 });
+        }
+    }
+
     pub fn run_op(&mut self, kind: u8, args: &[f64]) -> Vec<f64> {
         let mut o: Vec<f64> = Vec::new();
         match kind {
@@ -1116,6 +1260,8 @@ impl GameLoopHarness {
             15 => Self::op_drain_quads(&mut self.attack_quads, &mut o),
             16 => self.op_end_spawn_phase(&mut o),
             17 => self.op_probe_spawn(&mut o),
+            18 => self.op_add_exec(args, &mut o),
+            19 => self.op_exec_info(&mut o),
             _ => panic!("gl: unknown kind {kind}"),
         }
         o

@@ -5,9 +5,9 @@
 // Diffs the TS method tables (GameImpl.ts / PlayerImpl.ts) against the Rust
 // harness coverage:
 //
-//   * game_impl.rs — the G4a mid table + map pass-throughs + the G4b
+//   * game_impl.rs — the G4a mid table + map pass-throughs + the G4b/G4c
 //     additions prose (parse window: `## Mid table` .. `## Facade trace
-//     event codes`, plus the `## G4b additions` section)
+//     event codes`, plus every `## G4x additions` section)
 //   * player_impl.rs — the mid -> name dispatch arms (`N => "name"`)
 //
 // Emits a markdown checklist (method | TS line | Rust coverage) and a gap
@@ -58,7 +58,7 @@ function gameImplCovered() {
   const src = readRel("game_impl.rs");
   const lines = src.split(/\r?\n/);
   const covered = new Map(); // method -> mid label
-  let zone = null; // "mid" | "g4b" | null
+  let zone = null; // "mid" | "additions" | null
   for (const line of lines) {
     if (!line.startsWith("//!")) {
       zone = null;
@@ -72,21 +72,22 @@ function gameImplCovered() {
       zone = null;
       continue;
     }
-    if (line.includes("## G4b additions")) {
-      zone = "g4b";
+    if (/^\/\/! ## G4[a-z] additions/.test(line)) {
+      zone = "additions";
       continue;
     }
-    if (line.includes("## ") && zone === "g4b") {
+    if (line.includes("## ") && zone === "additions") {
       zone = null;
       continue;
     }
     if (zone === null) continue;
-    // Table rows: | 12 | `unit` | ... — pass-through rows are prose.
-    const tableRow = line.match(/\|\s*(\d+)\s*\|\s*`([A-Za-z_][A-Za-z0-9_]*)`/);
-    if (tableRow) {
+    // Table rows: | 12 | `unit` | ... — pass-through rows are prose. The
+    // mid table is two columns wide (mid/method twice per line), so scan
+    // every `| N | \`name\`` pair, not just the first.
+    for (const tableRow of line.matchAll(/\|\s*(\d+)\s*\|\s*`([A-Za-z_][A-Za-z0-9_]*)`/g)) {
       covered.set(tableRow[2], `game mid ${tableRow[1]}`);
-      continue;
     }
+    if (line.match(/\|\s*(\d+)\s*\|\s*`/)) continue;
     // Prose: "300 `executeNextTick` (488-546)" / "72 `ref`, 73 `isValidRef`"
     const prose = line.matchAll(/(\d+)\s+`([A-Za-z_][A-Za-z0-9_]*)`/g);
     for (const m of prose) {

@@ -95,7 +95,7 @@ struct RefSet {
 }
 
 impl RefSet {
-    fn add(&mut self, v: f64) {
+    pub(crate) fn add(&mut self, v: f64) {
         let k = svz_key(v);
         if self.idx.contains_key(&k) {
             return;
@@ -103,7 +103,7 @@ impl RefSet {
         self.idx.insert(k, self.vals.len());
         self.vals.push(v);
     }
-    fn delete(&mut self, v: f64) {
+    pub(crate) fn delete(&mut self, v: f64) {
         if let Some(pos) = self.idx.remove(&svz_key(v)) {
             self.vals.remove(pos);
             for (j, &x) in self.vals.iter().enumerate().skip(pos) {
@@ -111,7 +111,7 @@ impl RefSet {
             }
         }
     }
-    fn iter(&self) -> impl Iterator<Item = f64> + '_ {
+    pub(crate) fn iter(&self) -> impl Iterator<Item = f64> + '_ {
         self.vals.iter().copied()
     }
 }
@@ -125,16 +125,16 @@ struct Cell {
 }
 
 impl Cell {
-    fn get(&self, key: &[u16]) -> Option<&RefSet> {
+    pub(crate) fn get(&self, key: &[u16]) -> Option<&RefSet> {
         self.entries.iter().find(|(k, _)| k == key).map(|(_, s)| s)
     }
-    fn get_mut(&mut self, key: &[u16]) -> Option<&mut RefSet> {
+    pub(crate) fn get_mut(&mut self, key: &[u16]) -> Option<&mut RefSet> {
         self.entries
             .iter_mut()
             .find(|(k, _)| k == key)
             .map(|(_, s)| s)
     }
-    fn set_new(&mut self, key: Vec<u16>, member: f64) {
+    pub(crate) fn set_new(&mut self, key: Vec<u16>, member: f64) {
         let mut s = RefSet::default();
         s.add(member);
         self.entries.push((key, s));
@@ -214,6 +214,250 @@ impl UnitGrid {
         );
         Ok([start_grid_x, end_grid_x, start_grid_y, end_grid_y])
     }
+
+    // ---- no-trace cell ops for the game_loop integration harness (M1e) ----
+    //
+    // The RigHarness above pins the facade call *counts* of these methods;
+    // the loop harness drives the same mutation/iteration semantics without
+    // the trace. `utype` rides in as the UTF-16 code-unit key and `refid` is
+    // the caller's unit identity (insertion-order member of the per-key Set).
+
+    /// `addUnit` (UnitGrid.ts): out-of-grid tiles are dropped by
+    /// `isValidCell`, a missing type key appends `set(type, new Set([u]))`,
+    /// an existing key re-adds (no-op on a present member, order kept).
+    pub(crate) fn add_unit_cell(&mut self, tile: f64, utype: &[u16], refid: f64) {
+        let gx = (self.gm.x(tile) / CELL_SIZE).floor();
+        let gy = (self.gm.y(tile) / CELL_SIZE).floor();
+        let Ok(valid) = self.is_valid_cell(gx, gy) else {
+            return;
+        };
+        if !valid {
+            return;
+        }
+        let cell = &mut self.grid[gy as usize][gx as usize];
+        if cell.get(utype).is_some() {
+            if let Some(set) = cell.get_mut(utype) {
+                set.add(refid);
+            }
+        } else {
+            cell.set_new(utype.to_vec(), refid);
+        }
+    }
+
+    /// `removeUnit` / `removeUnitByTile`: delete from the tile's cell under
+    /// the unit's type key (absent key / member: no-op).
+    pub(crate) fn remove_unit_cell(&mut self, tile: f64, utype: &[u16], refid: f64) {
+        let gx = (self.gm.x(tile) / CELL_SIZE).floor();
+        let gy = (self.gm.y(tile) / CELL_SIZE).floor();
+        let Ok(valid) = self.is_valid_cell(gx, gy) else {
+            return;
+        };
+        if !valid {
+            return;
+        }
+        if let Some(set) = self.grid[gy as usize][gx as usize].get_mut(utype) {
+            set.delete(refid);
+        }
+    }
+
+    /// `updateUnitCell`: same-tile short circuit (`===`), then remove+add
+    /// only when the two tiles fall in different cells.
+    pub(crate) fn update_unit_cell(&mut self, new_tile: f64, old_tile: f64, utype: &[u16], refid: f64) {
+        if new_tile == old_tile {
+            return;
+        }
+        let gx = (self.gm.x(old_tile) / CELL_SIZE).floor();
+        let gy = (self.gm.y(old_tile) / CELL_SIZE).floor();
+        let ngx = (self.gm.x(new_tile) / CELL_SIZE).floor();
+        let ngy = (self.gm.y(new_tile) / CELL_SIZE).floor();
+        if gx != ngx || gy != ngy {
+            self.remove_unit_cell(old_tile, utype, refid);
+            self.add_unit_cell(new_tile, utype, refid);
+        }
+    }
+
+    /// The unit state `unitIsInRange` and the nearby scans read per member:
+    /// the probe maps a grid member's `refid` to
+    /// `(isActive, isUnderConstruction, ownerID, tile)` — `ownerID` is the
+    /// small-ID-style identity the harness compares `playerId` against.
+    #[allow(clippy::too_many_arguments)] // faithful to the TS parameter list
+    fn unit_in_range_probe(
+        &self,
+        probe: UnitProbe,
+        refid: f64,
+        x: f64,
+        y: f64,
+        range_squared: f64,
+        player_id: Option<f64>,
+        include_uc: bool,
+    ) -> bool {
+        let Some((active, uc, owner, utile)) = probe(refid) else {
+            return false;
+        };
+        if !active {
+            return false;
+        }
+        if !include_uc && uc {
+            return false;
+        }
+        if let Some(pid) = player_id {
+            if owner != pid {
+                return false;
+            }
+        }
+        let dx = self.gm.x(utile) - x;
+        let dy = self.gm.y(utile) - y;
+        dx * dx + dy * dy <= range_squared
+    }
+
+    /// `nearbyUnits` without the predicate: the array branch iterates
+    /// `cy -> cx -> types -> unitSet`, the scalar branch `cy -> cx ->
+    /// unitSet`. A non-finite/throwing `getCellsInRange` window yields an
+    /// empty scan (the loop-harness domain never reaches the 0-row throw).
+    #[allow(clippy::too_many_arguments)] // mirrors the op-33 arg layout
+    pub(crate) fn nearby_units_probe(
+        &self,
+        tile: f64,
+        range: f64,
+        types: &[Vec<u16>],
+        array_branch: bool,
+        player_id: Option<f64>,
+        include_uc: bool,
+        probe: UnitProbe,
+    ) -> Vec<(f64, f64)> {
+        let mut nearby: Vec<(f64, f64)> = Vec::new();
+        let Ok([sx, ex, sy, ey]) = self.get_cells_in_range(tile, range) else {
+            return nearby;
+        };
+        let x = self.gm.x(tile);
+        let y = self.gm.y(tile);
+        let range_squared = range * range;
+        let mut cy = sy;
+        while cy <= ey {
+            let mut cx = sx;
+            while cx <= ex {
+                let cell = &self.grid[cy as usize][cx as usize];
+                if array_branch {
+                    // The TS array branch (UnitGrid.ts 152-178) has NO
+                    // playerId parameter — its inline filter is only
+                    // active / under-construction / range (the predicate
+                    // rides outside, and the loop harness's is always
+                    // true). `player_id` is ignored here on purpose.
+                    for t in types {
+                        let Some(set) = cell.get(t) else { continue };
+                        for refid in set.iter() {
+                            let Some((active, uc, _, utile)) = probe(refid)
+                            else {
+                                continue;
+                            };
+                            if !active {
+                                continue;
+                            }
+                            if !include_uc && uc {
+                                continue;
+                            }
+                            let dx = self.gm.x(utile) - x;
+                            let dy = self.gm.y(utile) - y;
+                            let dist_squared = dx * dx + dy * dy;
+                            if dist_squared > range_squared {
+                                continue;
+                            }
+                            nearby.push((refid, dist_squared));
+                        }
+                    }
+                } else {
+                    let Some(set) = cell.get(&types[0]) else {
+                        cx += 1.0;
+                        continue;
+                    };
+                    for refid in set.iter() {
+                        if !self.unit_in_range_probe(probe, refid, x, y, range_squared, player_id, include_uc) {
+                            continue;
+                        }
+                        let (.., utile) = probe(refid).expect("probed above");
+                        let dx = self.gm.x(utile) - x;
+                        let dy = self.gm.y(utile) - y;
+                        nearby.push((refid, dx * dx + dy * dy));
+                    }
+                }
+                cx += 1.0;
+            }
+            cy += 1.0;
+        }
+        nearby
+    }
+
+    /// `hasUnitNearby` — first member passing `unitIsInRange` wins.
+    pub(crate) fn has_unit_nearby_probe(
+        &self,
+        tile: f64,
+        range: f64,
+        utype: &[u16],
+        player_id: Option<f64>,
+        include_uc: bool,
+        probe: UnitProbe,
+    ) -> bool {
+        let Ok([sx, ex, sy, ey]) = self.get_cells_in_range(tile, range) else {
+            return false;
+        };
+        let x = self.gm.x(tile);
+        let y = self.gm.y(tile);
+        let range_squared = range * range;
+        let mut cy = sy;
+        while cy <= ey {
+            let mut cx = sx;
+            while cx <= ex {
+                if let Some(set) = self.grid[cy as usize][cx as usize].get(utype) {
+                    for refid in set.iter() {
+                        if self.unit_in_range_probe(probe, refid, x, y, range_squared, player_id, include_uc) {
+                            return true;
+                        }
+                    }
+                }
+                cx += 1.0;
+            }
+            cy += 1.0;
+        }
+        false
+    }
+
+    /// `anyUnitNearby` over multiple types (the loop harness's predicate is
+    /// always-true, so the scan reduces to the shared in-range test).
+    pub(crate) fn any_unit_nearby_probe(
+        &self,
+        tile: f64,
+        range: f64,
+        types: &[Vec<u16>],
+        player_id: Option<f64>,
+        include_uc: bool,
+        probe: UnitProbe,
+    ) -> bool {
+        let Ok([sx, ex, sy, ey]) = self.get_cells_in_range(tile, range) else {
+            return false;
+        };
+        let x = self.gm.x(tile);
+        let y = self.gm.y(tile);
+        let range_squared = range * range;
+        let mut cy = sy;
+        while cy <= ey {
+            let mut cx = sx;
+            while cx <= ex {
+                for t in types {
+                    let Some(set) = self.grid[cy as usize][cx as usize].get(t) else {
+                        continue;
+                    };
+                    for refid in set.iter() {
+                        if self.unit_in_range_probe(probe, refid, x, y, range_squared, player_id, include_uc) {
+                            return true;
+                        }
+                    }
+                }
+                cx += 1.0;
+            }
+            cy += 1.0;
+        }
+        false
+    }
 }
 
 /// JS truthiness of a scripted predicate return (`0` / `NaN` / `undefined`
@@ -224,6 +468,12 @@ fn js_truthy(v: Option<f64>) -> bool {
         Some(x) => !(x == 0.0 || x.is_nan()),
     }
 }
+
+/// The unit state the no-trace nearby scans read per grid member: the probe
+/// maps a member's `refid` to `(isActive, isUnderConstruction, ownerID,
+/// tile)` — `ownerID` is the small-ID-style identity the harness compares
+/// `playerId` against.
+pub(crate) type UnitProbe<'u> = &'u dyn Fn(f64) -> Option<(bool, bool, f64, f64)>;
 
 /// The scripted `Unit` mock: the observable facade state the capture drives.
 #[derive(Debug)]

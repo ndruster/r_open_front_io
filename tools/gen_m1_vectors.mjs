@@ -32,6 +32,13 @@ const root = join(here, "..");
 const { GameMapImpl } = await loadTs("src/core/game/GameMap.ts");
 const { WaterManager } = await loadTs("src/core/game/WaterManager.ts");
 const GI = await loadTs("src/core/game/GameImpl.ts");
+const UI = await loadTs("src/core/game/UnitImpl.ts");
+// M1e: the ts_load GameImpl rule news AllianceRequestImpl / AllianceImpl
+// through globalThis.__GFA hooks (G4 facade legacy, and the hook signature
+// drops the ctor's `game` argument). The real modules load here; Rig's
+// constructGame binds the hook closures to the live game.
+const ARI = await loadTs("src/core/game/AllianceRequestImpl.ts");
+const AI = await loadTs("src/core/game/AllianceImpl.ts");
 
 // ------------------------------------------------------------- encS mirror
 // Bit-exact mirror of js_json.rs push_str: [len, ..utf16 units].
@@ -204,6 +211,25 @@ class StubConfig {
   }
   nationSpawnImmunityDuration() {
     return 50;
+  }
+  // M1e: the diplomacy + unit-ctor Config surface. traitorDuration and
+  // allianceExtensionPromptOffset are constants (Config.ts 290-292 /
+  // 1279-1281); allianceDuration resolves the custom-minutes gameConfig
+  // field against the 3000-tick default (Config.ts 810-816); unitInfo only
+  // feeds the UnitImpl ctor's `maxHealth ?? 1` read (UnitImpl.ts 61).
+  traitorDuration() {
+    return 300;
+  }
+  allianceDuration() {
+    const m = this._gameConfig.customAllianceDuration;
+    if (typeof m === "number" && m > 0) return m * 60 * 10;
+    return 3000;
+  }
+  allianceExtensionPromptOffset() {
+    return 300;
+  }
+  unitInfo() {
+    return {};
   }
 }
 
@@ -465,6 +491,19 @@ class Rig {
       // `this._waterManager.tick`).
       this.water = this.game._waterManager;
       this.nextExecId = 0;
+      this.unitTokens = [];
+      this.allianceTokens = [];
+      this.requestTokens = [];
+      // M1e: bind the __GFA hooks to the real diplomacy classes. The hook
+      // signatures carry no game — the closures supply this game (the only
+      // instance a scenario constructs).
+      const g = this.game;
+      globalThis.__GFA = {
+        newRequest: (requestor, recipient, tickCreated) =>
+          new ARI.AllianceRequestImpl(requestor, recipient, tickCreated, g),
+        newAlliance: (requestor, recipient, tickCreated, id) =>
+          new AI.AllianceImpl(g, requestor, recipient, tickCreated, id),
+      };
       out.push(0);
     } catch (e) {
       // stderr only — stdout must stay parseable for the vector emitter.
@@ -685,6 +724,299 @@ class Rig {
     attacker.createAttack(target, troops, null, new Set());
     out.push(0);
   }
+
+  // ---- M1e: territory, diplomacy, unit grid -------------------------------
+
+  // The append-only alliance token table. Rust's harness keeps every
+  // AllianceImpl in a flat table (detach only edits the players' lists), so
+  // stale tokens stay addressable by index; here the same table is grown by
+  // scanning the players' lists for objects not yet recorded. Creation order
+  // equals discovery order (a fresh alliance is pushed at both players'
+  // list tails).
+  harvestAlliances() {
+    for (const p of this.game._playersBySmallID) {
+      for (const a of p._alliances) {
+        if (!this.allianceTokens.includes(a)) this.allianceTokens.push(a);
+      }
+    }
+  }
+
+  pidxOf(p) {
+    return this.game._playersBySmallID.indexOf(p);
+  }
+
+  updatesJSON() {
+    return JSON.stringify(this.game.updates, (k, v) =>
+      typeof v === "bigint" ? Number(v) : v,
+    );
+  }
+
+  // GameImpl.relinquish (TS 785-803) — unowned/water throw paths included.
+  relinquish(tile, out) {
+    try {
+      this.game.relinquish(tile);
+      out.push(0);
+    } catch (e) {
+      out.push(1);
+      pushStr(out, String(e.message));
+    }
+  }
+
+  // GameImpl.createAllianceRequest (TS 371-399): the three null-return arms
+  // (already allied / duplicate incoming / corresponding accept — the last
+  // still emits its accept-side updates) push nullFlag 1; a live request
+  // pushes its allianceRequests index. The null arms console.log on TS but
+  // carry nothing on the wire — silenced to keep stdout parseable.
+  createAllianceRequest(reqIdx, recIdx, out) {
+    const g = this.game;
+    const log = console.log;
+    console.log = () => {};
+    try {
+      const r = g.createAllianceRequest(
+        g._playersBySmallID[reqIdx],
+        g._playersBySmallID[recIdx],
+      );
+      this.harvestAlliances();
+      if (r === null) {
+        out.push(1);
+      } else {
+        out.push(0);
+        // The wire token is the append-only creation ordinal (mirrors the
+        // Rust request ledger), not the live allianceRequests index — a
+        // stale reply must still resolve the removed request object.
+        this.requestTokens.push(r);
+        out.push(this.requestTokens.length - 1);
+      }
+      pushStr(out, this.updatesJSON());
+    } finally {
+      console.log = log;
+    }
+  }
+
+  // GameImpl.acceptAllianceRequest (TS 401-437: filter BEFORE the
+  // already-allied check, so a throw still removed the request) /
+  // GameImpl.rejectAllianceRequest (TS 439-451).
+  allianceReply(arIdx, accept, out) {
+    const g = this.game;
+    const req = this.requestTokens[arIdx];
+    if (accept) {
+      try {
+        g.acceptAllianceRequest(req);
+        out.push(0);
+      } catch (e) {
+        out.push(1);
+        pushStr(out, String(e.message));
+      }
+    } else {
+      g.rejectAllianceRequest(req);
+      out.push(0);
+    }
+    this.harvestAlliances();
+    pushStr(out, this.updatesJSON());
+  }
+
+  // GameImpl.breakAlliance (TS 836-870) via PlayerImpl.breakAlliance (TS
+  // 843-845) — the token indexes the append-only alliance table.
+  breakAlliance(breakerIdx, ai, out) {
+    const g = this.game;
+    try {
+      g._playersBySmallID[breakerIdx].breakAlliance(this.allianceTokens[ai]);
+      out.push(0);
+    } catch (e) {
+      out.push(1);
+      pushStr(out, String(e.message));
+    }
+    pushStr(out, this.updatesJSON());
+  }
+
+  // GameImpl.expireAlliance (TS 872-893): the token's endpoints define the
+  // shared set; the expiring alliance is the unique survivor, whatever
+  // token was passed.
+  expireAlliance(ai, out) {
+    const g = this.game;
+    try {
+      g.expireAlliance(this.allianceTokens[ai]);
+      out.push(0);
+    } catch (e) {
+      out.push(1);
+      pushStr(out, String(e.message));
+    }
+    pushStr(out, this.updatesJSON());
+  }
+
+  // GameImpl.removeAlliancesByPlayerSilently (TS 895-911) via
+  // PlayerImpl.removeAllAlliances (TS 847-849). No update is emitted.
+  removeAlliancesSilently(pidx, out) {
+    this.game._playersBySmallID[pidx].removeAllAlliances();
+    out.push(0);
+  }
+
+  // Alliance-state snapshot (op 27): the live request table, the
+  // append-only alliance table (stale tokens included), nextAllianceID,
+  // then per player the live alliance tokens, the past-outgoing (recipient
+  // pidx, createdAt) pairs, and the traitor state.
+  allianceSnapshot(out) {
+    const g = this.game;
+    this.harvestAlliances();
+    out.push(0);
+    out.push(g.allianceRequests.length);
+    for (const ar of g.allianceRequests) {
+      out.push(this.pidxOf(ar.requestor()));
+      out.push(this.pidxOf(ar.recipient()));
+      out.push(ar.createdAt());
+    }
+    out.push(this.allianceTokens.length);
+    for (const a of this.allianceTokens) {
+      out.push(a.id());
+      out.push(this.pidxOf(a.requestor()));
+      out.push(this.pidxOf(a.recipient()));
+      out.push(a.createdAt());
+      out.push(a.expiresAt());
+    }
+    out.push(g.nextAllianceID);
+    for (const p of g._playersBySmallID) {
+      out.push(p._alliances.length);
+      for (const a of p._alliances) out.push(this.allianceTokens.indexOf(a));
+      out.push(p.pastOutgoingAllianceRequests.length);
+      for (const ar of p.pastOutgoingAllianceRequests) {
+        out.push(this.pidxOf(ar.recipient()));
+        out.push(ar.createdAt());
+      }
+      out.push(p.markedTraitorTick);
+      out.push(p._betrayalCount);
+      out.push(p.getTraitorRemainingTicks());
+    }
+  }
+
+  // PlayerImpl.nearby cluster (op 28): sharesBorderWith (TS 554-567) per
+  // other player, then nearby() (TS 587-632, memo keyed on territory +
+  // water versions) as smallIDs — TerraNullius serializes as 0.
+  nearbyProbe(pidx, out) {
+    const g = this.game;
+    const p = g._playersBySmallID[pidx];
+    out.push(0);
+    out.push(g._playersBySmallID.length);
+    for (const other of g._playersBySmallID) {
+      out.push(p.sharesBorderWith(other) ? 1 : 0);
+    }
+    const ns = p.nearby();
+    out.push(ns.length);
+    for (const n of ns) out.push(n.smallID());
+  }
+
+  // UnitImpl ctor registration (op 29): args [id, type(encS), tile,
+  // ownerPidx, active, underConstruction] — ownerPidx -1 is TerraNullius.
+  // active/uc override the ctor defaults (private-field writes, same as the
+  // probe data the Rust LoopUnit table carries).
+  unitDefine(a, out) {
+    const g = this.game;
+    let i = 0;
+    const id = a[i++];
+    let type = "";
+    const len = a[i++];
+    for (let k = 0; k < len; k++) type += String.fromCharCode(a[i++]);
+    const tile = a[i++];
+    const ownerPidx = a[i++];
+    const active = a[i++] !== 0;
+    const uc = a[i++] !== 0;
+    const owner =
+      ownerPidx < 0 ? g.terraNullius() : g._playersBySmallID[ownerPidx];
+    const u = new UI.UnitImpl(type, g, tile, id, owner, {});
+    u._active = active;
+    u._underConstruction = uc;
+    this.unitTokens.push(u);
+    out.push(0);
+    out.push(this.unitTokens.length - 1);
+  }
+
+  // GameImpl.addUnit (TS 1135-1139) / removeUnit (TS 1140-1148): the
+  // version bump, the real unitGrid mutation, the unitMap set/delete (and
+  // the inert planDriven/trainStation arms).
+  unitAdd(ui, out) {
+    this.game.addUnit(this.unitTokens[ui]);
+    out.push(0);
+  }
+
+  unitRemove(ui, out) {
+    this.game.removeUnit(this.unitTokens[ui]);
+    out.push(0);
+  }
+
+  // UnitImpl.move's field dance (`_lastTile = _tile; _tile = newTile`)
+  // minus move() itself — its onUnitMoved would push a UnitUpdate outside
+  // the M1e unit domain — then the real GameImpl.updateUnitTile (TS
+  // 1149-1151).
+  unitMove(ui, newTile, out) {
+    const u = this.unitTokens[ui];
+    u._lastTile = u._tile;
+    u._tile = newTile;
+    this.game.updateUnitTile(u);
+    out.push(0);
+  }
+
+  // UnitGrid scan modes (op 33): 0 = nearbyUnits' array branch, 3 = its
+  // scalar-type branch, 1 = hasUnitNearby, 2 = anyUnitNearby. The predicate
+  // is absent (array/scalar) or always-true (any) — observationally
+  // identical to no predicate. playerId rides as a pidx (the TS comparison
+  // is per-player unique identity).
+  unitNearby(a, out) {
+    const g = this.game;
+    let i = 0;
+    const mode = a[i++];
+    const tile = a[i++];
+    const range = a[i++];
+    const types = [];
+    const nTypes = a[i++];
+    for (let k = 0; k < nTypes; k++) {
+      let t = "";
+      const len = a[i++];
+      for (let c = 0; c < len; c++) t += String.fromCharCode(a[i++]);
+      types.push(t);
+    }
+    let pid;
+    if (a[i++] !== 0) pid = g._playersBySmallID[a[i++]].id();
+    const includeUC = a[i++] !== 0;
+    const grid = g.unitGrid;
+    out.push(0);
+    if (mode === 0 || mode === 3) {
+      const typesArg = mode === 0 ? types : types[0];
+      for (const { unit, distSquared } of grid.nearbyUnits(
+        tile,
+        range,
+        typesArg,
+        undefined,
+        includeUC,
+      )) {
+        out.push(this.unitTokens.indexOf(unit));
+        out.push(distSquared);
+      }
+    } else if (mode === 1) {
+      out.push(
+        grid.hasUnitNearby(tile, range, types[0], pid, includeUC) ? 1 : 0,
+      );
+    } else {
+      out.push(
+        grid.anyUnitNearby(tile, range, types, () => true, pid, includeUC)
+          ? 1
+          : 0,
+      );
+    }
+  }
+
+  // Units snapshot (op 34): unitsVersion + per defined unit (id, type,
+  // tile, inMap) — inMap mirrors unitMap.has(id).
+  unitsSnapshot(out) {
+    const g = this.game;
+    out.push(0);
+    out.push(g._unitsVersion);
+    out.push(this.unitTokens.length);
+    for (const u of this.unitTokens) {
+      out.push(u.id());
+      pushStr(out, u.type());
+      out.push(u.tile());
+      out.push(g._unitMap.has(u.id()) ? 1 : 0);
+    }
+  }
 }
 
 // Construct op args: [w, h, numLand, miniW, miniH, miniNumLand, len, ..bytes, len, ..mini]
@@ -738,6 +1070,22 @@ const K = {
   // ids through the attacker's pseudo-random, serialized into the tick's
   // PlayerUpdate diffs and gated by the incoming isAlive filter.
   PLAYER_CREATE_ATTACK: 20,
+  // M1e: territory (relinquish), the full diplomacy cluster, and the
+  // unit-grid domain driven through the real UnitGrid / UnitImpl classes.
+  RELINQUISH: 21,
+  CREATE_ALLIANCE_REQUEST: 22,
+  ALLIANCE_REPLY: 23,
+  BREAK_ALLIANCE: 24,
+  EXPIRE_ALLIANCE: 25,
+  REMOVE_ALLIANCES_SILENTLY: 26,
+  ALLIANCE_SNAPSHOT: 27,
+  NEARBY_PROBE: 28,
+  UNIT_DEFINE: 29,
+  UNIT_ADD: 30,
+  UNIT_REMOVE: 31,
+  UNIT_MOVE: 32,
+  UNIT_NEARBY: 33,
+  UNITS_SNAPSHOT: 34,
 };
 
 // --------------------------------------------------- construct_game encoding
@@ -788,6 +1136,11 @@ function constructGameArgs({
   hcInfiniteTroops = 0,
   infiniteTroops = 0,
   spawnImmunityDuration = -1,
+  // Custom alliance duration in minutes; -1 rides as absent (the 3000-tick
+  // default). The WIRE value is the RESOLVED tick duration (Rust's
+  // LoopConfig.alliance_duration is the final `config.allianceDuration()`
+  // number, not the raw minutes).
+  allianceDurationM = -1,
   humans = [],
   nations = [],
 }) {
@@ -799,6 +1152,7 @@ function constructGameArgs({
   a.push(disableNavMesh, waterNukes, difficulty);
   a.push(startingGold, hcStartingGold, hcInfiniteTroops, infiniteTroops);
   a.push(spawnImmunityDuration);
+  a.push(allianceDurationM === -1 ? 3000 : allianceDurationM * 600);
   a.push(humans.length);
   for (const p of humans) encPlayer(p, a);
   a.push(nations.length);
@@ -841,6 +1195,10 @@ function gameOp(desc) {
         desc.spawnImmunityDuration === -1
           ? undefined
           : desc.spawnImmunityDuration,
+      // Config.ts 810-816: `customAllianceDuration > 0 ? m*600 : 3000` —
+      // undefined rides as absent so the default branch stays exercised.
+      customAllianceDuration:
+        desc.allianceDurationM === -1 ? undefined : desc.allianceDurationM,
     },
     humans: desc.humans ?? [],
     // Live ctor call: GameImpl reads `n.playerInfo` on nation entries —
@@ -855,6 +1213,32 @@ function gameOp(desc) {
 }
 
 const scenarios = [];
+
+// M1e scenario helpers: a land (non-impassable) 4-neighbour of a landmark
+// tile, and the wire string encoding the unit ops share with pushStr.
+function landNeighbor(r) {
+  const x = r % W;
+  const y = Math.floor(r / W);
+  for (const [dx, dy] of [
+    [0, -1],
+    [0, 1],
+    [-1, 0],
+    [1, 0],
+  ]) {
+    const nx = x + dx;
+    const ny = y + dy;
+    if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
+    const nr = ny * W + nx;
+    if ((mainT[nr] & IS_LAND) !== 0 && (mainT[nr] & 0x1f) !== 31) return nr;
+  }
+  throw new Error("no land neighbour");
+}
+
+function encS(s) {
+  const a = [s.length];
+  for (const ch of s) a.push(ch.codePointAt(0));
+  return a;
+}
 
 // 1. Fallout: set, duplicate no-op, clear attempt no-op (already-fallout
 //    early return), digest + drain.
@@ -1672,6 +2056,218 @@ const scenarios = [];
   scenarios.push({ name: "m1p_attack_flow", ops });
 }
 
+// 31. M1e relinquish on the live loop: the clean path, the unowned and water
+//     throws, a cross-owner release (Bob loses his spawn tile → isAlive
+//     flips), and the nearby() cluster after territory changes (memo
+//     invalidation rides territoryVersion).
+{
+  const nbA = landNeighbor(P.landA);
+  const nbB = landNeighbor(P.landB);
+  const nbC = landNeighbor(P.landC);
+  const ops = [
+    gameOp({
+      mode: MODE.FFA,
+      pt: { tag: PT_TAG.NUM, v: 0 },
+      humans: [
+        makeInfo("Alice", "HUMAN", { clientID: "c1" }),
+        makeInfo("Bob", "HUMAN", { clientID: "c2" }),
+        makeInfo("Bot 1", "BOT"),
+      ],
+    }),
+    op(K.SET_SPAWN_TILE, [0, P.landA]),
+    op(K.CONQUER, [0, P.landA]),
+    op(K.CONQUER, [0, nbA]),
+    op(K.SET_SPAWN_TILE, [1, P.landB]),
+    op(K.CONQUER, [1, P.landB]),
+    op(K.CONQUER, [1, nbB]),
+    op(K.SET_SPAWN_TILE, [2, P.landC]),
+    op(K.CONQUER, [2, P.landC]),
+    op(K.CONQUER, [2, nbC]),
+    op(K.EXECUTE_NEXT_TICK),
+    // Alice gives up her expansion tile (the clean path).
+    op(K.RELINQUISH, [nbA]),
+    op(K.EXECUTE_NEXT_TICK),
+    // The throw arms and a cross-owner release.
+    op(K.RELINQUISH, [nbA]), // already unowned
+    op(K.RELINQUISH, [P.oceanA]), // water
+    op(K.RELINQUISH, [P.landB]), // Bob loses his spawn tile
+    op(K.EXECUTE_NEXT_TICK),
+    op(K.NEARBY_PROBE, [0]),
+    op(K.NEARBY_PROBE, [1]),
+    op(K.NEARBY_PROBE, [2]),
+    op(K.DIGEST),
+    op(K.ALLIANCE_SNAPSHOT),
+    op(K.STATS_SNAPSHOT),
+  ];
+  scenarios.push({ name: "m1e_conquer_chain", ops });
+}
+
+// 32. M1e alliance happy path: live request → duplicate null → reverse-pair
+//     corresponding auto-accept (the stale request stays live) →
+//     filter-then-throw on accepting it → a second alliance → break (traitor
+//     stamp + BrokeAlliance update) → stale break/expire throws → clean
+//     expire.
+{
+  const ops = [
+    gameOp({
+      mode: MODE.FFA,
+      pt: { tag: PT_TAG.NUM, v: 0 },
+      humans: [
+        makeInfo("Alice", "HUMAN", { clientID: "c1" }),
+        makeInfo("Bob", "HUMAN", { clientID: "c2" }),
+        makeInfo("Bot 1", "BOT"),
+      ],
+    }),
+    op(K.ALLIANCE_SNAPSHOT),
+    op(K.CREATE_ALLIANCE_REQUEST, [0, 1]),
+    op(K.ALLIANCE_SNAPSHOT),
+    op(K.EXECUTE_NEXT_TICK),
+    // Same pair again: the duplicate-incoming null.
+    op(K.CREATE_ALLIANCE_REQUEST, [0, 1]),
+    // Reverse pair: the corresponding-request auto-accept null — the found
+    // request IS token 0, whose accept() filters it out (TS 402-404) as
+    // alliance 0 forms.
+    op(K.CREATE_ALLIANCE_REQUEST, [1, 0]),
+    op(K.ALLIANCE_SNAPSHOT),
+    op(K.EXECUTE_NEXT_TICK),
+    // Accepting the stale token-0 request (already removed): the filter is
+    // a no-op, then the already-allied throw.
+    op(K.ALLIANCE_REPLY, [0, 1]),
+    op(K.ALLIANCE_SNAPSHOT),
+    // Alice → Bot goes live (token 1) and is accepted — alliance 1.
+    op(K.CREATE_ALLIANCE_REQUEST, [0, 2]),
+    op(K.ALLIANCE_REPLY, [1, 1]),
+    op(K.ALLIANCE_SNAPSHOT),
+    op(K.EXECUTE_NEXT_TICK),
+    // Alice breaks alliance 0: markTraitor + betray + the two allianceEnded
+    // counters + the BrokeAlliance update.
+    op(K.BREAK_ALLIANCE, [0, 0]),
+    op(K.ALLIANCE_SNAPSHOT),
+    op(K.EXECUTE_NEXT_TICK),
+    // Breaking again with the stale token: not allied → throw.
+    op(K.BREAK_ALLIANCE, [0, 0]),
+    // Expiring the stale token: the endpoints share no alliance → throw.
+    op(K.EXPIRE_ALLIANCE, [0]),
+    // Expiring the live alliance 1: the expired counters + update.
+    op(K.EXPIRE_ALLIANCE, [1]),
+    op(K.ALLIANCE_SNAPSHOT),
+    op(K.EXECUTE_NEXT_TICK),
+    op(K.STATS_SNAPSHOT),
+  ];
+  scenarios.push({ name: "m1e_alliance_flow", ops });
+}
+
+// 33. M1e alliance reject paths: reject (past-outgoing grows, Reply(false)),
+//     re-request, corresponding auto-accept with a live leftover, the stale
+//     accept throw, a second reject on a fresh pair, break + traitor diffs,
+//     and the empty vs non-empty silent-removal arms.
+{
+  const ops = [
+    gameOp({
+      mode: MODE.FFA,
+      pt: { tag: PT_TAG.NUM, v: 0 },
+      humans: [
+        makeInfo("Alice", "HUMAN", { clientID: "c1" }),
+        makeInfo("Bob", "HUMAN", { clientID: "c2" }),
+        makeInfo("Bot 1", "BOT"),
+      ],
+    }),
+    op(K.CREATE_ALLIANCE_REQUEST, [0, 1]),
+    // Bob rejects: past-outgoing + Reply(false).
+    op(K.ALLIANCE_REPLY, [0, 0]),
+    op(K.ALLIANCE_SNAPSHOT),
+    // Re-request after the reject: a fresh live entry.
+    op(K.CREATE_ALLIANCE_REQUEST, [0, 1]),
+    // Bob counter-requests: corresponding auto-accept (alliance 0) — the
+    // found request IS token 1, so the accept filters it out.
+    op(K.CREATE_ALLIANCE_REQUEST, [1, 0]),
+    // Accept the stale token-0 request → filter no-op, then throw.
+    op(K.ALLIANCE_REPLY, [0, 1]),
+    op(K.ALLIANCE_SNAPSHOT),
+    op(K.EXECUTE_NEXT_TICK),
+    // Bot → Alice live (token 2); Alice rejects.
+    op(K.CREATE_ALLIANCE_REQUEST, [2, 0]),
+    op(K.ALLIANCE_REPLY, [2, 0]),
+    op(K.ALLIANCE_SNAPSHOT),
+    // Alice betrays Bob; the traitor state rides the next diffs.
+    op(K.BREAK_ALLIANCE, [0, 0]),
+    op(K.EXECUTE_NEXT_TICK),
+    op(K.ALLIANCE_SNAPSHOT),
+    op(K.STATS_SNAPSHOT),
+    // Silent removal, empty arm (Alice has no alliance left).
+    op(K.REMOVE_ALLIANCES_SILENTLY, [0]),
+    op(K.ALLIANCE_SNAPSHOT),
+    // Alice → Bot accepted (token 3), then silently removed (the non-empty
+    // arm).
+    op(K.CREATE_ALLIANCE_REQUEST, [0, 2]),
+    op(K.ALLIANCE_REPLY, [3, 1]),
+    op(K.REMOVE_ALLIANCES_SILENTLY, [0]),
+    op(K.ALLIANCE_SNAPSHOT),
+    op(K.EXECUTE_NEXT_TICK),
+  ];
+  scenarios.push({ name: "m1e_alliance_reject", ops });
+}
+
+// 34. M1e unit grid: ctor registration with owner/active/uc variants, the
+//     add/re-add idempotence, all four scan modes (array, scalar, has, any)
+//     with the playerId and under-construction gates, move between cells,
+//     removal, and the versioned snapshots.
+{
+  const nbA = landNeighbor(P.landA);
+  const T = encS("Transport");
+  const P_ = encS("Port");
+  const ops = [
+    gameOp({
+      mode: MODE.FFA,
+      pt: { tag: PT_TAG.NUM, v: 0 },
+      humans: [
+        makeInfo("Alice", "HUMAN", { clientID: "c1" }),
+        makeInfo("Bob", "HUMAN", { clientID: "c2" }),
+        makeInfo("Bot 1", "BOT"),
+      ],
+    }),
+    // Defined: two Alice transports (one to move), a Bob transport sharing
+    // Alice's tile, and a TN Port born inactive and under construction.
+    op(K.UNIT_DEFINE, [1, ...T, P.landA, 0, 1, 0]),
+    op(K.UNIT_DEFINE, [2, ...T, nbA, 0, 1, 0]),
+    op(K.UNIT_DEFINE, [3, ...T, P.landA, 1, 1, 0]),
+    op(K.UNIT_DEFINE, [4, ...P_, P.landC, -1, 0, 1]),
+    op(K.UNITS_SNAPSHOT),
+    op(K.UNIT_ADD, [0]),
+    op(K.UNIT_ADD, [1]),
+    op(K.UNIT_ADD, [2]),
+    op(K.UNIT_ADD, [3]),
+    op(K.UNIT_ADD, [3]), // re-add: the cell set is idempotent
+    op(K.UNITS_SNAPSHOT),
+    // Array-type scan, wide range: the three transports, the Port excluded
+    // (wrong type + under construction).
+    op(K.UNIT_NEARBY, [0, P.landA, 100, 1, ...T, 0, 0]),
+    // Two-type array scan from the far island: the uc gate on the Port.
+    op(K.UNIT_NEARBY, [0, P.landC, 100, 2, ...T, ...P_, 0, 0]),
+    op(K.UNIT_NEARBY, [0, P.landC, 100, 2, ...T, ...P_, 0, 1]),
+    // Scalar-type branch.
+    op(K.UNIT_NEARBY, [3, P.landA, 100, 1, ...T, 0, 0]),
+    // hasUnitNearby with the playerId gate (Alice vs Bob).
+    op(K.UNIT_NEARBY, [1, P.landA, 2, 1, ...T, 1, 0, 0]),
+    op(K.UNIT_NEARBY, [1, P.landA, 2, 1, ...T, 1, 1, 0]),
+    // anyUnitNearby over the Port with and without the uc gate.
+    op(K.UNIT_NEARBY, [2, P.landC, 100, 1, ...P_, 0, 0]),
+    op(K.UNIT_NEARBY, [2, P.landC, 100, 1, ...P_, 0, 1]),
+    // Move Alice's first transport onto its neighbour's cell, re-probe both.
+    op(K.UNIT_MOVE, [0, nbA]),
+    op(K.UNIT_NEARBY, [1, P.landA, 2, 1, ...T, 1, 0, 0]),
+    op(K.UNIT_NEARBY, [1, nbA, 2, 1, ...T, 1, 0, 0]),
+    op(K.UNITS_SNAPSHOT),
+    // Remove Bob's transport: the has-probe goes quiet for him.
+    op(K.UNIT_REMOVE, [2]),
+    op(K.UNIT_NEARBY, [1, P.landA, 2, 1, ...T, 1, 1, 0]),
+    op(K.UNITS_SNAPSHOT),
+    op(K.EXECUTE_NEXT_TICK),
+    op(K.DIGEST),
+  ];
+  scenarios.push({ name: "m1e_units_grid", ops });
+}
+
 // -------------------------------------------------------------- TS runner
 
 function runScenario(sc) {
@@ -1748,6 +2344,48 @@ function runScenario(sc) {
         break;
       case K.PLAYER_CREATE_ATTACK:
         rig.playerCreateAttack(step.args[0], step.args[1], step.args[2], out);
+        break;
+      case K.RELINQUISH:
+        rig.relinquish(step.args[0], out);
+        break;
+      case K.CREATE_ALLIANCE_REQUEST:
+        rig.createAllianceRequest(step.args[0], step.args[1], out);
+        break;
+      case K.ALLIANCE_REPLY:
+        rig.allianceReply(step.args[0], step.args[1] !== 0, out);
+        break;
+      case K.BREAK_ALLIANCE:
+        rig.breakAlliance(step.args[0], step.args[1], out);
+        break;
+      case K.EXPIRE_ALLIANCE:
+        rig.expireAlliance(step.args[0], out);
+        break;
+      case K.REMOVE_ALLIANCES_SILENTLY:
+        rig.removeAlliancesSilently(step.args[0], out);
+        break;
+      case K.ALLIANCE_SNAPSHOT:
+        rig.allianceSnapshot(out);
+        break;
+      case K.NEARBY_PROBE:
+        rig.nearbyProbe(step.args[0], out);
+        break;
+      case K.UNIT_DEFINE:
+        rig.unitDefine(step.args, out);
+        break;
+      case K.UNIT_ADD:
+        rig.unitAdd(step.args[0], out);
+        break;
+      case K.UNIT_REMOVE:
+        rig.unitRemove(step.args[0], out);
+        break;
+      case K.UNIT_MOVE:
+        rig.unitMove(step.args[0], step.args[1], out);
+        break;
+      case K.UNIT_NEARBY:
+        rig.unitNearby(step.args, out);
+        break;
+      case K.UNITS_SNAPSHOT:
+        rig.unitsSnapshot(out);
         break;
       default:
         throw new Error(`unknown kind ${step.kind}`);

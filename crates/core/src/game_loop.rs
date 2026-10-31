@@ -39,6 +39,23 @@
 //! | 15 | `drainPackedAttackUpdates` (TS 575-581) | — | same shape as 14 |
 //! | 16 | `endSpawnPhase` (M1c: TS 473-482) | — | `startTick, updatesJSON(encS)` — the CURRENT map (ctor-fresh or the previous tick's leftovers) plus the appended SpawnPhaseEnd |
 //! | 17 | spawn-immunity probe (M1c: TS 921-945) | — | `inSpawn, ticksSinceStart, elapsedGameSeconds, isSpawnImmunityActive, isNationSpawnImmunityActive` (booleans 0/1) |
+//! | 18 | `addExecution` (M1d stub spec) | `adsp, bornDead, killAt, initUpdate, tickUpdate` | `[]` |
+//! | 19 | `executions()` (M1d: TS 661-663) | — | `nExecs, nUnInit, ..per exec (id, dead?1:0)` |
+//! | 20 | `PlayerImpl.createAttack` (M1d: TS 1855-1875) | `pidx, targetPidx(-1=TerraNullius), troops` | `[]` |
+//! | 21 | `relinquish` (M1e: TS 785-803) | `tile` | `[]` or throw |
+//! | 22 | `createAllianceRequest` (M1e: TS 371-399) | `reqPidx, recPidx` | `null?(1|0), (liveReqIdx), updatesJSON(encS)` |
+//! | 23 | `accept/rejectAllianceRequest` (M1e: TS 401-451) | `reqIdx, accept(0|1)` | `updatesJSON(encS)` or throw |
+//! | 24 | `breakAlliance` (M1e: TS 836-870) | `breakerPidx, allianceIdx` | `updatesJSON(encS)` or throw |
+//! | 25 | `expireAlliance` (M1e: TS 872-893) | `allianceIdx` | `updatesJSON(encS)` or throw |
+//! | 26 | `removeAlliancesByPlayerSilently` (M1e: TS 895-911) | `pidx` | `[]` |
+//! | 27 | alliance snapshot | — | `nReq, ..(reqPidx, recPidx, createdAt)*, nAll, ..(id, reqPidx, recPidx, createdAt, expiresAt)*, nextAllianceID, ..per player (nToks, ..toks*, nPast, ..(recPidx, createdAt)*, markedTraitorTick, betrayalCount, traitorRemaining)*` |
+//! | 28 | nearby probe (M1e: `sharesBorderWith` + `nearby()`) | `pidx` | `nOthers, ..sharesBorder(0|1)*, nNearby, ..smallIDs*` |
+//! | 29 | `UNIT_DEFINE` (M1e: `UnitImpl` ctor) | `id, type(str), tile, ownerPidx(-1=TerraNullius), active, uc` | `unitIdx` |
+//! | 30 | `GameImpl.addUnit` (M1e: TS 1135-1139) | `unitIdx` | `[]` |
+//! | 31 | `GameImpl.removeUnit` (M1e: TS 1140-1148) | `unitIdx` | `[]` |
+//! | 32 | `unit move` (M1e: `_lastTile = _tile; _tile = newTile; updateUnitCell`) | `unitIdx, newTile` | `[]` |
+//! | 33 | unit-nearby probe (M1e: `UnitGrid` scans) | `mode(0=array/1=has/2=any/3=scalar), tile, range, nTypes, ..types(str)*, pidMode, (pid pidx), incUC` | mode 0/3: `n, ..(unitIdx, d2)*`; mode 1/2: `0|1` |
+//! | 34 | units snapshot | — | `unitsVersion, n, ..(id, type(str), tile, inMap?1:0)*` |
 //!
 //! Result convention: `[0, ..payload]` for a return / `undefined`, or
 //! `[1, ..encS(message)]` for a throw — same tag pair as `game_impl`. Error
@@ -108,6 +125,9 @@ pub struct LoopConfig {
     /// `gameConfig.spawnImmunityDuration ?? 50` (Config.ts 332-334; the
     /// explicit-0 override is the `Some(0.0)` case, `None` is absent).
     pub spawn_immunity_duration: Option<f64>,
+    /// `config.allianceDuration()` (Config.ts 810-816):
+    /// `customAllianceDuration > 0 ? m * 600 : 3000`.
+    pub alliance_duration: f64,
 }
 
 /// The `PlayerInfo` fields the construction chain reads (Game.ts 436-460;
@@ -177,6 +197,66 @@ pub struct LoopPlayer {
     /// `attacker().isAlive()` filter applies at emission time (TS
     /// `incomingAttacks()`), so the raw list outlives its serialized form.
     pub in_attacks: Vec<usize>,
+    /// `_alliances` — indices into the harness `alliances` table (M1e).
+    pub alliances: Vec<usize>,
+    /// `pastOutgoingAllianceRequests` — `(recipient pidx, request createdAt)`
+    /// pairs (M1e; the request identity fields the snapshot dumps).
+    pub past_outgoing: Vec<(usize, f64)>,
+    /// `markedTraitorTick` — `-1` never marked (M1e).
+    pub marked_traitor_tick: f64,
+    /// `_betrayalCount` (M1e).
+    pub betrayal_count: f64,
+    /// `nearbyMemo` — `(territoryVersion, waterVersion, result smallIDs)`,
+    /// `None` until the first `nearby()` (M1e).
+    pub nearby_memo: Option<(f64, f64, Vec<f64>)>,
+}
+
+/// One live `AllianceRequestImpl` (M1e): the `GameImpl.allianceRequests`
+/// array is the single source of truth (`incoming`/`outgoing` filter it).
+struct LoopAllianceRequest {
+    requestor: usize,
+    recipient: usize,
+    created_at: f64,
+}
+
+/// One live `AllianceImpl` (M1e). `created_at` is the ACCEPT tick (`new
+/// AllianceImpl(this, ..., this._ticks, ...)` — not the request's creation
+/// tick, which only rides on the past-outgoing entries).
+struct LoopAlliance {
+    id: f64,
+    requestor: usize,
+    recipient: usize,
+    created_at: f64,
+    /// `createdAt + config.allianceDuration()`.
+    expires_at: f64,
+}
+
+/// One defined unit (M1e): the ctor-observable `UnitImpl` state the loop
+/// domain drives. `owner` is the owner's smallID (TerraNullius = 0);
+/// `in_map` mirrors `unitMap.has(id)` (addUnit/removeUnit toggle it).
+pub struct LoopUnit {
+    id: f64,
+    utype: String,
+    tile: f64,
+    last_tile: f64,
+    owner: f64,
+    active: bool,
+    uc: bool,
+    in_map: bool,
+}
+
+/// The `AllianceView` serialization of a live alliance (PlayerImpl.ts
+/// 296-308 map): `{id, other, createdAt, expiresAt, hasExtensionRequest}`,
+/// where `other` is the other player's `info.id` string and
+/// `hasExtensionRequest = expiresAt <= ticks + allianceExtensionPromptOffset`
+/// (the constant 300, Config.ts 1279-1281).
+#[derive(Clone, PartialEq)]
+struct AllianceWire {
+    id: f64,
+    other: String,
+    created_at: f64,
+    expires_at: f64,
+    has_ext: bool,
 }
 
 /// `target.isPlayer()` discriminator for [`LoopAttack`] — TerraNullius is the
@@ -251,6 +331,17 @@ struct PuCore {
     /// diff and the troop-delta packing both compare these post-filter arrays).
     out_attacks: Vec<usize>,
     in_attacks: Vec<usize>,
+    // M1e diplomatic fields (the remaining setIfDifferent-comparable state):
+    is_traitor: bool,
+    traitor_remaining: f64,
+    betrayals: f64,
+    /// `allies` — the other side's smallIDs, alliance insertion order.
+    allies: Vec<f64>,
+    /// `outgoingAllianceRequests` — the recipient `info.id` strings of the
+    /// live requests this player sent.
+    out_all_reqs: Vec<String>,
+    /// `alliances` — the serialized `AllianceView`s.
+    alliances: Vec<AllianceWire>,
 }
 
 pub struct GameLoopHarness {
@@ -289,6 +380,27 @@ pub struct GameLoopHarness {
     un_init_execs: Vec<StubExec>,
     /// Stub-exec identity counter (mirrors the recorder's `nextExecId`).
     next_exec_id: f64,
+    /// `GameImpl.allianceRequests` — the live request tokens (M1e). A
+    /// request's identity is its append-only ledger position (the wire
+    /// token): TS filters by object identity, so a stale accept — the object
+    /// already removed — mirrors as a no-op retain, and the object's fields
+    /// stay readable through the ledger.
+    alliance_requests: Vec<usize>,
+    /// Every request ever created, indexed by token (append-only).
+    request_ledger: Vec<LoopAllianceRequest>,
+    /// The live `AllianceImpl` table (M1e; players hold indices into it).
+    alliances: Vec<LoopAlliance>,
+    /// `GameImpl.nextAllianceID`.
+    next_alliance_id: f64,
+    /// The defined units (M1e) — indices are the unit identities the grid
+    /// stores and the ops exchange.
+    units: Vec<LoopUnit>,
+    /// The real `UnitGrid` over an independent `GameMap` copy (M1e; `GameMap`
+    /// is not `Clone`, so the grid's map is built alongside the water
+    /// manager's from the same terrain bytes — x/y behavior is identical).
+    unit_grid: Option<crate::unit_grid::UnitGrid>,
+    /// `GameImpl._unitsVersion`.
+    units_version: f64,
 }
 
 impl Default for GameLoopHarness {
@@ -312,6 +424,13 @@ impl Default for GameLoopHarness {
             execs: Vec::new(),
             un_init_execs: Vec::new(),
             next_exec_id: 0.0,
+            alliance_requests: Vec::new(),
+            request_ledger: Vec::new(),
+            alliances: Vec::new(),
+            next_alliance_id: 0.0,
+            units: Vec::new(),
+            unit_grid: None,
+            units_version: 0.0,
         }
     }
 }
@@ -507,6 +626,13 @@ impl GameLoopHarness {
         self.execs.clear();
         self.un_init_execs.clear();
         self.next_exec_id = 0.0;
+        self.alliance_requests.clear();
+        self.request_ledger.clear();
+        self.alliances.clear();
+        self.next_alliance_id = 0.0;
+        self.units.clear();
+        self.unit_grid = None;
+        self.units_version = 0.0;
         o.push(0.0);
     }
 
@@ -538,6 +664,7 @@ impl GameLoopHarness {
             hc_infinite_troops: c.f() != 0.0,
             infinite_troops: c.f() != 0.0,
             spawn_immunity_duration: opt_f64(&mut c),
+            alliance_duration: c.f(),
         };
         let humans = read_infos(&mut c);
         let nations = read_infos(&mut c);
@@ -546,11 +673,15 @@ impl GameLoopHarness {
         }
 
         // Ctor body (TS 118-151): the collaborators without construction-
-        // observable state (TerraNulliusImpl / UnitGrid / SharedWaterCache /
-        // RailNetwork) are not modeled; the water manager is (ops 3/4/6).
-        let map = GameMap::new(w, h, terrain, nl);
+        // observable state (TerraNulliusImpl / SharedWaterCache /
+        // RailNetwork) are not modeled; the water manager is (ops 3/4/6) and
+        // M1e adds the real UnitGrid (M1e: TS 133-134 `new UnitGrid(this._map)`)
+        // over an independent GameMap copy (GameMap is not Clone; the grid
+        // only reads x/y off identical geometry).
+        let map = GameMap::new(w, h, terrain.clone(), nl);
         let mini = GameMap::new(mw, mh, mterrain, mnl);
         let water = WaterManager::new(map, mini, cfg.disable_nav_mesh);
+        let unit_grid = crate::unit_grid::UnitGrid::new(GameMap::new(w, h, terrain, nl));
 
         // populateTeams (TS 155-161) — only when gameMode === Team.
         let mut player_teams: Vec<String> = Vec::new();
@@ -663,6 +794,13 @@ impl GameLoopHarness {
         self.execs.clear();
         self.un_init_execs.clear();
         self.next_exec_id = 0.0;
+        self.alliance_requests.clear();
+        self.request_ledger.clear();
+        self.alliances.clear();
+        self.next_alliance_id = 0.0;
+        self.units.clear();
+        self.unit_grid = Some(unit_grid);
+        self.units_version = 0.0;
         o.push(0.0);
     }
 
@@ -758,11 +896,13 @@ impl GameLoopHarness {
     /// alliances / embargoes / units / execs); `embargoes` is the Set → `"{}"`
     /// shape. Outgoing attacks serialize the raw list unfiltered; incoming
     /// applies the `attacker().isAlive()` filter (PlayerImpl.ts 326-353).
-    fn pu_full_value(&self, p: &LoopPlayer) -> JsonValue {
+    fn pu_full_value(&self, pidx: usize) -> JsonValue {
+        let p = &self.players[pidx];
         let opt_str_v = |s: &Option<String>| match s {
             Some(v) => JsonValue::Str(v.clone()),
             None => JsonValue::Null,
         };
+        let traitor_remaining = self.traitor_remaining(pidx);
         JsonValue::Obj(vec![
             ("type".to_string(), JsonValue::Num(2.0)),
             ("clientID".to_string(), opt_str_v(&p.info.client_id)),
@@ -810,11 +950,33 @@ impl GameLoopHarness {
             ("piracyGold".to_string(), JsonValue::Num(0.0)),
             ("goldEarned".to_string(), JsonValue::Num(0.0)),
             ("troops".to_string(), JsonValue::Num(p.troops)),
-            ("allies".to_string(), JsonValue::Arr(Vec::new())),
+            // allies: the other side's smallIDs, alliance insertion order
+            // (PlayerImpl.ts 296: alliances.map(a => a.other(this).smallID())).
+            (
+                "allies".to_string(),
+                JsonValue::Arr(
+                    p.alliances
+                        .iter()
+                        .map(|&ai| {
+                            JsonValue::Num(alliance_other_small(
+                                &self.alliances[ai],
+                                pidx,
+                                &self.players,
+                            ))
+                        })
+                        .collect(),
+                ),
+            ),
             // `embargoes` is a `Set` → JSON.stringify writes `"{}"`.
             ("embargoes".to_string(), JsonValue::Obj(Vec::new())),
-            ("isTraitor".to_string(), JsonValue::Bool(false)),
-            ("traitorRemainingTicks".to_string(), JsonValue::Num(0.0)),
+            (
+                "isTraitor".to_string(),
+                JsonValue::Bool(traitor_remaining > 0.0),
+            ),
+            (
+                "traitorRemainingTicks".to_string(),
+                JsonValue::Num(traitor_remaining),
+            ),
             ("inDoomsdayClock".to_string(), JsonValue::Bool(false)),
             ("isDecaying".to_string(), JsonValue::Bool(false)),
             (
@@ -833,9 +995,34 @@ impl GameLoopHarness {
             ),
             (
                 "outgoingAllianceRequests".to_string(),
-                JsonValue::Arr(Vec::new()),
+                JsonValue::Arr(
+                    self.alliance_requests
+                        .iter()
+                        .filter(|&&t| self.request_ledger[t].requestor == pidx)
+                        .map(|&t| {
+                            JsonValue::Str(
+                                self.players[self.request_ledger[t].recipient]
+                                    .info
+                                    .id
+                                    .clone(),
+                            )
+                        })
+                        .collect(),
+                ),
             ),
-            ("alliances".to_string(), JsonValue::Arr(Vec::new())),
+            // AllianceView serialization (PlayerImpl.ts 296-308): `other` is
+            // the other player's info.id string; hasExtensionRequest = 
+            // expiresAt <= ticks + allianceExtensionPromptOffset (the
+            // constant 300, Config.ts 1279-1281).
+            (
+                "alliances".to_string(),
+                JsonValue::Arr(
+                    p.alliances
+                        .iter()
+                        .map(|&ai| alliance_wire_value(&self.alliance_wire(ai, pidx)))
+                        .collect(),
+                ),
+            ),
             (
                 "hasSpawned".to_string(),
                 JsonValue::Bool(p.spawn_tile.is_some()),
@@ -847,7 +1034,7 @@ impl GameLoopHarness {
                     None => JsonValue::Undef,
                 },
             ),
-            ("betrayals".to_string(), JsonValue::Num(0.0)),
+            ("betrayals".to_string(), JsonValue::Num(p.betrayal_count)),
             ("lastDeleteUnitTick".to_string(), JsonValue::Num(-1.0)),
             (
                 "isLobbyCreator".to_string(),
@@ -866,8 +1053,24 @@ impl GameLoopHarness {
     /// index-sequence equality that value equality.
     fn pu_diff_value(&self, p: &LoopPlayer, prev: &PuCore, next: &PuCore) -> Option<JsonValue> {
         let mut changed: Vec<(String, JsonValue)> = Vec::new();
+        // setIfDifferent order (GameUpdateUtils.ts 92-160), restricted to the
+        // M1-reachable mutable fields: isAlive(100) / isTraitor(109) /
+        // traitorRemainingTicks(110) / hasSpawned(123) / spawnTile(124) /
+        // betrayals(125) / allies(131) / outgoingAllianceRequests(133) /
+        // outgoingAttacks(149) / incomingAttacks(153) / alliances(157).
+        // isLobbyCreator sits between betrayals and allies in TS but is
+        // construction-constant, so it can never surface here.
         if prev.is_alive != next.is_alive {
             changed.push(("isAlive".to_string(), JsonValue::Bool(next.is_alive)));
+        }
+        if prev.is_traitor != next.is_traitor {
+            changed.push(("isTraitor".to_string(), JsonValue::Bool(next.is_traitor)));
+        }
+        if prev.traitor_remaining != next.traitor_remaining {
+            changed.push((
+                "traitorRemainingTicks".to_string(),
+                JsonValue::Num(next.traitor_remaining),
+            ));
         }
         if prev.has_spawned != next.has_spawned {
             changed.push((
@@ -884,6 +1087,26 @@ impl GameLoopHarness {
                 },
             ));
         }
+        if prev.betrayals != next.betrayals {
+            changed.push(("betrayals".to_string(), JsonValue::Num(next.betrayals)));
+        }
+        if prev.allies != next.allies {
+            changed.push((
+                "allies".to_string(),
+                JsonValue::Arr(next.allies.iter().map(|&v| JsonValue::Num(v)).collect()),
+            ));
+        }
+        if prev.out_all_reqs != next.out_all_reqs {
+            changed.push((
+                "outgoingAllianceRequests".to_string(),
+                JsonValue::Arr(
+                    next.out_all_reqs
+                        .iter()
+                        .map(|s| JsonValue::Str(s.clone()))
+                        .collect(),
+                ),
+            ));
+        }
         if prev.out_attacks != next.out_attacks {
             changed.push((
                 "outgoingAttacks".to_string(),
@@ -894,6 +1117,17 @@ impl GameLoopHarness {
             changed.push((
                 "incomingAttacks".to_string(),
                 Self::attack_updates_value(&self.attacks, &self.players, &next.in_attacks, true),
+            ));
+        }
+        if prev.alliances != next.alliances {
+            changed.push((
+                "alliances".to_string(),
+                JsonValue::Arr(
+                    next.alliances
+                        .iter()
+                        .map(alliance_wire_value)
+                        .collect(),
+                ),
             ));
         }
         if changed.is_empty() {
@@ -985,7 +1219,8 @@ impl GameLoopHarness {
                 )
             };
             // TS 518-525: sampled before toUpdate; dead and unspawned
-            // players are skipped. `alliances().length` is always 0 here.
+            // players are skipped. The fourth stat argument is
+            // `p.alliances().length` (the peak-concurrent-alliances input).
             if alive && spawned {
                 let mut trace: Vec<f64> = Vec::new(); // facade trace discarded
                 let _ = self.stats.record_tick_sample(
@@ -994,7 +1229,7 @@ impl GameLoopHarness {
                     i,
                     &Val::Num(tiles_owned),
                     &Val::Num(troops),
-                    0.0,
+                    self.players[i].alliances.len() as f64,
                 );
             }
             // TS 226-264 `toUpdate`: full on the first call, then quints +
@@ -1002,6 +1237,7 @@ impl GameLoopHarness {
             // SERIALIZED arrays: outgoing raw, incoming passed through the
             // `attacker().isAlive()` filter (GameUpdateUtils.ts 251-268
             // compares those post-filter arrays).
+            let traitor_remaining = self.traitor_remaining(i);
             let core = PuCore {
                 is_alive: alive,
                 has_spawned: spawned,
@@ -1017,10 +1253,32 @@ impl GameLoopHarness {
                     .copied()
                     .filter(|&ai| !self.players[self.attacks[ai].attacker].tiles.is_empty())
                     .collect(),
+                is_traitor: traitor_remaining > 0.0,
+                traitor_remaining,
+                betrayals: self.players[i].betrayal_count,
+                allies: self.players[i]
+                    .alliances
+                    .iter()
+                    .map(|&ai| {
+                        alliance_other_small(&self.alliances[ai], i, &self.players)
+                    })
+                    .collect(),
+                out_all_reqs: self
+                    .alliance_requests
+                    .iter()
+                    .filter(|&&t| self.request_ledger[t].requestor == i)
+                    .map(|&t| self.players[self.request_ledger[t].recipient].info.id.clone())
+                    .collect(),
+                alliances: self
+                    .players[i]
+                    .alliances
+                    .iter()
+                    .map(|&ai| self.alliance_wire(ai, i))
+                    .collect(),
             };
             let prev = self.players[i].last_sent.replace(core.clone());
             let pu = match prev {
-                None => self.pu_full_value(&self.players[i]),
+                None => self.pu_full_value(i),
                 Some(prev) => {
                     if prev.tiles_owned != core.tiles_owned
                         || prev.gold != core.gold
@@ -1381,6 +1639,808 @@ impl GameLoopHarness {
         o.push(0.0);
     }
 
+    // --------------------- M1e: territory + alliance + units ----------------
+
+    /// `PlayerImpl.getTraitorRemainingTicks` (TS 855-861) against the
+    /// constant `traitorDuration()` (Config.ts 290-292: 30 * 10).
+    fn traitor_remaining(&self, pidx: usize) -> f64 {
+        let p = &self.players[pidx];
+        if p.marked_traitor_tick < 0.0 {
+            return 0.0;
+        }
+        let elapsed = self.ticks - p.marked_traitor_tick;
+        let remaining = 300.0 - elapsed;
+        if remaining > 0.0 {
+            remaining
+        } else {
+            0.0
+        }
+    }
+
+    /// `PlayerImpl.allianceWith` (TS 761-770): the first of this player's
+    /// alliances involving `other` (insertion order); self never allies
+    /// (TS 762-764).
+    fn alliance_between(&self, pidx: usize, other: usize) -> Option<usize> {
+        if pidx == other {
+            return None;
+        }
+        self.players[pidx]
+            .alliances
+            .iter()
+            .copied()
+            .find(|&ai| {
+                let a = &self.alliances[ai];
+                a.requestor == other || a.recipient == other
+            })
+    }
+
+    /// `detachAlliance` (TS 914-919): drop the alliance from both sides'
+    /// per-player lists.
+    fn detach_alliance(&mut self, ai: usize) {
+        let (req, rec) = (
+            self.alliances[ai].requestor,
+            self.alliances[ai].recipient,
+        );
+        self.players[req].alliances.retain(|&x| x != ai);
+        self.players[rec].alliances.retain(|&x| x != ai);
+    }
+
+    /// The serialized `AllianceView` of one live alliance (PlayerImpl.ts
+    /// 296-308): `other` is the other endpoint's `info.id` string,
+    /// `hasExtensionRequest = expiresAt <= ticks +
+    /// allianceExtensionPromptOffset()` (the constant 300, Config.ts
+    /// 1279-1281).
+    fn alliance_wire(&self, ai: usize, pidx: usize) -> AllianceWire {
+        let a = &self.alliances[ai];
+        let other = if a.requestor == pidx {
+            a.recipient
+        } else {
+            a.requestor
+        };
+        AllianceWire {
+            id: a.id,
+            other: self.players[other].info.id.clone(),
+            created_at: a.created_at,
+            expires_at: a.expires_at,
+            has_ext: a.expires_at <= self.ticks + 300.0,
+        }
+    }
+
+    /// `PlayerImpl.toString` (TS 1834-1840) — the breakAlliance error message
+    /// interpolates players through it. `troops` is a TS bigint (integral f64
+    /// here, printed as an integer); a null clientID stringifies as "null".
+    fn player_to_string(&self, pidx: usize) -> String {
+        let p = &self.players[pidx];
+        format!(
+            "Player:{{name:{},clientID:{},isAlive:{},troops:{},numTileOwned:{}}}]",
+            p.info.name,
+            p.info
+                .client_id
+                .clone()
+                .unwrap_or_else(|| "null".to_string()),
+            if p.tiles.is_empty() { "false" } else { "true" },
+            f64_to_bigint_str(p.troops),
+            p.tiles.len(),
+        )
+    }
+
+    /// `GameImpl.addUpdate` (TS 209-211): push into the live updates map's
+    /// `GameUpdateType[type]` bucket (the map stays live until the next
+    /// tick's reset, exactly like `endSpawnPhase`'s append).
+    fn add_update_value(&mut self, update_type: f64, v: JsonValue) {
+        if let JsonValue::Obj(buckets) = &mut self.last_updates {
+            if let Some(entry) = buckets
+                .iter_mut()
+                .find(|(k, _)| k == &update_type.to_string())
+            {
+                if let JsonValue::Arr(arr) = &mut entry.1 {
+                    arr.push(v);
+                }
+            }
+        }
+    }
+
+    /// Serialize the live updates map — the `updatesJSON` payload the
+    /// alliance ops emit (the same shape `executeNextTick`/`endSpawnPhase`
+    /// carry).
+    fn updates_json(&self) -> String {
+        json_stringify(&self.last_updates).expect("updates serialize")
+    }
+
+    /// `acceptAllianceRequest` shared body (TS 401-437): the filter runs
+    /// FIRST (its removal survives the already-allied throw), then the
+    /// alliance is created — `createdAt` = the accept tick, `expiresAt` =
+    /// `createdAt + config.allianceDuration()` (AllianceImpl.ts 17) — both
+    /// sides push it, `allianceFormed` fires twice, the request joins the
+    /// requestor's past-outgoing list, and the Reply(true) update lands.
+    fn accept_request_at(&mut self, token: usize) -> Result<(), String> {
+        // TS 402-404 filters by object identity FIRST: a stale (already
+        // removed) request makes the filter a no-op, and the object's fields
+        // stay readable for the already-allied throw below.
+        self.alliance_requests.retain(|&t| t != token);
+        let (req, rec, created) = {
+            let ar = &self.request_ledger[token];
+            (ar.requestor, ar.recipient, ar.created_at)
+        };
+        if self.alliance_between(req, rec).is_some() {
+            return Err(format!(
+                "cannot accept alliance request, already allied with {}",
+                self.players[rec].info.name
+            ));
+        }
+        let id = self.next_alliance_id;
+        self.next_alliance_id += 1.0;
+        let created_at = self.ticks;
+        let expires_at = created_at
+            + self
+                .config
+                .as_ref()
+                .map(|c| c.alliance_duration)
+                .unwrap_or(3000.0);
+        let ai = self.alliances.len();
+        self.alliances.push(LoopAlliance {
+            id,
+            requestor: req,
+            recipient: rec,
+            created_at,
+            expires_at,
+        });
+        self.players[req].alliances.push(ai);
+        self.players[rec].alliances.push(ai);
+        let mut trace: Vec<f64> = Vec::new();
+        let _ = self.stats.alliance_formed(&mut trace, &self.mp, req);
+        let mut trace: Vec<f64> = Vec::new();
+        let _ = self.stats.alliance_formed(&mut trace, &self.mp, rec);
+        self.players[req].past_outgoing.push((rec, created));
+        self.add_update_value(
+            6.0,
+            JsonValue::Obj(vec![
+                ("type".to_string(), JsonValue::Num(6.0)),
+                (
+                    "request".to_string(),
+                    request_update_value(req, rec, created),
+                ),
+                ("accepted".to_string(), JsonValue::Bool(true)),
+            ]),
+        );
+        Ok(())
+    }
+
+    /// `rejectAllianceRequest` (TS 439-451): filter, past-outgoing push,
+    /// Reply(false) update.
+    fn reject_request_at(&mut self, token: usize) {
+        self.alliance_requests.retain(|&t| t != token);
+        let (req, rec, created) = {
+            let ar = &self.request_ledger[token];
+            (ar.requestor, ar.recipient, ar.created_at)
+        };
+        self.players[req].past_outgoing.push((rec, created));
+        self.add_update_value(
+            6.0,
+            JsonValue::Obj(vec![
+                ("type".to_string(), JsonValue::Num(6.0)),
+                (
+                    "request".to_string(),
+                    request_update_value(req, rec, created),
+                ),
+                ("accepted".to_string(), JsonValue::Bool(false)),
+            ]),
+        );
+    }
+
+    /// `GameImpl.relinquish` (TS 785-803): unowned/water throws, previous-
+    /// owner bookkeeping, `_territoryVersion++`, `setOwnerID(tile, 0)` —
+    /// fallout intentionally NOT cleared (the conquer mirror does).
+    fn op_relinquish(&mut self, tile: f64, o: &mut Vec<f64>) {
+        if !self.gm().has_owner(tile) {
+            push_err(o, "Cannot relinquish tile because it is unowned");
+            return;
+        }
+        if self.gm().is_water(tile) {
+            push_err(o, "Cannot relinquish water");
+            return;
+        }
+        let prev_owner = self.gm().owner_id(tile);
+        let p = &mut self.players[(prev_owner - 1.0) as usize];
+        p.last_tile_change = self.ticks;
+        p.tile_change_version += 1.0;
+        p.tiles.retain(|t| *t != tile);
+        p.border_tiles.retain(|t| *t != tile);
+        self.territory_version += 1.0;
+        self.gm_mut().set_owner_id(tile, 0.0);
+        self.update_borders(tile);
+        self.record_tile_update(tile);
+        o.push(0.0);
+    }
+
+    /// `GameImpl.createAllianceRequest` (TS 371-399). Payload:
+    /// `[nullFlag, (token), updatesJSON]` — `nullFlag` 1 for the three
+    /// null-return arms (already allied / duplicate incoming /
+    /// corresponding-accept, the last of which still emits the accept-side
+    /// updates), 0 with the new request's ledger token when a request is
+    /// created.
+    fn op_create_alliance_request(&mut self, req: usize, rec: usize, o: &mut Vec<f64>) {
+        // No ok flag: the recorder's payload is [nullFlag, (token), json].
+        // requestor.isAlliedWith(recipient) (TS 754-758: self never allies).
+        if self.alliance_between(req, rec).is_some() {
+            o.push(1.0);
+            push_str(o, &self.updates_json());
+            return;
+        }
+        // recipient.incomingAllianceRequests().find(ar => ar.requestor() ===
+        // requestor) — the duplicate-incoming null.
+        if self.alliance_requests.iter().any(|&t| {
+            let ar = &self.request_ledger[t];
+            ar.requestor == req && ar.recipient == rec
+        }) {
+            o.push(1.0);
+            push_str(o, &self.updates_json());
+            return;
+        }
+        // correspondingReq: requestor.incoming find(requestor === recipient)
+        // → accept() — both sides asked, so the already-allied throw is
+        // unreachable here.
+        if let Some(pos) = self.alliance_requests.iter().position(|&t| {
+            let ar = &self.request_ledger[t];
+            ar.requestor == rec && ar.recipient == req
+        }) {
+            let token = self.alliance_requests[pos];
+            self.accept_request_at(token).expect("corresponding accept");
+            o.push(1.0);
+            push_str(o, &self.updates_json());
+            return;
+        }
+        let token = self.request_ledger.len();
+        self.request_ledger.push(LoopAllianceRequest {
+            requestor: req,
+            recipient: rec,
+            created_at: self.ticks,
+        });
+        self.alliance_requests.push(token);
+        self.add_update_value(5.0, request_update_value(req, rec, self.ticks));
+        o.push(0.0);
+        o.push(token as f64);
+        push_str(o, &self.updates_json());
+    }
+
+    /// `acceptAllianceRequest` / `rejectAllianceRequest` op (TS 401-451).
+    /// The accept arm filters BEFORE the already-allied check — a throw
+    /// still removed the request.
+    fn op_alliance_reply(&mut self, ar_idx: usize, accept: bool, o: &mut Vec<f64>) {
+        if accept {
+            match self.accept_request_at(ar_idx) {
+                Ok(()) => {
+                    o.push(0.0);
+                    push_str(o, &self.updates_json());
+                }
+                Err(msg) => {
+                    push_err(o, &msg);
+                    push_str(o, &self.updates_json());
+                }
+            }
+        } else {
+            self.reject_request_at(ar_idx);
+            o.push(0.0);
+            push_str(o, &self.updates_json());
+        }
+    }
+
+    /// `GameImpl.breakAlliance` (TS 836-870). The token `allianceIdx`
+    /// identifies the exact AllianceImpl object to detach — the
+    /// already-allied guard reads the BREAKER's live list, so a stale token
+    /// still detaches whenever another alliance with the same pair exists
+    /// (TS reference equality, mirrored by the table index). The
+    /// markTraitor order: betray stat, then `allianceEnded(other,
+    /// "brokenByOther")`, then `allianceEnded(breaker, null)`.
+    fn op_break_alliance(&mut self, breaker: usize, ai: usize, o: &mut Vec<f64>) {
+        let (a_req, a_rec, a_created, a_id) = {
+            let a = &self.alliances[ai];
+            (a.requestor, a.recipient, a.created_at, a.id)
+        };
+        let other = if a_req == breaker { a_rec } else { a_req };
+        if self.alliance_between(breaker, other).is_none() {
+            push_err(
+                o,
+                &format!(
+                    "{} not allied with {}, cannot break alliance",
+                    self.player_to_string(breaker),
+                    self.player_to_string(other)
+                ),
+            );
+            // The recorder emits the live updates map even on a throw.
+            push_str(o, &self.updates_json());
+            return;
+        }
+        let duration = self.ticks - a_created;
+        // other.isTraitor() — isDisconnected() is constant false here.
+        if self.traitor_remaining(other) <= 0.0 {
+            // breaker.markTraitor() (PlayerImpl.ts 863-869): the stamp, the
+            // count, the betray stat.
+            self.players[breaker].marked_traitor_tick = self.ticks;
+            self.players[breaker].betrayal_count += 1.0;
+            let mut trace: Vec<f64> = Vec::new();
+            let _ = self.stats.betray(&mut trace, &self.mp, breaker);
+            let mut trace: Vec<f64> = Vec::new();
+            let _ = self.stats.alliance_ended(
+                &mut trace,
+                &self.mp,
+                other,
+                &Val::Num(duration),
+                Some("brokenByOther"),
+            );
+        } else {
+            let mut trace: Vec<f64> = Vec::new();
+            let _ = self.stats.alliance_ended(
+                &mut trace,
+                &self.mp,
+                other,
+                &Val::Num(duration),
+                None,
+            );
+        }
+        // The breaker's side is already counted by betray(); this call is
+        // only so their longest-held maximum sees the alliance.
+        let mut trace: Vec<f64> = Vec::new();
+        let _ = self.stats.alliance_ended(
+            &mut trace,
+            &self.mp,
+            breaker,
+            &Val::Num(duration),
+            None,
+        );
+        self.detach_alliance(ai);
+        self.add_update_value(
+            7.0,
+            JsonValue::Obj(vec![
+                ("type".to_string(), JsonValue::Num(7.0)),
+                (
+                    "traitorID".to_string(),
+                    JsonValue::Num(self.players[breaker].small_id),
+                ),
+                (
+                    "betrayedID".to_string(),
+                    JsonValue::Num(self.players[other].small_id),
+                ),
+                ("allianceID".to_string(), JsonValue::Num(a_id)),
+            ]),
+        );
+        o.push(0.0);
+        push_str(o, &self.updates_json());
+    }
+
+    /// `GameImpl.expireAlliance` (TS 872-893). The token's endpoints define
+    /// the shared set (`Set(recipient.alliances())` ∩ `requestor.alliances()`
+    /// — reference identity, so the table-index intersection mirrors it);
+    /// the expiring alliance is the unique survivor, whatever token was
+    /// passed.
+    fn op_expire_alliance(&mut self, ai: usize, o: &mut Vec<f64>) {
+        let (req, rec) = (
+            self.alliances[ai].requestor,
+            self.alliances[ai].recipient,
+        );
+        let shared: Vec<usize> = self.players[req]
+            .alliances
+            .iter()
+            .copied()
+            .filter(|&x| self.players[rec].alliances.contains(&x))
+            .collect();
+        if shared.len() != 1 {
+            push_err(
+                o,
+                &format!(
+                    "cannot expire alliance: must have exactly one alliance, have {}",
+                    shared.len()
+                ),
+            );
+            push_str(o, &self.updates_json());
+            return;
+        }
+        let expiring = shared[0];
+        let duration = self.ticks - self.alliances[expiring].created_at;
+        let mut trace: Vec<f64> = Vec::new();
+        let _ = self.stats.alliance_ended(
+            &mut trace,
+            &self.mp,
+            req,
+            &Val::Num(duration),
+            Some("expired"),
+        );
+        let mut trace: Vec<f64> = Vec::new();
+        let _ = self.stats.alliance_ended(
+            &mut trace,
+            &self.mp,
+            rec,
+            &Val::Num(duration),
+            Some("expired"),
+        );
+        self.detach_alliance(expiring);
+        self.add_update_value(
+            8.0,
+            JsonValue::Obj(vec![
+                ("type".to_string(), JsonValue::Num(8.0)),
+                (
+                    "player1ID".to_string(),
+                    JsonValue::Num(self.players[req].small_id),
+                ),
+                (
+                    "player2ID".to_string(),
+                    JsonValue::Num(self.players[rec].small_id),
+                ),
+            ]),
+        );
+        o.push(0.0);
+        push_str(o, &self.updates_json());
+    }
+
+    /// `GameImpl.removeAlliancesByPlayerSilently` (TS 895-911): snapshot the
+    /// player's list, then per alliance fire the null-counter stats on both
+    /// sides (so both longest-held maxima still see it) and detach. No
+    /// update is emitted.
+    fn op_remove_alliances_silently(&mut self, pidx: usize, o: &mut Vec<f64>) {
+        let removed: Vec<usize> = self.players[pidx].alliances.clone();
+        for ai in removed {
+            let (req, rec, created) = {
+                let a = &self.alliances[ai];
+                (a.requestor, a.recipient, a.created_at)
+            };
+            let duration = self.ticks - created;
+            let mut trace: Vec<f64> = Vec::new();
+            let _ =
+                self.stats
+                    .alliance_ended(&mut trace, &self.mp, req, &Val::Num(duration), None);
+            let mut trace: Vec<f64> = Vec::new();
+            let _ =
+                self.stats
+                    .alliance_ended(&mut trace, &self.mp, rec, &Val::Num(duration), None);
+            self.detach_alliance(ai);
+        }
+        o.push(0.0);
+    }
+
+    /// Alliance-state snapshot (op 27): the live request table, the alliance
+    /// table, `nextAllianceID`, and per player the alliance tokens (their
+    /// `_alliances` table indices), past-outgoing `(recipient, createdAt)`
+    /// pairs, and the traitor state.
+    fn op_alliance_snapshot(&mut self, o: &mut Vec<f64>) {
+        o.push(0.0);
+        o.push(self.alliance_requests.len() as f64);
+        for &t in &self.alliance_requests {
+            let ar = &self.request_ledger[t];
+            o.push(ar.requestor as f64);
+            o.push(ar.recipient as f64);
+            o.push(ar.created_at);
+        }
+        o.push(self.alliances.len() as f64);
+        for i in 0..self.alliances.len() {
+            let a = &self.alliances[i];
+            o.push(a.id);
+            o.push(a.requestor as f64);
+            o.push(a.recipient as f64);
+            o.push(a.created_at);
+            o.push(a.expires_at);
+        }
+        o.push(self.next_alliance_id);
+        for i in 0..self.players.len() {
+            let p = &self.players[i];
+            o.push(p.alliances.len() as f64);
+            for &ai in &p.alliances {
+                o.push(ai as f64);
+            }
+            o.push(p.past_outgoing.len() as f64);
+            for (rec, created) in &p.past_outgoing {
+                o.push(*rec as f64);
+                o.push(*created);
+            }
+            o.push(p.marked_traitor_tick);
+            o.push(p.betrayal_count);
+            o.push(self.traitor_remaining(i));
+        }
+    }
+
+    /// Nearby probe (op 28): per-other `sharesBorderWith` (TS 554-567) plus
+    /// `nearby()` (TS 587-632, memo keyed on `(territoryVersion,
+    /// waterVersion)`) serialized as smallIDs (TerraNullius = 0).
+    fn op_nearby_probe(&mut self, pidx: usize, o: &mut Vec<f64>) {
+        o.push(0.0);
+        o.push(self.players.len() as f64);
+        for j in 0..self.players.len() {
+            o.push(if self.shares_border_with(pidx, j) {
+                1.0
+            } else {
+                0.0
+            });
+        }
+        let tv = self.territory_version;
+        let wv = self.gm().water_version();
+        let cached = match &self.players[pidx].nearby_memo {
+            Some((v, w, r)) if *v == tv && *w == wv => Some(r.clone()),
+            _ => None,
+        };
+        let result = match cached {
+            Some(r) => r,
+            None => {
+                let r = self.compute_nearby(pidx);
+                self.players[pidx].nearby_memo = Some((tv, wv, r.clone()));
+                r
+            }
+        };
+        o.push(result.len() as f64);
+        for sid in result {
+            o.push(sid);
+        }
+    }
+
+    /// `PlayerImpl.sharesBorderWith` (TS 554-567): any 4-neighbor of any
+    /// border tile owned by the other smallID.
+    fn shares_border_with(&self, pidx: usize, other: usize) -> bool {
+        let other_id = self.players[other].small_id;
+        let mut buf = [0.0f64; 4];
+        for &b in &self.players[pidx].border_tiles {
+            let n = self.gm().neighbors4(b, &mut buf);
+            for &t in &buf[..n] {
+                if self.gm().owner_id(t) == other_id {
+                    return true;
+                }
+            }
+        }
+        false
+    }
+
+    /// `PlayerImpl.computeNearby` (TS 608-632) + `shoreReachableNeighbors`
+    /// (TS 637-677), into an insertion-ordered set of smallIDs — the
+    /// observable order of `Array.from(ns)`.
+    fn compute_nearby(&self, pidx: usize) -> Vec<f64> {
+        let small = self.players[pidx].small_id;
+        let gm = self.gm();
+        let mut set: Vec<f64> = Vec::new();
+        let mut buf = [0.0f64; 4];
+        for &b in &self.players[pidx].border_tiles {
+            let n = gm.neighbors4(b, &mut buf);
+            for &t in &buf[..n] {
+                if gm.is_land(t) && !gm.is_impassable(t) {
+                    if !gm.has_owner(t) && gm.has_fallout(t) {
+                        continue;
+                    }
+                    let owner = gm.owner_id(t);
+                    if owner != small && !set.contains(&owner) {
+                        set.push(owner);
+                    }
+                }
+            }
+        }
+        // shoreReachableNeighbors: every 10th shore border tile (the
+        // post-increment counts only shore tiles), then the 5-steps-away land
+        // tile in each immediately-water cardinal direction.
+        let mut shore_idx = 0.0f64;
+        for &b in &self.players[pidx].border_tiles {
+            if !gm.is_shore(b) {
+                continue;
+            }
+            let cur = shore_idx;
+            shore_idx += 1.0;
+            if cur % 10.0 != 0.0 {
+                continue;
+            }
+            let bx = gm.x(b);
+            let by = gm.y(b);
+            for d in 0..4usize {
+                let (dx, dy) = match d {
+                    0 => (0.0, -1.0),  // N
+                    1 => (0.0, 1.0),   // S
+                    2 => (-1.0, 0.0),  // W
+                    _ => (1.0, 0.0),   // E
+                };
+                let x1 = bx + dx;
+                let y1 = by + dy;
+                if !gm.is_valid_coord(x1, y1) || !gm.is_water(gm.tile_ref(x1, y1)) {
+                    continue;
+                }
+                let nx = bx + dx * 5.0;
+                let ny = by + dy * 5.0;
+                if !gm.is_valid_coord(nx, ny) {
+                    continue;
+                }
+                let tile = gm.tile_ref(nx, ny);
+                if !gm.is_land(tile) || gm.is_impassable(tile) {
+                    continue;
+                }
+                if !gm.has_owner(tile) && gm.has_fallout(tile) {
+                    continue;
+                }
+                let owner = gm.owner_id(tile);
+                if owner != small && !set.contains(&owner) {
+                    set.push(owner);
+                }
+            }
+        }
+        set
+    }
+
+    /// `UnitImpl` ctor + table registration (op 29): `_lastTile = _tile`
+    /// (TS 60), the `maxHealth ?? 1` read (unobservable here), the
+    /// TransportShip state init, and the `stats().unitBuild` switch (only
+    /// Warship/Port/MissileSilo/DefensePost/SAMLauncher/City/Factory — none
+    /// of which the M1e scenarios define). Payload: `[unitIdx]`.
+    fn op_unit_define(&mut self, a: &[f64], o: &mut Vec<f64>) {
+        let mut c = C { a, i: 0 };
+        let id = c.f();
+        let utype = read_f64_str(&mut c);
+        let tile = c.f();
+        let owner_pidx = c.f();
+        let active = c.f() != 0.0;
+        let uc = c.f() != 0.0;
+        let owner = if owner_pidx >= 0.0 {
+            self.players[owner_pidx as usize].small_id
+        } else {
+            0.0 // TerraNullius singleton
+        };
+        let ui = self.units.len();
+        self.units.push(LoopUnit {
+            id,
+            utype,
+            tile,
+            last_tile: tile,
+            owner,
+            active,
+            uc,
+            in_map: false,
+        });
+        o.push(0.0);
+        o.push(ui as f64);
+    }
+
+    /// `GameImpl.addUnit` (TS 1135-1139): `_unitsVersion++`, the real
+    /// `unitGrid.addUnit`, and `unitMap.set(u.id(), u)` (mirrored by
+    /// `in_map`).
+    fn op_unit_add(&mut self, ui: usize, o: &mut Vec<f64>) {
+        self.units_version += 1.0;
+        let (tile, utype) = {
+            let u = &self.units[ui];
+            (u.tile, u.utype.clone())
+        };
+        let key: Vec<u16> = utype.encode_utf16().collect();
+        self.unit_grid
+            .as_mut()
+            .expect("unit grid built")
+            .add_unit_cell(tile, &key, ui as f64);
+        self.units[ui].in_map = true;
+        o.push(0.0);
+    }
+
+    /// `GameImpl.removeUnit` (TS 1140-1148): the version bump, the grid
+    /// removal, the unitMap delete, the (always-miss) planDriven delete, and
+    /// the railNetwork arm — inert because `hasTrainStation()` is ctor-false
+    /// for every M1e unit type.
+    fn op_unit_remove(&mut self, ui: usize, o: &mut Vec<f64>) {
+        self.units_version += 1.0;
+        let (tile, utype) = {
+            let u = &self.units[ui];
+            (u.tile, u.utype.clone())
+        };
+        let key: Vec<u16> = utype.encode_utf16().collect();
+        self.unit_grid
+            .as_mut()
+            .expect("unit grid built")
+            .remove_unit_cell(tile, &key, ui as f64);
+        self.units[ui].in_map = false;
+        o.push(0.0);
+    }
+
+    /// Unit move (op 32): the recorder mirrors the `UnitImpl.move` field
+    /// dance (`_lastTile = _tile; _tile = newTile`) and then the real
+    /// `GameImpl.updateUnitTile` → `unitGrid.updateUnitCell` — deliberately
+    /// NOT `move()` itself, whose `onUnitMoved` would push a UnitUpdate into
+    /// the updates stream (outside the M1e unit domain).
+    fn op_unit_move(&mut self, ui: usize, new_tile: f64, o: &mut Vec<f64>) {
+        let (tile, last_tile, utype) = {
+            let u = &mut self.units[ui];
+            u.last_tile = u.tile;
+            u.tile = new_tile;
+            (u.tile, u.last_tile, u.utype.clone())
+        };
+        let key: Vec<u16> = utype.encode_utf16().collect();
+        self.unit_grid
+            .as_mut()
+            .expect("unit grid built")
+            .update_unit_cell(tile, last_tile, &key, ui as f64);
+        o.push(0.0);
+    }
+
+    /// Unit-nearby probe (op 33): the UnitGrid scans with no predicate (the
+    /// M1e closures are always-true / absent — observationally identical to
+    /// no predicate). `playerId` rides as a player index: the TS comparison
+    /// `unit.owner().id() !== playerId` is per-player unique identity, so
+    /// smallID equality is the exact mirror. Grid members are probed off the
+    /// units table.
+    #[allow(clippy::too_many_lines)] // one op, four scan modes
+    fn op_unit_nearby(&mut self, a: &[f64], o: &mut Vec<f64>) {
+        let mut c = C { a, i: 0 };
+        let mode = c.f();
+        let tile = c.f();
+        let range = c.f();
+        let n_types = c.f() as usize;
+        let types: Vec<Vec<u16>> = (0..n_types)
+            .map(|_| read_f64_str(&mut c).encode_utf16().collect())
+            .collect();
+        let pid = if c.f() != 0.0 {
+            Some(self.players[c.f() as usize].small_id)
+        } else {
+            None
+        };
+        let include_uc = c.f() != 0.0;
+        let units = &self.units;
+        let probe =
+            |refid: f64| -> Option<(bool, bool, f64, f64)> {
+                units
+                    .get(refid as usize)
+                    .map(|u| (u.active, u.uc, u.owner, u.tile))
+            };
+        let grid = self.unit_grid.as_ref().expect("unit grid built");
+        o.push(0.0);
+        match mode {
+            // 0 = the array branch (`cy -> cx -> types -> unitSet`), 3 = the
+            // scalar-type branch (`cy -> cx -> unitSet`).
+            0.0 | 3.0 => {
+                let array_branch = mode == 0.0;
+                for (refid, d2) in grid.nearby_units_probe(
+                    tile,
+                    range,
+                    &types,
+                    array_branch,
+                    pid,
+                    include_uc,
+                    &probe,
+                ) {
+                    o.push(refid);
+                    o.push(d2);
+                }
+            }
+            1.0 => {
+                o.push(if grid.has_unit_nearby_probe(
+                    tile,
+                    range,
+                    &types[0],
+                    pid,
+                    include_uc,
+                    &probe,
+                ) {
+                    1.0
+                } else {
+                    0.0
+                });
+            }
+            _ => {
+                o.push(if grid.any_unit_nearby_probe(
+                    tile,
+                    range,
+                    &types,
+                    pid,
+                    include_uc,
+                    &probe,
+                ) {
+                    1.0
+                } else {
+                    0.0
+                });
+            }
+        }
+    }
+
+    /// Units snapshot (op 34): `unitsVersion` + per defined unit
+    /// `(id, type, tile, inMap)` — `id` is the ctor-assigned number
+    /// (UnitImpl.ts 56), `inMap` mirrors `unitMap.has(id)`.
+    fn op_units_snapshot(&mut self, o: &mut Vec<f64>) {
+        o.push(0.0);
+        o.push(self.units_version);
+        o.push(self.units.len() as f64);
+        for u in &self.units {
+            o.push(u.id);
+            push_str(o, &u.utype);
+            o.push(u.tile);
+            o.push(if u.in_map { 1.0 } else { 0.0 });
+        }
+    }
+
     pub fn run_op(&mut self, kind: u8, args: &[f64]) -> Vec<f64> {
         let mut o: Vec<f64> = Vec::new();
         match kind {
@@ -1443,6 +2503,64 @@ impl GameLoopHarness {
                 let troops = c.f();
                 self.op_player_create_attack(pidx, tidx, troops, &mut o);
             }
+            21 => {
+                let mut c = C { a: args, i: 0 };
+                let tile = c.f();
+                self.op_relinquish(tile, &mut o);
+            }
+            22 => {
+                let mut c = C { a: args, i: 0 };
+                let req = c.f() as usize;
+                let rec = c.f() as usize;
+                self.op_create_alliance_request(req, rec, &mut o);
+            }
+            23 => {
+                let mut c = C { a: args, i: 0 };
+                let ar_idx = c.f() as usize;
+                let accept = c.f() != 0.0;
+                self.op_alliance_reply(ar_idx, accept, &mut o);
+            }
+            24 => {
+                let mut c = C { a: args, i: 0 };
+                let breaker = c.f() as usize;
+                let ai = c.f() as usize;
+                self.op_break_alliance(breaker, ai, &mut o);
+            }
+            25 => {
+                let mut c = C { a: args, i: 0 };
+                let ai = c.f() as usize;
+                self.op_expire_alliance(ai, &mut o);
+            }
+            26 => {
+                let mut c = C { a: args, i: 0 };
+                let pidx = c.f() as usize;
+                self.op_remove_alliances_silently(pidx, &mut o);
+            }
+            27 => self.op_alliance_snapshot(&mut o),
+            28 => {
+                let mut c = C { a: args, i: 0 };
+                let pidx = c.f() as usize;
+                self.op_nearby_probe(pidx, &mut o);
+            }
+            29 => self.op_unit_define(args, &mut o),
+            30 => {
+                let mut c = C { a: args, i: 0 };
+                let ui = c.f() as usize;
+                self.op_unit_add(ui, &mut o);
+            }
+            31 => {
+                let mut c = C { a: args, i: 0 };
+                let ui = c.f() as usize;
+                self.op_unit_remove(ui, &mut o);
+            }
+            32 => {
+                let mut c = C { a: args, i: 0 };
+                let ui = c.f() as usize;
+                let tile = c.f();
+                self.op_unit_move(ui, tile, &mut o);
+            }
+            33 => self.op_unit_nearby(args, &mut o),
+            34 => self.op_units_snapshot(&mut o),
             _ => panic!("gl: unknown kind {kind}"),
         }
         o
@@ -1452,6 +2570,55 @@ impl GameLoopHarness {
 fn push_err(o: &mut Vec<f64>, m: &str) {
     o.push(1.0);
     push_str(o, m);
+}
+
+// ------------------------------------------------------------ M1e helpers
+
+/// smallID of the side opposite `pidx` on this alliance (PlayerImpl.ts 287:
+/// `alliances.map((a) => a.other(this).smallID())`).
+fn alliance_other_small(a: &LoopAlliance, pidx: usize, players: &[LoopPlayer]) -> f64 {
+    let other = if a.requestor == pidx {
+        a.recipient
+    } else {
+        a.requestor
+    };
+    players[other].small_id
+}
+
+/// `AllianceRequestUpdate` (GameUpdates.ts 283-288): `{type: 5, requestorID,
+/// recipientID, createdAt}` — the IDs are smallIDs (pidx + 1 here).
+fn request_update_value(req: usize, rec: usize, created: f64) -> JsonValue {
+    JsonValue::Obj(vec![
+        ("type".to_string(), JsonValue::Num(5.0)),
+        ("requestorID".to_string(), JsonValue::Num(req as f64 + 1.0)),
+        ("recipientID".to_string(), JsonValue::Num(rec as f64 + 1.0)),
+        ("createdAt".to_string(), JsonValue::Num(created)),
+    ])
+}
+
+/// `AllianceView` serialization (PlayerImpl.ts 290-299): field order is the
+/// TS object literal's — `{id, other, createdAt, expiresAt,
+/// hasExtensionRequest}`.
+fn alliance_wire_value(w: &AllianceWire) -> JsonValue {
+    JsonValue::Obj(vec![
+        ("id".to_string(), JsonValue::Num(w.id)),
+        ("other".to_string(), JsonValue::Str(w.other.clone())),
+        ("createdAt".to_string(), JsonValue::Num(w.created_at)),
+        ("expiresAt".to_string(), JsonValue::Num(w.expires_at)),
+        ("hasExtensionRequest".to_string(), JsonValue::Bool(w.has_ext)),
+    ])
+}
+
+/// Read a `[len, u0, ..]` UTF-16 wire string through the [`C`] cursor
+/// (mirror of [`push_str`], via the shared lossy reader).
+fn read_f64_str(c: &mut C) -> String {
+    read_str(c.a, &mut c.i)
+}
+
+/// TS bigint → integer decimal string (PlayerImpl.toString's troops field;
+/// integral f64 below 2^53).
+fn f64_to_bigint_str(v: f64) -> String {
+    format!("{}", v as i64)
 }
 
 /// `createGameUpdatesMap` (GameImpl.ts 1456-1464): the numeric enum members
@@ -1521,6 +2688,11 @@ fn add_loop_player(
         last_sent: None,
         out_attacks: Vec::new(),
         in_attacks: Vec::new(),
+        alliances: Vec::new(),
+        past_outgoing: Vec::new(),
+        marked_traitor_tick: -1.0,
+        betrayal_count: 0.0,
+        nearby_memo: None,
     });
 }
 

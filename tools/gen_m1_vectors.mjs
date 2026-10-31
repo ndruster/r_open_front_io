@@ -197,6 +197,14 @@ class StubConfig {
     }
     return base;
   }
+  // Config.ts 332-342: DEFAULT_SPAWN_IMMUNITY_TICKS = 5*10. Note the `??`:
+  // an explicit 0 overrides the default (nullish coalescing, not ||).
+  spawnImmunityDuration() {
+    return this._gameConfig.spawnImmunityDuration ?? 50;
+  }
+  nationSpawnImmunityDuration() {
+    return 50;
+  }
 }
 
 // Plain-object PlayerInfo mirror: PlayerInfo.ts's ctor only assigns readonly
@@ -550,6 +558,45 @@ class Rig {
       out.push(0, r.length, ...r);
     }
   }
+
+  // ---- M1c: spawn-phase flow + the spawn-immunity cluster -----------------
+
+  // GameImpl.endSpawnPhase (TS 473-482): idempotent (startTick !== null
+  // returns early), stamps startTick = _ticks and appends the SpawnPhaseEnd
+  // update into the CURRENT updates map. That map is serialized right here —
+  // whatever it holds (ctor-fresh before the first tick, or the previous
+  // tick's leftovers) plus the new update is the observable state; the next
+  // executeNextTick wipes it via createGameUpdatesMap. Payload:
+  // [0, startTick, updatesJSON(encS)].
+  endSpawnPhase(out) {
+    const g = this.game;
+    g.endSpawnPhase();
+    out.push(0, g.startTick);
+    pushStr(
+      out,
+      JSON.stringify(g.updates, (k, v) =>
+        typeof v === "bigint" ? Number(v) : v,
+      ),
+    );
+  }
+
+  // The spawn-immunity cluster on the real clock (GameImpl.ts 921-945):
+  // inSpawnPhase (startTick === null), private ticksSinceStart
+  // (0 in spawn phase, else max(0, ticks - startTick)), elapsedGameSeconds
+  // (ticksSinceStart / 10), and both immunity gates against the config
+  // durations. Payload: [0, inSpawn, sinceStart, elapsed, immunity,
+  // nationImmunity] with booleans as 0/1.
+  probeSpawn(out) {
+    const g = this.game;
+    out.push(
+      0,
+      g.inSpawnPhase() ? 1 : 0,
+      g.ticksSinceStart(),
+      g.elapsedGameSeconds(),
+      g.isSpawnImmunityActive() ? 1 : 0,
+      g.isNationSpawnImmunityActive() ? 1 : 0,
+    );
+  }
 }
 
 // Construct op args: [w, h, numLand, miniW, miniH, miniNumLand, len, ..bytes, len, ..mini]
@@ -593,6 +640,9 @@ const K = {
   CONQUER: 13,
   DRAIN_PQ: 14,
   DRAIN_AQ: 15,
+  // M1c: spawn-phase flow + the spawn-immunity cluster on the real clock.
+  END_SPAWN_PHASE: 16,
+  PROBE_SPAWN: 17,
 };
 
 // --------------------------------------------------- construct_game encoding
@@ -642,6 +692,7 @@ function constructGameArgs({
   hcStartingGold = -1,
   hcInfiniteTroops = 0,
   infiniteTroops = 0,
+  spawnImmunityDuration = -1,
   humans = [],
   nations = [],
 }) {
@@ -652,6 +703,7 @@ function constructGameArgs({
   else if (pt.tag === PT_TAG.OTHER) pushStr(a, pt.v);
   a.push(disableNavMesh, waterNukes, difficulty);
   a.push(startingGold, hcStartingGold, hcInfiniteTroops, infiniteTroops);
+  a.push(spawnImmunityDuration);
   a.push(humans.length);
   for (const p of humans) encPlayer(p, a);
   a.push(nations.length);
@@ -688,6 +740,12 @@ function gameOp(desc) {
               infiniteTroops: desc.hcInfiniteTroops === 1 || undefined,
             },
       infiniteTroops: desc.infiniteTroops === 1,
+      // Config.ts 332-334: `?? DEFAULT_SPAWN_IMMUNITY_TICKS` — undefined
+      // rides as absent so the default-50 branch stays exercised.
+      spawnImmunityDuration:
+        desc.spawnImmunityDuration === -1
+          ? undefined
+          : desc.spawnImmunityDuration,
     },
     humans: desc.humans ?? [],
     // Live ctor call: GameImpl reads `n.playerInfo` on nation entries —
@@ -1175,6 +1233,151 @@ const scenarios = [];
   scenarios.push({ name: "m1b_team_spawn_json", ops });
 }
 
+// 22. Spawn-phase flow, small immunity override: spawnImmunityDuration=5
+//     (nullish coalescing keeps the explicit value). Probes inside the spawn
+//     phase (inSpawn=1, ticksSinceStart=0, both immunity gates on), the
+//     endSpawnPhase stamp (startTick=0) with its SpawnPhaseEnd update in the
+//     ctor-fresh updates map, the idempotent second call (same startTick,
+//     same JSON), then the boundary walk: ticksSinceStart 4 (immunity on),
+//     5 (player gate OFF, nation gate still on at 5<50), 6 (both off). Ten
+//     ticks total (pre-increment 0-9): the only Hash update rides tick 0,
+//     and all players are unspawned — full updates on tick 0, null diffs
+//     after, stats gate closed throughout.
+{
+  const ops = [
+    gameOp({
+      mode: MODE.FFA,
+      pt: { tag: PT_TAG.NUM, v: 0 },
+      spawnImmunityDuration: 5,
+      humans: [
+        makeInfo("Alice", "HUMAN", { clientID: "c1" }),
+        makeInfo("Bob", "HUMAN", { clientID: "c2" }),
+      ],
+    }),
+    op(K.PROBE_SPAWN),
+    op(K.END_SPAWN_PHASE),
+    op(K.END_SPAWN_PHASE),
+    op(K.PROBE_SPAWN),
+    ...Array.from({ length: 4 }, () => op(K.EXECUTE_NEXT_TICK)),
+    op(K.PROBE_SPAWN),
+    op(K.EXECUTE_NEXT_TICK),
+    op(K.PROBE_SPAWN),
+    op(K.EXECUTE_NEXT_TICK),
+    op(K.PROBE_SPAWN),
+    ...Array.from({ length: 4 }, () => op(K.EXECUTE_NEXT_TICK)),
+    op(K.DRAIN),
+    op(K.DRAIN_PQ),
+    op(K.STATS_SNAPSHOT),
+    op(K.DIGEST),
+  ];
+  scenarios.push({ name: "m1c_spawn_immunity_override5", ops });
+}
+
+// 23. Default immunity duration (no gameConfig field → ?? 50): two spawn-
+//     phase ticks, endSpawnPhase at tick 2, then the exact 49/50/51
+//     ticksSinceStart walk across both gates (they coincide at 50). Ticks
+//     10/20/30/40/50 carry Hash updates in their JSONs.
+{
+  const ops = [
+    gameOp({
+      mode: MODE.FFA,
+      pt: { tag: PT_TAG.NUM, v: 0 },
+      humans: [
+        makeInfo("Alice", "HUMAN", { clientID: "c1" }),
+        makeInfo("Bob", "HUMAN", { clientID: "c2" }),
+      ],
+    }),
+    op(K.EXECUTE_NEXT_TICK),
+    op(K.EXECUTE_NEXT_TICK),
+    op(K.PROBE_SPAWN),
+    op(K.END_SPAWN_PHASE),
+    ...Array.from({ length: 49 }, () => op(K.EXECUTE_NEXT_TICK)),
+    op(K.PROBE_SPAWN),
+    op(K.EXECUTE_NEXT_TICK),
+    op(K.PROBE_SPAWN),
+    op(K.EXECUTE_NEXT_TICK),
+    op(K.PROBE_SPAWN),
+    op(K.DRAIN),
+    op(K.DRAIN_PQ),
+    op(K.DIGEST),
+  ];
+  scenarios.push({ name: "m1c_spawn_immunity_default50", ops });
+}
+
+// 24. Updates-map accumulation around endSpawnPhase: the previous tick's
+//     map (full PlayerUpdate + tick-0 Hash) is still live when endSpawnPhase
+//     appends SpawnPhaseEnd, so the captured JSON carries all three — while
+//     the NEXT tick's JSON wipes the SpawnPhaseEnd (createGameUpdatesMap at
+//     tick start). A late spawner (conquer + setSpawnTile after the phase
+//     ends — the mid-game-join analog) flips hasSpawned between ticks, its
+//     full update lands one tick later, and the troop quint rides the
+//     diffed tick after addTroops.
+{
+  const ops = [
+    gameOp({
+      mode: MODE.FFA,
+      pt: { tag: PT_TAG.NUM, v: 0 },
+      humans: [
+        makeInfo("Alice", "HUMAN", { clientID: "c1" }),
+        makeInfo("Bob", "HUMAN", { clientID: "c2" }),
+        makeInfo("Carol", "HUMAN", { clientID: "c3" }),
+      ],
+    }),
+    op(K.SET_SPAWN_TILE, [0, P.landA]),
+    op(K.CONQUER, [0, P.landA]),
+    op(K.EXECUTE_NEXT_TICK),
+    op(K.END_SPAWN_PHASE),
+    op(K.CONQUER, [1, P.landC]),
+    op(K.SET_SPAWN_TILE, [1, P.landC]),
+    op(K.PROBE_SPAWN),
+    op(K.EXECUTE_NEXT_TICK),
+    op(K.PROBE_SPAWN),
+    op(K.ADD_TROOPS, [0, 100]),
+    op(K.EXECUTE_NEXT_TICK),
+    op(K.DRAIN_PQ),
+    op(K.PROBE_SPAWN),
+    op(K.DIGEST),
+    op(K.DRAIN),
+  ];
+  scenarios.push({ name: "m1c_spawn_map_accumulate", ops });
+}
+
+// 25. Zero-duration immunity (0 is not nullish → gate off immediately after
+//     the phase ends, while the nation gate stays on at 0<50) in Team mode:
+//     the endSpawnPhase JSON rides the ctor-fresh map, the next tick's JSON
+//     wipes SpawnPhaseEnd and carries the eight full team-mode PlayerUpdates
+//     plus the tick-0 Hash, and the stats snapshot samples exactly the one
+//     spawned human (c1).
+{
+  const ops = [
+    gameOp({
+      mode: MODE.TEAM,
+      pt: { tag: PT_TAG.NUM, v: 2 },
+      spawnImmunityDuration: 0,
+      humans: [
+        makeInfo("P1", "HUMAN", { clientID: "c1", clanTag: "AAA" }),
+        makeInfo("P2", "HUMAN", { clientID: "c2", clanTag: "AAA" }),
+        makeInfo("P3", "HUMAN", { clientID: "c3", friends: ["c4"] }),
+        makeInfo("P4", "HUMAN", { clientID: "c4", friends: ["c3"] }),
+        makeInfo("P5", "HUMAN", { clientID: "c5", teamIndex: 1 }),
+        makeInfo("P6", "HUMAN", { clientID: "c6" }),
+        makeInfo("Bot 1", "BOT"),
+        makeInfo("Bot 2", "BOT"),
+      ],
+    }),
+    op(K.SET_SPAWN_TILE, [0, P.landA]),
+    op(K.CONQUER, [0, P.landA]),
+    op(K.END_SPAWN_PHASE),
+    op(K.PROBE_SPAWN),
+    op(K.EXECUTE_NEXT_TICK),
+    op(K.PROBE_SPAWN),
+    op(K.DRAIN_PQ),
+    op(K.STATS_SNAPSHOT),
+    op(K.DIGEST),
+  ];
+  scenarios.push({ name: "m1c_spawn_zero_duration_team", ops });
+}
+
 // -------------------------------------------------------------- TS runner
 
 function runScenario(sc) {
@@ -1230,6 +1433,12 @@ function runScenario(sc) {
         break;
       case K.DRAIN_AQ:
         rig.drainAQ(out);
+        break;
+      case K.END_SPAWN_PHASE:
+        rig.endSpawnPhase(out);
+        break;
+      case K.PROBE_SPAWN:
+        rig.probeSpawn(out);
         break;
       default:
         throw new Error(`unknown kind ${step.kind}`);

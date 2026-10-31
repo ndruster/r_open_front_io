@@ -37,6 +37,8 @@
 //! | 13 | `GameImpl.conquer` (TS 761-783) | `pidx, tile` | `[]` or throw |
 //! | 14 | `drainPackedPlayerUpdates` (TS 567-573) | — | `-1` when null, else `len, ..quads` (after the `[0]` ok tag) |
 //! | 15 | `drainPackedAttackUpdates` (TS 575-581) | — | same shape as 14 |
+//! | 16 | `endSpawnPhase` (M1c: TS 473-482) | — | `startTick, updatesJSON(encS)` — the CURRENT map (ctor-fresh or the previous tick's leftovers) plus the appended SpawnPhaseEnd |
+//! | 17 | spawn-immunity probe (M1c: TS 921-945) | — | `inSpawn, ticksSinceStart, elapsedGameSeconds, isSpawnImmunityActive, isNationSpawnImmunityActive` (booleans 0/1) |
 //!
 //! Result convention: `[0, ..payload]` for a return / `undefined`, or
 //! `[1, ..encS(message)]` for a throw — same tag pair as `game_impl`. Error
@@ -103,6 +105,9 @@ pub struct LoopConfig {
     pub hc_infinite_troops: bool,
     /// `gameConfig.infiniteTroops ?? false` (Config.ts 421).
     pub infinite_troops: bool,
+    /// `gameConfig.spawnImmunityDuration ?? 50` (Config.ts 332-334; the
+    /// explicit-0 override is the `Some(0.0)` case, `None` is absent).
+    pub spawn_immunity_duration: Option<f64>,
 }
 
 /// The `PlayerInfo` fields the construction chain reads (Game.ts 436-460;
@@ -202,6 +207,13 @@ pub struct GameLoopHarness {
     player_quads: Vec<f64>,
     /// `attackTroopsQuads` — always empty in the M1b domain (no attacks).
     attack_quads: Vec<f64>,
+    /// `GameImpl.startTick` — `None` is the spawn phase (`inSpawnPhase()`
+    /// true); `endSpawnPhase` stamps it with `_ticks` (M1c).
+    start_tick: Option<f64>,
+    /// The live `GameImpl.updates` map — ctor-fresh at construct, rebuilt by
+    /// every `executeNextTick`, and appended to in place by `endSpawnPhase`
+    /// (the next tick's `createGameUpdatesMap` wipes it, M1c).
+    last_updates: JsonValue,
 }
 
 impl Default for GameLoopHarness {
@@ -219,6 +231,8 @@ impl Default for GameLoopHarness {
             mp: Vec::new(),
             player_quads: Vec::new(),
             attack_quads: Vec::new(),
+            start_tick: None,
+            last_updates: empty_updates(),
         }
     }
 }
@@ -409,6 +423,8 @@ impl GameLoopHarness {
         self.mp.clear();
         self.player_quads.clear();
         self.attack_quads.clear();
+        self.start_tick = None;
+        self.last_updates = empty_updates();
         o.push(0.0);
     }
 
@@ -439,6 +455,7 @@ impl GameLoopHarness {
             hc_starting_gold: opt_f64(&mut c),
             hc_infinite_troops: c.f() != 0.0,
             infinite_troops: c.f() != 0.0,
+            spawn_immunity_duration: opt_f64(&mut c),
         };
         let humans = read_infos(&mut c);
         let nations = read_infos(&mut c);
@@ -558,6 +575,8 @@ impl GameLoopHarness {
         self.stats = StatsImpl::default();
         self.player_quads.clear();
         self.attack_quads.clear();
+        self.start_tick = None;
+        self.last_updates = empty_updates();
         o.push(0.0);
     }
 
@@ -829,6 +848,8 @@ impl GameLoopHarness {
         }
         self.ticks += 1.0;
         // The 24-bucket updates map → the JSON the worker channel carries.
+        // The map stays live on the game until the next tick's reset (M1c's
+        // endSpawnPhase appends into it), so pin it on the harness.
         let mut buckets: Vec<(String, JsonValue)> = (0..24)
             .map(|i| (i.to_string(), JsonValue::Arr(Vec::new())))
             .collect();
@@ -836,7 +857,9 @@ impl GameLoopHarness {
         if let Some(hv) = hash_update {
             buckets[13].1 = JsonValue::Arr(vec![hv]);
         }
-        let json = json_stringify(&JsonValue::Obj(buckets)).expect("updates serialize");
+        let map = JsonValue::Obj(buckets);
+        self.last_updates = map.clone();
+        let json = json_stringify(&map).expect("updates serialize");
         o.push(0.0);
         o.push(self.ticks);
         o.push(self.game_hash());
@@ -987,6 +1010,59 @@ impl GameLoopHarness {
         o.extend_from_slice(&q);
     }
 
+    /// `GameImpl.endSpawnPhase` (M1c, TS 473-482): idempotent — once
+    /// `startTick` is stamped the early return leaves everything untouched
+    /// (second call, same JSON). The first call stamps `startTick = _ticks`
+    /// and appends the SpawnPhaseEnd update into the LIVE updates map, which
+    /// is then serialized in full: ctor-fresh (24 empty buckets) before the
+    /// first tick, or the previous tick's leftovers (still unreset) plus the
+    /// new update. Emits `[0, startTick, updatesJSON(encS)]`.
+    fn op_end_spawn_phase(&mut self, o: &mut Vec<f64>) {
+        if self.start_tick.is_none() {
+            let st = self.ticks;
+            self.start_tick = Some(st);
+            if let JsonValue::Obj(buckets) = &mut self.last_updates {
+                buckets[21].1 = JsonValue::Arr(vec![JsonValue::Obj(vec![
+                    ("type".to_string(), JsonValue::Num(21.0)),
+                    ("startTick".to_string(), JsonValue::Num(st)),
+                ])]);
+            }
+        }
+        o.push(0.0);
+        o.push(self.start_tick.unwrap_or(-1.0));
+        let json = json_stringify(&self.last_updates).expect("updates serialize");
+        push_str(o, &json);
+    }
+
+    /// The spawn-immunity cluster on the real clock (M1c, TS 921-945):
+    /// `inSpawnPhase` (`startTick === null`), private `ticksSinceStart` (0
+    /// in the spawn phase, else `max(0, ticks - startTick)`),
+    /// `elapsedGameSeconds` (`ticksSinceStart / 10`), and both immunity
+    /// gates — the player one against
+    /// `config.spawnImmunityDuration ?? 50` (Config.ts 332-334), the nation
+    /// one against the constant `DEFAULT_SPAWN_IMMUNITY_TICKS` (Config.ts
+    /// 337-339). Emits
+    /// `[0, inSpawn, sinceStart, elapsed, immunity, nationImmunity]`.
+    fn op_probe_spawn(&mut self, o: &mut Vec<f64>) {
+        let in_spawn = self.start_tick.is_none();
+        let since = if in_spawn {
+            0.0
+        } else {
+            (self.ticks - self.start_tick.unwrap()).max(0.0)
+        };
+        let dur = self
+            .config
+            .as_ref()
+            .and_then(|c| c.spawn_immunity_duration)
+            .unwrap_or(50.0);
+        o.push(0.0);
+        o.push(if in_spawn { 1.0 } else { 0.0 });
+        o.push(since);
+        o.push(since / 10.0);
+        o.push(if in_spawn || since < dur { 1.0 } else { 0.0 });
+        o.push(if in_spawn || since < 50.0 { 1.0 } else { 0.0 });
+    }
+
     pub fn run_op(&mut self, kind: u8, args: &[f64]) -> Vec<f64> {
         let mut o: Vec<f64> = Vec::new();
         match kind {
@@ -1038,6 +1114,8 @@ impl GameLoopHarness {
             }
             14 => Self::op_drain_quads(&mut self.player_quads, &mut o),
             15 => Self::op_drain_quads(&mut self.attack_quads, &mut o),
+            16 => self.op_end_spawn_phase(&mut o),
+            17 => self.op_probe_spawn(&mut o),
             _ => panic!("gl: unknown kind {kind}"),
         }
         o
@@ -1047,6 +1125,17 @@ impl GameLoopHarness {
 fn push_err(o: &mut Vec<f64>, m: &str) {
     o.push(1.0);
     push_str(o, m);
+}
+
+/// `createGameUpdatesMap` (GameImpl.ts 1456-1464): the numeric enum members
+/// 0-23 in ascending order, each an empty array — the ctor's initial
+/// `updates` value and every tick's fresh map.
+fn empty_updates() -> JsonValue {
+    JsonValue::Obj(
+        (0..24)
+            .map(|i| (i.to_string(), JsonValue::Arr(Vec::new())))
+            .collect(),
+    )
 }
 
 // ------------------------------------------------------------ M1a helpers
